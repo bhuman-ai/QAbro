@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QAbro - AI Agent Swarm for App Testing</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="topbar">
+        <div class="container nav-wrap">
+          <a class="brand" href="#hero" aria-label="QAbro home">
+            <span class="brand-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6V3m4.2 1.4-2.1 2.1m-4.2 0L7.8 4.4M7.5 12H4.4m15.2 0h-3.1m-7.8 3.3 1.6 1.6m3.4 0 1.6-1.6M12 18.2V21" />
+              </svg>
+            </span>
+            <span class="brand-label">QAbro</span>
+          </a>
+
+          <nav class="main-nav" aria-label="Primary">
+            <a href="#features">Features</a>
+            <a href="#how-it-works">How It Works</a>
+          </nav>
+
+          <a class="btn btn-primary" href="#waitlist">Join Waitlist</a>
+        </div>
+      </header>
+
+      <main>
+        <section id="hero" class="hero">
+          <div class="hero-overlay" aria-hidden="true"></div>
+          <div class="container hero-content">
+            <p class="status-pill">
+              <span class="dot"></span>
+              Closed beta is live right now
+            </p>
+
+            <h1>
+              AI Agents That
+              <span>Break Your App</span>
+              Before Users Do
+            </h1>
+
+            <p class="hero-copy">
+              Selected teams are already in closed beta. Open beta is coming soon and the countdown is on.
+            </p>
+
+            <div class="countdown" aria-label="Open beta countdown">
+              <div class="time-card">
+                <strong id="days">00</strong>
+                <span>Days</span>
+              </div>
+              <span class="time-sep">:</span>
+              <div class="time-card">
+                <strong id="hours">00</strong>
+                <span>Hours</span>
+              </div>
+              <span class="time-sep">:</span>
+              <div class="time-card">
+                <strong id="minutes">00</strong>
+                <span>Minutes</span>
+              </div>
+              <span class="time-sep">:</span>
+              <div class="time-card">
+                <strong id="seconds">00</strong>
+                <span>Seconds</span>
+              </div>
+            </div>
+
+            <form id="waitlist" class="waitlist-form" action="#" method="post">
+              <label class="sr-only" for="email">Email</label>
+              <input id="email" name="email" type="email" placeholder="your@email.com" autocomplete="email" required />
+              <button class="btn btn-primary" type="submit">Join Waitlist</button>
+            </form>
+            <p class="microcopy">Join 2,400+ teams already on the waitlist. No spam, ever.</p>
+          </div>
+
+          <div class="container stats">
+            <article>
+              <strong>12k+</strong>
+              <span>Bugs Found in Beta</span>
+            </article>
+            <article>
+              <strong>500+</strong>
+              <span>Apps Tested</span>
+            </article>
+            <article>
+              <strong>98%</strong>
+              <span>Issue Accuracy</span>
+            </article>
+          </div>
+        </section>
+
+        <section id="features" class="section section-features">
+          <div class="container section-head">
+            <h2>Everything you need to ship bug-free products</h2>
+            <p>QAbro combines AI agent intelligence with deep UX analysis to catch what manual testing misses.</p>
+          </div>
+
+          <div class="container card-grid">
+            <article class="feature-card">
+              <span class="icon"></span>
+              <h3>AI-Powered Testers</h3>
+              <p>Multiple AI agents run parallel tests across your entire app, simulating real user behavior at scale.</p>
+            </article>
+            <article class="feature-card">
+              <span class="icon"></span>
+              <h3>Customizable Personas</h3>
+              <p>Tailor each agent's behavior to match real user personas, from power users to cautious first-timers.</p>
+            </article>
+            <article class="feature-card">
+              <span class="icon"></span>
+              <h3>Friction Detection</h3>
+              <p>Go beyond bug tracking. Uncover confusion points, slow flows, and hidden UX friction that drives users away.</p>
+            </article>
+            <article class="feature-card">
+              <span class="icon"></span>
+              <h3>Actionable Insights</h3>
+              <p>Get AI-driven fix suggestions with screenshots and recordings showing exactly where things went wrong.</p>
+            </article>
+            <article class="feature-card">
+              <span class="icon"></span>
+              <h3>Instant Swarm Launch</h3>
+              <p>One click to deploy your agent swarm. Get results in minutes, not days. Test any flow, any time.</p>
+            </article>
+            <article class="feature-card">
+              <span class="icon"></span>
+              <h3>Smart Prioritization</h3>
+              <p>Issues are ranked by severity and impact. Focus on what matters most: blocking bugs and critical UX failures.</p>
+            </article>
+          </div>
+        </section>
+
+        <section id="how-it-works" class="section section-how">
+          <div class="container section-head">
+            <h2>From zero to tested in minutes</h2>
+            <p>Four simple steps to unleash AI-powered testing on your app.</p>
+          </div>
+
+          <div class="container steps">
+            <article class="step">
+              <strong>01</strong>
+              <div>
+                <h3>Describe Your Users</h3>
+                <p>Define your ICP and create custom AI personas that match your real user base.</p>
+              </div>
+            </article>
+            <article class="step">
+              <strong>02</strong>
+              <div>
+                <h3>Configure Your Agents</h3>
+                <p>Choose agent roles like Bug Hunter, Usability Guru, or Frustration Seeker. Tune their intensity.</p>
+              </div>
+            </article>
+            <article class="step">
+              <strong>03</strong>
+              <div>
+                <h3>Launch the Swarm</h3>
+                <p>One click deploys your agent army. They test in parallel, exploring every flow and edge case.</p>
+              </div>
+            </article>
+            <article class="step">
+              <strong>04</strong>
+              <div>
+                <h3>Get Actionable Results</h3>
+                <p>Prioritized issues with AI commentary, screenshots, and fix suggestions. Push to Jira with one click.</p>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="section section-cta">
+          <div class="container cta-panel">
+            <h2>Open beta is coming soon</h2>
+            <p>The countdown is active now. Get on the list to receive your invite first.</p>
+            <form class="waitlist-form" action="#" method="post">
+              <label class="sr-only" for="email-2">Email</label>
+              <input id="email-2" name="email" type="email" placeholder="your@email.com" autocomplete="email" required />
+              <button class="btn btn-primary" type="submit">Join Waitlist</button>
+            </form>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <div class="container footer-wrap">
+          <a class="brand" href="#hero" aria-label="QAbro home">
+            <span class="brand-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6V3m4.2 1.4-2.1 2.1m-4.2 0L7.8 4.4M7.5 12H4.4m15.2 0h-3.1m-7.8 3.3 1.6 1.6m3.4 0 1.6-1.6M12 18.2V21" />
+              </svg>
+            </span>
+            <span class="brand-label">QAbro</span>
+          </a>
+
+          <nav class="main-nav" aria-label="Footer">
+            <a href="#features">Features</a>
+            <a href="#how-it-works">How It Works</a>
+            <a href="#waitlist">Pricing</a>
+          </nav>
+
+          <p>&copy; <span id="year"></span> QAbro. All rights reserved.</p>
+        </div>
+      </footer>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
