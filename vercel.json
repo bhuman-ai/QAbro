@@ -1,0 +1,60 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.swarmtester.com"
+        }
+      ],
+      "destination": "https://swarmtester.com/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "swarmtester.co"
+        }
+      ],
+      "destination": "https://swarmtester.com/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.swarmtester.co"
+        }
+      ],
+      "destination": "https://swarmtester.com/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "qaswarm.dev"
+        }
+      ],
+      "destination": "https://swarmtester.com/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.qaswarm.dev"
+        }
+      ],
+      "destination": "https://swarmtester.com/:path*",
+      "permanent": true
+    }
+  ]
+}
