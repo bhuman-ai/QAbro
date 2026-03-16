@@ -230,6 +230,7 @@ const state = {
   },
   allRuns: [],
   runs: [],
+  projectCatalogRuns: [],
   savedProjects: [],
   brandOptions: [],
   personaOptions: [],
@@ -800,13 +801,13 @@ function syncInputsFromState() {
   const desiredBrand = normalizeBrandFilterValue(state.filters.brand);
   if (elements.brandFilter?.tagName === "SELECT") {
     const hasDesiredBrand = Array.from(elements.brandFilter.options || []).some((option) => option.value === desiredBrand);
-    if (desiredBrand && !hasDesiredBrand) {
+    if (desiredBrand && !hasDesiredBrand && state.brandOptions.length > 0) {
       elements.brandFilter.innerHTML = [
         `<option value="${escapeHtml(desiredBrand)}">${escapeHtml(getBrandOptionLabel(desiredBrand) || desiredBrand)}</option>`,
         `<option value="${ADD_NEW_PROJECT_OPTION_VALUE}">+ Add new project</option>`
       ].join("");
     }
-    elements.brandFilter.value = desiredBrand;
+    elements.brandFilter.value = hasDesiredBrand || state.brandOptions.length > 0 ? desiredBrand : "";
   } else {
     elements.brandFilter.value = desiredBrand;
   }
@@ -1281,8 +1282,27 @@ function buildProjectOptions(savedProjects, runs) {
   return options;
 }
 
+function getBrandOptionBaseLabel(optionOrKey) {
+  const option =
+    optionOrKey && typeof optionOrKey === "object" ? optionOrKey : findBrandOption(optionOrKey);
+  if (!option) {
+    return toDisplayProjectName(optionOrKey) || String(optionOrKey || "").trim();
+  }
+
+  const explicitName = String(option.name || "").trim();
+  if (explicitName) {
+    return explicitName;
+  }
+  const targetLabel = toDisplayProjectName(option.targetUrl);
+  if (targetLabel) {
+    return targetLabel;
+  }
+  return option.key;
+}
+
 function rebuildProjectOptions() {
-  state.brandOptions = buildProjectOptions(state.savedProjects, state.allRuns);
+  const sourceRuns = Array.isArray(state.projectCatalogRuns) && state.projectCatalogRuns.length ? state.projectCatalogRuns : state.allRuns;
+  state.brandOptions = buildProjectOptions(state.savedProjects, sourceRuns);
 }
 
 function findBrandOption(brandKey) {
@@ -1297,15 +1317,25 @@ function getBrandOptionLabel(optionOrKey) {
   const option =
     optionOrKey && typeof optionOrKey === "object" ? optionOrKey : findBrandOption(optionOrKey);
   if (option) {
-    const explicitName = String(option.name || "").trim();
-    if (explicitName) {
-      return explicitName;
+    const baseLabel = getBrandOptionBaseLabel(option);
+    const duplicateCount = state.brandOptions.filter((candidate) => {
+      return getBrandOptionBaseLabel(candidate).toLowerCase() === baseLabel.toLowerCase();
+    }).length;
+    if (duplicateCount <= 1) {
+      return baseLabel;
     }
-    const targetLabel = toDisplayProjectName(option.targetUrl);
-    if (targetLabel) {
-      return targetLabel;
+
+    const hostLabel = toDisplayProjectName(option.targetUrl);
+    if (hostLabel && hostLabel.toLowerCase() !== baseLabel.toLowerCase()) {
+      return `${baseLabel} · ${hostLabel}`;
     }
-    return option.key;
+
+    const keyLabel = toDisplayProjectName(option.key) || option.key;
+    if (keyLabel && keyLabel.toLowerCase() !== baseLabel.toLowerCase()) {
+      return `${baseLabel} · ${keyLabel}`;
+    }
+
+    return `${baseLabel} · ${option.key}`;
   }
 
   return toDisplayProjectName(optionOrKey) || String(optionOrKey || "").trim();
@@ -3171,21 +3201,32 @@ async function detectAnyHistoricalRuns() {
 }
 
 async function fetchBrandOptions() {
-  const response = await fetch("/api/qa/projects");
-  const data = await response.json().catch(() => ({}));
+  const [projectsResponse, projectRunsResponse] = await Promise.all([
+    fetch("/api/qa/projects"),
+    fetch("/api/qa/reports?limit=200&offset=0")
+  ]);
+  const projectsData = await projectsResponse.json().catch(() => ({}));
+  const projectRunsData = await projectRunsResponse.json().catch(() => ({}));
 
-  if (response.status === 401) {
+  if (projectsResponse.status === 401) {
     state.savedProjects = [];
+    state.projectCatalogRuns = [];
     rebuildProjectOptions();
     return state.savedProjects;
   }
-  if (!response.ok || !data.ok) {
+  if (!projectsResponse.ok || !projectsData.ok) {
     state.savedProjects = [];
-    rebuildProjectOptions();
-    return state.savedProjects;
+  } else {
+    state.savedProjects = Array.isArray(projectsData.items) ? projectsData.items : [];
   }
 
-  state.savedProjects = Array.isArray(data.items) ? data.items : [];
+  if (projectRunsResponse.ok && projectRunsData.ok) {
+    const fetchedItems = Array.isArray(projectRunsData.items) ? projectRunsData.items : [];
+    state.projectCatalogRuns = mergePinnedRunsIntoCollection(fetchedItems);
+  } else {
+    state.projectCatalogRuns = Array.isArray(state.allRuns) ? state.allRuns.slice() : [];
+  }
+
   rebuildProjectOptions();
   return state.savedProjects;
 }
@@ -3277,7 +3318,8 @@ async function persistSavedProjects(projects) {
 function deriveRunBackfillProjects() {
   const existingKeys = new Set((Array.isArray(state.savedProjects) ? state.savedProjects : []).map((project) => normalizeBrandFilterValue(project?.brand_key)));
   const candidates = [];
-  for (const row of Array.isArray(state.allRuns) ? state.allRuns : []) {
+  const sourceRows = Array.isArray(state.projectCatalogRuns) && state.projectCatalogRuns.length ? state.projectCatalogRuns : state.allRuns;
+  for (const row of Array.isArray(sourceRows) ? sourceRows : []) {
     const project = buildSavedProjectPayload(
       {
         brandKey: row?.brand_key,
@@ -7527,6 +7569,7 @@ if (hasReportsUi) {
         state.reportCache.clear();
         state.liveStatusCache.clear();
         state.savedProjects = [];
+        state.projectCatalogRuns = [];
         state.brandOptions = [];
         state.projectSyncAttemptedKeys.clear();
         state.selectedRunId = null;
@@ -7541,6 +7584,7 @@ if (hasReportsUi) {
         return;
       }
       state.savedProjects = [];
+      state.projectCatalogRuns = [];
       state.brandOptions = [];
       state.projectSyncAttemptedKeys.clear();
       state.onboarding.hasAnyRuns = null;
