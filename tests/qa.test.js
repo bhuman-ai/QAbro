@@ -334,6 +334,47 @@ test("buildMarkdownReport includes journeys, gallery, and recommendations sectio
   assert.match(markdown, /Session replay URL/);
 });
 
+test("buildMarkdownReport tolerates sparse historical report payloads", () => {
+  const markdown = buildMarkdownReport(
+    {
+      run_id: "run_sparse",
+      target: "example.com",
+      status: "completed",
+      summary: {
+        note: "Stored report payload was incomplete."
+      },
+      findings: [
+        {
+          id: "f_sparse",
+          type: "friction",
+          severity: "medium",
+          confidence: 0.51,
+          title: "Confusing CTA",
+          observed_behavior: "The CTA copy did not make the next step clear."
+        }
+      ],
+      tested_journeys: [
+        {
+          id: "journey_sparse",
+          name: "Signup",
+          status: "partial",
+          summary: "The flow was only partially captured."
+        }
+      ],
+      recommendations: []
+    },
+    {
+      scope_mode: "core_20m",
+      brand_persona: "A tired operator",
+      target_url: "https://example.com"
+    }
+  );
+
+  assert.match(markdown, /### f_sparse: Confusing CTA/);
+  assert.match(markdown, /- Emotional reaction: uncertainty \(3\/5\)/);
+  assert.match(markdown, /- Screenshots:/);
+});
+
 test("normalizeReport promotes captured_screenshots into evidence gallery", () => {
   const report = normalizeReport({
     candidateReport: {

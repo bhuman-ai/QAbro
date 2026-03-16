@@ -2,11 +2,103 @@ const {
   buildMarkdownReport,
   getPublicBaseUrl,
   loadStoredReportByRunId,
+  normalizeReport,
   sanitizeString
 } = require("../../lib/qa-core");
 const { extractBrandKey, extractOwnerUserId } = require("../../lib/qa-queue");
 const { buildLiveStreamArtifacts } = require("../../lib/qa-live-stream");
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
+
+const FALLBACK_BRAND_PERSONA =
+  "General non-developer business user with moderate technical comfort.";
+
+function buildStoredReportCandidate(row, payload, mergedArtifacts) {
+  if (payload.report_json && typeof payload.report_json === "object") {
+    return payload.report_json;
+  }
+
+  return {
+    schema_version: "1.1",
+    run_id: row.run_id,
+    target: row.target,
+    status: row.status,
+    report_url: row.report_url,
+    source: row.source,
+    delivered_at: row.delivered_at,
+    summary: payload.summary || row.summary || null,
+    findings: Array.isArray(row.findings) ? row.findings : [],
+    artifacts: mergedArtifacts,
+    metadata: {
+      stored_row_id: row.id || null,
+      stored_at: row.delivered_at || null
+    }
+  };
+}
+
+function buildStoredRunRequest(row, payload) {
+  const rawRunRequest =
+    payload.run_request && typeof payload.run_request === "object" ? payload.run_request : {};
+  const payloadMetadata =
+    payload.metadata && typeof payload.metadata === "object" ? payload.metadata : {};
+  const runRequestMetadata =
+    rawRunRequest.metadata && typeof rawRunRequest.metadata === "object" ? rawRunRequest.metadata : {};
+  const targetUrl =
+    sanitizeString(
+      rawRunRequest.target_url || payloadMetadata.target_url || payload.target || row.target,
+      4096
+    ) || "";
+
+  return {
+    ...rawRunRequest,
+    run_id: sanitizeString(rawRunRequest.run_id || row.run_id, 128) || row.run_id,
+    target_url: targetUrl,
+    scope_mode:
+      sanitizeString(
+        rawRunRequest.scope_mode || payloadMetadata.scope_mode || payload.scope_mode,
+        64
+      ) || "core_20m",
+    brand_persona:
+      sanitizeString(rawRunRequest.brand_persona || payloadMetadata.brand_persona, 2000) ||
+      FALLBACK_BRAND_PERSONA,
+    source: sanitizeString(rawRunRequest.source || row.source, 64) || "qa_bot",
+    metadata: {
+      ...payloadMetadata,
+      ...runRequestMetadata
+    }
+  };
+}
+
+function buildFallbackMarkdown(report, runRequest, row) {
+  const findings = Array.isArray(report?.findings) ? report.findings : [];
+  const summaryNote = sanitizeString(report?.summary?.note, 2000) || "No summary note available.";
+  const lines = [
+    "# QA Report",
+    "",
+    "## Executive Summary",
+    "",
+    `- Run ID: ${report?.run_id || row?.run_id || "n/a"}`,
+    `- Target: ${report?.target || runRequest?.target_url || row?.target || "n/a"}`,
+    `- Status: ${report?.status || row?.status || "unknown"}`,
+    `- Scope mode: ${runRequest?.scope_mode || "core_20m"}`,
+    `- Summary note: ${summaryNote}`,
+    "",
+    "## Findings",
+    ""
+  ];
+
+  if (!findings.length) {
+    lines.push("- No findings were recorded.");
+  } else {
+    for (const finding of findings) {
+      const title = sanitizeString(finding?.title, 180) || sanitizeString(finding?.id, 128) || "Finding";
+      const observedBehavior =
+        sanitizeString(finding?.observed_behavior, 4000) || "Observed behavior was not recorded.";
+      lines.push(`- ${title}: ${observedBehavior}`);
+    }
+  }
+
+  return `${lines.join("\n")}\n`;
+}
 
 module.exports = async (req, res) => {
   if (req.method !== "GET") {
@@ -46,43 +138,34 @@ module.exports = async (req, res) => {
     ...storedArtifacts,
     ...buildLiveStreamArtifacts(storedArtifacts)
   };
-  const reportJson = payload.report_json && typeof payload.report_json === "object"
-    ? payload.report_json
-    : {
-        schema_version: "1.1",
-        run_id: row.run_id,
-        target: row.target,
-        status: row.status,
-        report_url: row.report_url,
-        source: row.source,
-        delivered_at: row.delivered_at,
-        summary: payload.summary || row.summary || null,
-        findings: Array.isArray(row.findings) ? row.findings : [],
-        artifacts: mergedArtifacts,
-        metadata: {
-          stored_row_id: row.id || null,
-          stored_at: row.delivered_at || null
-        }
-      };
+  const runRequest = buildStoredRunRequest(row, payload);
+  const reportJson = normalizeReport({
+    candidateReport: buildStoredReportCandidate(row, payload, mergedArtifacts),
+    runRequest,
+    artifacts: mergedArtifacts,
+    actions: payload.actions && typeof payload.actions === "object" ? payload.actions : {},
+    reportUrl: row.report_url,
+    deliveredAt: row.delivered_at,
+    failureMessage: sanitizeString(payload.failure_message || payload.error, 2000),
+    rawAgentMessage: sanitizeString(payload.raw_agent_output || payload.agent_output, 4000)
+  });
 
-  if (!reportJson.artifacts || typeof reportJson.artifacts !== "object") {
-    reportJson.artifacts = mergedArtifacts;
-  } else {
-    reportJson.artifacts = {
-      ...reportJson.artifacts,
-      ...mergedArtifacts
-    };
+  let markdown = sanitizeString(payload.report_markdown, 200000);
+  if (!markdown) {
+    try {
+      markdown = buildMarkdownReport(reportJson, {
+        scope_mode: runRequest.scope_mode || "core_20m",
+        brand_persona: runRequest.brand_persona || FALLBACK_BRAND_PERSONA,
+        target_url: runRequest.target_url || payload.target || row.target || ""
+      });
+    } catch (error) {
+      console.warn("Failed to build stored QA markdown", {
+        run_id: row.run_id || null,
+        error: error instanceof Error ? error.message : String(error || "Unknown error")
+      });
+      markdown = buildFallbackMarkdown(reportJson, runRequest, row);
+    }
   }
-
-  const markdown =
-    sanitizeString(payload.report_markdown, 200000) ||
-    buildMarkdownReport(reportJson, {
-      scope_mode: payload.metadata?.scope_mode || payload.scope_mode || "core_20m",
-      brand_persona:
-        payload.metadata?.brand_persona ||
-        "General non-developer business user with moderate technical comfort.",
-      target_url: payload.metadata?.target_url || payload.target || row.target || ""
-    });
 
   if (format === "markdown") {
     res.setHeader("Content-Type", "text/markdown; charset=utf-8");
