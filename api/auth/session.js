@@ -8,7 +8,19 @@ module.exports = async (req, res) => {
 
   const session = await resolveAuthSession(req, res, { allowRefresh: true });
   if (!session.ok) {
-    return res.status(session.status || 401).json({ ok: false, error: "Authentication required" });
+    if ((session.status || 401) === 401) {
+      return res.status(200).json({
+        ok: false,
+        user: null,
+        error: "Authentication required"
+      });
+    }
+
+    return res.status(session.status || 500).json({
+      ok: false,
+      user: null,
+      error: session.error || "Could not resolve session"
+    });
   }
 
   return res.status(200).json({
