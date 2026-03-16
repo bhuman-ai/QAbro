@@ -259,6 +259,10 @@ const dashboardProjects = window.SwarmDashboardProjects;
 if (!dashboardProjects) {
   throw new Error("dashboard-projects.js failed to load");
 }
+const dashboardRuns = window.SwarmDashboardRuns;
+if (!dashboardRuns) {
+  throw new Error("dashboard-runs.js failed to load");
+}
 const requiresDashboardAuth = Boolean(document.querySelector("[data-dashboard-auth-gate='true']"));
 
 function escapeHtml(value) {
@@ -1408,19 +1412,31 @@ function applyAppViewMode() {
   }
 }
 
-function buildPersonaOptions(items) {
-  const counts = new Map();
-  for (const row of Array.isArray(items) ? items : []) {
-    const persona = extractRunPersona(row);
-    if (!persona) {
-      continue;
-    }
-    counts.set(persona, (counts.get(persona) || 0) + 1);
-  }
+function getRunCollectionContext(extra = {}) {
+  return {
+    optimisticRuns: state.optimisticRuns,
+    allRuns: state.allRuns,
+    runs: state.runs,
+    selectedRunId: state.selectedRunId,
+    requestedRunId: state.requestedRunId,
+    ...extra
+  };
+}
 
-  return Array.from(counts.entries())
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+function getRunCollectionHelpers(extra = {}) {
+  return {
+    extractRunPersona,
+    getLiveStatus,
+    normalizeRunStatus,
+    isQueueActiveStatus,
+    ...extra
+  };
+}
+
+function buildPersonaOptions(items) {
+  return dashboardRuns.buildPersonaOptions(items, {
+    extractRunPersona
+  });
 }
 
 function getCurrentAuthUserIdentity() {
@@ -1746,160 +1762,46 @@ async function queueDashboardRun(payload) {
 }
 
 function upsertRunCollection(collection, draftRow) {
-  const items = Array.isArray(collection) ? collection.slice() : [];
-  const existingIndex = items.findIndex((item) => item && item.run_id === draftRow.run_id);
-  if (existingIndex >= 0) {
-    items[existingIndex] = {
-      ...items[existingIndex],
-      ...draftRow
-    };
-    const [existing] = items.splice(existingIndex, 1);
-    items.unshift(existing);
-    return items;
-  }
-  items.unshift(draftRow);
-  return items;
+  return dashboardRuns.upsertRunCollection(collection, draftRow);
 }
 
 function buildPinnedRunSnapshot(runId, candidate = null) {
-  const safeRunId = String(runId || "").trim();
-  if (!safeRunId) {
-    return null;
-  }
-
-  const base =
-    (candidate && typeof candidate === "object" ? candidate : null) ||
-    state.optimisticRuns.get(safeRunId) ||
-    state.allRuns.find((item) => item?.run_id === safeRunId) ||
-    state.runs.find((item) => item?.run_id === safeRunId) ||
-    null;
-  if (!base) {
-    return null;
-  }
-
-  const liveStatus = getLiveStatus(safeRunId);
-  const queueStatus = normalizeRunStatus(
-    liveStatus?.queue?.queue_status || liveStatus?.queue?.status || base.queue_status || base.status
-  );
-  const reportStatus = normalizeRunStatus(
-    liveStatus?.report_status || liveStatus?.live_report?.status || base.latest_report_status || base.status
-  );
-  const liveFindings = Array.isArray(liveStatus?.live_report?.findings) ? liveStatus.live_report.findings.length : null;
-  const liveJourneys = Array.isArray(liveStatus?.live_report?.tested_journeys) ? liveStatus.live_report.tested_journeys.length : null;
-  const deliveredAt =
-    base.delivered_at ||
-    liveStatus?.queue?.enqueued_at ||
-    liveStatus?.progress?.updated_at ||
-    new Date().toISOString();
-
-  return {
-    ...base,
-    run_id: safeRunId,
-    status: queueStatus || reportStatus || base.status,
-    latest_report_status: reportStatus || base.latest_report_status || base.status,
-    queue_status: queueStatus || base.queue_status || base.status,
-    delivered_at: deliveredAt,
-    report_ready: liveStatus?.report_ready ?? base.report_ready ?? false,
-    findings_count: liveFindings ?? base.findings_count ?? 0,
-    journeys_count: liveJourneys ?? base.journeys_count ?? 0,
-    summary_note:
-      liveStatus?.progress?.message ||
-      liveStatus?.live_report?.summary?.note ||
-      base.summary_note ||
-      "Run queued and waiting for live updates."
-  };
+  return dashboardRuns.buildPinnedRunSnapshot(runId, getRunCollectionContext({ candidate }), getRunCollectionHelpers());
 }
 
 function rememberPinnedRun(row) {
-  const snapshot = buildPinnedRunSnapshot(row?.run_id, row);
-  if (!snapshot) {
-    return null;
-  }
-  state.optimisticRuns.set(snapshot.run_id, snapshot);
-  return snapshot;
+  return dashboardRuns.rememberPinnedRun(getRunCollectionContext({ row }), getRunCollectionHelpers());
 }
 
 function shouldKeepPinnedRun(runId, candidate = null) {
-  const safeRunId = String(runId || "").trim();
-  if (!safeRunId) {
-    return false;
-  }
-  const liveStatus = getLiveStatus(safeRunId);
-  const queueStatus = normalizeRunStatus(
-    liveStatus?.queue?.queue_status ||
-      liveStatus?.queue?.status ||
-      candidate?.queue_status ||
-      candidate?.status ||
-      candidate?.latest_report_status
-  );
-  if (isQueueActiveStatus(queueStatus)) {
-    return true;
-  }
-  return safeRunId === String(state.selectedRunId || "").trim() || safeRunId === String(state.requestedRunId || "").trim();
+  return dashboardRuns.shouldKeepPinnedRun(runId, getRunCollectionContext({ candidate }), getRunCollectionHelpers());
 }
 
 function reconcilePinnedRunsWithFetched(items) {
-  const fetchedMap = new Map(
-    (Array.isArray(items) ? items : [])
-      .filter((item) => item && item.run_id)
-      .map((item) => [String(item.run_id), item])
+  dashboardRuns.reconcilePinnedRunsWithFetched(
+    getRunCollectionContext({ fetchedItems: items }),
+    getRunCollectionHelpers()
   );
-
-  for (const [runId, pinnedRow] of state.optimisticRuns.entries()) {
-    const fetchedRow = fetchedMap.get(runId) || null;
-    if (fetchedRow) {
-      rememberPinnedRun({ ...pinnedRow, ...fetchedRow });
-    }
-    const candidate = fetchedRow || pinnedRow;
-    if (!shouldKeepPinnedRun(runId, candidate)) {
-      state.optimisticRuns.delete(runId);
-    }
-  }
 }
 
 function mergePinnedRunsIntoCollection(collection) {
-  let items = Array.isArray(collection) ? collection.slice() : [];
-  for (const [runId, pinnedRow] of state.optimisticRuns.entries()) {
-    if (!shouldKeepPinnedRun(runId, pinnedRow)) {
-      continue;
-    }
-    const snapshot = buildPinnedRunSnapshot(runId, pinnedRow);
-    if (!snapshot) {
-      continue;
-    }
-    items = upsertRunCollection(items, snapshot);
-  }
-  return items;
+  return dashboardRuns.mergePinnedRunsIntoCollection(
+    getRunCollectionContext({ collection }),
+    getRunCollectionHelpers()
+  );
 }
 
 function getPinnedRunRow(runId) {
-  const safeRunId = String(runId || "").trim();
-  if (!safeRunId) {
-    return null;
-  }
-  const candidate = state.optimisticRuns.get(safeRunId);
-  if (!candidate) {
-    return null;
-  }
-  return buildPinnedRunSnapshot(safeRunId, candidate);
+  return dashboardRuns.getPinnedRunRow(getRunCollectionContext({ runId }), getRunCollectionHelpers());
 }
 
 function ensureSelectedRunVisibleInRuns() {
-  const safeRunId = String(state.selectedRunId || state.requestedRunId || "").trim();
-  if (!safeRunId || state.runs.some((item) => item?.run_id === safeRunId)) {
-    return;
-  }
-
-  const pinnedRow =
-    getPinnedRunRow(safeRunId) ||
-    state.allRuns.find((item) => item?.run_id === safeRunId) ||
-    null;
-  if (!pinnedRow) {
-    return;
-  }
-
-  state.runs = upsertRunCollection(state.runs, pinnedRow);
-  state.allRuns = upsertRunCollection(state.allRuns, pinnedRow);
+  const nextCollections = dashboardRuns.ensureSelectedRunVisibleInRuns(
+    getRunCollectionContext(),
+    getRunCollectionHelpers()
+  );
+  state.runs = nextCollections.runs;
+  state.allRuns = nextCollections.allRuns;
 }
 
 function buildTargetLabelFromUrl(targetUrl) {
@@ -3457,15 +3359,9 @@ function renderRunsList() {
   }
 
   ensureSelectedRunVisibleInRuns();
-  if (!state.selectedRunId || !state.runs.some((item) => item.run_id === state.selectedRunId)) {
-    const pinnedRow = getPinnedRunRow(state.selectedRunId || state.requestedRunId);
-    if (pinnedRow) {
-      state.selectedRunId = pinnedRow.run_id;
-      state.runs = upsertRunCollection(state.runs, pinnedRow);
-    } else {
-      state.selectedRunId = state.runs[0].run_id;
-    }
-  }
+  const nextSelection = dashboardRuns.ensureActiveRunSelection(getRunCollectionContext(), getRunCollectionHelpers());
+  state.runs = nextSelection.runs;
+  state.selectedRunId = nextSelection.selectedRunId;
 
   const html = state.runs
     .map((run) => {
