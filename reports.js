@@ -267,6 +267,10 @@ const dashboardReportRuntime = window.SwarmDashboardReportRuntime;
 if (!dashboardReportRuntime) {
   throw new Error("dashboard-report-runtime.js failed to load");
 }
+const dashboardRenderState = window.SwarmDashboardRenderState;
+if (!dashboardRenderState) {
+  throw new Error("dashboard-render-state.js failed to load");
+}
 const requiresDashboardAuth = Boolean(document.querySelector("[data-dashboard-auth-gate='true']"));
 
 function escapeHtml(value) {
@@ -6497,79 +6501,13 @@ async function renderSelectedReport() {
   if (!runId) {
     state.activeRenderedReport = null;
     state.activeRenderedRow = null;
-    if (elements.reportDetail) {
-      elements.reportDetail.innerHTML = `<div class="empty-detail"><h2>Select a run</h2></div>`;
-    }
-    if (elements.appReportOnlyPanel) {
-      elements.appReportOnlyPanel.innerHTML = `<div class="empty-detail"><h2>Select a run</h2><p>Report details will appear here.</p></div>`;
-    }
-    if (hasAppDashboardUi) {
-      if (elements.recentIssuesItems) {
-        elements.recentIssuesItems.innerHTML = '<div class="app-empty"><p>Select a run to view issues.</p></div>';
-      }
-      if (elements.testProgressItems) {
-        elements.testProgressItems.innerHTML = '<div class="app-empty"><p>Progress will appear after selecting a run.</p></div>';
-      }
-      if (elements.appEvidencePanel) {
-        elements.appEvidencePanel.innerHTML = '<div class="app-empty"><p>Select a run to view evidence.</p></div>';
-      }
-      if (elements.topFixesItems) {
-        elements.topFixesItems.innerHTML = '<div class="app-empty"><p>Select a run to view prioritized blockers.</p></div>';
-      }
-      if (elements.personaSignalsItems) {
-        elements.personaSignalsItems.innerHTML = '<div class="app-empty"><p>Persona reactions appear after findings are captured.</p></div>';
-      }
-      if (elements.personaSignalsMeta) {
-        elements.personaSignalsMeta.textContent = "No signals yet";
-      }
-      if (elements.regressionSignalsItems) {
-        elements.regressionSignalsItems.innerHTML = '<div class="app-empty"><p>Select a run to view regression signals.</p></div>';
-      }
-      if (elements.recentRunsRows) {
-        renderRecentRunsTable();
-      }
-      if (elements.dashboardStateBadge) {
-        elements.dashboardStateBadge.className = "issue-severity severity-low";
-        elements.dashboardStateBadge.textContent = "No Run";
-      }
-      if (elements.dashboardStateMessage) {
-        elements.dashboardStateMessage.textContent = "Run your first swarm test to see environment health and prioritized issues.";
-      }
-      if (elements.healthHeroTitle) {
-        const envLabel = getEnvironmentLabel(getActiveEnvironment());
-        const releaseLens = isReleaseReadinessEnvironment(getActiveEnvironment());
-        elements.healthHeroTitle.textContent = releaseLens ? `${envLabel} Release Readiness` : `${envLabel} Health`;
-      }
-      if (elements.dashboardPrimaryGoal) {
-        elements.dashboardPrimaryGoal.hidden = false;
-      }
-      if (elements.dashboardPrimaryGoalText) {
-        elements.dashboardPrimaryGoalText.textContent = "Start a run to show the exact job this persona is trying to complete.";
-      }
-      if (elements.dashboardPrimaryGoalMeta) {
-        elements.dashboardPrimaryGoalMeta.textContent = "Goal context updates with the selected run.";
-      }
-      if (elements.dashboardPrimaryGoalPersona) {
-        elements.dashboardPrimaryGoalPersona.textContent = "No persona selected";
-      }
-      if (elements.riskCriticalCount) elements.riskCriticalCount.textContent = "0";
-      if (elements.riskMajorCount) elements.riskMajorCount.textContent = "0";
-      if (elements.riskBrokenJourneys) elements.riskBrokenJourneys.textContent = "0";
-      if (elements.riskAvgSatisfaction) elements.riskAvgSatisfaction.textContent = "0/100";
-      if (elements.dashboardPrimaryMeta) elements.dashboardPrimaryMeta.textContent = "Waiting for first run";
-      if (elements.dashboardPrimaryAction) {
-        elements.dashboardPrimaryAction.textContent = "Start First Test";
-        elements.dashboardPrimaryAction.setAttribute("data-action-mode", "start");
-        elements.dashboardPrimaryAction.setAttribute("data-run-id", "");
-      }
-      if (elements.dashboardSecondaryActions) {
-        elements.dashboardSecondaryActions.hidden = true;
-      }
-      if (elements.liveMissionSection) {
-        elements.liveMissionSection.hidden = true;
-        elements.liveMissionSection.setAttribute("aria-hidden", "true");
-      }
-    }
+    dashboardRenderState.renderNoSelectionState({
+      elements,
+      hasAppDashboardUi,
+      renderRecentRunsTable,
+      environmentLabel: getEnvironmentLabel(getActiveEnvironment()),
+      releaseLens: isReleaseReadinessEnvironment(getActiveEnvironment())
+    });
     markDashboardShellReady();
     return;
   }
@@ -6597,20 +6535,15 @@ async function renderSelectedReport() {
     ${renderFeatureInventory(report)}
   `;
 
-  if (elements.reportDetail) {
-    elements.reportDetail.innerHTML = detailMarkup;
-    attachReplayPlayers(elements.reportDetail);
-    attachReplayJumpButtons(elements.reportDetail);
-    attachShareButtons(elements.reportDetail);
-    attachLlmCopyButtons(elements.reportDetail);
-  }
-  if (isReportViewMode() && elements.appReportOnlyPanel) {
-    elements.appReportOnlyPanel.innerHTML = detailMarkup;
-    attachReplayPlayers(elements.appReportOnlyPanel);
-    attachReplayJumpButtons(elements.appReportOnlyPanel);
-    attachShareButtons(elements.appReportOnlyPanel);
-    attachLlmCopyButtons(elements.appReportOnlyPanel);
-  }
+  dashboardRenderState.mountReportDetail({
+    elements,
+    detailMarkup,
+    isReportViewMode: isReportViewMode(),
+    attachReplayPlayers,
+    attachReplayJumpButtons,
+    attachShareButtons,
+    attachLlmCopyButtons
+  });
 
   if (hasAppDashboardUi) {
     if (!isReportViewMode()) {
@@ -6637,21 +6570,10 @@ async function loadAndRenderReports() {
     return;
   }
 
-  if (elements.reportsItems) {
-    elements.reportsItems.innerHTML = '<div class="empty-state">Loading reports...</div>';
-  }
-  if (hasAppDashboardUi && elements.recentIssuesItems) {
-    elements.recentIssuesItems.innerHTML = '<div class="app-empty"><p>Loading reports...</p></div>';
-  }
-  if (hasAppDashboardUi && elements.topFixesItems) {
-    elements.topFixesItems.innerHTML = '<div class="app-empty"><p>Loading findings...</p></div>';
-  }
-  if (hasAppDashboardUi && elements.personaSignalsItems) {
-    elements.personaSignalsItems.innerHTML = '<div class="app-empty"><p>Loading persona signals...</p></div>';
-  }
-  if (hasAppDashboardUi && elements.recentRunsRows) {
-    elements.recentRunsRows.innerHTML = '<tr><td colspan="7"><div class="app-empty"><p>Loading runs...</p></div></td></tr>';
-  }
+  dashboardRenderState.renderLoadingState({
+    elements,
+    hasAppDashboardUi
+  });
   try {
     await fetchBrandOptions();
     ensureSingleProjectSelection();
@@ -6688,21 +6610,12 @@ async function loadAndRenderReports() {
     await renderSelectedReport();
     ensureLivePolling();
   } catch (error) {
-    if (elements.reportsItems) {
-      elements.reportsItems.innerHTML = `<div class="empty-state">${escapeHtml(error.message || "Failed to load reports")}</div>`;
-    }
-    if (elements.reportDetail) {
-      elements.reportDetail.innerHTML = `<div class="empty-detail"><h2>Error</h2><p>${escapeHtml(error.message || "Failed to load report detail")}</p></div>`;
-    }
-    if (hasAppDashboardUi && elements.recentIssuesItems) {
-      elements.recentIssuesItems.innerHTML = `<div class="app-empty"><p>${escapeHtml(error.message || "Failed to load dashboard data")}</p></div>`;
-    }
-    if (hasAppDashboardUi && elements.topFixesItems) {
-      elements.topFixesItems.innerHTML = `<div class="app-empty"><p>${escapeHtml(error.message || "Failed to load findings")}</p></div>`;
-    }
-    if (hasAppDashboardUi && elements.personaSignalsItems) {
-      elements.personaSignalsItems.innerHTML = `<div class="app-empty"><p>${escapeHtml(error.message || "Failed to load persona signals")}</p></div>`;
-    }
+    dashboardRenderState.renderErrorState({
+      elements,
+      hasAppDashboardUi,
+      message: error.message || "Failed to load reports",
+      escapeHtml
+    });
     stopLivePolling();
     updateOnboardingVisibility();
     syncProjectSwitcherVisibility();
