@@ -46,26 +46,73 @@ async function withEnv(overrides, callback) {
   }
 }
 
-test("projects handler lists saved projects for the requested owner", async () => {
+test("projects handler lists canonical projects with report counts", async () => {
   const originalFetch = global.fetch;
-  let capturedUrl = null;
+  const capturedUrls = [];
 
   global.fetch = async (url) => {
-    capturedUrl = String(url);
+    const requestUrl = String(url);
+    capturedUrls.push(requestUrl);
+
+    if (requestUrl.includes("/rest/v1/swarmtest_projects")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return [
+            {
+              brand_key: "acme",
+              brand_name: "Acme",
+              target_url: "https://acme.example",
+              owner_user_id: "user_123",
+              last_used_at: "2026-03-16T10:20:00.000Z",
+              created_at: "2026-03-15T10:20:00.000Z",
+              updated_at: "2026-03-16T10:20:00.000Z",
+              metadata: { source: "dashboard" }
+            }
+          ];
+        }
+      };
+    }
+
     return {
       ok: true,
       status: 200,
       async json() {
         return [
           {
-            brand_key: "acme",
-            brand_name: "Acme",
-            target_url: "https://acme.example",
-            owner_user_id: "user_123",
-            last_used_at: "2026-03-16T10:20:00.000Z",
-            created_at: "2026-03-15T10:20:00.000Z",
-            updated_at: "2026-03-16T10:20:00.000Z",
-            metadata: { source: "dashboard" }
+            run_id: "run_1",
+            status: "completed",
+            delivered_at: "2026-03-16T11:20:00.000Z",
+            payload: {
+              queue: { status: "completed" },
+              run_request: {
+                target_url: "https://acme.example/app",
+                metadata: {
+                  brand_id: "acme",
+                  brand_name: "Acme",
+                  owner_user_id: "user_123"
+                }
+              },
+              report_json: { findings: [], tested_journeys: [], recommendations: [], summary: {} }
+            }
+          },
+          {
+            run_id: "run_2",
+            status: "completed",
+            delivered_at: "2026-03-16T12:20:00.000Z",
+            payload: {
+              queue: { status: "completed" },
+              run_request: {
+                target_url: "https://acme.example/app",
+                metadata: {
+                  brand_id: "acme",
+                  brand_name: "Acme",
+                  owner_user_id: "user_123"
+                }
+              },
+              report_json: { findings: [], tested_journeys: [], recommendations: [], summary: {} }
+            }
           }
         ];
       }
@@ -95,8 +142,114 @@ test("projects handler lists saved projects for the requested owner", async () =
         assert.equal(res.body.ok, true);
         assert.equal(res.body.total, 1);
         assert.equal(res.body.items[0].brand_key, "acme");
-        assert.match(capturedUrl, /swarmtest_projects/);
-        assert.match(capturedUrl, /owner_user_id=eq\.user_123/);
+        assert.equal(res.body.items[0].run_count, 2);
+        assert.equal(res.body.items[0].latest_run_at, "2026-03-16T12:20:00.000Z");
+        assert.equal(capturedUrls.length, 2);
+        assert.match(capturedUrls[0], /swarmtest_projects/);
+        assert.match(capturedUrls[0], /owner_user_id=eq\.user_123/);
+        assert.match(capturedUrls[1], /swarmtest_reports/);
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("projects handler backfills report-only projects into saved projects", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, init = {}) => {
+    const requestUrl = String(url);
+    calls.push({ url: requestUrl, init });
+
+    if (requestUrl.includes("/rest/v1/swarmtest_projects") && (!init.method || init.method === "GET")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return [];
+        }
+      };
+    }
+
+    if (requestUrl.includes("/rest/v1/swarmtest_reports")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return [
+            {
+              run_id: "run_beta",
+              status: "completed",
+              delivered_at: "2026-03-16T13:20:00.000Z",
+              payload: {
+                queue: { status: "completed" },
+                run_request: {
+                  target_url: "https://beta.example/app",
+                  metadata: {
+                    brand_id: "beta",
+                    brand_name: "Beta",
+                    owner_user_id: "user_123"
+                  }
+                },
+                report_json: { findings: [], tested_journeys: [], recommendations: [], summary: {} }
+              }
+            }
+          ];
+        }
+      };
+    }
+
+    return {
+      ok: true,
+      status: 200,
+      async json() {
+        return [
+          {
+            brand_key: "beta",
+            brand_name: "Beta",
+            target_url: "https://beta.example/app",
+            owner_user_id: "user_123",
+            owner_email: "owner@example.com",
+            last_used_at: "2026-03-16T13:20:00.000Z",
+            created_at: "2026-03-16T13:20:00.000Z",
+            updated_at: "2026-03-16T13:20:00.000Z",
+            metadata: { source: "report_backfill" }
+          }
+        ];
+      }
+    };
+  };
+
+  try {
+    await withEnv(
+      {
+        QA_SERVICE_TOKEN: "service-token",
+        SUPABASE_URL: "https://supabase.example",
+        SUPABASE_SERVICE_KEY: "service-key"
+      },
+      async () => {
+        const req = {
+          method: "GET",
+          headers: {
+            "x-qa-service-token": "service-token",
+            "x-owner-user-id": "user_123",
+            "x-owner-email": "owner@example.com"
+          }
+        };
+        const res = createRes();
+
+        await projectsHandler(req, res);
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.body.items[0].brand_key, "beta");
+        assert.equal(res.body.items[0].run_count, 1);
+        const upsertCall = calls.find((call) => call.url.includes("/rest/v1/swarmtest_projects?on_conflict="));
+        assert.ok(upsertCall);
+        const payload = JSON.parse(String(upsertCall.init.body || "[]"));
+        assert.equal(payload[0].brand_key, "beta");
+        assert.equal(payload[0].owner_user_id, "user_123");
       }
     );
   } finally {

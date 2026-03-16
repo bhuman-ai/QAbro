@@ -230,13 +230,11 @@ const state = {
   },
   allRuns: [],
   runs: [],
-  projectCatalogRuns: [],
   savedProjects: [],
   brandOptions: [],
   personaOptions: [],
   selectedRunId: null,
   requestedRunId: "",
-  projectSyncAttemptedKeys: new Set(),
   reportCache: new Map(),
   liveStatusCache: new Map(),
   optimisticRuns: new Map(),
@@ -1197,34 +1195,6 @@ function buildReportParams(options = {}) {
   return params;
 }
 
-function buildBrandOptions(items) {
-  const counts = new Map();
-  for (const row of Array.isArray(items) ? items : []) {
-    const brand = normalizeBrandFilterValue(row.brand_key);
-    if (!brand) continue;
-    counts.set(brand, (counts.get(brand) || 0) + 1);
-  }
-
-  return Array.from(counts.entries())
-    .map(([key, count]) => ({ key, count }))
-    .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
-}
-
-function buildRunProjectMeta(items) {
-  const meta = new Map();
-  for (const row of Array.isArray(items) ? items : []) {
-    const key = normalizeBrandFilterValue(row?.brand_key);
-    if (!key || meta.has(key)) {
-      continue;
-    }
-    meta.set(key, {
-      name: String(row?.brand_name || "").trim(),
-      targetUrl: String(row?.target_url || "").trim()
-    });
-  }
-  return meta;
-}
-
 function normalizeSavedProject(project) {
   const key = normalizeBrandFilterValue(project?.brand_key || project?.brandKey);
   if (!key) {
@@ -1236,14 +1206,13 @@ function normalizeSavedProject(project) {
     name: String(project?.brand_name || project?.brandName || "").trim(),
     targetUrl: String(project?.target_url || project?.targetUrl || "").trim(),
     lastUsedAt: String(project?.last_used_at || project?.lastUsedAt || "").trim(),
-    createdAt: String(project?.created_at || project?.createdAt || "").trim()
+    createdAt: String(project?.created_at || project?.createdAt || "").trim(),
+    runCount: Math.max(0, Number(project?.run_count || project?.runCount) || 0),
+    latestRunAt: String(project?.latest_run_at || project?.latestRunAt || "").trim()
   };
 }
 
-function buildProjectOptions(savedProjects, runs) {
-  const runCounts = buildBrandOptions(runs);
-  const runCountsByKey = new Map(runCounts.map((item) => [item.key, item.count]));
-  const runMetaByKey = buildRunProjectMeta(runs);
+function buildProjectOptions(savedProjects) {
   const options = [];
   const seen = new Set();
 
@@ -1252,31 +1221,16 @@ function buildProjectOptions(savedProjects, runs) {
     if (!normalized || seen.has(normalized.key)) {
       continue;
     }
-    const runMeta = runMetaByKey.get(normalized.key);
     options.push({
       key: normalized.key,
-      count: runCountsByKey.get(normalized.key) || 0,
-      name: normalized.name || runMeta?.name || "",
-      targetUrl: normalized.targetUrl || runMeta?.targetUrl || "",
+      count: normalized.runCount,
+      name: normalized.name || "",
+      targetUrl: normalized.targetUrl || "",
       lastUsedAt: normalized.lastUsedAt,
-      createdAt: normalized.createdAt
+      createdAt: normalized.createdAt,
+      latestRunAt: normalized.latestRunAt
     });
     seen.add(normalized.key);
-  }
-
-  for (const item of runCounts) {
-    if (seen.has(item.key)) {
-      continue;
-    }
-    const runMeta = runMetaByKey.get(item.key);
-    options.push({
-      key: item.key,
-      count: item.count,
-      name: runMeta?.name || "",
-      targetUrl: runMeta?.targetUrl || "",
-      lastUsedAt: "",
-      createdAt: ""
-    });
   }
 
   return options;
@@ -1301,8 +1255,7 @@ function getBrandOptionBaseLabel(optionOrKey) {
 }
 
 function rebuildProjectOptions() {
-  const sourceRuns = Array.isArray(state.projectCatalogRuns) && state.projectCatalogRuns.length ? state.projectCatalogRuns : state.allRuns;
-  state.brandOptions = buildProjectOptions(state.savedProjects, sourceRuns);
+  state.brandOptions = buildProjectOptions(state.savedProjects);
 }
 
 function findBrandOption(brandKey) {
@@ -2157,7 +2110,6 @@ async function applyLaunchedRunState(runId, brandKey, config = {}, queue = null)
   const savedProject = buildSavedProjectPayload({ ...config, brandKey }, { source: "dashboard_launch" });
   if (savedProject) {
     mergeSavedProjects([savedProject]);
-    state.projectSyncAttemptedKeys.add(savedProject.brand_key);
   }
   seedOptimisticRunState(runId, { ...config, brandKey }, queue);
   syncInputsFromState();
@@ -3155,7 +3107,6 @@ async function fetchRuns() {
   const fetchedItems = Array.isArray(data.items) ? data.items : [];
   reconcilePinnedRunsWithFetched(fetchedItems);
   state.allRuns = mergePinnedRunsIntoCollection(fetchedItems);
-  rebuildProjectOptions();
   state.personaOptions = buildPersonaOptions(state.allRuns);
   const resetPersonaFilter = reconcilePersonaFilterWithAvailableOptions();
   state.runs = applyPersonaFilter(state.allRuns);
@@ -3201,30 +3152,18 @@ async function detectAnyHistoricalRuns() {
 }
 
 async function fetchBrandOptions() {
-  const [projectsResponse, projectRunsResponse] = await Promise.all([
-    fetch("/api/qa/projects"),
-    fetch("/api/qa/reports?limit=200&offset=0")
-  ]);
-  const projectsData = await projectsResponse.json().catch(() => ({}));
-  const projectRunsData = await projectRunsResponse.json().catch(() => ({}));
+  const response = await fetch("/api/qa/projects");
+  const data = await response.json().catch(() => ({}));
 
-  if (projectsResponse.status === 401) {
+  if (response.status === 401) {
     state.savedProjects = [];
-    state.projectCatalogRuns = [];
     rebuildProjectOptions();
     return state.savedProjects;
   }
-  if (!projectsResponse.ok || !projectsData.ok) {
+  if (!response.ok || !data.ok) {
     state.savedProjects = [];
   } else {
-    state.savedProjects = Array.isArray(projectsData.items) ? projectsData.items : [];
-  }
-
-  if (projectRunsResponse.ok && projectRunsData.ok) {
-    const fetchedItems = Array.isArray(projectRunsData.items) ? projectRunsData.items : [];
-    state.projectCatalogRuns = mergePinnedRunsIntoCollection(fetchedItems);
-  } else {
-    state.projectCatalogRuns = Array.isArray(state.allRuns) ? state.allRuns.slice() : [];
+    state.savedProjects = Array.isArray(data.items) ? data.items : [];
   }
 
   rebuildProjectOptions();
@@ -3243,7 +3182,9 @@ function mergeSavedProjects(projects) {
       brand_name: normalized.name || null,
       target_url: normalized.targetUrl || null,
       last_used_at: normalized.lastUsedAt || null,
-      created_at: normalized.createdAt || null
+      created_at: normalized.createdAt || null,
+      run_count: normalized.runCount || 0,
+      latest_run_at: normalized.latestRunAt || null
     });
   }
 
@@ -3257,7 +3198,9 @@ function mergeSavedProjects(projects) {
       brand_name: normalized.name || null,
       target_url: normalized.targetUrl || null,
       last_used_at: normalized.lastUsedAt || new Date().toISOString(),
-      created_at: normalized.createdAt || null
+      created_at: normalized.createdAt || null,
+      run_count: normalized.runCount || 0,
+      latest_run_at: normalized.latestRunAt || normalized.lastUsedAt || null
     });
   }
 
@@ -3313,45 +3256,6 @@ async function persistSavedProjects(projects) {
   const savedItems = Array.isArray(data.items) ? data.items : payload;
   mergeSavedProjects(savedItems);
   return savedItems;
-}
-
-function deriveRunBackfillProjects() {
-  const existingKeys = new Set((Array.isArray(state.savedProjects) ? state.savedProjects : []).map((project) => normalizeBrandFilterValue(project?.brand_key)));
-  const candidates = [];
-  const sourceRows = Array.isArray(state.projectCatalogRuns) && state.projectCatalogRuns.length ? state.projectCatalogRuns : state.allRuns;
-  for (const row of Array.isArray(sourceRows) ? sourceRows : []) {
-    const project = buildSavedProjectPayload(
-      {
-        brandKey: row?.brand_key,
-        brandName: row?.brand_name,
-        targetUrl: row?.target_url
-      },
-      {
-        source: "run_history_bootstrap"
-      }
-    );
-    if (!project || existingKeys.has(project.brand_key) || state.projectSyncAttemptedKeys.has(project.brand_key)) {
-      continue;
-    }
-    existingKeys.add(project.brand_key);
-    candidates.push(project);
-  }
-  return candidates;
-}
-
-function hydrateProjectsFromRunHistory() {
-  const candidates = deriveRunBackfillProjects();
-  if (!candidates.length) {
-    return;
-  }
-
-  for (const project of candidates) {
-    state.projectSyncAttemptedKeys.add(project.brand_key);
-  }
-
-  void persistSavedProjects(candidates).catch(() => {
-    // Run history fallback keeps the switcher populated even if persistence fails.
-  });
 }
 
 function renderBrandSuggestions() {
@@ -6999,15 +6903,13 @@ async function loadAndRenderReports() {
     elements.recentRunsRows.innerHTML = '<tr><td colspan="7"><div class="app-empty"><p>Loading runs...</p></div></td></tr>';
   }
   try {
-    await Promise.all([fetchRuns(), fetchBrandOptions()]);
+    await fetchBrandOptions();
+    ensureSingleProjectSelection();
+    await fetchRuns();
     state.onboarding.hasAnyRuns =
       state.onboarding.hasAnyRuns === true ||
+      (Array.isArray(state.savedProjects) && state.savedProjects.length > 0) ||
       (Array.isArray(state.allRuns) && state.allRuns.length > 0);
-    const projectSelectionChanged = ensureSingleProjectSelection();
-    if (projectSelectionChanged) {
-      await fetchRuns();
-    }
-    hydrateProjectsFromRunHistory();
     const runReconcile = reconcileOnboardingStateWithRuns();
     const shouldAutoOpen = shouldAutoOpenOnboarding();
     if (shouldAutoOpen) {
@@ -7569,9 +7471,7 @@ if (hasReportsUi) {
         state.reportCache.clear();
         state.liveStatusCache.clear();
         state.savedProjects = [];
-        state.projectCatalogRuns = [];
         state.brandOptions = [];
-        state.projectSyncAttemptedKeys.clear();
         state.selectedRunId = null;
         state.requestedRunId = "";
         state.onboarding.completed = false;
@@ -7584,9 +7484,7 @@ if (hasReportsUi) {
         return;
       }
       state.savedProjects = [];
-      state.projectCatalogRuns = [];
       state.brandOptions = [];
-      state.projectSyncAttemptedKeys.clear();
       state.onboarding.hasAnyRuns = null;
       state.onboarding.initialized = false;
       ensureOnboardingStateInitialized();

@@ -1,6 +1,6 @@
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
 const { parseRequestBody, sanitizeString } = require("../../lib/qa-core");
-const { listQaProjects, upsertQaProjects } = require("../../lib/qa-projects");
+const { listCanonicalQaProjects, upsertQaProjects } = require("../../lib/qa-projects");
 
 module.exports = async (req, res) => {
   const auth = await requireDashboardOrServiceAuth(req, res);
@@ -18,7 +18,10 @@ module.exports = async (req, res) => {
   }
 
   if (req.method === "GET") {
-    const listed = await listQaProjects({ owner_user_id: ownerUserId });
+    const listed = await listCanonicalQaProjects({
+      owner_user_id: ownerUserId,
+      owner_email: ownerEmail
+    });
     if (!listed.ok) {
       return res.status(listed.status || 500).json({ ok: false, error: listed.error });
     }
