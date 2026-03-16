@@ -168,25 +168,34 @@ test("listQaReports filters by owner_user_id", async () => {
       }
     }
   ];
+  const capturedUrls = [];
 
   const result = await listQaReports(
     { owner_user_id: "user_alpha", limit: "50", offset: "0" },
     {
       supabaseUrl: "https://supabase.example",
       serviceKey: "service-key",
-      fetchImpl: async () => ({
-        ok: true,
-        status: 200,
-        async json() {
-          return rows;
-        }
-      })
+      fetchImpl: async (url) => {
+        capturedUrls.push(String(url));
+        return {
+          ok: true,
+          status: 200,
+          async json() {
+            return rows;
+          }
+        };
+      }
     }
   );
 
   assert.equal(result.ok, true);
   assert.equal(result.total, 1);
   assert.equal(result.items[0].run_id, "run_owner_a");
+  assert.equal(capturedUrls.length, 1);
+  assert.match(
+    decodeURIComponent(capturedUrls[0]),
+    /payload=cs\.\{"run_request":\{"metadata":\{"owner_user_id":"user_alpha"\}\}\}/
+  );
 });
 
 test("getQaRunStatus enforces owner_user_id visibility", async () => {
