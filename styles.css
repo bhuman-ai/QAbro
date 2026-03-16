@@ -7,7 +7,32 @@
   --primary: 155 100% 45%;
   --accent: 185 90% 48%;
   --glow-primary: 155 100% 45%;
+  --brand-ink: 225 25% 4%;
   --radius: 0.75rem;
+}
+
+:root[data-theme="dark"] {
+  --background: 225 25% 4%;
+  --foreground: 0 0% 95%;
+  --card: 225 20% 7%;
+  --border: 225 15% 15%;
+  --muted-foreground: 220 10% 50%;
+  --primary: 155 100% 45%;
+  --accent: 185 90% 48%;
+  --glow-primary: 155 100% 45%;
+  --brand-ink: 225 25% 4%;
+}
+
+:root[data-theme="light"] {
+  --background: 210 38% 96%;
+  --foreground: 222 30% 12%;
+  --card: 0 0% 100%;
+  --border: 214 24% 84%;
+  --muted-foreground: 217 16% 38%;
+  --primary: 165 90% 36%;
+  --accent: 191 92% 40%;
+  --glow-primary: 165 90% 36%;
+  --brand-ink: 220 32% 12%;
 }
 
 * {
@@ -120,7 +145,7 @@ a {
 .brand-icon svg {
   width: 16px;
   height: 16px;
-  stroke: hsl(var(--background));
+  stroke: hsl(var(--brand-ink));
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 1.8;
@@ -148,6 +173,80 @@ a {
   color: hsl(var(--foreground));
 }
 
+.topbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.theme-mode-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.theme-mode-control > span {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.theme-mode-pills {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card) / 0.65);
+}
+
+.theme-mode-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.theme-mode-btn svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.theme-mode-btn:hover {
+  color: hsl(var(--foreground));
+}
+
+.theme-mode-btn.active {
+  background: hsl(var(--primary) / 0.18);
+  color: hsl(var(--primary));
+}
+
+.topbar-user-chip {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card) / 0.45);
+  color: hsl(var(--foreground));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .btn {
   border: 0;
   border-radius: 10px;
@@ -165,6 +264,17 @@ a {
 .btn-primary {
   color: hsl(var(--background));
   background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+}
+
+.btn-ghost {
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card) / 0.35);
+}
+
+.btn-ghost:hover {
+  border-color: hsl(var(--primary) / 0.55);
+  background: hsl(var(--primary) / 0.08);
 }
 
 .hero {
@@ -525,6 +635,22 @@ a {
   padding-top: 128px;
 }
 
+.section-dashboard {
+  padding-top: 112px;
+}
+
+.section-dashboard::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(hsl(var(--primary) / 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--primary) / 0.04) 1px, transparent 1px);
+  background-size: 60px 60px;
+  opacity: 0.25;
+  pointer-events: none;
+}
+
 .cta-panel {
   position: relative;
   overflow: hidden;
@@ -694,6 +820,25 @@ a {
   .btn {
     height: 40px;
     padding-inline: 16px;
+  }
+
+  .topbar-actions {
+    gap: 8px;
+  }
+
+  .theme-mode-control > span {
+    display: none;
+  }
+
+  .topbar-actions .btn {
+    height: 34px;
+    padding-inline: 12px;
+    font-size: 13px;
+  }
+
+  .theme-mode-btn {
+    width: 28px;
+    height: 28px;
   }
 
   .brand-label {
