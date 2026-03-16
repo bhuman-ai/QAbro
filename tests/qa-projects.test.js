@@ -344,3 +344,87 @@ test("projects handler upserts projects for the requested owner", async () => {
     global.fetch = originalFetch;
   }
 });
+
+test("projects handler falls back to report-derived projects when saved projects table is missing", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, init = {}) => {
+    const requestUrl = String(url);
+    calls.push({ url: requestUrl, init });
+
+    if (requestUrl.includes("/rest/v1/swarmtest_projects")) {
+      return {
+        ok: false,
+        status: 404,
+        async json() {
+          return {
+            code: "PGRST205",
+            message: "Could not find the table 'public.swarmtest_projects' in the schema cache",
+            hint: "Perhaps you meant the table 'public.swarmtest_reports'"
+          };
+        }
+      };
+    }
+
+    return {
+      ok: true,
+      status: 200,
+      async json() {
+        return [
+          {
+            run_id: "run_fallback",
+            status: "completed",
+            delivered_at: "2026-03-16T14:20:00.000Z",
+            payload: {
+              queue: { status: "completed" },
+              run_request: {
+                target_url: "https://fallback.example/app",
+                metadata: {
+                  brand_id: "fallback",
+                  brand_name: "Fallback",
+                  owner_user_id: "user_123"
+                }
+              },
+              report_json: { findings: [], tested_journeys: [], recommendations: [], summary: {} }
+            }
+          }
+        ];
+      }
+    };
+  };
+
+  try {
+    await withEnv(
+      {
+        QA_SERVICE_TOKEN: "service-token",
+        SUPABASE_URL: "https://supabase.example",
+        SUPABASE_SERVICE_KEY: "service-key"
+      },
+      async () => {
+        const req = {
+          method: "GET",
+          headers: {
+            "x-qa-service-token": "service-token",
+            "x-owner-user-id": "user_123",
+            "x-owner-email": "owner@example.com"
+          }
+        };
+        const res = createRes();
+
+        await projectsHandler(req, res);
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.body.ok, true);
+        assert.equal(res.body.total, 1);
+        assert.equal(res.body.items[0].brand_key, "fallback");
+        assert.equal(res.body.items[0].brand_name, "Fallback");
+        assert.equal(res.body.items[0].run_count, 1);
+        assert.equal(calls.length, 2);
+        assert.ok(!calls.some((call) => call.url.includes("/rest/v1/swarmtest_projects?on_conflict=")));
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
