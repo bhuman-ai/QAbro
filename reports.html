@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Swarm Tester Reports</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="reports.css?v=20260312c" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="container nav-wrap">
+        <a class="brand" href="/" aria-label="Swarm Tester home">
+          <span class="brand-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 6V3m4.2 1.4-2.1 2.1m-4.2 0L7.8 4.4M7.5 12H4.4m15.2 0h-3.1m-7.8 3.3 1.6 1.6m3.4 0 1.6-1.6M12 18.2V21" />
+            </svg>
+          </span>
+          <span class="brand-label">Swarm Tester</span>
+        </a>
+
+        <nav class="main-nav" aria-label="Primary">
+          <a href="/">Home</a>
+          <a href="/reports.html" aria-current="page">Reports</a>
+        </nav>
+
+        <div class="topbar-actions">
+          <button class="btn btn-ghost" type="button" data-auth-signout="true" hidden>Sign Out</button>
+          <a class="btn btn-primary" href="/#waitlist">Join Waitlist</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="reports-main">
+      <section class="reports-hero">
+        <div class="container">
+          <p class="status-pill"><span class="dot"></span> QA Report Console</p>
+          <h1>Brand-Level QA Reports</h1>
+          <p>Filter by brand and inspect every run with findings, tested journeys, evidence gallery, and recommendations.</p>
+        </div>
+      </section>
+
+      <section class="reports-console container dashboard-auth-shell" id="dashboardAuthShell" data-dashboard-auth-gate="true">
+        <article class="card-surface dashboard-auth-card" id="dashboardAuthCard">
+          <header>
+            <h3>Dashboard Access</h3>
+            <p>Create an account or sign in to access brand QA reports.</p>
+          </header>
+
+          <div class="dashboard-auth-tabs" role="tablist" aria-label="Authentication mode">
+            <button id="authModeSignIn" type="button" role="tab" aria-selected="true">Sign In</button>
+            <button id="authModeSignUp" type="button" role="tab" aria-selected="false">Sign Up</button>
+          </div>
+
+          <form id="authSignInForm" class="dashboard-auth-form" action="#" method="post" autocomplete="on">
+            <label>
+              <span>Email</span>
+              <input name="email" type="email" required autocomplete="email" placeholder="you@company.com" />
+            </label>
+            <button class="btn btn-primary" type="submit">Send Sign-In Link</button>
+          </form>
+
+          <form id="authSignUpForm" class="dashboard-auth-form" action="#" method="post" autocomplete="on" hidden>
+            <label>
+              <span>Email</span>
+              <input name="email" type="email" required autocomplete="email" placeholder="you@company.com" />
+            </label>
+            <label>
+              <span>Invite Code</span>
+              <input name="invite_code" type="text" required autocomplete="off" placeholder="Enter invite code" />
+            </label>
+            <button class="btn btn-primary" type="submit">Send Invite Link</button>
+          </form>
+
+          <p class="dashboard-auth-note">Invite code required for sign-up.</p>
+          <p class="dashboard-auth-message" id="dashboardAuthMessage" aria-live="polite"></p>
+          <p class="dashboard-auth-user" id="dashboardAuthUserHint"></p>
+        </article>
+      </section>
+
+      <section class="reports-console container" id="reportsConsole" data-dashboard-protected="true" hidden aria-hidden="true">
+        <div class="reports-controls card-surface">
+          <div class="field">
+            <label for="brandFilter">Brand</label>
+            <input id="brandFilter" type="text" placeholder="e.g. speakeasy, swarmtester, brand_id" list="brandOptions" />
+            <datalist id="brandOptions"></datalist>
+          </div>
+          <div class="field">
+            <label for="targetFilter">Target Contains</label>
+            <input id="targetFilter" type="text" placeholder="e.g. bhuman.ai" />
+          </div>
+          <div class="field">
+            <label for="statusFilter">Status</label>
+            <select id="statusFilter">
+              <option value="">All</option>
+              <option value="queued">queued</option>
+              <option value="processing">processing</option>
+              <option value="retryable">retryable</option>
+              <option value="completed">completed</option>
+              <option value="partial">partial</option>
+              <option value="failed">failed</option>
+              <option value="failed_validation">failed_validation</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="searchFilter">Search</label>
+            <input id="searchFilter" type="text" placeholder="run_id, target, brand" />
+          </div>
+          <div class="control-actions">
+            <button id="applyFilters" class="btn btn-primary" type="button">Apply</button>
+            <button id="refreshReports" class="btn btn-ghost" type="button">Refresh</button>
+          </div>
+        </div>
+
+        <div class="brand-summary card-surface">
+          <div class="brand-context">
+            <p class="brand-context-label">Active Brand</p>
+            <h2 id="activeBrandLabel">All Brands</h2>
+            <p id="activeBrandMeta">Showing all QA runs currently stored.</p>
+          </div>
+          <div class="brand-metrics">
+            <article class="metric-card">
+              <strong id="metricRuns">0</strong>
+              <span>Runs</span>
+            </article>
+            <article class="metric-card">
+              <strong id="metricCompleted">0</strong>
+              <span>Completed</span>
+            </article>
+            <article class="metric-card">
+              <strong id="metricFindings">0</strong>
+              <span>Findings</span>
+            </article>
+            <article class="metric-card">
+              <strong id="metricRisk">0</strong>
+              <span>Avg Risk</span>
+            </article>
+          </div>
+        </div>
+
+        <div class="brand-chips card-surface">
+          <div class="brand-chips-head">
+            <h3>Brand Quick Filter</h3>
+            <span id="brandChipsCount">0 brands</span>
+          </div>
+          <div id="brandChips" class="brand-chip-list"></div>
+        </div>
+
+        <div class="reports-layout">
+          <aside class="reports-list card-surface">
+            <div class="reports-list-head">
+              <h2>Runs</h2>
+              <span id="reportsCount">0</span>
+            </div>
+            <div id="reportsItems" class="reports-items"></div>
+          </aside>
+
+          <section class="report-detail card-surface" id="reportDetail">
+            <div class="empty-detail">
+              <h2>Select a run</h2>
+              <p>Pick a report from the left to view full findings, journeys, and evidence.</p>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="auth.js?v=20260312b"></script>
+    <script src="reports.js?v=20260312c"></script>
+  </body>
+</html>
