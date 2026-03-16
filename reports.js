@@ -263,6 +263,10 @@ const dashboardRuns = window.SwarmDashboardRuns;
 if (!dashboardRuns) {
   throw new Error("dashboard-runs.js failed to load");
 }
+const dashboardReportRuntime = window.SwarmDashboardReportRuntime;
+if (!dashboardReportRuntime) {
+  throw new Error("dashboard-report-runtime.js failed to load");
+}
 const requiresDashboardAuth = Boolean(document.querySelector("[data-dashboard-auth-gate='true']"));
 
 function escapeHtml(value) {
@@ -1010,25 +1014,10 @@ function getFindingTypeVisual(value) {
 }
 
 function resolveActiveReportContext() {
-  const report = state.activeRenderedReport && typeof state.activeRenderedReport === "object" ? state.activeRenderedReport : null;
-  const row = state.activeRenderedRow && typeof state.activeRenderedRow === "object" ? state.activeRenderedRow : null;
-  if (report) {
-    return { report, row };
-  }
-
-  const selectedRunId = String(state.selectedRunId || "").trim();
-  if (!selectedRunId) {
-    return { report: null, row: row || null };
-  }
-
-  const cached = state.reportCache.get(selectedRunId);
-  const cachedReport = cached && typeof cached === "object" ? cached.report : null;
-  const cachedRow =
-    state.runs.find((item) => item.run_id === selectedRunId) ||
-    state.allRuns.find((item) => item.run_id === selectedRunId) ||
-    getPinnedRunRow(selectedRunId) ||
-    null;
-  return { report: cachedReport || null, row: cachedRow };
+  return dashboardReportRuntime.resolveActiveReportContext(
+    getReportRuntimeContext(),
+    getReportRuntimeHelpers()
+  );
 }
 
 function buildFindingLlmPrompt(report, row, finding, findingIndex, targetModel) {
@@ -1429,6 +1418,30 @@ function getRunCollectionHelpers(extra = {}) {
     getLiveStatus,
     normalizeRunStatus,
     isQueueActiveStatus,
+    ...extra
+  };
+}
+
+function getReportRuntimeContext(extra = {}) {
+  return {
+    liveStatusCache: state.liveStatusCache,
+    reportCache: state.reportCache,
+    activeRenderedReport: state.activeRenderedReport,
+    activeRenderedRow: state.activeRenderedRow,
+    selectedRunId: state.selectedRunId,
+    runs: state.runs,
+    allRuns: state.allRuns,
+    ...extra
+  };
+}
+
+function getReportRuntimeHelpers(extra = {}) {
+  return {
+    getPinnedRunRow,
+    isQueueActiveStatus,
+    fetchRunStatus,
+    fetchReport,
+    buildLiveFallbackReport,
     ...extra
   };
 }
@@ -3423,10 +3436,7 @@ function isQueueActiveStatus(value) {
 }
 
 function getLiveStatus(runId) {
-  if (!runId) {
-    return null;
-  }
-  return state.liveStatusCache.get(String(runId)) || null;
+  return dashboardReportRuntime.getLiveStatus(state.liveStatusCache, runId);
 }
 
 function mergeUniqueMediaItems(primary = [], fallback = [], limit = 120) {
@@ -3527,8 +3537,9 @@ async function fetchRunStatus(runId) {
 }
 
 async function fetchReport(runId) {
-  if (state.reportCache.has(runId)) {
-    return state.reportCache.get(runId);
+  const cached = dashboardReportRuntime.getCachedReport(state.reportCache, runId);
+  if (cached) {
+    return cached;
   }
 
   const response = await fetch(`/api/qa/report?run_id=${encodeURIComponent(runId)}`);
@@ -6563,39 +6574,13 @@ async function renderSelectedReport() {
     return;
   }
 
-  const row =
-    state.runs.find((item) => item.run_id === runId) ||
-    state.allRuns.find((item) => item.run_id === runId) ||
-    getPinnedRunRow(runId) ||
-    {};
-  let statusPayload = getLiveStatus(runId);
-  const rowStatus = String(row.queue_status || row.status || "").toLowerCase();
-  if (!statusPayload) {
-    try {
-      statusPayload = await fetchRunStatus(runId);
-    } catch {
-      statusPayload = null;
-    }
-  }
-
-  const queueStatus = String(statusPayload?.queue?.queue_status || statusPayload?.queue?.status || rowStatus).toLowerCase();
-  const useLiveFallback = Boolean(statusPayload && isQueueActiveStatus(queueStatus) && !statusPayload.report_ready);
-
-  let report = null;
-  if (useLiveFallback) {
-    report = buildLiveFallbackReport(runId, row, statusPayload);
-  } else {
-    const payload = await fetchReport(runId);
-    report = payload.report;
-  }
-  if (!report || typeof report !== "object") {
-    report = buildLiveFallbackReport(runId, row, statusPayload || {
-      queue: { queue_status: rowStatus || "queued", status: rowStatus || "queued" },
-      progress: null,
-      live_report: null,
-      artifacts: null
-    });
-  }
+  const runtime = await dashboardReportRuntime.resolveSelectedReportRuntime(
+    getReportRuntimeContext(),
+    getReportRuntimeHelpers()
+  );
+  const row = runtime.row || {};
+  const statusPayload = runtime.statusPayload;
+  const report = runtime.report;
   state.activeRenderedReport = report;
   state.activeRenderedRow = row;
   state.replayControllers.clear();
@@ -6742,40 +6727,29 @@ async function pollSelectedRunLiveStatus() {
     stopLivePolling();
     return;
   }
-  const runId = String(state.selectedRunId || "").trim();
-  if (!runId) {
+  const pollState = dashboardReportRuntime.shouldPollSelectedRun(
+    getReportRuntimeContext(),
+    getReportRuntimeHelpers()
+  );
+  if (!pollState.shouldPoll) {
     return;
   }
-
-  const row = state.runs.find((item) => item.run_id === runId) || null;
-  const cachedStatus = getLiveStatus(runId);
-  const rowStatus = String(row?.queue_status || row?.status || "").toLowerCase();
-  const cachedQueueStatus = String(cachedStatus?.queue?.queue_status || cachedStatus?.queue?.status || "").toLowerCase();
-  const shouldPoll =
-    isQueueActiveStatus(rowStatus) ||
-    isQueueActiveStatus(cachedQueueStatus) ||
-    (!row && !cachedStatus?.report_ready);
-  if (!shouldPoll) {
-    return;
-  }
+  const runId = pollState.runId;
 
   state.livePollingInFlight = true;
   try {
     const statusPayload = await fetchRunStatus(runId);
     const queueStatus = String(statusPayload?.queue?.queue_status || statusPayload?.queue?.status || "").toLowerCase();
-
-    const rowIndex = state.runs.findIndex((item) => item.run_id === runId);
-    if (rowIndex >= 0) {
-      const draftFindingsCount = Array.isArray(statusPayload?.live_report?.findings)
-        ? statusPayload.live_report.findings.length
-        : state.runs[rowIndex].findings_count;
-      state.runs[rowIndex] = {
-        ...state.runs[rowIndex],
-        status: queueStatus || state.runs[rowIndex].status,
-        queue_status: queueStatus || state.runs[rowIndex].queue_status,
-        findings_count: draftFindingsCount
-      };
-    }
+    state.runs = dashboardReportRuntime.applyLiveStatusToRunCollection({
+      runs: state.runs,
+      runId,
+      statusPayload
+    });
+    state.allRuns = dashboardReportRuntime.applyLiveStatusToRunCollection({
+      runs: state.allRuns,
+      runId,
+      statusPayload
+    });
 
     if (statusPayload.report_ready) {
       state.reportCache.delete(runId);
