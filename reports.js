@@ -255,6 +255,10 @@ const state = {
     step: 1
   }
 };
+const dashboardProjects = window.SwarmDashboardProjects;
+if (!dashboardProjects) {
+  throw new Error("dashboard-projects.js failed to load");
+}
 const requiresDashboardAuth = Boolean(document.querySelector("[data-dashboard-auth-gate='true']"));
 
 function escapeHtml(value) {
@@ -796,19 +800,15 @@ function applyUrlFiltersToState() {
 }
 
 function syncInputsFromState() {
-  const desiredBrand = normalizeBrandFilterValue(state.filters.brand);
-  if (elements.brandFilter?.tagName === "SELECT") {
-    const hasDesiredBrand = Array.from(elements.brandFilter.options || []).some((option) => option.value === desiredBrand);
-    if (desiredBrand && !hasDesiredBrand && state.brandOptions.length > 0) {
-      elements.brandFilter.innerHTML = [
-        `<option value="${escapeHtml(desiredBrand)}">${escapeHtml(getBrandOptionLabel(desiredBrand) || desiredBrand)}</option>`,
-        `<option value="${ADD_NEW_PROJECT_OPTION_VALUE}">+ Add new project</option>`
-      ].join("");
-    }
-    elements.brandFilter.value = hasDesiredBrand || state.brandOptions.length > 0 ? desiredBrand : "";
-  } else {
-    elements.brandFilter.value = desiredBrand;
-  }
+  dashboardProjects.syncProjectFilterInput({
+    selectElement: elements.brandFilter,
+    selectedBrand: state.filters.brand,
+    brandOptions: state.brandOptions,
+    addNewProjectValue: ADD_NEW_PROJECT_OPTION_VALUE,
+    normalizeBrandKey: normalizeBrandFilterValue,
+    getProjectOptionLabel: getBrandOptionLabel,
+    escapeHtml
+  });
   elements.targetFilter.value = state.filters.target;
   elements.statusFilter.value = state.filters.status;
   elements.searchFilter.value = state.filters.q;
@@ -1196,62 +1196,22 @@ function buildReportParams(options = {}) {
 }
 
 function normalizeSavedProject(project) {
-  const key = normalizeBrandFilterValue(project?.brand_key || project?.brandKey);
-  if (!key) {
-    return null;
-  }
-
-  return {
-    key,
-    name: String(project?.brand_name || project?.brandName || "").trim(),
-    targetUrl: String(project?.target_url || project?.targetUrl || "").trim(),
-    lastUsedAt: String(project?.last_used_at || project?.lastUsedAt || "").trim(),
-    createdAt: String(project?.created_at || project?.createdAt || "").trim(),
-    runCount: Math.max(0, Number(project?.run_count || project?.runCount) || 0),
-    latestRunAt: String(project?.latest_run_at || project?.latestRunAt || "").trim()
-  };
+  return dashboardProjects.normalizeSavedProject(project, {
+    normalizeBrandKey: normalizeBrandFilterValue
+  });
 }
 
 function buildProjectOptions(savedProjects) {
-  const options = [];
-  const seen = new Set();
-
-  for (const project of Array.isArray(savedProjects) ? savedProjects : []) {
-    const normalized = normalizeSavedProject(project);
-    if (!normalized || seen.has(normalized.key)) {
-      continue;
-    }
-    options.push({
-      key: normalized.key,
-      count: normalized.runCount,
-      name: normalized.name || "",
-      targetUrl: normalized.targetUrl || "",
-      lastUsedAt: normalized.lastUsedAt,
-      createdAt: normalized.createdAt,
-      latestRunAt: normalized.latestRunAt
-    });
-    seen.add(normalized.key);
-  }
-
-  return options;
+  return dashboardProjects.buildProjectOptions(savedProjects, {
+    normalizeProject: normalizeSavedProject
+  });
 }
 
 function getBrandOptionBaseLabel(optionOrKey) {
-  const option =
-    optionOrKey && typeof optionOrKey === "object" ? optionOrKey : findBrandOption(optionOrKey);
-  if (!option) {
-    return toDisplayProjectName(optionOrKey) || String(optionOrKey || "").trim();
-  }
-
-  const explicitName = String(option.name || "").trim();
-  if (explicitName) {
-    return explicitName;
-  }
-  const targetLabel = toDisplayProjectName(option.targetUrl);
-  if (targetLabel) {
-    return targetLabel;
-  }
-  return option.key;
+  return dashboardProjects.getProjectOptionBaseLabel(optionOrKey, {
+    findProjectOption: findBrandOption,
+    toDisplayProjectName
+  });
 }
 
 function rebuildProjectOptions() {
@@ -1267,31 +1227,11 @@ function findBrandOption(brandKey) {
 }
 
 function getBrandOptionLabel(optionOrKey) {
-  const option =
-    optionOrKey && typeof optionOrKey === "object" ? optionOrKey : findBrandOption(optionOrKey);
-  if (option) {
-    const baseLabel = getBrandOptionBaseLabel(option);
-    const duplicateCount = state.brandOptions.filter((candidate) => {
-      return getBrandOptionBaseLabel(candidate).toLowerCase() === baseLabel.toLowerCase();
-    }).length;
-    if (duplicateCount <= 1) {
-      return baseLabel;
-    }
-
-    const hostLabel = toDisplayProjectName(option.targetUrl);
-    if (hostLabel && hostLabel.toLowerCase() !== baseLabel.toLowerCase()) {
-      return `${baseLabel} · ${hostLabel}`;
-    }
-
-    const keyLabel = toDisplayProjectName(option.key) || option.key;
-    if (keyLabel && keyLabel.toLowerCase() !== baseLabel.toLowerCase()) {
-      return `${baseLabel} · ${keyLabel}`;
-    }
-
-    return `${baseLabel} · ${option.key}`;
-  }
-
-  return toDisplayProjectName(optionOrKey) || String(optionOrKey || "").trim();
+  return dashboardProjects.getProjectOptionLabel(optionOrKey, {
+    brandOptions: state.brandOptions,
+    findProjectOption: findBrandOption,
+    toDisplayProjectName
+  });
 }
 
 function toDisplayProjectName(value) {
@@ -3171,68 +3111,19 @@ async function fetchBrandOptions() {
 }
 
 function mergeSavedProjects(projects) {
-  const next = new Map();
-  for (const project of Array.isArray(state.savedProjects) ? state.savedProjects : []) {
-    const normalized = normalizeSavedProject(project);
-    if (!normalized) {
-      continue;
-    }
-    next.set(normalized.key, {
-      brand_key: normalized.key,
-      brand_name: normalized.name || null,
-      target_url: normalized.targetUrl || null,
-      last_used_at: normalized.lastUsedAt || null,
-      created_at: normalized.createdAt || null,
-      run_count: normalized.runCount || 0,
-      latest_run_at: normalized.latestRunAt || null
-    });
-  }
-
-  for (const project of Array.isArray(projects) ? projects : []) {
-    const normalized = normalizeSavedProject(project);
-    if (!normalized) {
-      continue;
-    }
-    next.set(normalized.key, {
-      brand_key: normalized.key,
-      brand_name: normalized.name || null,
-      target_url: normalized.targetUrl || null,
-      last_used_at: normalized.lastUsedAt || new Date().toISOString(),
-      created_at: normalized.createdAt || null,
-      run_count: normalized.runCount || 0,
-      latest_run_at: normalized.latestRunAt || normalized.lastUsedAt || null
-    });
-  }
-
-  state.savedProjects = Array.from(next.values()).sort((left, right) => {
-    const leftTime = Date.parse(left.last_used_at || left.created_at || "") || 0;
-    const rightTime = Date.parse(right.last_used_at || right.created_at || "") || 0;
-    return rightTime - leftTime || String(left.brand_key || "").localeCompare(String(right.brand_key || ""));
+  state.savedProjects = dashboardProjects.mergeSavedProjects(state.savedProjects, projects, {
+    normalizeProject: normalizeSavedProject
   });
   rebuildProjectOptions();
 }
 
 function buildSavedProjectPayload(config = {}, metadata = {}) {
-  const safeConfig = config && typeof config === "object" ? config : {};
-  const targetUrl = normalizeOnboardingTargetUrlInput(String(safeConfig.targetUrl || ""), { writeBack: false });
-  const brandKey = sanitizeBrandKey(String(safeConfig.brandKey || inferBrandKeyFromTargetUrl(targetUrl) || ""));
-  if (!brandKey) {
-    return null;
-  }
-
-  const projectMetadata = {};
-  const source = String(metadata.source || "").trim();
-  if (source) {
-    projectMetadata.source = source;
-  }
-
-  return {
-    brand_key: brandKey,
-    brand_name: String(safeConfig.brandName || inferBrandNameFromTargetUrl(targetUrl) || "").trim() || null,
-    target_url: targetUrl || null,
-    metadata: projectMetadata,
-    last_used_at: new Date().toISOString()
-  };
+  return dashboardProjects.buildSavedProjectPayload(config, metadata, {
+    normalizeTargetUrl: (value) => normalizeOnboardingTargetUrlInput(String(value || ""), { writeBack: false }),
+    sanitizeBrandKey,
+    inferBrandKeyFromTargetUrl,
+    inferBrandNameFromTargetUrl
+  });
 }
 
 async function persistSavedProjects(projects) {
@@ -3259,30 +3150,14 @@ async function persistSavedProjects(projects) {
 }
 
 function renderBrandSuggestions() {
-  if (!elements.brandFilter) {
-    return;
-  }
-  if (elements.brandFilter.tagName === "SELECT") {
-    const options = state.brandOptions.length
-      ? [
-          ...state.brandOptions.map(
-            (brand) => `<option value="${escapeHtml(brand.key)}">${escapeHtml(getBrandOptionLabel(brand) || brand.key)}</option>`
-          ),
-          `<option value="${ADD_NEW_PROJECT_OPTION_VALUE}">+ Add new project</option>`
-        ]
-      : [
-          '<option value="" disabled selected>No projects yet</option>',
-          `<option value="${ADD_NEW_PROJECT_OPTION_VALUE}">+ Add new project</option>`
-        ];
-    elements.brandFilter.innerHTML = options.join("");
-    const hasSelectedBrand = state.brandOptions.some((brand) => brand.key === state.filters.brand);
-    if (state.brandOptions.length) {
-      elements.brandFilter.value = hasSelectedBrand ? state.filters.brand : state.brandOptions[0].key;
-    } else {
-      elements.brandFilter.value = "";
-    }
-    return;
-  }
+  dashboardProjects.renderProjectFilter({
+    selectElement: elements.brandFilter,
+    brandOptions: state.brandOptions,
+    selectedBrand: state.filters.brand,
+    addNewProjectValue: ADD_NEW_PROJECT_OPTION_VALUE,
+    escapeHtml,
+    getProjectOptionLabel: getBrandOptionLabel
+  });
 }
 
 function syncProjectSwitcherVisibility() {
@@ -3339,21 +3214,15 @@ function markDashboardShellReady() {
 }
 
 function ensureSingleProjectSelection() {
-  if (!Array.isArray(state.brandOptions) || !state.brandOptions.length) {
-    if (!state.filters.brand) {
-      return false;
-    }
-    state.filters.brand = "";
-    setStoredBrand("");
-    return true;
-  }
-
-  const availableProjects = new Set(state.brandOptions.map((brand) => brand.key));
-  if (availableProjects.has(state.filters.brand)) {
+  const nextSelection = dashboardProjects.ensureSingleProjectSelection({
+    brandOptions: state.brandOptions,
+    selectedBrand: state.filters.brand,
+    normalizeBrandKey: normalizeBrandFilterValue
+  });
+  if (!nextSelection.changed) {
     return false;
   }
-
-  state.filters.brand = state.brandOptions[0].key;
+  state.filters.brand = nextSelection.selectedBrand;
   setStoredBrand(state.filters.brand);
   return true;
 }
