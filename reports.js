@@ -61,6 +61,9 @@ const elements = {
   launchSwarmButton: document.getElementById("launchSwarmButton"),
   appAuthHeader: document.getElementById("appAuthHeader"),
   dashboardLoadingOverlay: document.getElementById("dashboardLoadingOverlay"),
+  findingDetailModal: document.getElementById("findingDetailModal"),
+  findingDetailModalBody: document.getElementById("findingDetailModalBody"),
+  findingDetailCloseButton: document.getElementById("findingDetailCloseButton"),
   dashboardSecondaryActions: document.getElementById("dashboardSecondaryActions"),
   onboardingSection: document.getElementById("qa-onboarding"),
   onboardingCloseButton: document.getElementById("onboardingCloseButton"),
@@ -247,6 +250,7 @@ const state = {
   projectHydrationNeeded: false,
   activeRenderedReport: null,
   activeRenderedRow: null,
+  findingModalTrigger: null,
   appViewMode: parseAppViewMode(initialUrlParams),
   onboarding: {
     completed: false,
@@ -1029,6 +1033,237 @@ function resolveActiveReportContext() {
     getReportRuntimeContext(),
     getReportRuntimeHelpers()
   );
+}
+
+function buildFindingModalToken(finding, findingIndex = 0) {
+  return toAnchorToken(
+    finding?.id || finding?.title || finding?.observed_behavior || `finding-${findingIndex + 1}`,
+    `finding-${findingIndex + 1}`
+  );
+}
+
+function buildFindingModalDataAttributes(finding, findingIndex = 0) {
+  return [
+    `data-open-finding-modal="1"`,
+    `data-finding-index="${escapeHtml(String(Math.max(0, findingIndex)))}"`,
+    `data-finding-token="${escapeHtml(buildFindingModalToken(finding, findingIndex))}"`,
+    `aria-haspopup="dialog"`
+  ].join(" ");
+}
+
+function resolveActiveFindingContext(trigger) {
+  const target = trigger instanceof HTMLElement ? trigger : null;
+  const { report, row } = resolveActiveReportContext();
+  const findings = sortFindingsByPriority(Array.isArray(report?.findings) ? report.findings : []);
+  if (!report || !findings.length) {
+    return { report, row, finding: null, findingIndex: -1 };
+  }
+
+  const requestedIndex = Number(target?.getAttribute("data-finding-index"));
+  const requestedToken = String(target?.getAttribute("data-finding-token") || "").trim();
+  let findingIndex = Number.isInteger(requestedIndex) && requestedIndex >= 0 ? requestedIndex : -1;
+  let finding = findingIndex >= 0 ? findings[findingIndex] || null : null;
+
+  if ((!finding || (requestedToken && buildFindingModalToken(finding, findingIndex) !== requestedToken)) && requestedToken) {
+    findingIndex = findings.findIndex((item, index) => buildFindingModalToken(item, index) === requestedToken);
+    finding = findingIndex >= 0 ? findings[findingIndex] : null;
+  }
+
+  return {
+    report,
+    row,
+    finding: finding || null,
+    findingIndex: finding ? findingIndex : -1
+  };
+}
+
+function renderFindingScreenshotGallery(report, finding, title) {
+  const screenshots = Array.isArray(finding?.evidence?.screenshots) ? finding.evidence.screenshots : [];
+  if (!screenshots.length) {
+    return '<p class="evidence-unavailable-note">No screenshots were captured for this finding.</p>';
+  }
+
+  const screenshotIndexMap = buildEvidenceIndexMap(report, "screenshot");
+  const cards = [];
+  for (let index = 0; index < screenshots.length; index += 1) {
+    const resolvedUrl = resolveEvidenceDisplayUrl(report, "screenshot", screenshots[index], screenshotIndexMap);
+    if (!resolvedUrl || !isLikelyImageUrl(resolvedUrl)) {
+      continue;
+    }
+    const caption =
+      truncateText(finding?.observed_behavior || finding?.title || "Captured during the tester walkthrough.", 110) ||
+      "Captured during the tester walkthrough.";
+    cards.push(`
+      <a class="finding-detail-shot" href="${escapeHtml(resolvedUrl)}" target="_blank" rel="noreferrer">
+        <img src="${escapeHtml(resolvedUrl)}" alt="${escapeHtml(title)} screenshot ${index + 1}" loading="lazy" onerror="this.closest('.finding-detail-shot').style.display='none'" />
+        <span>${escapeHtml(caption)}</span>
+      </a>
+    `);
+    if (cards.length >= 6) {
+      break;
+    }
+  }
+
+  if (!cards.length) {
+    return '<p class="evidence-unavailable-note">Screenshot references were captured, but inline previews are unavailable for this finding.</p>';
+  }
+
+  return `<div class="finding-detail-shot-grid">${cards.join("")}</div>`;
+}
+
+function renderFindingDetailModalContent(report, row, finding, findingIndex) {
+  const safeReport = report && typeof report === "object" ? report : {};
+  const safeRow = row && typeof row === "object" ? row : {};
+  const safeFinding = finding && typeof finding === "object" ? finding : {};
+  const title = safeFinding.title || safeFinding.observed_behavior || safeFinding.id || `Finding ${findingIndex + 1}`;
+  const typeVisual = getFindingTypeVisual(safeFinding.type);
+  const severity = normalizeSeverity(safeFinding.severity);
+  const priorityScore = computeFindingPriorityScore(safeFinding);
+  const confidencePct = toConfidencePercent(safeFinding.confidence);
+  const journeyLabel = getFindingJourneyLabel(safeFinding);
+  const recommendation = deriveFindingRecommendation(safeReport, safeFinding, findingIndex);
+  const opinion = buildFindingOpinion(safeFinding);
+  const emotion = getEmotionVisual(safeFinding?.emotional_reaction?.primary);
+  const personaName = resolvePersonaName(safeRow);
+  const screenshotCount = Array.isArray(safeFinding?.evidence?.screenshots) ? safeFinding.evidence.screenshots.length : 0;
+  const videoCount = Array.isArray(safeFinding?.evidence?.videos) ? safeFinding.evidence.videos.length : 0;
+  const findingAnchorId = `finding-${toAnchorToken(safeFinding?.id || safeFinding?.title || `finding-${findingIndex + 1}`)}`;
+  const shareBaseUrl = buildReportShareUrl(safeReport?.run_id || safeRow?.run_id, safeRow);
+  const findingUrl = shareBaseUrl ? `${shareBaseUrl}#${findingAnchorId}` : "";
+  const fixHint = redactVendorText(safeFinding.fix_hint || "");
+  const replayFrame = findFirstEvidenceIndex(
+    safeFinding?.evidence?.screenshots || [],
+    buildEvidenceIndexMap(safeReport, "screenshot")
+  );
+  const targetLabel = safeReport?.target || safeRow?.target || "Unknown target";
+  const deliveredAt = safeRow?.delivered_at ? formatRelativeTime(safeRow.delivered_at) : "";
+
+  return `
+    <div class="finding-detail-header">
+      <div class="finding-detail-title-row">
+        <span class="finding-type-chip ${escapeHtml(typeVisual.toneClass)}" aria-hidden="true">${escapeHtml(typeVisual.icon)}</span>
+        <div class="finding-detail-heading">
+          <h2 id="findingDetailModalTitle">${escapeHtml(title)}</h2>
+          <p class="finding-detail-meta">
+            ${escapeHtml(typeVisual.label)} · ${escapeHtml(journeyLabel)} · confidence ${escapeHtml(String(confidencePct))}%${deliveredAt ? ` · ${escapeHtml(deliveredAt)}` : ""}
+          </p>
+        </div>
+      </div>
+      <div class="finding-detail-actions">
+        ${findingUrl ? `<a href="${escapeHtml(findingUrl)}" target="_blank" rel="noreferrer">Open full report</a>` : ""}
+        ${findingUrl ? `<button type="button" data-share-url="${escapeHtml(findingUrl)}" data-label="Copy finding link">Copy link</button>` : ""}
+      </div>
+      <div class="finding-detail-facts">
+        <div class="finding-detail-fact">
+          <span>Severity</span>
+          <strong>${escapeHtml(severity.toUpperCase())}</strong>
+        </div>
+        <div class="finding-detail-fact">
+          <span>Priority</span>
+          <strong>${escapeHtml(String(priorityScore))}/100</strong>
+        </div>
+        <div class="finding-detail-fact">
+          <span>Evidence</span>
+          <strong>${escapeHtml(String(screenshotCount))} shot${screenshotCount === 1 ? "" : "s"}${videoCount ? ` · ${escapeHtml(String(videoCount))} video${videoCount === 1 ? "" : "s"}` : ""}</strong>
+        </div>
+        <div class="finding-detail-fact">
+          <span>Target</span>
+          <strong>${escapeHtml(targetLabel)}</strong>
+        </div>
+      </div>
+    </div>
+    <div class="finding-detail-grid">
+      <section class="finding-detail-section finding-detail-section-emphasis">
+        <h3>What happened</h3>
+        ${renderTesterVoice(personaName, opinion, `${emotion.emoji} ${emotion.label}`)}
+        <div class="finding-detail-copy">
+          <p><strong>Expected</strong> ${escapeHtml(safeFinding.expected_behavior || "Expected behavior was not captured.")}</p>
+          <p><strong>Observed</strong> ${escapeHtml(redactVendorText(safeFinding.observed_behavior || "Observed behavior was not captured."))}</p>
+        </div>
+      </section>
+      <section class="finding-detail-section">
+        <div class="finding-detail-section-head">
+          <h3>Recommendation</h3>
+          ${renderLlmCopyButtons("finding", { findingIndex })}
+        </div>
+        <p>${escapeHtml(recommendation)}</p>
+        ${fixHint ? `<p class="finding-detail-subnote"><strong>Fix hint</strong> ${escapeHtml(fixHint)}</p>` : ""}
+      </section>
+      <section class="finding-detail-section">
+        <h3>Screenshots</h3>
+        ${renderFindingScreenshotGallery(safeReport, safeFinding, title)}
+        <div class="finding-detail-supporting">
+          ${renderLinkRow(safeFinding?.evidence?.screenshots || [], "Screenshot")}
+          ${renderLinkRow(safeFinding?.evidence?.videos || [], "Video")}
+        </div>
+      </section>
+      <section class="finding-detail-section">
+        <h3>Evidence details</h3>
+        <div class="finding-detail-facts finding-detail-facts-compact">
+          <div class="finding-detail-fact">
+            <span>Finding type</span>
+            <strong>${escapeHtml(typeVisual.label)}</strong>
+          </div>
+          <div class="finding-detail-fact">
+            <span>Persona reaction</span>
+            <strong>${escapeHtml(emotion.label)}</strong>
+          </div>
+          <div class="finding-detail-fact">
+            <span>Run</span>
+            <strong>${escapeHtml(safeReport?.run_id || safeRow?.run_id || "Unknown")}</strong>
+          </div>
+          <div class="finding-detail-fact">
+            <span>Replay</span>
+            <strong>${Number.isInteger(replayFrame) && replayFrame >= 0 ? `Frame ${escapeHtml(String(replayFrame + 1))}` : "No replay frame"}</strong>
+          </div>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function openFindingDetailModal(trigger) {
+  if (!elements.findingDetailModal || !elements.findingDetailModalBody) {
+    return;
+  }
+
+  const context = resolveActiveFindingContext(trigger);
+  if (!context.report || !context.finding || context.findingIndex < 0) {
+    return;
+  }
+
+  elements.findingDetailModalBody.innerHTML = renderFindingDetailModalContent(
+    context.report,
+    context.row,
+    context.finding,
+    context.findingIndex
+  );
+  elements.findingDetailModal.hidden = false;
+  elements.findingDetailModal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("finding-modal-open");
+  state.findingModalTrigger = trigger instanceof HTMLElement ? trigger : null;
+  attachShareButtons(elements.findingDetailModalBody);
+  attachLlmCopyButtons(elements.findingDetailModalBody);
+  window.requestAnimationFrame(() => {
+    elements.findingDetailCloseButton?.focus();
+  });
+}
+
+function closeFindingDetailModal(options = {}) {
+  if (!elements.findingDetailModal) {
+    return;
+  }
+
+  const restoreFocus = options?.restoreFocus !== false;
+  const previousTrigger = state.findingModalTrigger;
+  state.findingModalTrigger = null;
+  elements.findingDetailModal.hidden = true;
+  elements.findingDetailModal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("finding-modal-open");
+
+  if (restoreFocus && previousTrigger instanceof HTMLElement && document.contains(previousTrigger)) {
+    previousTrigger.focus({ preventScroll: true });
+  }
 }
 
 function buildFindingLlmPrompt(report, row, finding, findingIndex, targetModel) {
@@ -5149,6 +5384,7 @@ function renderTopFixes(report, row, mode = "completed") {
       const replayFrame = findFirstEvidenceIndex(finding?.evidence?.screenshots || [], screenshotIndexMap);
       const hasScreenshot = Boolean(String(screenshotMarkup || "").trim());
       const priorityScore = computeFindingPriorityScore(finding);
+      const modalDataAttributes = buildFindingModalDataAttributes(finding, index);
 
       return `
         <article class="app-top-fix-item">
@@ -5167,6 +5403,7 @@ function renderTopFixes(report, row, mode = "completed") {
           <div class="app-top-fix-actions">
             ${hasScreenshot ? `<span class="app-inline-pill">Screenshot</span>` : ""}
             ${Number.isInteger(replayFrame) && replayFrame >= 0 ? `<span class="app-inline-pill">Replay ${escapeHtml(String(replayFrame + 1))}</span>` : ""}
+            <button type="button" ${modalDataAttributes}>Details</button>
             ${findingUrl ? `<a href="${escapeHtml(findingUrl)}" target="_blank" rel="noreferrer">Open Finding</a>` : ""}
             ${findingUrl ? `<button type="button" class="share-link-button" data-share-url="${escapeHtml(findingUrl)}">Copy Link</button>` : ""}
           </div>
@@ -5505,20 +5742,22 @@ function renderLiveIncomingFindings(report, row, liveStatus) {
 
     return findings
       .slice(0, 6)
-      .map((finding) => {
+      .map((finding, index) => {
         const severity = normalizeSeverity(finding?.severity);
         const title = finding?.title || finding?.observed_behavior || finding?.id || "Untitled finding";
         const confidencePct = toConfidencePercent(finding?.confidence);
+        const modalDataAttributes = buildFindingModalDataAttributes(finding, index);
         return `
-          <article class="app-issue-item">
+          <button type="button" class="app-issue-item app-issue-item-button" ${modalDataAttributes}>
             <span class="issue-severity ${escapeHtml(`severity-${severity}`)}">${escapeHtml(severity.toUpperCase())}</span>
             <div class="issue-copy">
               <strong>${escapeHtml(title)}</strong>
               <span>${escapeHtml(getFindingJourneyLabel(finding))} · confidence ${escapeHtml(String(confidencePct))}% · ${escapeHtml(
                 formatRelativeTime(row?.delivered_at)
               )}</span>
+              <small class="issue-action-hint">View evidence and screenshots</small>
             </div>
-          </article>
+          </button>
         `;
       })
       .join("");
@@ -6413,6 +6652,7 @@ async function renderSelectedReport() {
 async function loadAndRenderReports() {
   ensureOnboardingStateInitialized();
   applyAppViewMode();
+  closeFindingDetailModal({ restoreFocus: false });
   beginDashboardLoad();
   let shouldMarkShellReady = false;
   try {
@@ -6725,6 +6965,7 @@ function openDashboardReportView(runId) {
   if (!safeRunId) {
     return;
   }
+  closeFindingDetailModal({ restoreFocus: false });
   state.selectedRunId = safeRunId;
   state.requestedRunId = safeRunId;
   state.appViewMode = APP_VIEW_MODES.REPORT;
@@ -6738,6 +6979,7 @@ function openDashboardReportView(runId) {
 function openDashboardLiveView(runId, options = {}) {
   const settings = options && typeof options === "object" ? options : {};
   const safeRunId = String(runId || "").trim();
+  closeFindingDetailModal({ restoreFocus: false });
   if (safeRunId) {
     state.selectedRunId = safeRunId;
     state.requestedRunId = safeRunId;
@@ -6814,6 +7056,7 @@ function installDashboardActionHandlers() {
       }
       const openRunId = String(target.getAttribute("data-open-run") || "").trim();
       if (openRunId) {
+        closeFindingDetailModal({ restoreFocus: false });
         state.selectedRunId = openRunId;
         state.requestedRunId = openRunId;
         state.appViewMode = APP_VIEW_MODES.DASHBOARD;
@@ -6832,11 +7075,42 @@ function installDashboardActionHandlers() {
 
       const retryRunId = String(target.getAttribute("data-retry-run") || "").trim();
       if (retryRunId) {
+        closeFindingDetailModal({ restoreFocus: false });
         state.selectedRunId = retryRunId;
         state.requestedRunId = retryRunId;
         syncUrlFromState();
         await retryRunFromContext(retryRunId, event);
       }
+    });
+  }
+
+  if (elements.appDashboardRoot && elements.appDashboardRoot.dataset.findingModalBound !== "1") {
+    elements.appDashboardRoot.dataset.findingModalBound = "1";
+    elements.appDashboardRoot.addEventListener("click", (event) => {
+      const trigger =
+        event.target instanceof HTMLElement
+          ? event.target.closest("[data-open-finding-modal='1']")
+          : null;
+      if (!trigger) {
+        return;
+      }
+      event.preventDefault();
+      openFindingDetailModal(trigger);
+    });
+  }
+
+  if (elements.findingDetailModal && elements.findingDetailModal.dataset.bound !== "1") {
+    elements.findingDetailModal.dataset.bound = "1";
+    elements.findingDetailModal.addEventListener("click", (event) => {
+      const target =
+        event.target instanceof HTMLElement
+          ? event.target.closest("[data-close-finding-modal='true']")
+          : null;
+      if (!target) {
+        return;
+      }
+      event.preventDefault();
+      closeFindingDetailModal();
     });
   }
 
@@ -6850,6 +7124,10 @@ function installDashboardActionHandlers() {
   if (!document.body.dataset.onboardingEscapeBound) {
     document.body.dataset.onboardingEscapeBound = "1";
     document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && elements.findingDetailModal && !elements.findingDetailModal.hidden) {
+        closeFindingDetailModal();
+        return;
+      }
       if (event.key === "Escape" && !elements.onboardingSection?.hidden) {
         closeOnboardingModal();
       }
@@ -6949,6 +7227,7 @@ if (hasReportsUi) {
       if (!runId) {
         return;
       }
+      closeFindingDetailModal({ restoreFocus: false });
       state.selectedRunId = runId;
       state.requestedRunId = runId;
       syncUrlFromState();

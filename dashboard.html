@@ -140,6 +140,37 @@
               <p>Loading dashboard...</p>
             </div>
 
+            <section
+              class="finding-detail-modal"
+              id="findingDetailModal"
+              hidden
+              aria-hidden="true"
+            >
+              <div class="finding-detail-backdrop" data-close-finding-modal="true"></div>
+              <div
+                class="finding-detail-panel card-surface"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="findingDetailModalTitle"
+              >
+                <button
+                  type="button"
+                  class="finding-detail-close"
+                  id="findingDetailCloseButton"
+                  data-close-finding-modal="true"
+                  aria-label="Close finding details"
+                >
+                  ×
+                </button>
+                <div class="finding-detail-body" id="findingDetailModalBody">
+                  <div class="empty-detail">
+                    <h2 id="findingDetailModalTitle">Finding details</h2>
+                    <p>Select a finding to inspect its evidence.</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
             <div class="app-shell-grid" data-onboarding-gated="true">
               <aside class="card-surface app-sidebar">
                 <div class="app-sidebar-group">

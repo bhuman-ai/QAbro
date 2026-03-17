@@ -993,6 +993,20 @@ body.report-view-mode .nav-wrap {
   align-items: center;
 }
 
+.app-issue-item-button {
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.app-issue-item-button:hover,
+.app-issue-item-button:focus-visible {
+  border-color: hsl(var(--primary) / 0.45);
+  background: hsl(var(--background) / 0.78);
+  outline: none;
+}
+
 .issue-severity {
   border-radius: 8px;
   border: 1px solid hsl(var(--border));
@@ -1017,6 +1031,13 @@ body.report-view-mode .nav-wrap {
   color: hsl(var(--muted-foreground));
   font-size: 12px;
   margin-top: 3px;
+}
+
+.issue-action-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: hsl(var(--foreground));
 }
 
 .app-progress-list {
@@ -2225,11 +2246,46 @@ body.report-view-mode .nav-wrap {
   .evidence-thumb-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .finding-detail-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .finding-detail-shot-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 700px) {
   .app-dashboard-top h2 {
     font-size: 34px;
+  }
+
+  .finding-detail-modal {
+    padding: 16px 12px;
+  }
+
+  .finding-detail-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 32px);
+  }
+
+  .finding-detail-body {
+    padding: 20px 18px 18px;
+    max-height: calc(100vh - 32px);
+  }
+
+  .finding-detail-title-row {
+    flex-direction: column;
+  }
+
+  .finding-detail-header {
+    padding-right: 0;
+  }
+
+  .finding-detail-facts,
+  .finding-detail-facts-compact {
+    grid-template-columns: 1fr;
   }
 
   .app-onboarding {
@@ -3127,6 +3183,256 @@ body.report-view-mode .nav-wrap {
   color: var(--onboarding-ink);
   border-color: var(--onboarding-border-strong);
   background: var(--onboarding-surface-strong);
+}
+
+.finding-detail-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  padding: 32px 24px;
+  display: grid;
+  place-items: center;
+}
+
+.finding-detail-modal[hidden] {
+  display: none !important;
+}
+
+.finding-detail-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(22, 20, 17, 0.48);
+}
+
+.finding-detail-panel {
+  position: relative;
+  z-index: 1;
+  width: min(980px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  background: hsl(var(--background));
+  box-shadow: 0 18px 48px rgba(15, 18, 15, 0.24);
+  overflow: hidden;
+}
+
+.finding-detail-body {
+  padding: 28px 28px 24px;
+  overflow: auto;
+  max-height: calc(100vh - 64px);
+}
+
+.finding-detail-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 34px;
+  height: 34px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.finding-detail-close:hover,
+.finding-detail-close:focus-visible {
+  border-color: hsl(var(--primary) / 0.45);
+  color: hsl(var(--primary));
+  outline: none;
+}
+
+.finding-detail-header {
+  display: grid;
+  gap: 16px;
+  padding-right: 52px;
+  margin-bottom: 18px;
+}
+
+.finding-detail-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.finding-detail-heading {
+  min-width: 0;
+}
+
+.finding-detail-heading h2 {
+  margin: 0;
+  font-size: clamp(24px, 2vw, 30px);
+  line-height: 1.1;
+}
+
+.finding-detail-meta {
+  margin: 6px 0 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.finding-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.finding-detail-actions a,
+.finding-detail-actions button {
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--background) / 0.72);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.finding-detail-actions a:hover,
+.finding-detail-actions button:hover,
+.finding-detail-actions a:focus-visible,
+.finding-detail-actions button:focus-visible {
+  border-color: hsl(var(--primary) / 0.45);
+  color: hsl(var(--primary));
+  outline: none;
+}
+
+.finding-detail-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.finding-detail-section {
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  padding: 16px;
+  background: hsl(var(--background) / 0.58);
+}
+
+.finding-detail-section-emphasis {
+  background: hsl(var(--primary) / 0.05);
+  border-color: hsl(var(--primary) / 0.16);
+}
+
+.finding-detail-section h3,
+.finding-detail-section-head h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.finding-detail-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.finding-detail-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.finding-detail-copy p,
+.finding-detail-section > p,
+.finding-detail-supporting p,
+.finding-detail-subnote {
+  margin: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.finding-detail-copy strong,
+.finding-detail-subnote strong {
+  color: hsl(var(--foreground));
+  margin-right: 6px;
+}
+
+.finding-detail-shot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.finding-detail-shot {
+  display: grid;
+  gap: 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  overflow: hidden;
+  background: hsl(var(--background));
+  text-decoration: none;
+  color: inherit;
+}
+
+.finding-detail-shot:hover,
+.finding-detail-shot:focus-visible {
+  border-color: hsl(var(--primary) / 0.45);
+  outline: none;
+}
+
+.finding-detail-shot img {
+  display: block;
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+}
+
+.finding-detail-shot span {
+  display: block;
+  padding: 9px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+
+.finding-detail-supporting {
+  margin-top: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.finding-detail-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.finding-detail-facts-compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.finding-detail-fact {
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: hsl(var(--background));
+  min-width: 0;
+}
+
+.finding-detail-fact span {
+  display: block;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+}
+
+.finding-detail-fact strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+body.finding-modal-open {
+  overflow: hidden;
 }
 
 body.onboarding-open {
