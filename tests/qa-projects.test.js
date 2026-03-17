@@ -155,6 +155,75 @@ test("projects handler lists canonical projects with report counts", async () =>
   }
 });
 
+test("projects handler bootstraps from saved projects without scanning reports when projects already exist", async () => {
+  const originalFetch = global.fetch;
+  const capturedUrls = [];
+
+  global.fetch = async (url) => {
+    const requestUrl = String(url);
+    capturedUrls.push(requestUrl);
+
+    if (requestUrl.includes("/rest/v1/swarmtest_projects")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return [
+            {
+              brand_key: "acme",
+              brand_name: "Acme",
+              target_url: "https://acme.example",
+              owner_user_id: "user_123",
+              last_used_at: "2026-03-16T10:20:00.000Z",
+              created_at: "2026-03-15T10:20:00.000Z",
+              updated_at: "2026-03-16T10:20:00.000Z",
+              metadata: { source: "dashboard" }
+            }
+          ];
+        }
+      };
+    }
+
+    throw new Error(`Unexpected fetch: ${requestUrl}`);
+  };
+
+  try {
+    await withEnv(
+      {
+        QA_SERVICE_TOKEN: "service-token",
+        SUPABASE_URL: "https://supabase.example",
+        SUPABASE_SERVICE_KEY: "service-key"
+      },
+      async () => {
+        const req = {
+          method: "GET",
+          query: {
+            bootstrap: "1"
+          },
+          headers: {
+            "x-qa-service-token": "service-token",
+            "x-owner-user-id": "user_123"
+          }
+        };
+        const res = createRes();
+
+        await projectsHandler(req, res);
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.body.ok, true);
+        assert.equal(res.body.source, "saved_projects");
+        assert.equal(res.body.total, 1);
+        assert.equal(res.body.items[0].brand_key, "acme");
+        assert.equal(capturedUrls.length, 1);
+        assert.match(capturedUrls[0], /swarmtest_projects/);
+        assert.ok(!capturedUrls.some((url) => url.includes("/rest/v1/swarmtest_reports")));
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test("projects handler backfills report-only projects into saved projects", async () => {
   const originalFetch = global.fetch;
   const calls = [];

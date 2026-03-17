@@ -243,6 +243,8 @@ const state = {
   livePollingInFlight: false,
   dashboardLoadingTimer: null,
   dashboardPendingLoads: 0,
+  projectHydrationInFlight: null,
+  projectHydrationNeeded: false,
   activeRenderedReport: null,
   activeRenderedRow: null,
   appViewMode: parseAppViewMode(initialUrlParams),
@@ -3015,23 +3017,76 @@ async function detectAnyHistoricalRuns() {
   }
 }
 
-async function fetchBrandOptions() {
-  const response = await fetch("/api/qa/projects");
+async function fetchBrandOptions(options = {}) {
+  const bootstrap = options && typeof options === "object" ? options.bootstrap === true : false;
+  const requestUrl = bootstrap ? "/api/qa/projects?bootstrap=1" : "/api/qa/projects";
+  const response = await fetch(requestUrl);
   const data = await response.json().catch(() => ({}));
 
   if (response.status === 401) {
     state.savedProjects = [];
+    state.projectHydrationNeeded = false;
     rebuildProjectOptions();
     return state.savedProjects;
   }
   if (!response.ok || !data.ok) {
     state.savedProjects = [];
+    state.projectHydrationNeeded = false;
   } else {
     state.savedProjects = Array.isArray(data.items) ? data.items : [];
+    state.projectHydrationNeeded = bootstrap && data.source === "saved_projects";
   }
 
   rebuildProjectOptions();
   return state.savedProjects;
+}
+
+async function hydrateBrandOptionsInBackground() {
+  if (!isDashboardAuthorized()) {
+    return state.savedProjects;
+  }
+  if (state.projectHydrationInFlight) {
+    return state.projectHydrationInFlight;
+  }
+
+  state.projectHydrationNeeded = false;
+  state.projectHydrationInFlight = (async () => {
+    const response = await fetch("/api/qa/projects");
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      return state.savedProjects;
+    }
+
+    const incomingProjects = Array.isArray(data.items) ? data.items : [];
+    if (!incomingProjects.length) {
+      return state.savedProjects;
+    }
+
+    const previousCount = state.brandOptions.length;
+    mergeSavedProjects(incomingProjects);
+    const selectionChanged = ensureSingleProjectSelection();
+    if (selectionChanged) {
+      await fetchRuns();
+      ensureSelectedRunVisibleInRuns();
+      renderBrandSummary();
+      renderBrandChips();
+      renderRunsList();
+      renderAppRunPicker();
+      await renderSelectedReport();
+      syncUrlFromState();
+      return state.savedProjects;
+    }
+
+    if (state.brandOptions.length !== previousCount) {
+      renderBrandSuggestions();
+      syncProjectSwitcherVisibility();
+    }
+    return state.savedProjects;
+  })().catch(() => state.savedProjects).finally(() => {
+    state.projectHydrationInFlight = null;
+  });
+
+  return state.projectHydrationInFlight;
 }
 
 function mergeSavedProjects(projects) {
@@ -6376,7 +6431,7 @@ async function loadAndRenderReports() {
       elements,
       hasAppDashboardUi
     });
-    await fetchBrandOptions();
+    await fetchBrandOptions({ bootstrap: true });
     ensureSingleProjectSelection();
     await fetchRuns();
     state.onboarding.hasAnyRuns =
@@ -6410,6 +6465,9 @@ async function loadAndRenderReports() {
     await renderSelectedReport();
     shouldMarkShellReady = true;
     ensureLivePolling();
+    if (state.projectHydrationNeeded) {
+      void hydrateBrandOptionsInBackground();
+    }
   } catch (error) {
     dashboardRenderState.renderErrorState({
       elements,
@@ -6928,6 +6986,8 @@ if (hasReportsUi) {
         state.liveStatusCache.clear();
         state.savedProjects = [];
         state.brandOptions = [];
+        state.projectHydrationInFlight = null;
+        state.projectHydrationNeeded = false;
         state.selectedRunId = null;
         state.requestedRunId = "";
         state.onboarding.completed = false;
@@ -6941,6 +7001,8 @@ if (hasReportsUi) {
       }
       state.savedProjects = [];
       state.brandOptions = [];
+      state.projectHydrationInFlight = null;
+      state.projectHydrationNeeded = false;
       state.onboarding.hasAnyRuns = null;
       state.onboarding.initialized = false;
       ensureOnboardingStateInitialized();
