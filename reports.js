@@ -242,6 +242,7 @@ const state = {
   livePollingTimer: null,
   livePollingInFlight: false,
   dashboardLoadingTimer: null,
+  dashboardPendingLoads: 0,
   activeRenderedReport: null,
   activeRenderedRow: null,
   appViewMode: parseAppViewMode(initialUrlParams),
@@ -3104,6 +3105,9 @@ function setDashboardLoading(isLoading) {
     return;
   }
   const loading = Boolean(isLoading);
+  if (!loading && state.dashboardPendingLoads > 0) {
+    return;
+  }
   const shellReady = elements.appDashboardRoot.getAttribute("data-shell-ready") === "true";
   const blockingOverlay = loading && !shellReady;
   elements.appDashboardRoot.setAttribute("data-loading", blockingOverlay ? "true" : "false");
@@ -3128,8 +3132,23 @@ function setDashboardLoading(isLoading) {
   }
 }
 
+function beginDashboardLoad() {
+  state.dashboardPendingLoads += 1;
+  setDashboardLoading(true);
+}
+
+function finishDashboardLoad() {
+  state.dashboardPendingLoads = Math.max(0, state.dashboardPendingLoads - 1);
+  if (state.dashboardPendingLoads === 0) {
+    setDashboardLoading(false);
+  }
+}
+
 function markDashboardShellReady() {
   if (!hasAppDashboardUi || !elements.appDashboardRoot) {
+    return;
+  }
+  if (state.dashboardPendingLoads > 0) {
     return;
   }
   elements.appDashboardRoot.setAttribute("data-shell-ready", "true");
@@ -6339,24 +6358,24 @@ async function renderSelectedReport() {
 async function loadAndRenderReports() {
   ensureOnboardingStateInitialized();
   applyAppViewMode();
-  setDashboardLoading(true);
-  if (requiresDashboardAuth && !isDashboardAuthReady()) {
-    await waitForDashboardAuthReady();
-  }
-  if (!isDashboardAuthorized()) {
-    stopLivePolling();
-    updateOnboardingVisibility();
-    renderAuthRequiredState();
-    syncProjectSwitcherVisibility();
-    setDashboardLoading(false);
-    return;
-  }
-
-  dashboardRenderState.renderLoadingState({
-    elements,
-    hasAppDashboardUi
-  });
+  beginDashboardLoad();
+  let shouldMarkShellReady = false;
   try {
+    if (requiresDashboardAuth && !isDashboardAuthReady()) {
+      await waitForDashboardAuthReady();
+    }
+    if (!isDashboardAuthorized()) {
+      stopLivePolling();
+      updateOnboardingVisibility();
+      renderAuthRequiredState();
+      syncProjectSwitcherVisibility();
+      return;
+    }
+
+    dashboardRenderState.renderLoadingState({
+      elements,
+      hasAppDashboardUi
+    });
     await fetchBrandOptions();
     ensureSingleProjectSelection();
     await fetchRuns();
@@ -6388,8 +6407,8 @@ async function loadAndRenderReports() {
     renderAppRunPicker();
     updateOnboardingVisibility();
     syncUrlFromState();
-    markDashboardShellReady();
     await renderSelectedReport();
+    shouldMarkShellReady = true;
     ensureLivePolling();
   } catch (error) {
     dashboardRenderState.renderErrorState({
@@ -6401,9 +6420,12 @@ async function loadAndRenderReports() {
     stopLivePolling();
     updateOnboardingVisibility();
     syncProjectSwitcherVisibility();
-    markDashboardShellReady();
+    shouldMarkShellReady = true;
   } finally {
-    setDashboardLoading(false);
+    finishDashboardLoad();
+    if (shouldMarkShellReady) {
+      markDashboardShellReady();
+    }
   }
 }
 
