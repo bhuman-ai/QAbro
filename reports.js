@@ -193,12 +193,20 @@ const APP_VIEW_MODES = {
   LIVE: "live",
   REPORT: "report"
 };
+const PROJECT_CATALOG_STATES = {
+  IDLE: "idle",
+  LOADING: "loading",
+  READY: "ready",
+  EMPTY: "empty",
+  ERROR: "error"
+};
 const THEME_MODES = {
   LIGHT: "light",
   DARK: "dark",
   SYSTEM: "system"
 };
 const DASHBOARD_LOADING_FAILSAFE_MS = 4500;
+const DASHBOARD_BOOT_FETCH_RETRIES = 2;
 
 let systemThemeMediaQuery = null;
 let systemThemeListener = null;
@@ -221,6 +229,7 @@ function parseAppViewMode(params) {
 }
 
 const initialUrlParams = new URLSearchParams(window.location.search);
+const dashboardDebugEnabled = initialUrlParams.has("smoke") || initialUrlParams.has("debug_dashboard");
 
 const state = {
   filters: {
@@ -246,8 +255,9 @@ const state = {
   livePollingInFlight: false,
   dashboardLoadingTimer: null,
   dashboardPendingLoads: 0,
-  projectHydrationInFlight: null,
-  projectHydrationNeeded: false,
+  dashboardLoadRequestId: 0,
+  dashboardBootstrapComplete: false,
+  projectCatalogStatus: PROJECT_CATALOG_STATES.IDLE,
   activeRenderedReport: null,
   activeRenderedRow: null,
   findingModalTrigger: null,
@@ -291,6 +301,13 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function debugDashboardLog(...parts) {
+  if (!dashboardDebugEnabled) {
+    return;
+  }
+  console.debug("[dashboard]", ...parts);
 }
 
 function hashSeed(value) {
@@ -3195,17 +3212,157 @@ async function submitOnboardingRun(event) {
   }
 }
 
-async function fetchRuns() {
+function beginDashboardLoadRequest() {
+  state.dashboardLoadRequestId += 1;
+  return state.dashboardLoadRequestId;
+}
+
+function isDashboardLoadRequestCurrent(requestId) {
+  return Number(requestId) > 0 && Number(requestId) === state.dashboardLoadRequestId;
+}
+
+function isProjectCatalogResolved() {
+  return (
+    state.projectCatalogStatus === PROJECT_CATALOG_STATES.READY ||
+    state.projectCatalogStatus === PROJECT_CATALOG_STATES.EMPTY
+  );
+}
+
+function setProjectCatalogStatus(status) {
+  const nextStatus = Object.values(PROJECT_CATALOG_STATES).includes(status)
+    ? status
+    : PROJECT_CATALOG_STATES.IDLE;
+  state.projectCatalogStatus = nextStatus;
+}
+
+function waitForDashboardRetry(delayMs) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, Math.max(0, Number(delayMs) || 0));
+  });
+}
+
+function isRetryableDashboardFetch(response, error) {
+  if (error) {
+    return true;
+  }
+  const status = Number(response?.status) || 0;
+  return status >= 500 || status === 429;
+}
+
+async function requestProjectCatalogOnce() {
+  const response = await fetch("/api/qa/projects");
+  const data = await response.json().catch(() => ({}));
+
+  if (response.status === 401) {
+    throw new Error("Sign in required to access dashboard projects.");
+  }
+  if (!response.ok || !data.ok) {
+    const error = new Error(data.error || "Failed to load projects");
+    error.status = response.status || 500;
+    throw error;
+  }
+
+  return Array.isArray(data.items) ? data.items : [];
+}
+
+async function requestProjectCatalog() {
+  let lastError = null;
+
+  for (let attempt = 0; attempt < DASHBOARD_BOOT_FETCH_RETRIES; attempt += 1) {
+    try {
+      return await requestProjectCatalogOnce();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableDashboardFetch({ status: error?.status }, error) || attempt === DASHBOARD_BOOT_FETCH_RETRIES - 1) {
+        throw error;
+      }
+      await waitForDashboardRetry(180 * (attempt + 1));
+    }
+  }
+
+  throw lastError || new Error("Failed to load projects");
+}
+
+function applyProjectCatalog(projects, options = {}) {
+  const deferEmpty = Boolean(options.deferEmpty);
+  state.savedProjects = Array.isArray(projects) ? projects : [];
+  rebuildProjectOptions();
+  if (state.brandOptions.length) {
+    setProjectCatalogStatus(PROJECT_CATALOG_STATES.READY);
+    return;
+  }
+  setProjectCatalogStatus(deferEmpty ? PROJECT_CATALOG_STATES.LOADING : PROJECT_CATALOG_STATES.EMPTY);
+}
+
+function deriveSavedProjectsFromRuns(items) {
+  const entries = new Map();
+
+  for (const row of Array.isArray(items) ? items : []) {
+    const brandKey = normalizeBrandFilterValue(row?.brand_key);
+    if (!brandKey) {
+      continue;
+    }
+
+    const deliveredAt = String(row?.delivered_at || "").trim();
+    const current = entries.get(brandKey) || {
+      brand_key: brandKey,
+      brand_name: String(row?.brand_name || "").trim() || null,
+      target_url: String(row?.target_url || "").trim() || null,
+      last_used_at: deliveredAt || null,
+      latest_run_at: deliveredAt || null,
+      run_count: 0
+    };
+
+    const currentTimestamp = Date.parse(current.latest_run_at || current.last_used_at || "") || 0;
+    const candidateTimestamp = Date.parse(deliveredAt || "") || 0;
+    entries.set(brandKey, {
+      ...current,
+      brand_name: current.brand_name || String(row?.brand_name || "").trim() || null,
+      target_url: current.target_url || String(row?.target_url || "").trim() || null,
+      run_count: Number(current.run_count || 0) + 1,
+      last_used_at: candidateTimestamp > currentTimestamp ? deliveredAt || current.last_used_at : current.last_used_at,
+      latest_run_at: candidateTimestamp > currentTimestamp ? deliveredAt || current.latest_run_at : current.latest_run_at
+    });
+  }
+
+  return Array.from(entries.values());
+}
+
+async function requestRunCollectionOnce() {
   const response = await fetch(`/api/qa/reports?${buildReportParams({ includeBrand: true }).toString()}`);
   const data = await response.json().catch(() => ({}));
+  debugDashboardLog("run collection payload", data);
   if (response.status === 401) {
     throw new Error("Sign in required to access dashboard reports.");
   }
   if (!response.ok || !data.ok) {
-    throw new Error(data.error || "Failed to load reports");
+    const error = new Error(data.error || "Failed to load reports");
+    error.status = response.status || 500;
+    throw error;
   }
 
-  const fetchedItems = Array.isArray(data.items) ? data.items : [];
+  return Array.isArray(data.items) ? data.items : [];
+}
+
+async function requestRunCollection() {
+  let lastError = null;
+
+  for (let attempt = 0; attempt < DASHBOARD_BOOT_FETCH_RETRIES; attempt += 1) {
+    try {
+      return await requestRunCollectionOnce();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableDashboardFetch({ status: error?.status }, error) || attempt === DASHBOARD_BOOT_FETCH_RETRIES - 1) {
+        throw error;
+      }
+      await waitForDashboardRetry(180 * (attempt + 1));
+    }
+  }
+
+  throw lastError || new Error("Failed to load reports");
+}
+
+function applyRunCollection(fetchedItems) {
   reconcilePinnedRunsWithFetched(fetchedItems);
   state.allRuns = mergePinnedRunsIntoCollection(fetchedItems);
   state.personaOptions = buildPersonaOptions(state.allRuns);
@@ -3215,9 +3372,25 @@ async function fetchRuns() {
     state.runs = state.allRuns.slice();
   }
   ensureSelectedRunVisibleInRuns();
+
+  const nextSelection = dashboardRuns.ensureActiveRunSelection(getRunCollectionContext(), getRunCollectionHelpers());
+  state.runs = nextSelection.runs;
+  state.selectedRunId = nextSelection.selectedRunId || null;
+  if (!nextSelection.selectedRunId) {
+    state.requestedRunId = "";
+    state.activeRenderedReport = null;
+    state.activeRenderedRow = null;
+  }
+
   if (state.allRuns.length > 0) {
     state.onboarding.hasAnyRuns = true;
   }
+}
+
+async function fetchRuns() {
+  const fetchedItems = await requestRunCollection();
+  applyRunCollection(fetchedItems);
+  return state.allRuns;
 }
 
 async function detectAnyHistoricalRuns() {
@@ -3253,75 +3426,9 @@ async function detectAnyHistoricalRuns() {
 }
 
 async function fetchBrandOptions(options = {}) {
-  const bootstrap = options && typeof options === "object" ? options.bootstrap === true : false;
-  const requestUrl = bootstrap ? "/api/qa/projects?bootstrap=1" : "/api/qa/projects";
-  const response = await fetch(requestUrl);
-  const data = await response.json().catch(() => ({}));
-
-  if (response.status === 401) {
-    state.savedProjects = [];
-    state.projectHydrationNeeded = false;
-    rebuildProjectOptions();
-    return state.savedProjects;
-  }
-  if (!response.ok || !data.ok) {
-    state.savedProjects = [];
-    state.projectHydrationNeeded = false;
-  } else {
-    state.savedProjects = Array.isArray(data.items) ? data.items : [];
-    state.projectHydrationNeeded = bootstrap && data.source === "saved_projects";
-  }
-
-  rebuildProjectOptions();
+  const projects = await requestProjectCatalog();
+  applyProjectCatalog(projects, options);
   return state.savedProjects;
-}
-
-async function hydrateBrandOptionsInBackground() {
-  if (!isDashboardAuthorized()) {
-    return state.savedProjects;
-  }
-  if (state.projectHydrationInFlight) {
-    return state.projectHydrationInFlight;
-  }
-
-  state.projectHydrationNeeded = false;
-  state.projectHydrationInFlight = (async () => {
-    const response = await fetch("/api/qa/projects");
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.ok) {
-      return state.savedProjects;
-    }
-
-    const incomingProjects = Array.isArray(data.items) ? data.items : [];
-    if (!incomingProjects.length) {
-      return state.savedProjects;
-    }
-
-    const previousCount = state.brandOptions.length;
-    mergeSavedProjects(incomingProjects);
-    const selectionChanged = ensureSingleProjectSelection();
-    if (selectionChanged) {
-      await fetchRuns();
-      ensureSelectedRunVisibleInRuns();
-      renderBrandSummary();
-      renderBrandChips();
-      renderRunsList();
-      renderAppRunPicker();
-      await renderSelectedReport();
-      syncUrlFromState();
-      return state.savedProjects;
-    }
-
-    if (state.brandOptions.length !== previousCount) {
-      renderBrandSuggestions();
-      syncProjectSwitcherVisibility();
-    }
-    return state.savedProjects;
-  })().catch(() => state.savedProjects).finally(() => {
-    state.projectHydrationInFlight = null;
-  });
-
-  return state.projectHydrationInFlight;
 }
 
 function mergeSavedProjects(projects) {
@@ -3368,6 +3475,7 @@ function renderBrandSuggestions() {
     selectElement: elements.brandFilter,
     brandOptions: state.brandOptions,
     selectedBrand: state.filters.brand,
+    loading: state.projectCatalogStatus === PROJECT_CATALOG_STATES.LOADING,
     addNewProjectValue: ADD_NEW_PROJECT_OPTION_VALUE,
     escapeHtml,
     getProjectOptionLabel: getBrandOptionLabel
@@ -3379,14 +3487,22 @@ function syncProjectSwitcherVisibility() {
     return;
   }
 
+  const authorized = isDashboardAuthorized();
   const hasProjects = Array.isArray(state.brandOptions) && state.brandOptions.length > 0;
+  const catalogResolved = isProjectCatalogResolved();
+  const shouldShowProjectShell = authorized && catalogResolved;
+  const shouldShowAppHeader = authorized && catalogResolved && hasProjects;
   elements.appDashboardRoot.setAttribute("data-has-projects", hasProjects ? "true" : "false");
+  elements.appDashboardRoot.setAttribute("data-project-catalog-status", state.projectCatalogStatus);
   if (elements.topbarProjectShell) {
     elements.topbarProjectShell.setAttribute("data-has-projects", hasProjects ? "true" : "false");
+    elements.topbarProjectShell.setAttribute("data-project-catalog-status", state.projectCatalogStatus);
+    elements.topbarProjectShell.hidden = !shouldShowProjectShell;
+    elements.topbarProjectShell.setAttribute("aria-hidden", shouldShowProjectShell ? "false" : "true");
   }
   if (elements.appAuthHeader) {
-    elements.appAuthHeader.hidden = !hasProjects;
-    elements.appAuthHeader.setAttribute("aria-hidden", hasProjects ? "false" : "true");
+    elements.appAuthHeader.hidden = !shouldShowAppHeader;
+    elements.appAuthHeader.setAttribute("aria-hidden", shouldShowAppHeader ? "false" : "true");
   }
 }
 
@@ -3445,6 +3561,13 @@ function markDashboardShellReady() {
   setDashboardLoading(false);
 }
 
+function resetDashboardShellReady() {
+  if (!hasAppDashboardUi || !elements.appDashboardRoot) {
+    return;
+  }
+  elements.appDashboardRoot.setAttribute("data-shell-ready", "false");
+}
+
 function ensureSingleProjectSelection() {
   const nextSelection = dashboardProjects.ensureSingleProjectSelection({
     brandOptions: state.brandOptions,
@@ -3457,6 +3580,19 @@ function ensureSingleProjectSelection() {
   state.filters.brand = nextSelection.selectedBrand;
   setStoredBrand(state.filters.brand);
   return true;
+}
+
+function resetDashboardCollections() {
+  state.savedProjects = [];
+  state.brandOptions = [];
+  state.allRuns = [];
+  state.runs = [];
+  state.personaOptions = [];
+  state.selectedRunId = null;
+  state.requestedRunId = "";
+  state.activeRenderedReport = null;
+  state.activeRenderedRow = null;
+  setProjectCatalogStatus(PROJECT_CATALOG_STATES.IDLE);
 }
 
 function renderBrandSummary() {
@@ -3678,6 +3814,10 @@ function renderRunsList() {
   elements.reportsCount.textContent = String(state.runs.length);
 
   if (!state.runs.length) {
+    state.selectedRunId = null;
+    state.requestedRunId = "";
+    state.activeRenderedReport = null;
+    state.activeRenderedRow = null;
     elements.reportsItems.innerHTML = '<div class="empty-state">No reports found for these filters.</div>';
     elements.reportDetail.innerHTML = `
       <div class="empty-detail">
@@ -6650,6 +6790,7 @@ async function renderSelectedReport() {
 }
 
 async function loadAndRenderReports() {
+  const loadRequestId = beginDashboardLoadRequest();
   ensureOnboardingStateInitialized();
   applyAppViewMode();
   closeFindingDetailModal({ restoreFocus: false });
@@ -6659,21 +6800,92 @@ async function loadAndRenderReports() {
     if (requiresDashboardAuth && !isDashboardAuthReady()) {
       await waitForDashboardAuthReady();
     }
+    if (!isDashboardLoadRequestCurrent(loadRequestId)) {
+      return;
+    }
     if (!isDashboardAuthorized()) {
       stopLivePolling();
+      resetDashboardCollections();
       updateOnboardingVisibility();
+      renderBrandSuggestions();
       renderAuthRequiredState();
       syncProjectSwitcherVisibility();
       return;
     }
 
+    setProjectCatalogStatus(PROJECT_CATALOG_STATES.LOADING);
+    renderBrandSuggestions();
+    syncProjectSwitcherVisibility();
     dashboardRenderState.renderLoadingState({
       elements,
       hasAppDashboardUi
     });
-    await fetchBrandOptions({ bootstrap: true });
+    const projects = await requestProjectCatalog();
+    if (!isDashboardLoadRequestCurrent(loadRequestId)) {
+      return;
+    }
+    applyProjectCatalog(projects, { deferEmpty: true });
+    debugDashboardLog("projects resolved", {
+      count: state.brandOptions.length,
+      status: state.projectCatalogStatus,
+      selectedBrand: state.filters.brand
+    });
     ensureSingleProjectSelection();
-    await fetchRuns();
+    renderBrandSuggestions();
+    syncProjectSwitcherVisibility();
+
+    let fetchedRuns = await requestRunCollection();
+    if (!isDashboardLoadRequestCurrent(loadRequestId)) {
+      return;
+    }
+    applyRunCollection(fetchedRuns);
+    debugDashboardLog("runs resolved", {
+      fetchedCount: Array.isArray(fetchedRuns) ? fetchedRuns.length : 0,
+      allRuns: state.allRuns.length,
+      visibleRuns: state.runs.length,
+      selectedRunId: state.selectedRunId
+    });
+
+    if (!state.brandOptions.length && state.allRuns.length > 0) {
+      const derivedProjects = deriveSavedProjectsFromRuns(state.allRuns);
+      debugDashboardLog("derived projects from runs", {
+        derivedCount: derivedProjects.length,
+        brandKeys: derivedProjects.map((item) => item?.brand_key || "")
+      });
+      if (derivedProjects.length) {
+        mergeSavedProjects(derivedProjects);
+        setProjectCatalogStatus(state.brandOptions.length ? PROJECT_CATALOG_STATES.READY : PROJECT_CATALOG_STATES.EMPTY);
+        const selectionChanged = ensureSingleProjectSelection();
+        debugDashboardLog("after derived merge", {
+          projectCount: state.brandOptions.length,
+          status: state.projectCatalogStatus,
+          selectedBrand: state.filters.brand,
+          selectionChanged
+        });
+        renderBrandSuggestions();
+        syncProjectSwitcherVisibility();
+        if (selectionChanged) {
+          fetchedRuns = await requestRunCollection();
+          if (!isDashboardLoadRequestCurrent(loadRequestId)) {
+            return;
+          }
+          applyRunCollection(fetchedRuns);
+          debugDashboardLog("runs refetched after derived selection", {
+            fetchedCount: Array.isArray(fetchedRuns) ? fetchedRuns.length : 0,
+            allRuns: state.allRuns.length,
+            visibleRuns: state.runs.length,
+            selectedRunId: state.selectedRunId
+          });
+        }
+      }
+    }
+
+    if (!state.brandOptions.length) {
+      setProjectCatalogStatus(PROJECT_CATALOG_STATES.EMPTY);
+      renderBrandSuggestions();
+      syncProjectSwitcherVisibility();
+    }
+
     state.onboarding.hasAnyRuns =
       state.onboarding.hasAnyRuns === true ||
       (Array.isArray(state.savedProjects) && state.savedProjects.length > 0) ||
@@ -6703,12 +6915,19 @@ async function loadAndRenderReports() {
     updateOnboardingVisibility();
     syncUrlFromState();
     await renderSelectedReport();
+    if (!isDashboardLoadRequestCurrent(loadRequestId)) {
+      return;
+    }
     shouldMarkShellReady = true;
     ensureLivePolling();
-    if (state.projectHydrationNeeded) {
-      void hydrateBrandOptionsInBackground();
-    }
   } catch (error) {
+    if (!isDashboardLoadRequestCurrent(loadRequestId)) {
+      return;
+    }
+    if (!isProjectCatalogResolved()) {
+      setProjectCatalogStatus(PROJECT_CATALOG_STATES.ERROR);
+    }
+    renderBrandSuggestions();
     dashboardRenderState.renderErrorState({
       elements,
       hasAppDashboardUi,
@@ -6721,7 +6940,7 @@ async function loadAndRenderReports() {
     shouldMarkShellReady = true;
   } finally {
     finishDashboardLoad();
-    if (shouldMarkShellReady) {
+    if (shouldMarkShellReady && isDashboardLoadRequestCurrent(loadRequestId)) {
       markDashboardShellReady();
     }
   }
@@ -7136,18 +7355,27 @@ function installDashboardActionHandlers() {
 }
 
 async function bootstrapDashboardContent() {
+  state.dashboardBootstrapComplete = false;
+  resetDashboardShellReady();
   if (requiresDashboardAuth && !isDashboardAuthReady()) {
     setDashboardLoading(true);
     await waitForDashboardAuthReady();
   }
 
-  if (isDashboardAuthorized()) {
-    await loadAndRenderReports();
-    return;
-  }
+  try {
+    if (isDashboardAuthorized()) {
+      await loadAndRenderReports();
+      return;
+    }
 
-  renderAuthRequiredState();
-  setDashboardLoading(false);
+    resetDashboardCollections();
+    renderBrandSuggestions();
+    syncProjectSwitcherVisibility();
+    renderAuthRequiredState();
+    setDashboardLoading(false);
+  } finally {
+    state.dashboardBootstrapComplete = true;
+  }
 }
 
 if (hasReportsUi) {
@@ -7258,30 +7486,29 @@ if (hasReportsUi) {
       if (!sessionChecked) {
         return;
       }
+      if (!state.dashboardBootstrapComplete) {
+        return;
+      }
       const authorized = Boolean(event?.detail?.authorized);
       if (!authorized) {
         stopLivePolling();
         state.reportCache.clear();
         state.liveStatusCache.clear();
-        state.savedProjects = [];
-        state.brandOptions = [];
-        state.projectHydrationInFlight = null;
-        state.projectHydrationNeeded = false;
-        state.selectedRunId = null;
-        state.requestedRunId = "";
+        resetDashboardCollections();
+        resetDashboardShellReady();
         state.onboarding.completed = false;
         state.onboarding.forceOpen = false;
         state.onboarding.manualOverride = false;
         state.onboarding.hasAnyRuns = null;
         state.onboarding.initialized = false;
+        renderBrandSuggestions();
         renderAuthRequiredState();
         updateOnboardingVisibility();
+        syncProjectSwitcherVisibility();
         return;
       }
-      state.savedProjects = [];
-      state.brandOptions = [];
-      state.projectHydrationInFlight = null;
-      state.projectHydrationNeeded = false;
+      resetDashboardCollections();
+      resetDashboardShellReady();
       state.onboarding.hasAnyRuns = null;
       state.onboarding.initialized = false;
       ensureOnboardingStateInitialized();

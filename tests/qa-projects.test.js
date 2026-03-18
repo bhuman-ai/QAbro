@@ -155,7 +155,7 @@ test("projects handler lists canonical projects with report counts", async () =>
   }
 });
 
-test("projects handler bootstraps from saved projects without scanning reports when projects already exist", async () => {
+test("projects handler returns the canonical project catalog even when bootstrap is requested", async () => {
   const originalFetch = global.fetch;
   const capturedUrls = [];
 
@@ -180,6 +180,16 @@ test("projects handler bootstraps from saved projects without scanning reports w
               metadata: { source: "dashboard" }
             }
           ];
+        }
+      };
+    }
+
+    if (requestUrl.includes("/rest/v1/swarmtest_reports")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return [];
         }
       };
     }
@@ -211,12 +221,12 @@ test("projects handler bootstraps from saved projects without scanning reports w
 
         assert.equal(res.statusCode, 200);
         assert.equal(res.body.ok, true);
-        assert.equal(res.body.source, "saved_projects");
+        assert.equal(res.body.source, "canonical");
         assert.equal(res.body.total, 1);
         assert.equal(res.body.items[0].brand_key, "acme");
-        assert.equal(capturedUrls.length, 1);
+        assert.equal(capturedUrls.length, 2);
         assert.match(capturedUrls[0], /swarmtest_projects/);
-        assert.ok(!capturedUrls.some((url) => url.includes("/rest/v1/swarmtest_reports")));
+        assert.match(capturedUrls[1], /swarmtest_reports/);
       }
     );
   } finally {

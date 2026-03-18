@@ -1,5 +1,5 @@
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
-const { parseBoolean, parseRequestBody, sanitizeString } = require("../../lib/qa-core");
+const { parseRequestBody, sanitizeString } = require("../../lib/qa-core");
 const { listCanonicalQaProjects, upsertQaProjects } = require("../../lib/qa-projects");
 
 module.exports = async (req, res) => {
@@ -18,12 +18,9 @@ module.exports = async (req, res) => {
   }
 
   if (req.method === "GET") {
-    const bootstrap = parseBoolean(req.query?.bootstrap || req.query?.fast_boot || false);
     const listed = await listCanonicalQaProjects({
       owner_user_id: ownerUserId,
       owner_email: ownerEmail
-    }, {
-      preferSavedProjects: bootstrap
     });
     if (!listed.ok) {
       return res.status(listed.status || 500).json({ ok: false, error: listed.error });

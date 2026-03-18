@@ -238,14 +238,19 @@
 
     const brandOptions = Array.isArray(config.brandOptions) ? config.brandOptions : [];
     const selectedBrand = String(config.selectedBrand || "").trim();
+    const loading = Boolean(config.loading);
     const escapeHtml = typeof config.escapeHtml === "function" ? config.escapeHtml : fallbackEscapeHtml;
     const resolveProjectOptionLabel =
       typeof config.getProjectOptionLabel === "function"
         ? config.getProjectOptionLabel
         : (value) => getProjectOptionLabel(value, config);
     const addNewProjectValue = String(config.addNewProjectValue || "__add_new__").trim();
+    const loadingLabel = String(config.loadingLabel || "Loading projects...").trim() || "Loading projects...";
+    const emptyLabel = String(config.emptyLabel || "No projects yet").trim() || "No projects yet";
 
-    const options = brandOptions.length
+    const options = loading
+      ? [`<option value="" disabled selected>${escapeHtml(loadingLabel)}</option>`]
+      : brandOptions.length
       ? [
           ...brandOptions.map(
             (brand) =>
@@ -254,10 +259,16 @@
           `<option value="${addNewProjectValue}">+ Add new project</option>`
         ]
       : [
-          '<option value="" disabled selected>No projects yet</option>',
+          `<option value="" disabled selected>${escapeHtml(emptyLabel)}</option>`,
           `<option value="${addNewProjectValue}">+ Add new project</option>`
         ];
     selectElement.innerHTML = options.join("");
+    selectElement.disabled = loading;
+    selectElement.setAttribute("aria-busy", loading ? "true" : "false");
+    if (loading) {
+      selectElement.value = "";
+      return;
+    }
     const hasSelectedBrand = brandOptions.some((brand) => brand.key === selectedBrand);
     if (brandOptions.length) {
       selectElement.value = hasSelectedBrand ? selectedBrand : brandOptions[0].key;
