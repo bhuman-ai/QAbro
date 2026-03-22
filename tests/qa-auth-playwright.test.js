@@ -804,3 +804,101 @@ test("performCredentialedLogin auto-creates an account when no credentials are p
     }
   );
 });
+
+test("performCredentialedLogin prefers explicit auth nav before hero CTA during auto-create flows", async () => {
+  await withServer(
+    {
+      "/": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <header>
+                <button type="button" id="nav-signin">Sign in</button>
+              </header>
+              <main>
+                <input type="text" id="site-url" placeholder="https://yourwebsite.com" />
+                <button type="button" id="hero-start-free">Start free</button>
+              </main>
+              <div id="auth-root" hidden data-mode="signin">
+                <button type="button" id="tab-signin">Sign in</button>
+                <button type="button" id="tab-signup">Sign up</button>
+                <form id="signin-form" hidden>
+                  <label>Email <input type="email" name="signin_email" autocomplete="email" /></label>
+                  <button type="submit">Sign in</button>
+                </form>
+                <form id="signup-form" action="/app" method="get">
+                  <label>Full name <input type="text" name="full_name" /></label>
+                  <label>Email <input type="email" name="email" autocomplete="email" /></label>
+                  <label>Password <input type="password" name="password" /></label>
+                  <label>Confirm password <input type="password" name="confirm_password" /></label>
+                  <button type="submit">Create account</button>
+                </form>
+              </div>
+              <script>
+                const authRoot = document.getElementById("auth-root");
+                const signInForm = document.getElementById("signin-form");
+                const signupForm = document.getElementById("signup-form");
+                const setMode = (mode) => {
+                  authRoot.dataset.mode = mode;
+                  signInForm.hidden = mode !== "signin";
+                  signupForm.hidden = mode !== "signup";
+                };
+                setMode("signin");
+                document.getElementById("nav-signin").addEventListener("click", () => {
+                  localStorage.setItem("auth-entry-clicked", "nav-signin");
+                  authRoot.hidden = false;
+                });
+                document.getElementById("hero-start-free").addEventListener("click", () => {
+                  document.body.setAttribute("data-wrong-target", "hero-start-free");
+                  localStorage.setItem("auth-entry-clicked", "hero-start-free");
+                });
+                document.getElementById("tab-signin").addEventListener("click", () => {
+                  localStorage.setItem("auth-mode-selected", "signin");
+                  setMode("signin");
+                });
+                document.getElementById("tab-signup").addEventListener("click", () => {
+                  localStorage.setItem("auth-mode-selected", "signup");
+                  setMode("signup");
+                });
+              </script>
+            </body>
+          </html>`);
+      },
+      "/app": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html><html><body><main><h1>New account</h1></main></body></html>`);
+      }
+    },
+    async (baseUrl) => {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage();
+        const runLog = [];
+        const result = await performCredentialedLogin(
+          page,
+          {
+            run_id: "signup_prefers_signin_nav_test",
+            target_url: `${baseUrl}/`,
+            scope_mode: "feature_targeted",
+            metadata: {
+              otp_provider: "none"
+            }
+          },
+          { runLog }
+        );
+
+        assert.equal(result.attempted, true);
+        assert.equal(result.success, true);
+        assert.equal(result.autoCreatedAccount, true);
+        assert.equal(page.url().startsWith(`${baseUrl}/app`), true);
+        assert.equal(await page.locator("body").getAttribute("data-wrong-target"), null);
+        assert.equal(await page.evaluate(() => localStorage.getItem("auth-entry-clicked")), "nav-signin");
+        assert.equal(await page.evaluate(() => localStorage.getItem("auth-mode-selected")), "signup");
+        assert.match(JSON.stringify(runLog), /auth_flow_completed/);
+      } finally {
+        await browser.close();
+      }
+    }
+  );
+});
