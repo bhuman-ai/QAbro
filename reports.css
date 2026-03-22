@@ -5518,6 +5518,18 @@ body.live-view-mode .app-live-mission {
   height: 164px;
 }
 
+.evidence-thumb-card video {
+  display: block;
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+  background: #000;
+}
+
+.journey-flow-proof .evidence-thumb-card video {
+  height: 164px;
+}
+
 .journey-flow-proof .journey-flow-links {
   margin-top: 0;
 }

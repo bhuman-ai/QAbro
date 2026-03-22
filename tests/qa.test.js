@@ -588,6 +588,56 @@ test("normalizeReport rewrites synthetic auth boundary coverage when account set
   assert.deepEqual(report.tested_journeys[0].observations, ["Auth submit button could not be activated"]);
 });
 
+test("normalizeReport prefers blocker video clip from local agent artifacts", () => {
+  const report = normalizeReport({
+    candidateReport: {
+      tested_journeys: [
+        {
+          id: "journey_vision_only_primary",
+          name: "Vision-only primary flow",
+          status: "blocked",
+          summary: "The tester got blocked while trying the main flow.",
+          evidence: {
+            screenshots: [],
+            videos: []
+          }
+        }
+      ],
+      summary: {
+        note: "Auth submit button could not be activated"
+      },
+      findings: []
+    },
+    runRequest: {
+      run_id: "run_local_clip",
+      target_url: "https://bhuman.ai/",
+      scope_mode: "feature_targeted",
+      scenario_list: ["Create an account and make one short video."],
+      brand_persona: "A first-time buyer",
+      source: "qa_bot",
+      metadata: {
+        auth_policy: "signup_if_needed",
+        auto_create_account: true
+      }
+    },
+    artifacts: {
+      blocker_clip_url: "https://161.35.53.130.sslip.io/artifacts/playwright/run/blocker.mp4",
+      local_video_url: "https://161.35.53.130.sslip.io/artifacts/playwright/run/full.webm"
+    },
+    actions: {},
+    reportUrl: "https://swarmtester.com/api/qa/report?run_id=run_local_clip"
+  });
+
+  assert.deepEqual(report.evidence_gallery.videos, [
+    "https://161.35.53.130.sslip.io/artifacts/playwright/run/blocker.mp4",
+    "https://161.35.53.130.sslip.io/artifacts/playwright/run/full.webm"
+  ]);
+  assert.deepEqual(report.tested_journeys[0].evidence.videos, [
+    "https://161.35.53.130.sslip.io/artifacts/playwright/run/blocker.mp4",
+    "https://161.35.53.130.sslip.io/artifacts/playwright/run/full.webm"
+  ]);
+});
+
 test("sendFinalCallback retries on 500 and then succeeds", async () => {
   let calls = 0;
   const sleepCalls = [];

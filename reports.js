@@ -1192,6 +1192,10 @@ function resolveEvidenceImageItems(report, links, options = {}) {
   return summarizeEvidenceLinks(report, "screenshot", links, options).items;
 }
 
+function resolveEvidenceVideoItems(report, links, options = {}) {
+  return summarizeEvidenceLinks(report, "video", links, options).items;
+}
+
 function getEvidenceAttachmentSummary(report, kind, links) {
   const normalizedKind = String(kind || "").trim().toLowerCase() === "video" ? "video" : "screenshot";
   const summary = summarizeEvidenceLinks(report, normalizedKind, links, { maxItems: 24 });
@@ -4920,6 +4924,30 @@ function renderEvidenceThumbnails(report, links, contextLabel, explanationText =
   return `<div class="evidence-thumb-grid">${cards.join("")}</div>`;
 }
 
+function renderEvidencePreview(report, evidence = {}, contextLabel, explanationText = "", options = {}) {
+  const screenshots = Array.isArray(evidence?.screenshots) ? evidence.screenshots : [];
+  const videos = Array.isArray(evidence?.videos) ? evidence.videos : [];
+  const maxItems = Math.max(1, Math.min(6, Number(options?.maxItems) || 3));
+  const showCaption = options?.showCaption !== false;
+  const compact = options?.compact === true;
+  const videoItems = resolveEvidenceVideoItems(report, videos, { maxItems });
+
+  if (videoItems.length) {
+    const primaryVideo = videoItems[0];
+    const caption = truncateText(explanationText, 110) || "Short clip from this test.";
+    return `
+      <div class="evidence-thumb-grid evidence-thumb-grid--video">
+        <figure class="evidence-thumb-card evidence-thumb-card--video ${compact ? "compact" : ""}">
+          <video src="${escapeHtml(primaryVideo.url)}" controls playsinline preload="metadata"></video>
+          ${showCaption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ""}
+        </figure>
+      </div>
+    `;
+  }
+
+  return renderEvidenceThumbnails(report, screenshots, contextLabel, explanationText, options);
+}
+
 function toAnchorToken(value, fallback = "item") {
   const token = String(value || "")
     .trim()
@@ -5653,9 +5681,9 @@ function renderJourneys(report, row = {}) {
     const videos = Array.isArray(journey?.evidence?.videos) ? journey.evidence.videos : [];
     const screenshotSummary = getEvidenceAttachmentSummary(report, "screenshot", screenshots);
     const videoSummary = getEvidenceAttachmentSummary(report, "video", videos);
-    const compactPreviewMarkup = renderEvidenceThumbnails(
+    const compactPreviewMarkup = renderEvidencePreview(
       report,
-      screenshots,
+      { screenshots, videos },
       displayTitle,
       simplifyJourneySummary(journey?.summary || "", displayTitle),
       { maxItems: 1, compact: true, showCaption: false, emptyMarkup: "" }
