@@ -13,7 +13,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css?v=20260307i" />
-    <link rel="stylesheet" href="reports.css?v=20260316a" />
+    <link rel="stylesheet" href="reports.css?v=20260318c" />
   </head>
   <body>
     <div class="site-shell">
@@ -61,6 +61,10 @@
                   </svg>
                 </button>
               </div>
+            </div>
+            <div class="worker-health-chip" id="workerHealthChip" hidden aria-hidden="true" aria-live="polite">
+              <span class="worker-health-dot" aria-hidden="true"></span>
+              <span class="worker-health-text" id="workerHealthText">Checking workers…</span>
             </div>
             <span class="app-user-chip topbar-user-chip" id="dashboardAuthUserChip" hidden title="Account">QA</span>
             <button class="btn btn-ghost" type="button" data-auth-signout="true" hidden>Sign Out</button>
@@ -216,11 +220,15 @@
                   <p id="dashboardStateMessage">Start a run to get an environment health verdict and prioritized issues.</p>
                   <article class="primary-goal-card app-primary-goal-card" id="dashboardPrimaryGoal">
                     <div class="primary-goal-card-header">
-                      <span class="primary-goal-kicker">Primary goal</span>
-                      <span class="inline-pill" id="dashboardPrimaryGoalPersona">No persona selected</span>
+                      <span class="primary-goal-kicker">Mission</span>
+                      <span class="inline-pill primary-goal-persona-pill" id="dashboardPrimaryGoalPersona">Audience</span>
                     </div>
-                    <p id="dashboardPrimaryGoalText">Start a run to show the exact job this persona is trying to complete.</p>
-                    <small id="dashboardPrimaryGoalMeta">Goal context updates with the selected run.</small>
+                    <div id="dashboardPrimaryGoalText" class="primary-goal-copy">
+                      <p class="primary-goal-headline">Start a run to see the mission here.</p>
+                    </div>
+                    <div id="dashboardPrimaryGoalMeta" class="primary-goal-meta">
+                      <span class="primary-goal-meta-note">Target, run mode, and task count appear here.</span>
+                    </div>
                   </article>
                   <div class="app-risk-metrics">
                     <article class="app-risk-metric">
@@ -606,10 +614,10 @@
       <script src="auth.js?v=20260312b"></script>
       <script src="dashboard-projects.js?v=20260318b"></script>
       <script src="dashboard-runs.js?v=20260316a"></script>
-      <script src="dashboard-report-runtime.js?v=20260316a"></script>
-      <script src="dashboard-render-state.js?v=20260316a"></script>
-      <script src="dashboard-panels.js?v=20260316a"></script>
-      <script src="reports.js?v=20260318d"></script>
+      <script src="dashboard-report-runtime.js?v=20260318b"></script>
+      <script src="dashboard-render-state.js?v=20260318b"></script>
+      <script src="dashboard-panels.js?v=20260318c"></script>
+      <script src="reports.js?v=20260318g"></script>
     </div>
   </body>
 </html>

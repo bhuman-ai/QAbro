@@ -106,13 +106,15 @@
       elements.dashboardPrimaryGoal.hidden = false;
     }
     if (elements.dashboardPrimaryGoalText) {
-      elements.dashboardPrimaryGoalText.textContent = "Start a run to show the exact job this persona is trying to complete.";
+      elements.dashboardPrimaryGoalText.innerHTML = '<p class="primary-goal-headline">Start a run to see the mission here.</p>';
     }
     if (elements.dashboardPrimaryGoalMeta) {
-      elements.dashboardPrimaryGoalMeta.textContent = "Goal context updates with the selected run.";
+      elements.dashboardPrimaryGoalMeta.innerHTML =
+        '<span class="primary-goal-meta-note">Target, run mode, and task count appear here.</span>';
     }
     if (elements.dashboardPrimaryGoalPersona) {
-      elements.dashboardPrimaryGoalPersona.textContent = "No persona selected";
+      elements.dashboardPrimaryGoalPersona.textContent = "Audience";
+      elements.dashboardPrimaryGoalPersona.removeAttribute("title");
     }
     if (elements.riskCriticalCount) elements.riskCriticalCount.textContent = "0";
     if (elements.riskMajorCount) elements.riskMajorCount.textContent = "0";
@@ -140,6 +142,7 @@
     const attachReplayPlayers = typeof config.attachReplayPlayers === "function" ? config.attachReplayPlayers : null;
     const attachReplayJumpButtons =
       typeof config.attachReplayJumpButtons === "function" ? config.attachReplayJumpButtons : null;
+    const attachJourneyCanvases = typeof config.attachJourneyCanvases === "function" ? config.attachJourneyCanvases : null;
     const attachShareButtons = typeof config.attachShareButtons === "function" ? config.attachShareButtons : null;
     const attachLlmCopyButtons = typeof config.attachLlmCopyButtons === "function" ? config.attachLlmCopyButtons : null;
 
@@ -147,6 +150,7 @@
       elements.reportDetail.innerHTML = detailMarkup;
       if (attachReplayPlayers) attachReplayPlayers(elements.reportDetail);
       if (attachReplayJumpButtons) attachReplayJumpButtons(elements.reportDetail);
+      if (attachJourneyCanvases) attachJourneyCanvases(elements.reportDetail);
       if (attachShareButtons) attachShareButtons(elements.reportDetail);
       if (attachLlmCopyButtons) attachLlmCopyButtons(elements.reportDetail);
     }
@@ -155,6 +159,7 @@
       elements.appReportOnlyPanel.innerHTML = detailMarkup;
       if (attachReplayPlayers) attachReplayPlayers(elements.appReportOnlyPanel);
       if (attachReplayJumpButtons) attachReplayJumpButtons(elements.appReportOnlyPanel);
+      if (attachJourneyCanvases) attachJourneyCanvases(elements.appReportOnlyPanel);
       if (attachShareButtons) attachShareButtons(elements.appReportOnlyPanel);
       if (attachLlmCopyButtons) attachLlmCopyButtons(elements.appReportOnlyPanel);
     }

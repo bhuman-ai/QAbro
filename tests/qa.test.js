@@ -224,12 +224,54 @@ test("normalizeReport produces callback-valid findings with evidence fallback", 
   assert.equal(report.findings.length, 1);
   assert.equal(report.findings[0].type, "frustration_point");
   assert.equal(report.findings[0].evidence.screenshots[0], "https://browserbase.example/debug");
+  assert.equal(report.findings[0].evidence.proof_state, "fallback");
+  assert.equal(report.findings[0].evidence.proof_source, "run_fallback");
   assert.ok(Array.isArray(report.tested_journeys));
   assert.ok(report.tested_journeys.length >= 2);
   assert.ok(Array.isArray(report.evidence_gallery.screenshots));
   assert.ok(report.evidence_gallery.screenshots.length >= 1);
   assert.ok(Array.isArray(report.recommendations));
   assert.ok(report.recommendations.length >= 1);
+  assert.equal(validateReport(report).ok, true);
+});
+
+test("normalizeReport preserves explicit inline screenshot proof on findings", () => {
+  const inlineScreenshot = `data:image/png;base64,${"a".repeat(6000)}`;
+  const report = normalizeReport({
+    candidateReport: {
+      findings: [
+        {
+          id: "f_inline",
+          type: "bug",
+          severity: "high",
+          title: "Broken CTA state",
+          expected_behavior: "Primary CTA should stay visible and clickable.",
+          observed_behavior: "CTA disappeared after input changed.",
+          emotional_reaction: { primary: "frustration", intensity: 4 },
+          evidence: {
+            screenshots: [inlineScreenshot]
+          }
+        }
+      ]
+    },
+    runRequest: {
+      run_id: "run_inline",
+      target_url: "https://example.com/signup",
+      scope_mode: "core_20m",
+      scenario_list: [],
+      brand_persona: "A skeptical PM",
+      source: "qa_bot"
+    },
+    artifacts: {
+      browserbase_debug_url: "https://browserbase.example/debug"
+    },
+    actions: {},
+    reportUrl: "https://swarmtester.com/api/qa/report?run_id=run_inline"
+  });
+
+  assert.equal(report.findings[0].evidence.screenshots[0], inlineScreenshot);
+  assert.equal(report.findings[0].evidence.proof_state, "verified");
+  assert.equal(report.findings[0].evidence.proof_source, "explicit_evidence");
   assert.equal(validateReport(report).ok, true);
 });
 
@@ -400,6 +442,152 @@ test("normalizeReport promotes captured_screenshots into evidence gallery", () =
   assert.equal(report.evidence_gallery.screenshots[0], "data:image/png;base64,ZmFrZV9zY3JlZW5zaG90");
 });
 
+test("normalizeReport does not invent auth coverage for early page load failures", () => {
+  const report = normalizeReport({
+    candidateReport: {
+      findings: []
+    },
+    runRequest: {
+      run_id: "run_dns_fail",
+      target_url: "https://bhuman/",
+      scope_mode: "deep_45m",
+      scenario_list: [
+        "Clear signup and onboarding",
+        "Create the first output"
+      ],
+      brand_persona: "A first-time buyer",
+      source: "qa_bot"
+    },
+    artifacts: {},
+    actions: {},
+    reportUrl: "https://swarmtester.com/api/qa/report?run_id=run_dns_fail",
+    failureMessage:
+      "page.goto: net::ERR_NAME_NOT_RESOLVED at https://bhuman/\nCall log:\n  - navigating to \"https://bhuman/\", waiting until \"domcontentloaded\""
+  });
+
+  assert.equal(report.summary.coverage.pages_visited, 0);
+  assert.equal(report.summary.coverage.flows_tested, 0);
+  assert.equal(
+    report.summary.coverage.untested_areas.includes(
+      "Authenticated flows were not tested because no credentials were provided."
+    ),
+    false
+  );
+  assert.equal(report.tested_journeys.length, 1);
+  assert.equal(report.tested_journeys[0].id, "journey_entry_load_failed");
+  assert.equal(report.tested_journeys[0].status, "blocked");
+  assert.match(report.tested_journeys[0].summary, /could not open the first page/i);
+});
+
+test("normalizeReport recognizes early page load failures stored only in summary.note", () => {
+  const report = normalizeReport({
+    candidateReport: {
+      tested_journeys: [
+        {
+          id: "journey_primary_public_flow",
+          name: "Primary public flow",
+          status: "completed",
+          summary: "Primary public navigation and conversion surfaces were exercised to validate the core public user journey."
+        },
+        {
+          id: "journey_recon_and_validation",
+          name: "Recon and validation sweep",
+          status: "completed",
+          summary: "A lightweight sweep covered surface-level navigation, button states, and form affordances to identify blockers or unclear transitions."
+        },
+        {
+          id: "journey_authenticated_boundary",
+          name: "Authenticated boundary check",
+          status: "partial",
+          summary: "The worker checked the visible auth boundary but did not cross into authenticated flows because no credentials were supplied."
+        }
+      ],
+      summary: {
+        note:
+          "page.goto: net::ERR_NAME_NOT_RESOLVED at https://bhuman/\nCall log:\n  - navigating to \"https://bhuman/\", waiting until \"domcontentloaded\""
+      },
+      findings: []
+    },
+    runRequest: {
+      run_id: "run_dns_fail_summary_only",
+      target_url: "https://bhuman/",
+      scope_mode: "deep_45m",
+      scenario_list: [],
+      brand_persona: "A first-time buyer",
+      source: "qa_bot"
+    },
+    artifacts: {},
+    actions: {},
+    reportUrl: "https://swarmtester.com/api/qa/report?run_id=run_dns_fail_summary_only"
+  });
+
+  assert.equal(report.summary.coverage.pages_visited, 0);
+  assert.equal(report.tested_journeys.length, 1);
+  assert.equal(report.tested_journeys[0].id, "journey_entry_load_failed");
+  assert.equal(report.tested_journeys[0].name, "Could not open the site");
+});
+
+test("normalizeReport rewrites synthetic auth boundary coverage when account setup fails early", () => {
+  const report = normalizeReport({
+    candidateReport: {
+      tested_journeys: [
+        {
+          id: "journey_primary_public_flow",
+          name: "Primary public flow",
+          status: "completed",
+          summary: "Primary public navigation and conversion surfaces were exercised to validate the core public user journey."
+        },
+        {
+          id: "journey_recon_and_validation",
+          name: "Recon and validation sweep",
+          status: "completed",
+          summary: "A lightweight sweep covered surface-level navigation, button states, and form affordances to identify blockers or unclear transitions."
+        },
+        {
+          id: "journey_authenticated_boundary",
+          name: "Authenticated boundary check",
+          status: "partial",
+          summary: "The worker checked the visible auth boundary but did not cross into authenticated flows because no credentials were supplied."
+        }
+      ],
+      summary: {
+        note: "Auth submit button could not be activated"
+      },
+      findings: []
+    },
+    runRequest: {
+      run_id: "run_auth_submit_fail",
+      target_url: "https://bhuman.ai/",
+      scope_mode: "feature_targeted",
+      scenario_list: [
+        "Create a new account if needed and finish onboarding.",
+        "Make one short video inside the product and reach the final result page."
+      ],
+      brand_persona: "A first-time buyer",
+      source: "qa_bot",
+      metadata: {
+        auth_policy: "signup_if_needed",
+        auto_create_account: true
+      }
+    },
+    artifacts: {},
+    actions: {},
+    reportUrl: "https://swarmtester.com/api/qa/report?run_id=run_auth_submit_fail"
+  });
+
+  assert.equal(report.summary.coverage.pages_visited, 1);
+  assert.equal(report.summary.coverage.flows_tested, 1);
+  assert.equal(report.summary.coverage.flows_blocked, 1);
+  assert.deepEqual(report.summary.coverage.untested_areas, [
+    "Logged-in pages were not reached because account setup got stuck."
+  ]);
+  assert.equal(report.tested_journeys.length, 1);
+  assert.equal(report.tested_journeys[0].id, "journey_auth_setup_failed");
+  assert.equal(report.tested_journeys[0].name, "Could not finish login");
+  assert.equal(report.tested_journeys[0].status, "blocked");
+  assert.deepEqual(report.tested_journeys[0].observations, ["Auth submit button could not be activated"]);
+});
+
 test("sendFinalCallback retries on 500 and then succeeds", async () => {
   let calls = 0;
   const sleepCalls = [];
@@ -495,7 +683,7 @@ test("sendFinalCallback strips embedded media before sending callback payload", 
         captured_screenshots: ["data:image/png;base64,ZmFrZQ=="]
       }
     },
-    markdown: "# report\n" + "x".repeat(20000),
+    markdown: "# report\n![inline](data:image/png;base64,ZmFrZQ==)\n" + "x".repeat(20000),
     artifacts: {
       captured_screenshots: ["data:image/png;base64,ZmFrZQ=="]
     },
@@ -523,6 +711,7 @@ test("sendFinalCallback strips embedded media before sending callback payload", 
   assert.equal(capturedBody.run_log.length, 120);
   assert.ok(capturedBody.run_log.every((entry) => entry.event === "vision_only_step_decision"));
   assert.ok(capturedBody.run_log.every((entry) => String(entry.data.huge_text || "").length <= 400));
+  assert.equal(String(capturedBody.report_markdown || "").includes("data:image/"), false);
   assert.ok(String(capturedBody.report_markdown || "").length <= 12000);
 });
 

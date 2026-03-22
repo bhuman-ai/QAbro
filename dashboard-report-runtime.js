@@ -112,9 +112,12 @@
       return { runId: "", row: null, statusPayload: null, report: null, queueStatus: "" };
     }
 
-    const row = resolveSelectedRunRow({ ...config, runId }, helpers) || {};
+    const row = resolveSelectedRunRow({ ...config, runId }, helpers) || null;
+    const rowStatus = String(row?.queue_status || row?.status || "").toLowerCase();
+    const isQueueActiveStatus =
+      typeof helpers.isQueueActiveStatus === "function" ? helpers.isQueueActiveStatus : fallbackIsQueueActiveStatus;
     let statusPayload = getLiveStatus(config.liveStatusCache, runId);
-    if (!statusPayload && typeof helpers.fetchRunStatus === "function") {
+    if (!statusPayload && typeof helpers.fetchRunStatus === "function" && (!row || isQueueActiveStatus(rowStatus))) {
       try {
         statusPayload = await helpers.fetchRunStatus(runId);
       } catch {
@@ -122,10 +125,7 @@
       }
     }
 
-    const rowStatus = String(row.queue_status || row.status || "").toLowerCase();
     const queueStatus = String(statusPayload?.queue?.queue_status || statusPayload?.queue?.status || rowStatus).toLowerCase();
-    const isQueueActiveStatus =
-      typeof helpers.isQueueActiveStatus === "function" ? helpers.isQueueActiveStatus : fallbackIsQueueActiveStatus;
     const buildLiveFallbackReport =
       typeof helpers.buildLiveFallbackReport === "function" ? helpers.buildLiveFallbackReport : () => null;
     let report = null;

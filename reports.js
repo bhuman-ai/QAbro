@@ -13,6 +13,8 @@ const DATA_VIDEO_PATTERN = /^data:video\/[a-z0-9.+-]+;base64,/i;
 const elements = {
   appDashboardRoot: document.getElementById("appQaDashboard"),
   topbarProjectShell: document.getElementById("topbarProjectShell"),
+  workerHealthChip: document.getElementById("workerHealthChip"),
+  workerHealthText: document.getElementById("workerHealthText"),
   appRunPicker: document.getElementById("appRunPicker"),
   recentIssuesItems: document.getElementById("recentIssuesItems"),
   testProgressItems: document.getElementById("testProgressItems"),
@@ -207,6 +209,8 @@ const THEME_MODES = {
 };
 const DASHBOARD_LOADING_FAILSAFE_MS = 4500;
 const DASHBOARD_BOOT_FETCH_RETRIES = 2;
+const LIVE_STATUS_POLL_INTERVAL_MS = 5000;
+const WORKER_HEALTH_POLL_INTERVAL_MS = 30000;
 
 let systemThemeMediaQuery = null;
 let systemThemeListener = null;
@@ -253,6 +257,8 @@ const state = {
   replayControllers: new Map(),
   livePollingTimer: null,
   livePollingInFlight: false,
+  workerHealth: null,
+  workerHealthPollingTimer: null,
   dashboardLoadingTimer: null,
   dashboardPendingLoads: 0,
   dashboardLoadRequestId: 0,
@@ -944,6 +950,40 @@ async function copyTextToClipboard(value) {
   }
 }
 
+let reportToastTimerId = 0;
+
+function showReportToast(message, tone = "success") {
+  const safeMessage = String(message || "").trim();
+  if (!safeMessage || typeof document === "undefined") {
+    return;
+  }
+
+  let host = document.querySelector("[data-report-toast-host='true']");
+  if (!host) {
+    host = document.createElement("div");
+    host.className = "report-toast-host";
+    host.setAttribute("data-report-toast-host", "true");
+    document.body.appendChild(host);
+  }
+
+  let toast = host.querySelector(".report-toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.className = "report-toast";
+    host.appendChild(toast);
+  }
+
+  toast.className = `report-toast report-toast--${tone === "error" ? "error" : "success"}`;
+  toast.textContent = safeMessage;
+  window.clearTimeout(reportToastTimerId);
+  window.requestAnimationFrame(() => {
+    toast.classList.add("is-visible");
+  });
+  reportToastTimerId = window.setTimeout(() => {
+    toast.classList.remove("is-visible");
+  }, 1800);
+}
+
 function renderLlmLogo(model) {
   const target = String(model || "").trim().toLowerCase();
   if (target === "claude") {
@@ -1094,19 +1134,215 @@ function resolveActiveFindingContext(trigger) {
   };
 }
 
+function summarizeEvidenceLinks(report, kind, links, options = {}) {
+  const values = Array.isArray(links) ? links : [];
+  if (!values.length) {
+    return {
+      items: [],
+      renderableCount: 0,
+      references: [],
+      referenceCount: 0
+    };
+  }
+
+  const normalizedKind = String(kind || "").trim().toLowerCase() === "video" ? "video" : "screenshot";
+  const maxItems = Math.max(1, Math.min(24, Number(options?.maxItems) || values.length || 1));
+  const evidenceIndexMap = buildEvidenceIndexMap(report, normalizedKind);
+  const mediaMatcher = normalizedKind === "video" ? isLikelyVideoUrl : isLikelyImageUrl;
+  const items = [];
+  const seenUrls = new Set();
+  const references = [];
+  const seenReferences = new Set();
+
+  for (let index = 0; index < values.length; index += 1) {
+    const raw = values[index];
+    const url = resolveEvidenceDisplayUrl(report, normalizedKind, raw, evidenceIndexMap);
+    if (url && mediaMatcher(url) && !seenUrls.has(url)) {
+      seenUrls.add(url);
+      items.push({ raw, url, index });
+      if (items.length >= maxItems) {
+        break;
+      }
+      continue;
+    }
+
+    const reference = String(raw || "").trim().slice(0, 160);
+    if (!reference) {
+      continue;
+    }
+
+    const lookup = reference.toLowerCase();
+    if (seenReferences.has(lookup)) {
+      continue;
+    }
+
+    seenReferences.add(lookup);
+    references.push(reference);
+  }
+
+  return {
+    items,
+    renderableCount: items.length,
+    references,
+    referenceCount: references.length
+  };
+}
+
+function resolveEvidenceImageItems(report, links, options = {}) {
+  return summarizeEvidenceLinks(report, "screenshot", links, options).items;
+}
+
+function getEvidenceAttachmentSummary(report, kind, links) {
+  const normalizedKind = String(kind || "").trim().toLowerCase() === "video" ? "video" : "screenshot";
+  const summary = summarizeEvidenceLinks(report, normalizedKind, links, { maxItems: 24 });
+  const parts = [];
+
+  if (summary.renderableCount) {
+    parts.push(
+      normalizedKind === "video"
+        ? `${summary.renderableCount} video${summary.renderableCount === 1 ? "" : "s"}`
+        : `${summary.renderableCount} screenshot proof${summary.renderableCount === 1 ? "" : "s"}`
+    );
+  } else if (normalizedKind === "screenshot") {
+    parts.push("No screenshot proof");
+  }
+
+  if (summary.referenceCount) {
+    parts.push(
+      `${summary.referenceCount} ${normalizedKind} ref${summary.referenceCount === 1 ? "" : "s"}`
+    );
+  }
+
+  return {
+    ...summary,
+    text: parts.join(" · ")
+  };
+}
+
+function getFindingProofState(report, finding, summary = null) {
+  const source = String(finding?.evidence?.proof_source || "").trim().toLowerCase();
+  const resolvedSummary =
+    summary && typeof summary === "object"
+      ? summary
+      : summarizeEvidenceLinks(report, "screenshot", finding?.evidence?.screenshots || [], { maxItems: 24 });
+  const imageCount = Number.isInteger(resolvedSummary?.renderableCount) ? resolvedSummary.renderableCount : 0;
+  if (source === "run_fallback" && imageCount) {
+    return "fallback";
+  }
+  if (source === "none") {
+    return "missing";
+  }
+  if (imageCount) {
+    return "verified";
+  }
+  return "missing";
+}
+
+function buildFindingProofModel(report, finding, options = {}) {
+  const screenshots = Array.isArray(finding?.evidence?.screenshots) ? finding.evidence.screenshots : [];
+  const summary = summarizeEvidenceLinks(report, "screenshot", screenshots, { maxItems: 24 });
+  const images = summary.items.slice(0, Math.max(1, Math.min(12, Number(options?.maxItems) || 1)));
+  const state = getFindingProofState(report, finding, summary);
+  const source = String(finding?.evidence?.proof_source || "").trim().toLowerCase();
+  const proofLabels = {
+    verified: "Claim Screenshot",
+    fallback: "Run Screenshot",
+    missing: "Proof Missing"
+  };
+  let note = "Screenshot captured for this finding.";
+  if (state === "fallback" && summary.renderableCount) {
+    note = "No claim-specific screenshot was attached. Showing the closest run-level capture for context.";
+  } else if (source === "run_fallback" && summary.referenceCount) {
+    note = "No claim-specific screenshot was attached, and the remaining run-level reference is not a renderable image.";
+  } else if (!summary.renderableCount && summary.referenceCount) {
+    note = "Screenshot references exist, but no renderable image proof is available for this finding.";
+  } else if (state === "missing") {
+    note = "This finding does not yet have screenshot proof attached.";
+  }
+
+  return {
+    state,
+    label: proofLabels[state] || proofLabels.missing,
+    note,
+    images,
+    imageCount: summary.renderableCount,
+    referenceCount: summary.referenceCount,
+    screenshotCount: screenshots.length
+  };
+}
+
+function renderFindingProofCard(report, finding, title, options = {}) {
+  const model = buildFindingProofModel(report, finding, {
+    maxItems: options.maxItems || 1
+  });
+  const replayFrame = Number.isInteger(options.replayFrame) && options.replayFrame >= 0 ? options.replayFrame : -1;
+  const replayTarget = String(options.replayTarget || "").trim();
+  const primaryImage = model.images[0] || null;
+  const actions = [];
+
+  if (primaryImage) {
+    actions.push(
+      `<a href="${escapeHtml(primaryImage.url)}" target="_blank" rel="noreferrer">Open screenshot</a>`
+    );
+  }
+  if (replayTarget && replayFrame >= 0) {
+    actions.push(
+      `<button type="button" class="finding-proof-action-button" data-replay-target="${escapeHtml(
+        replayTarget
+      )}" data-frame-index="${escapeHtml(String(replayFrame))}">Jump to replay frame ${escapeHtml(
+        String(replayFrame + 1)
+      )}</button>`
+    );
+  }
+
+  return `
+    <div class="finding-proof-card is-${escapeHtml(model.state)}">
+      <div class="finding-proof-head">
+        <span class="finding-section-label">${escapeHtml(options.kicker || "Proof")}</span>
+        <span class="finding-proof-badge is-${escapeHtml(model.state)}">${escapeHtml(model.label)}</span>
+      </div>
+      ${
+        primaryImage
+          ? `<a class="finding-proof-media" href="${escapeHtml(primaryImage.url)}" target="_blank" rel="noreferrer">
+              <img src="${escapeHtml(primaryImage.url)}" alt="${escapeHtml(title)} screenshot proof" loading="lazy" onerror="this.closest('.finding-proof-media').style.display='none'" />
+            </a>`
+          : `<div class="finding-proof-empty">
+              <strong>${escapeHtml(model.label)}</strong>
+              <p>${escapeHtml(model.note)}</p>
+            </div>`
+      }
+      <p class="finding-proof-note">${escapeHtml(model.note)}</p>
+      ${
+        model.referenceCount > 0 && model.images.length
+          ? `<p class="finding-proof-count">${escapeHtml(String(model.referenceCount))} screenshot ref${
+              model.referenceCount === 1 ? "" : "s"
+            } attached</p>`
+          : ""
+      }
+      ${
+        actions.length
+          ? `<div class="finding-proof-actions">${actions.join("")}</div>`
+          : ""
+      }
+      ${
+        !primaryImage && model.referenceCount
+          ? `<div class="finding-proof-supporting">${renderLinkRow(report, finding?.evidence?.screenshots || [], "Screenshot")}</div>`
+          : ""
+      }
+    </div>
+  `;
+}
+
 function renderFindingScreenshotGallery(report, finding, title) {
   const screenshots = Array.isArray(finding?.evidence?.screenshots) ? finding.evidence.screenshots : [];
   if (!screenshots.length) {
     return '<p class="evidence-unavailable-note">No screenshots were captured for this finding.</p>';
   }
 
-  const screenshotIndexMap = buildEvidenceIndexMap(report, "screenshot");
+  const imageItems = resolveEvidenceImageItems(report, screenshots, { maxItems: 6 });
   const cards = [];
-  for (let index = 0; index < screenshots.length; index += 1) {
-    const resolvedUrl = resolveEvidenceDisplayUrl(report, "screenshot", screenshots[index], screenshotIndexMap);
-    if (!resolvedUrl || !isLikelyImageUrl(resolvedUrl)) {
-      continue;
-    }
+  for (let index = 0; index < imageItems.length; index += 1) {
+    const resolvedUrl = imageItems[index].url;
     const caption =
       truncateText(finding?.observed_behavior || finding?.title || "Captured during the tester walkthrough.", 110) ||
       "Captured during the tester walkthrough.";
@@ -1142,8 +1378,6 @@ function renderFindingDetailModalContent(report, row, finding, findingIndex) {
   const opinion = buildFindingOpinion(safeFinding);
   const emotion = getEmotionVisual(safeFinding?.emotional_reaction?.primary);
   const personaName = resolvePersonaName(safeRow);
-  const screenshotCount = Array.isArray(safeFinding?.evidence?.screenshots) ? safeFinding.evidence.screenshots.length : 0;
-  const videoCount = Array.isArray(safeFinding?.evidence?.videos) ? safeFinding.evidence.videos.length : 0;
   const findingAnchorId = `finding-${toAnchorToken(safeFinding?.id || safeFinding?.title || `finding-${findingIndex + 1}`)}`;
   const shareBaseUrl = buildReportShareUrl(safeReport?.run_id || safeRow?.run_id, safeRow);
   const findingUrl = shareBaseUrl ? `${shareBaseUrl}#${findingAnchorId}` : "";
@@ -1152,8 +1386,17 @@ function renderFindingDetailModalContent(report, row, finding, findingIndex) {
     safeFinding?.evidence?.screenshots || [],
     buildEvidenceIndexMap(safeReport, "screenshot")
   );
+  const proofModel = buildFindingProofModel(safeReport, safeFinding, { maxItems: 1 });
+  const screenshotSummary = getEvidenceAttachmentSummary(
+    safeReport,
+    "screenshot",
+    safeFinding?.evidence?.screenshots || []
+  );
+  const videoSummary = getEvidenceAttachmentSummary(safeReport, "video", safeFinding?.evidence?.videos || []);
   const targetLabel = safeReport?.target || safeRow?.target || "Unknown target";
   const deliveredAt = safeRow?.delivered_at ? formatRelativeTime(safeRow.delivered_at) : "";
+  const evidenceSummaryText =
+    [screenshotSummary.text, videoSummary.text].filter(Boolean).join(" · ") || "No evidence attached";
 
   return `
     <div class="finding-detail-header">
@@ -1162,7 +1405,7 @@ function renderFindingDetailModalContent(report, row, finding, findingIndex) {
         <div class="finding-detail-heading">
           <h2 id="findingDetailModalTitle">${escapeHtml(title)}</h2>
           <p class="finding-detail-meta">
-            ${escapeHtml(typeVisual.label)} · ${escapeHtml(journeyLabel)} · confidence ${escapeHtml(String(confidencePct))}%${deliveredAt ? ` · ${escapeHtml(deliveredAt)}` : ""}
+            ${escapeHtml(typeVisual.label)} · ${escapeHtml(journeyLabel)} · sure ${escapeHtml(String(confidencePct))}%${deliveredAt ? ` · ${escapeHtml(deliveredAt)}` : ""}
           </p>
         </div>
       </div>
@@ -1172,66 +1415,83 @@ function renderFindingDetailModalContent(report, row, finding, findingIndex) {
       </div>
       <div class="finding-detail-facts">
         <div class="finding-detail-fact">
-          <span>Severity</span>
+          <span>Size</span>
           <strong>${escapeHtml(severity.toUpperCase())}</strong>
         </div>
         <div class="finding-detail-fact">
-          <span>Priority</span>
+          <span>Fix first score</span>
           <strong>${escapeHtml(String(priorityScore))}/100</strong>
         </div>
         <div class="finding-detail-fact">
-          <span>Evidence</span>
-          <strong>${escapeHtml(String(screenshotCount))} shot${screenshotCount === 1 ? "" : "s"}${videoCount ? ` · ${escapeHtml(String(videoCount))} video${videoCount === 1 ? "" : "s"}` : ""}</strong>
+          <span>Proof</span>
+          <strong>${escapeHtml(evidenceSummaryText)}</strong>
         </div>
         <div class="finding-detail-fact">
-          <span>Target</span>
+          <span>Page</span>
           <strong>${escapeHtml(targetLabel)}</strong>
         </div>
       </div>
     </div>
     <div class="finding-detail-grid">
+      <section class="finding-detail-section finding-detail-section-proof">
+        <div class="finding-detail-section-head">
+          <h3>Saved picture</h3>
+        </div>
+        ${renderFindingProofCard(safeReport, safeFinding, title, {
+          maxItems: 1,
+          replayFrame
+        })}
+        ${
+          screenshotSummary.renderableCount > 1
+            ? `<div class="finding-detail-supporting">
+                <p class="finding-detail-supporting-label">More pictures</p>
+                ${renderFindingScreenshotGallery(safeReport, safeFinding, title)}
+              </div>`
+            : ""
+        }
+        <div class="finding-detail-supporting">
+          ${renderLinkRow(safeReport, safeFinding?.evidence?.screenshots || [], "Screenshot")}
+          ${renderLinkRow(safeReport, safeFinding?.evidence?.videos || [], "Video")}
+        </div>
+      </section>
       <section class="finding-detail-section finding-detail-section-emphasis">
         <h3>What happened</h3>
         ${renderTesterVoice(personaName, opinion, `${emotion.emoji} ${emotion.label}`)}
         <div class="finding-detail-copy">
-          <p><strong>Expected</strong> ${escapeHtml(safeFinding.expected_behavior || "Expected behavior was not captured.")}</p>
-          <p><strong>Observed</strong> ${escapeHtml(redactVendorText(safeFinding.observed_behavior || "Observed behavior was not captured."))}</p>
+          <p><strong>Should have happened</strong> ${escapeHtml(safeFinding.expected_behavior || "We did not save this part.")}</p>
+          <p><strong>What happened</strong> ${escapeHtml(redactVendorText(safeFinding.observed_behavior || "We did not save this part."))}</p>
         </div>
       </section>
       <section class="finding-detail-section">
         <div class="finding-detail-section-head">
-          <h3>Recommendation</h3>
+          <h3>Fix idea</h3>
           ${renderLlmCopyButtons("finding", { findingIndex })}
         </div>
         <p>${escapeHtml(recommendation)}</p>
-        ${fixHint ? `<p class="finding-detail-subnote"><strong>Fix hint</strong> ${escapeHtml(fixHint)}</p>` : ""}
+        ${fixHint ? `<p class="finding-detail-subnote"><strong>Helpful hint</strong> ${escapeHtml(fixHint)}</p>` : ""}
       </section>
       <section class="finding-detail-section">
-        <h3>Screenshots</h3>
-        ${renderFindingScreenshotGallery(safeReport, safeFinding, title)}
-        <div class="finding-detail-supporting">
-          ${renderLinkRow(safeFinding?.evidence?.screenshots || [], "Screenshot")}
-          ${renderLinkRow(safeFinding?.evidence?.videos || [], "Video")}
-        </div>
-      </section>
-      <section class="finding-detail-section">
-        <h3>Evidence details</h3>
+        <h3>More facts</h3>
         <div class="finding-detail-facts finding-detail-facts-compact">
           <div class="finding-detail-fact">
-            <span>Finding type</span>
+            <span>Problem type</span>
             <strong>${escapeHtml(typeVisual.label)}</strong>
           </div>
           <div class="finding-detail-fact">
-            <span>Persona reaction</span>
+            <span>Proof status</span>
+            <strong>${escapeHtml(proofModel.label)}</strong>
+          </div>
+          <div class="finding-detail-fact">
+            <span>Tester reaction</span>
             <strong>${escapeHtml(emotion.label)}</strong>
           </div>
           <div class="finding-detail-fact">
-            <span>Run</span>
+            <span>Test</span>
             <strong>${escapeHtml(safeReport?.run_id || safeRow?.run_id || "Unknown")}</strong>
           </div>
           <div class="finding-detail-fact">
-            <span>Replay</span>
-            <strong>${Number.isInteger(replayFrame) && replayFrame >= 0 ? `Frame ${escapeHtml(String(replayFrame + 1))}` : "No replay frame"}</strong>
+            <span>Saved picture</span>
+            <strong>${Number.isInteger(replayFrame) && replayFrame >= 0 ? `Picture ${escapeHtml(String(replayFrame + 1))}` : "No saved picture"}</strong>
           </div>
         </div>
       </section>
@@ -1289,8 +1549,12 @@ function buildFindingLlmPrompt(report, row, finding, findingIndex, targetModel) 
   const safeRow = row && typeof row === "object" ? row : {};
   const safeFinding = finding && typeof finding === "object" ? finding : {};
   const recommendation = deriveFindingRecommendation(safeReport, safeFinding, findingIndex);
-  const screenshots = Array.isArray(safeFinding?.evidence?.screenshots) ? safeFinding.evidence.screenshots.length : 0;
-  const videos = Array.isArray(safeFinding?.evidence?.videos) ? safeFinding.evidence.videos.length : 0;
+  const screenshotSummary = getEvidenceAttachmentSummary(
+    safeReport,
+    "screenshot",
+    safeFinding?.evidence?.screenshots || []
+  );
+  const videoSummary = getEvidenceAttachmentSummary(safeReport, "video", safeFinding?.evidence?.videos || []);
   const shareUrl = buildReportShareUrl(safeReport?.run_id || safeRow?.run_id, safeRow);
   const findingType = formatFindingTypeLabel(safeFinding.type);
   const priority = computeFindingPriorityScore(safeFinding);
@@ -1318,8 +1582,10 @@ function buildFindingLlmPrompt(report, row, finding, findingIndex, targetModel) 
     `- Supporting fix hint: ${redactVendorText(safeFinding.fix_hint || "n/a")}`,
     "",
     "Evidence",
-    `- Screenshots attached: ${screenshots}`,
-    `- Videos attached: ${videos}`,
+    `- Screenshot proof attached: ${screenshotSummary.renderableCount}`,
+    `- Screenshot refs without preview: ${screenshotSummary.referenceCount}`,
+    `- Videos attached: ${videoSummary.renderableCount}`,
+    `- Video refs without preview: ${videoSummary.referenceCount}`,
     "",
     "Output requirements",
     "1. Root cause hypothesis tied to the observed behavior.",
@@ -1650,6 +1916,7 @@ function renderAuthRequiredState() {
   }
 
   setOnboardingMessage("", "");
+  renderWorkerHealthIndicator();
 }
 
 function applyAppViewMode() {
@@ -2090,6 +2357,100 @@ function buildTargetLabelFromUrl(targetUrl) {
   } catch {
     return String(targetUrl || "").trim();
   }
+}
+
+function normalizeMissionCopy(value, maxLength = 220) {
+  const normalized = String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/\s*;\s*/g, "; ")
+    .replace(/\s+,/g, ",")
+    .replace(/\s+\./g, ".")
+    .trim();
+  if (!normalized) {
+    return "";
+  }
+  return maxLength > 0 ? normalized.slice(0, maxLength).trim() : normalized;
+}
+
+function trimLeadingArticle(value) {
+  return String(value || "")
+    .replace(/^(?:a|an|the)\s+/i, "")
+    .trim();
+}
+
+function buildMissionPersonaDisplay(persona) {
+  const full = normalizeMissionCopy(
+    String(persona || "")
+      .replace(/^roleplay these icps:\s*/i, "")
+      .replace(/^custom icp guidance:\s*/i, "")
+      .replace(/^persona:\s*/i, ""),
+    500
+  );
+  if (!full) {
+    return {
+      label: "Audience",
+      detail: ""
+    };
+  }
+
+  const labelCandidate = String(
+    full.split(/\b(?:trying to|looking to|wanting to|evaluating whether|who|with|using|for)\b/i)[0] || ""
+  ).trim();
+  const cleaned = trimLeadingArticle(labelCandidate || full).replace(/[.:;,\-]+$/g, "").trim();
+  const labelSource = cleaned || full;
+  const label = labelSource.length > 44 ? truncateText(labelSource, 44) : labelSource;
+
+  return {
+    label: label ? `${label.charAt(0).toUpperCase()}${label.slice(1)}` : "Audience",
+    detail: full
+  };
+}
+
+function normalizeMissionStep(step) {
+  const normalized = normalizeMissionCopy(step, 220);
+  if (!normalized) {
+    return "";
+  }
+  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
+}
+
+function buildDashboardMissionModel(mission = {}, row = null) {
+  const safeMission = mission && typeof mission === "object" ? mission : {};
+  const config = safeMission.config && typeof safeMission.config === "object" ? safeMission.config : {};
+  const targetLabel = String(config.brandName || buildTargetLabelFromUrl(config.targetUrl) || row?.target || "")
+    .trim()
+    .slice(0, 120);
+  const scopeMeta = getOnboardingScopeMeta(config.scopeMode);
+  const steps = getUserMissionScenariosFromValue(config.scenarios).map(normalizeMissionStep).filter(Boolean).slice(0, 4);
+  const persona = buildMissionPersonaDisplay(safeMission.persona);
+
+  let headline = "";
+  if (targetLabel && steps.length > 1) {
+    headline = `Finish onboarding in ${targetLabel} and complete ${steps.length} follow-up tasks.`;
+  } else if (targetLabel && steps.length === 1) {
+    headline = `Finish onboarding in ${targetLabel} and complete the core task.`;
+  } else if (steps.length > 1) {
+    headline = `Finish onboarding and complete ${steps.length} follow-up tasks.`;
+  } else if (steps.length === 1) {
+    headline = `Finish onboarding and complete the core task.`;
+  } else {
+    headline =
+      normalizeMissionCopy(safeMission.goal, 200) ||
+      "Finish onboarding and complete a meaningful in-product task.";
+  }
+
+  const metaPills = [targetLabel, scopeMeta?.label, steps.length ? `${steps.length} task${steps.length === 1 ? "" : "s"}` : ""]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .slice(0, 3);
+
+  return {
+    headline,
+    steps,
+    personaLabel: persona.label,
+    personaDetail: persona.detail,
+    metaPills
+  };
 }
 
 function buildDashboardRunGoal(config = {}) {
@@ -3504,14 +3865,16 @@ function syncProjectSwitcherVisibility() {
     elements.appAuthHeader.hidden = !shouldShowAppHeader;
     elements.appAuthHeader.setAttribute("aria-hidden", shouldShowAppHeader ? "false" : "true");
   }
+  renderWorkerHealthIndicator();
 }
 
-function setDashboardLoading(isLoading) {
+function setDashboardLoading(isLoading, options = {}) {
   if (!hasAppDashboardUi || !elements.appDashboardRoot) {
     return;
   }
   const loading = Boolean(isLoading);
-  if (!loading && state.dashboardPendingLoads > 0) {
+  const allowPendingHide = Boolean(options.allowPendingHide);
+  if (!loading && state.dashboardPendingLoads > 0 && !allowPendingHide) {
     return;
   }
   const shellReady = elements.appDashboardRoot.getAttribute("data-shell-ready") === "true";
@@ -3533,7 +3896,7 @@ function setDashboardLoading(isLoading) {
   }
   if (blockingOverlay) {
     state.dashboardLoadingTimer = window.setTimeout(() => {
-      setDashboardLoading(false);
+      setDashboardLoading(false, { allowPendingHide: true });
     }, DASHBOARD_LOADING_FAILSAFE_MS);
   }
 }
@@ -3550,15 +3913,16 @@ function finishDashboardLoad() {
   }
 }
 
-function markDashboardShellReady() {
+function markDashboardShellReady(options = {}) {
   if (!hasAppDashboardUi || !elements.appDashboardRoot) {
     return;
   }
-  if (state.dashboardPendingLoads > 0) {
+  const force = Boolean(options.force);
+  if (state.dashboardPendingLoads > 0 && !force) {
     return;
   }
   elements.appDashboardRoot.setAttribute("data-shell-ready", "true");
-  setDashboardLoading(false);
+  setDashboardLoading(false, { allowPendingHide: force });
 }
 
 function resetDashboardShellReady() {
@@ -3580,6 +3944,45 @@ function ensureSingleProjectSelection() {
   state.filters.brand = nextSelection.selectedBrand;
   setStoredBrand(state.filters.brand);
   return true;
+}
+
+async function hydrateProjectCatalogInBackground(loadRequestId) {
+  if (!isDashboardAuthorized()) {
+    return;
+  }
+
+  try {
+    const projects = await requestProjectCatalog();
+    if (!isDashboardLoadRequestCurrent(loadRequestId)) {
+      return;
+    }
+
+    if (Array.isArray(projects) && projects.length) {
+      mergeSavedProjects(projects);
+      setProjectCatalogStatus(PROJECT_CATALOG_STATES.READY);
+    } else if (!state.brandOptions.length) {
+      setProjectCatalogStatus(PROJECT_CATALOG_STATES.EMPTY);
+    } else {
+      setProjectCatalogStatus(PROJECT_CATALOG_STATES.READY);
+    }
+  } catch {
+    if (!isDashboardLoadRequestCurrent(loadRequestId)) {
+      return;
+    }
+    setProjectCatalogStatus(state.brandOptions.length ? PROJECT_CATALOG_STATES.READY : PROJECT_CATALOG_STATES.ERROR);
+  }
+
+  if (!isDashboardLoadRequestCurrent(loadRequestId)) {
+    return;
+  }
+
+  if (state.filters.brand) {
+    ensureSingleProjectSelection();
+  }
+  renderBrandSuggestions();
+  syncProjectSwitcherVisibility();
+  renderBrandSummary();
+  renderBrandChips();
 }
 
 function resetDashboardCollections() {
@@ -3999,7 +4402,7 @@ async function fetchReport(runId) {
     return cached;
   }
 
-  const response = await fetch(`/api/qa/report?run_id=${encodeURIComponent(runId)}`);
+  const response = await fetch(`/api/qa/report?run_id=${encodeURIComponent(runId)}&skip_markdown=1`);
   const data = await response.json().catch(() => ({}));
   if (response.status === 401) {
     throw new Error("Sign in required to view report details.");
@@ -4012,20 +4415,134 @@ async function fetchReport(runId) {
   return data;
 }
 
-function renderLinkRow(links, label) {
-  const safeLinks = cleanUrlList(links);
-  const references = cleanReferenceList(links);
+async function requestWorkerHealthOnce() {
+  const response = await fetch("/api/qa/workers");
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    throw new Error("Sign in required to view worker health.");
+  }
+  if (!response.ok || !data.ok) {
+    const error = new Error(data.error || "Failed to load worker health");
+    error.status = response.status || 500;
+    throw error;
+  }
 
-  if (!safeLinks.length && !references.length) {
+  return data;
+}
+
+function renderWorkerHealthIndicator() {
+  if (!elements.workerHealthChip || !elements.workerHealthText) {
+    return;
+  }
+
+  if (!isDashboardAuthorized()) {
+    elements.workerHealthChip.hidden = true;
+    elements.workerHealthChip.setAttribute("aria-hidden", "true");
+    elements.workerHealthChip.dataset.health = "checking";
+    elements.workerHealthChip.removeAttribute("title");
+    elements.workerHealthText.textContent = "Checking workers…";
+    return;
+  }
+
+  const summary = state.workerHealth && typeof state.workerHealth.summary === "object" ? state.workerHealth.summary : null;
+  const health = String(summary?.overall_status || "")
+    .trim()
+    .slice(0, 32)
+    .toLowerCase() || "checking";
+  const label = String(summary?.label || "").trim().slice(0, 140) || "Checking workers…";
+  const detail = String(summary?.detail || "").trim().slice(0, 280) || "Waiting for worker heartbeat.";
+
+  elements.workerHealthChip.hidden = false;
+  elements.workerHealthChip.setAttribute("aria-hidden", "false");
+  elements.workerHealthChip.dataset.health = health;
+  elements.workerHealthChip.setAttribute("title", detail);
+  elements.workerHealthText.textContent = label;
+}
+
+async function refreshWorkerHealth(options = {}) {
+  if (!elements.workerHealthChip) {
+    return null;
+  }
+
+  if (!isDashboardAuthorized()) {
+    state.workerHealth = null;
+    renderWorkerHealthIndicator();
+    return null;
+  }
+
+  try {
+    const payload = await requestWorkerHealthOnce();
+    state.workerHealth = payload;
+  } catch (error) {
+    if (!options.silent || !state.workerHealth) {
+      state.workerHealth = {
+        summary: {
+          overall_status: "stale",
+          label: "Worker unknown",
+          detail: error?.message || "Could not load worker health."
+        },
+        items: []
+      };
+    }
+  }
+
+  renderWorkerHealthIndicator();
+  return state.workerHealth;
+}
+
+function stopWorkerHealthPolling() {
+  if (state.workerHealthPollingTimer) {
+    window.clearInterval(state.workerHealthPollingTimer);
+    state.workerHealthPollingTimer = null;
+  }
+}
+
+function ensureWorkerHealthPolling() {
+  if (!elements.workerHealthChip) {
+    return;
+  }
+
+  if (!isDashboardAuthorized()) {
+    stopWorkerHealthPolling();
+    state.workerHealth = null;
+    renderWorkerHealthIndicator();
+    return;
+  }
+
+  if (state.workerHealthPollingTimer) {
+    return;
+  }
+
+  void refreshWorkerHealth();
+  state.workerHealthPollingTimer = window.setInterval(() => {
+    if (!isDashboardAuthorized()) {
+      stopWorkerHealthPolling();
+      state.workerHealth = null;
+      renderWorkerHealthIndicator();
+      return;
+    }
+    void refreshWorkerHealth({ silent: true });
+  }, WORKER_HEALTH_POLL_INTERVAL_MS);
+}
+
+function renderLinkRow(report, links, label) {
+  const normalizedKind = String(label || "").trim().toLowerCase() === "video" ? "video" : "screenshot";
+  const summary = summarizeEvidenceLinks(report, normalizedKind, links, { maxItems: 24 });
+
+  if (!summary.renderableCount && !summary.referenceCount) {
     return `<p>${escapeHtml(label)}: none</p>`;
   }
 
   const parts = [];
-  if (safeLinks.length) {
-    parts.push(`${label.toLowerCase()} captured: ${safeLinks.length}`);
+  if (summary.renderableCount) {
+    parts.push(
+      normalizedKind === "video"
+        ? `${label.toLowerCase()} attached: ${summary.renderableCount}`
+        : `${label.toLowerCase()} proof: ${summary.renderableCount}`
+    );
   }
-  if (references.length) {
-    parts.push(`${label.toLowerCase()} refs: ${references.length}`);
+  if (summary.referenceCount) {
+    parts.push(`${label.toLowerCase()} refs: ${summary.referenceCount}`);
   }
 
   return `<p>${escapeHtml(parts.join(" | "))}</p>`;
@@ -4199,19 +4716,132 @@ function buildFindingOpinion(finding) {
 function buildJourneyOpinion(journey, relatedFindings = []) {
   const status = String(journey?.status || "completed").toLowerCase();
   if (status === "blocked" || status === "failed") {
-    return "😤 I got stuck in this flow and could not complete it.";
+    return "😤 I got stuck here and could not finish it.";
   }
   if (status === "partial") {
-    return "😕 I could do part of this flow, but a step felt unclear.";
+    return "😕 I could do some of this, but one step was unclear.";
   }
   const hasConfusion = relatedFindings.some((item) => {
     const type = String(item?.type || "").toLowerCase();
     return type === "confusion_point" || type === "frustration_point" || type === "dead_end";
   });
   if (hasConfusion) {
-    return "🙂 I completed this flow, but there was noticeable friction.";
+    return "🙂 I finished this, but part of it felt rough.";
   }
-  return "😎 This flow felt smooth and straightforward.";
+  return "😎 This part felt easy and clear.";
+}
+
+function simplifyJourneyTitle(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "Thing the tester tried";
+  }
+
+  const normalized = raw.toLowerCase();
+  if (normalized === "primary public flow") {
+    return "Main public path";
+  }
+  if (normalized === "recon and validation sweep") {
+    return "Quick site check";
+  }
+  if (normalized === "authenticated boundary check") {
+    return "Login wall check";
+  }
+
+  return raw
+    .replace(/\bauthenticated\b/gi, "logged-in")
+    .replace(/\bauth\b/gi, "login")
+    .replace(/\bboundary\b/gi, "wall")
+    .replace(/\brecon\b/gi, "quick")
+    .replace(/\bvalidation\b/gi, "check")
+    .replace(/\bsweep\b/gi, "check");
+}
+
+function simplifyJourneyText(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  const exactMatches = new Map([
+    [
+      "Primary public navigation and conversion surfaces were exercised to validate the core public user journey.",
+      "The tester looked at the main public pages and tried the main button a new visitor would click."
+    ],
+    [
+      "A lightweight sweep covered surface-level navigation, button states, and form affordances to identify blockers or unclear transitions.",
+      "The tester quickly checked the main pages, buttons, and forms to see if anything felt broken or confusing."
+    ],
+    [
+      "The worker checked the visible auth boundary but did not cross into authenticated flows because no credentials were supplied.",
+      "The tester reached the login wall but could not go farther because no login was provided."
+    ],
+    ["Open the target entry page.", "Open the first page."],
+    ["Traverse the main navigation and primary CTA path.", "Click through the main menu and the main button."],
+    [
+      "Complete the highest-value public flow available without credentials.",
+      "Finish the main thing a visitor can do without logging in."
+    ],
+    ["Map major navigation surfaces and modal entry points.", "Look at the main pages, menus, and popups."],
+    ["Probe visible forms, validation states, and CTA affordances.", "Try the visible forms and buttons."],
+    [
+      "Confirm whether the flow stays coherent without hidden prerequisites.",
+      "Check whether it still makes sense without hidden setup steps."
+    ],
+    ["Identify the primary sign-in or account gate.", "Find where login starts."],
+    [
+      "Confirm the app exposes additional authenticated-only areas.",
+      "Check if there are more pages after login."
+    ],
+    [
+      "Record the auth boundary as untested rather than forcing invalid coverage.",
+      "Mark the logged-in part as not tested instead of guessing."
+    ]
+  ]);
+  if (exactMatches.has(raw)) {
+    return exactMatches.get(raw);
+  }
+
+  return raw
+    .replace(/\bworker\b/gi, "tester")
+    .replace(/\bagent\b/gi, "tester")
+    .replace(/\bauthenticated flows\b/gi, "logged-in pages")
+    .replace(/\bauth boundary\b/gi, "login wall")
+    .replace(/\bcredentials were supplied\b/gi, "a login was provided")
+    .replace(/\bcredentials\b/gi, "login details")
+    .replace(/\bpublic navigation and conversion surfaces\b/gi, "main public pages and buttons")
+    .replace(/\bwere exercised to validate\b/gi, "were checked to see")
+    .replace(/\bcore public user journey\b/gi, "if a new visitor could use them")
+    .replace(/\bsurface-level navigation, button states, and form affordances\b/gi, "main pages, buttons, and forms")
+    .replace(/\bidentify blockers or unclear transitions\b/gi, "see if anything felt broken or confusing")
+    .replace(/\bmajor navigation surfaces and modal entry points\b/gi, "main pages, menus, and popups")
+    .replace(/\bvalidation states\b/gi, "error messages")
+    .replace(/\bCTA affordances\b/gi, "buttons")
+    .replace(/\bhidden prerequisites\b/gi, "hidden setup steps")
+    .replace(/\bprimary sign-in or account gate\b/gi, "main login step")
+    .replace(/\badditional authenticated-only areas\b/gi, "more pages after login")
+    .replace(/\brecord the auth boundary as untested rather than forcing invalid coverage\b/gi, "mark the logged-in part as not tested instead of guessing")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function simplifyJourneySummary(value, title = "") {
+  const simplified = simplifyJourneyText(redactVendorText(value || "").trim());
+  if (simplified) {
+    return simplified;
+  }
+
+  const titleHint = simplifyJourneyTitle(title).toLowerCase();
+  if (titleHint.includes("main public")) {
+    return "The tester checked the main public pages and tried the main thing a visitor would do first.";
+  }
+  if (titleHint.includes("quick site check")) {
+    return "The tester quickly looked around the site to see if the main parts made sense.";
+  }
+  if (titleHint.includes("login wall")) {
+    return "The tester reached the login area but could not go farther without a login.";
+  }
+  return "The tester tried this part of the site and saved what happened.";
 }
 
 function buildEvidenceIndexMap(report, kind) {
@@ -4259,14 +4889,11 @@ function renderEvidenceThumbnails(report, links, contextLabel, explanationText =
   const maxItems = Math.max(1, Math.min(6, Number(options?.maxItems) || 3));
   const showCaption = options?.showCaption !== false;
   const compact = options?.compact === true;
-  const screenshotIndexMap = buildEvidenceIndexMap(report, "screenshot");
+  const imageItems = resolveEvidenceImageItems(report, values, { maxItems });
   const cards = [];
 
-  for (let index = 0; index < values.length; index += 1) {
-    const url = resolveEvidenceDisplayUrl(report, "screenshot", values[index], screenshotIndexMap);
-    if (!url || !isLikelyImageUrl(url)) {
-      continue;
-    }
+  for (let index = 0; index < imageItems.length; index += 1) {
+    const url = imageItems[index].url;
     const caption = truncateText(explanationText, 110) || "Captured during tester walkthrough.";
     cards.push(`
       <figure class="evidence-thumb-card ${compact ? "compact" : ""}">
@@ -4280,9 +4907,12 @@ function renderEvidenceThumbnails(report, links, contextLabel, explanationText =
   }
 
   if (!cards.length) {
+    if (Object.prototype.hasOwnProperty.call(options, "emptyMarkup")) {
+      return String(options.emptyMarkup || "");
+    }
     return `
       <p class="evidence-unavailable-note">
-        Inline preview unavailable for this step.
+        No picture preview for this step.
       </p>
     `;
   }
@@ -4400,35 +5030,256 @@ function renderHistoricalRunBanner(newerRun) {
   `;
 }
 
-function renderSelectedHeader(report, row) {
+function getReportStatusPillClass(statusValue) {
+  const status = normalizeRunStatus(statusValue);
+  if (status === "failed") {
+    return "report-status-pill--failed";
+  }
+  if (status === "partial") {
+    return "report-status-pill--partial";
+  }
+  if (status === "completed") {
+    return "report-status-pill--completed";
+  }
+  if (status === "processing") {
+    return "report-status-pill--running";
+  }
+  if (status === "queued" || status === "retryable") {
+    return "report-status-pill--monitoring";
+  }
+  return "report-status-pill--neutral";
+}
+
+function buildReportHeroNarrative(mode, verdict, report, row, liveStatus, summaryNote) {
+  const snapshot = computeRiskSnapshot(report);
+  const environment = getActiveEnvironment();
+  const safeSummaryNote = String(summaryNote || "").trim();
+
+  if (mode === "running") {
+    return {
+      kicker: "Test running",
+      headline: buildQueueExperience(liveStatus, row).headline,
+      summary: buildRunningSummaryMessage(liveStatus, row, snapshot)
+    };
+  }
+
+  if (mode === "failed") {
+    const failure = extractRunFailureContext(report, liveStatus);
+    return {
+      kicker: "Test failed",
+      headline: failure.headline || "Run failed before coverage completed.",
+      summary: failure.detail || buildRiskSummaryMessage(mode, verdict, snapshot, environment)
+    };
+  }
+
+  if (mode === "partial") {
+    return {
+      kicker: "Test stopped early",
+      headline: "The test stopped before it could finish.",
+      summary: buildRiskSummaryMessage(mode, verdict, snapshot, environment)
+    };
+  }
+
+  if (verdict === "blocked") {
+    const blockerCount = snapshot.criticalCount || snapshot.brokenJourneys;
+    return {
+      kicker: "Big problems found",
+      headline: `${blockerCount} blocker${blockerCount === 1 ? "" : "s"} ${blockerCount === 1 ? "is" : "are"} breaking the mission.`,
+      summary: buildRiskSummaryMessage(mode, verdict, snapshot, environment)
+    };
+  }
+
+  if (verdict === "risky") {
+    return {
+      kicker: "Problems found",
+      headline: "The test finished, but it hit clear problems.",
+      summary: buildRiskSummaryMessage(mode, verdict, snapshot, environment)
+    };
+  }
+
+  return {
+    kicker: `${getEnvironmentLabel(environment)} result`,
+    headline: "The test finished without any big problems.",
+    summary: safeSummaryNote || buildRiskSummaryMessage(mode, verdict, snapshot, environment)
+  };
+}
+
+function buildReportNextAction(mode, verdict, report) {
+  const findings = sortFindingsByPriority(Array.isArray(report?.findings) ? report.findings : []);
+  const topFinding = findings[0] || null;
+
+  if (mode === "failed") {
+    return {
+      eyebrow: "Do this next",
+      title: "Fix the start of the test, then run it again.",
+      copy:
+        "This test stopped too early. If it shows no problems, that does not mean everything is fine yet.",
+      meta: ["Check the URL and login step.", "Run the same test again before you decide anything."]
+    };
+  }
+
+  if (mode === "partial") {
+    return {
+      eyebrow: "Do this next",
+      title: "Run the full test before you trust this result.",
+      copy:
+        "The tester found some useful clues, but it did not finish the full job.",
+      meta: ["Keep the same tester and goal.", "Run it again until it finishes from start to end."]
+    };
+  }
+
+  if (topFinding) {
+    const priorityScore = computeFindingPriorityScore(topFinding);
+    return {
+      eyebrow: "Do this next",
+      title: `Fix “${String(topFinding.title || topFinding.id || "top finding").trim()}” first.`,
+      copy: deriveFindingRecommendation(report, topFinding, 0),
+      meta: [
+        `Priority ${priorityScore}/100`,
+        `${normalizeSeverity(topFinding.severity).toUpperCase()} severity`,
+        formatFindingTypeLabel(topFinding.type)
+      ]
+    };
+  }
+
+  return {
+    eyebrow: "Do this next",
+    title: "Use this as your clean starting point.",
+    copy:
+      "This test did not show any big problems in the part it checked.",
+    meta: ["Open the proof if you want to double-check it.", "Run a wider test if you want to be more sure."]
+  };
+}
+
+function renderReportMissionPanel(missionModel, missionGoal) {
+  const hasSteps = missionModel.steps.length > 0;
+  const stepsMarkup = missionModel.steps.length
+    ? `
+      <ol class="report-mission-steps">
+        ${missionModel.steps
+          .map(
+            (step, index) => `
+              <li class="report-mission-step">
+                <span class="report-mission-step-index">${escapeHtml(String(index + 1))}</span>
+                <div class="report-mission-step-copy">
+                  <strong>${escapeHtml(step)}</strong>
+                </div>
+              </li>
+            `
+          )
+          .join("")}
+      </ol>
+    `
+    : `<p class="report-mission-fallback">No extra task list was saved for this test.</p>`;
+  const summaryMarkup = hasSteps
+    ? ""
+    : `<p class="report-panel-copy">${escapeHtml(missionGoal || missionModel.headline)}</p>`;
+
+  return `
+    <article class="report-hero-panel report-hero-panel--mission">
+      <div class="report-panel-head">
+        <div>
+          <p class="report-panel-kicker">Goal</p>
+          <h3 class="report-panel-title">What the tester was trying to do</h3>
+        </div>
+      </div>
+      ${summaryMarkup}
+      ${stepsMarkup}
+      ${
+        missionModel.personaDetail
+          ? `
+            <div class="report-mission-footer">
+              <span class="report-panel-eyebrow">${escapeHtml(missionModel.personaLabel || "Audience")}</span>
+              <strong>${escapeHtml(missionModel.personaDetail)}</strong>
+            </div>
+          `
+          : ""
+      }
+    </article>
+  `;
+}
+
+function renderSelectedHeader(report, row, liveStatus = null) {
   const sessionUrl = toExternalUrl(row.session_url);
   const shareUrl = buildReportShareUrl(report?.run_id || row?.run_id, row);
   const mission = resolveRunMission(row, report);
-  const personaName = mission.persona || resolvePersonaName(row);
+  const missionModel = buildDashboardMissionModel(mission, row);
   const newerRun = findNewerRunForSelection(row, report);
+  const summaryNote = redactVendorText(report?.summary?.note || "No summary note available.");
+  const mode = deriveDashboardMode(report, row, liveStatus);
+  const snapshot = computeRiskSnapshot(report);
+  const verdict = deriveRiskVerdict(mode, snapshot, report, liveStatus);
+  const verdictMeta = buildVerdictMeta(verdict, getActiveEnvironment());
+  const heroNarrative = buildReportHeroNarrative(mode, verdict, report, row, liveStatus, summaryNote);
+  const nextAction = buildReportNextAction(mode, verdict, report);
+  const projectLabel =
+    String(
+      row?.brand_name ||
+        toDisplayProjectName(row?.brand_key || "") ||
+        buildTargetLabelFromUrl(report?.target || row?.target || "") ||
+        report?.target ||
+        row?.target ||
+        report?.run_id ||
+        "Run report"
+    ).trim() || "Run report";
   const quickLinks = [
-    sessionUrl ? '<span class="inline-pill">Replay available</span>' : "",
-    shareUrl ? `<a href="${escapeHtml(shareUrl)}" target="_blank" rel="noreferrer">Open share URL</a>` : "",
+    `<span class="report-status-pill ${escapeHtml(verdictMeta.severityClass)}">${escapeHtml(verdictMeta.label)}</span>`,
+    sessionUrl ? `<a class="report-action-button" href="${escapeHtml(sessionUrl)}" target="_blank" rel="noreferrer">Watch test</a>` : "",
+    shareUrl ? `<a class="report-action-button report-action-button-primary" href="${escapeHtml(shareUrl)}" target="_blank" rel="noreferrer">Share</a>` : "",
     shareUrl
-      ? `<button type="button" class="share-link-button" data-share-url="${escapeHtml(shareUrl)}">Copy share URL</button>`
+      ? `
+        <button
+          type="button"
+          class="share-link-button app-icon-button report-share-copy"
+          data-share-url="${escapeHtml(shareUrl)}"
+          data-icon-button="1"
+          data-show-toast="1"
+          aria-label="Copy share link"
+          title="Copy share link"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9 9.75A2.75 2.75 0 0 1 11.75 7h6.5A2.75 2.75 0 0 1 21 9.75v6.5A2.75 2.75 0 0 1 18.25 19h-6.5A2.75 2.75 0 0 1 9 16.25z"></path>
+            <path d="M15 7V6.75A2.75 2.75 0 0 0 12.25 4h-6.5A2.75 2.75 0 0 0 3 6.75v6.5A2.75 2.75 0 0 0 5.75 16H6"></path>
+          </svg>
+        </button>
+      `
       : ""
   ]
     .filter(Boolean)
     .join("");
-
+  const metaPills = [
+    `<span class="report-hero-meta-pill">Test ${escapeHtml(report?.run_id || row?.run_id || "unknown")}</span>`
+  ]
+    .filter(Boolean)
+    .join("");
   return `
     ${renderHistoricalRunBanner(newerRun)}
-    <h2>${escapeHtml(report.target || row.target || row.run_id)}</h2>
-    <div class="detail-meta">
-      <span>run_id: ${escapeHtml(report.run_id)}</span>
-      <span>status: ${escapeHtml(report.status)}</span>
-      <span>brand: ${escapeHtml(row.brand_key || "n/a")}</span>
-      <span>delivered: ${escapeHtml(formatDate(report.delivered_at))}</span>
-    </div>
-    ${renderPrimaryGoalCard(mission.goal, personaName, { className: "detail-goal-card" })}
-    <p>${escapeHtml(redactVendorText(report.summary?.note || "No summary note available."))}</p>
-    ${renderTesterVoice(personaName, "🧭 I explored this flow like a real user and captured where things felt smooth or frustrating.")}
-    ${quickLinks ? `<div class="detail-link-strip">${quickLinks}</div>` : ""}
+    <section class="report-hero report-hero--${escapeHtml(verdict)}">
+      <div class="report-hero-top">
+        <div class="report-hero-topbar">
+          ${quickLinks ? `<div class="report-summary-actions report-summary-actions-hero">${quickLinks}</div>` : ""}
+        </div>
+        <div class="report-hero-copy">
+          <h2>${escapeHtml(projectLabel)}</h2>
+          <p class="report-hero-headline">${escapeHtml(heroNarrative.headline)}</p>
+          <p class="report-hero-summary">${escapeHtml(heroNarrative.summary)}</p>
+          <div class="report-hero-meta">${metaPills}</div>
+        </div>
+      </div>
+      <div class="report-hero-panels">
+        ${renderReportMissionPanel(missionModel, mission.goal)}
+        ${renderCounts(report, row, liveStatus)}
+        <article class="report-hero-panel report-hero-panel--next">
+          <div class="report-panel-head">
+            <div>
+              <p class="report-panel-kicker">${escapeHtml(nextAction.eyebrow)}</p>
+              <h3 class="report-panel-title">${escapeHtml(nextAction.title)}</h3>
+            </div>
+          </div>
+          <p class="report-panel-copy report-next-step-copy">${escapeHtml(redactVendorText(nextAction.copy))}</p>
+        </article>
+      </div>
+    </section>
   `;
 }
 
@@ -4471,85 +5322,109 @@ function renderLiveWatch(runId, row) {
     : "<p>Waiting for first worker event...</p>";
 
   return `
-    <div class="section-block">
-      <h3>Live Watch</h3>
+    <section class="section-block report-live-watch">
+      <h3>Live test</h3>
       <p>
-        Queue status: <strong>${escapeHtml(queueStatus || "processing")}</strong>
+        Status: <strong>${escapeHtml(queueStatus || "processing")}</strong>
         ${progress ? ` · ${escapeHtml(String(progress.percent ?? 0))}%` : ""}
       </p>
-      <p>${escapeHtml(progress?.message || "QA worker is still exploring the product.")}</p>
+      <p>${escapeHtml(progress?.message || "The tester is still moving through the site.")}</p>
       ${previewMarkup}
-      <p>Draft findings: ${escapeHtml(String(findingsCount))} · Draft journeys: ${escapeHtml(String(journeysCount))}</p>
+      <p>Problems so far: ${escapeHtml(String(findingsCount))} · Things tried so far: ${escapeHtml(String(journeysCount))}</p>
       ${eventsMarkup}
-    </div>
+    </section>
   `;
 }
 
-function renderCounts(report) {
-  const counts = report.summary?.counts || {};
-  const coverage = report.summary?.coverage && typeof report.summary.coverage === "object" ? report.summary.coverage : {};
-  const findingCount = Array.isArray(report.findings) ? report.findings.length : 0;
-  const journeyCount = Array.isArray(report.tested_journeys) ? report.tested_journeys.length : 0;
-  const pagesVisited = Math.max(0, Number(coverage.pages_visited) || 0);
-  const riskScore = Number(report.summary?.risk_score) || 0;
-  const riskBand = riskScore >= 70 ? "High" : riskScore >= 40 ? "Medium" : "Low";
+function renderCounts(report, row = {}, liveStatus = null) {
+  const counts = report?.summary?.counts || {};
+  const snapshot = computeRiskSnapshot(report);
+  const mode = deriveDashboardMode(report, row, liveStatus);
+  const metrics = buildHeroMetricModel(mode, report, snapshot, liveStatus, row);
+  const badges = [
+    { label: "bugs", value: counts.bug || 0 },
+    { label: "friction", value: counts.frustration_point || 0 },
+    { label: "confusion", value: counts.confusion_point || 0 },
+    { label: "dead ends", value: counts.dead_end || 0 },
+    { label: "performance", value: counts.performance_issue || 0 },
+    { label: "a11y", value: counts.accessibility_issue || 0 },
+    { label: "copy", value: counts.copy_issue || 0 }
+  ]
+    .filter((item) => Number(item.value) > 0)
+    .slice(0, 5);
+
   return `
-    <div class="key-grid" id="section-metrics">
-      <div class="key-card" title="Distinct product issues discovered during this run.">
-        <strong>${escapeHtml(findingCount)}</strong>
-        <span>Findings</span>
+    <article class="report-hero-panel report-overview-panel" id="section-snapshot">
+      <div class="report-panel-head">
+        <div>
+          <p class="report-panel-kicker">Quick facts</p>
+          <h3 class="report-panel-title">Simple facts from this test</h3>
+        </div>
       </div>
-      <div class="key-card" title="User journeys that were exercised end-to-end or partially.">
-        <strong>${escapeHtml(journeyCount)}</strong>
-        <span>Journeys</span>
+      <div class="report-overview-grid">
+        ${metrics
+          .map(
+            (metric) => `
+              <div class="report-overview-card">
+                <span>${escapeHtml(metric.label)}</span>
+                <strong>${escapeHtml(metric.value)}</strong>
+              </div>
+            `
+          )
+          .join("")}
       </div>
-      <div class="key-card" title="Unique product pages or surfaces visited during this run.">
-        <strong>${escapeHtml(pagesVisited)}</strong>
-        <span>Pages Visited</span>
-      </div>
-      <div class="key-card" title="Estimated user risk for this run based on severity and journey impact.">
-        <strong>${escapeHtml(riskScore)}</strong>
-        <span>Risk Score · ${escapeHtml(riskBand)}</span>
-      </div>
-    </div>
-    <div class="badges">
-      <span class="badge">bugs ${escapeHtml(counts.bug || 0)}</span>
-      <span class="badge">friction ${escapeHtml(counts.frustration_point || 0)}</span>
-      <span class="badge">confusion ${escapeHtml(counts.confusion_point || 0)}</span>
-      <span class="badge">dead_end ${escapeHtml(counts.dead_end || 0)}</span>
-      <span class="badge">performance ${escapeHtml(counts.performance_issue || 0)}</span>
-      <span class="badge">a11y ${escapeHtml(counts.accessibility_issue || 0)}</span>
-      <span class="badge">copy ${escapeHtml(counts.copy_issue || 0)}</span>
-    </div>
+      ${
+        badges.length
+          ? `
+            <div class="report-overview-badges">
+              ${badges
+                .map(
+                  (badge) => `
+                    <span class="report-overview-badge">${escapeHtml(badge.label)} ${escapeHtml(String(badge.value))}</span>
+                  `
+                )
+                .join("")}
+            </div>
+          `
+          : ""
+      }
+    </article>
   `;
 }
 
-function renderQuickJumpNav() {
-  return `
-    <nav class="report-quick-nav" aria-label="Report sections">
-      <a href="#section-priority">Top fixes</a>
-      <a href="#section-replay">Replay</a>
-      <a href="#section-findings">Findings</a>
-      <a href="#section-journeys">Journeys</a>
-    </nav>
-  `;
-}
-
-function renderPrioritySummary(report) {
+function renderPrioritySummary(report, mode = "completed") {
   const findings = sortFindingsByPriority(Array.isArray(report.findings) ? report.findings : []);
   const topFindings = findings.slice(0, 3);
   if (!topFindings.length) {
+    const isWarning = mode === "failed" || mode === "partial";
     return `
-      <div class="section-block" id="section-priority">
-        <h3>What To Fix First</h3>
-        <p>No high-risk blockers were detected in this run.</p>
-      </div>
+      <section class="section-priority" id="section-priority">
+        <div class="report-section-head">
+          <h3>Fix first</h3>
+          <p>${escapeHtml(
+            isWarning
+              ? "This test stopped early, so no saved problems does not mean the site is clean."
+              : "This test did not show any big problems."
+          )}</p>
+        </div>
+        <div class="report-empty-card ${escapeHtml(isWarning ? "report-empty-card--warning" : "report-empty-card--success")}">
+          <strong>${escapeHtml(isWarning ? "Run it again before you decide anything." : "Nothing urgent stands out here.")}</strong>
+          <p>${escapeHtml(
+            isWarning
+              ? "Use the proof below to fix the start of the test, then run the whole thing again."
+              : "This part looks okay. Check the proof or run a bigger test if you want to be more sure."
+          )}</p>
+        </div>
+      </section>
     `;
   }
 
   return `
-    <div class="section-block section-priority" id="section-priority">
-      <h3>What To Fix First</h3>
+    <section class="section-priority" id="section-priority">
+      <div class="report-section-head">
+        <h3>Fix first</h3>
+        <p>These are the biggest problems, so you do not have to read the whole page first.</p>
+      </div>
       <ol class="priority-list">
         ${topFindings
           .map((finding) => {
@@ -4566,7 +5441,7 @@ function renderPrioritySummary(report) {
           })
           .join("")}
       </ol>
-    </div>
+    </section>
   `;
 }
 
@@ -4648,25 +5523,25 @@ function renderReplayReview(report, playerId) {
                     Number.isInteger(marker.framePosition) ? marker.framePosition + 1 : 1
                   )}</span>
                 </button>
-                <a href="#${escapeHtml(marker.id)}">Open finding</a>
+                <a href="#${escapeHtml(marker.id)}">Open problem</a>
               </li>
             `
           )
           .join("")}
       </ol>
     `
-    : "<p class=\"evidence-note\">No finding-linked replay markers available for this run.</p>";
+    : "<p class=\"evidence-note\">No saved jump points for problems in this test.</p>";
 
   return `
     <div class="section-block replay-review" id="section-replay">
-      <h3>Replay Review</h3>
-      <p>Jump to exact captured moments linked to findings.</p>
+      <h3>Saved pictures</h3>
+      <p>These are the pictures the tester saved during the test.</p>
       <div class="replay-review-layout">
         <div class="replay-review-player">
           ${renderReplayPlayer(view, { playerId: safePlayerId, frameLimit: 24 })}
         </div>
         <aside class="replay-review-markers">
-          <h4>Finding Markers</h4>
+          <h4>Jump to a problem</h4>
           ${markersMarkup}
         </aside>
       </div>
@@ -4677,134 +5552,392 @@ function renderReplayReview(report, playerId) {
 function renderJourneys(report, row = {}) {
   const journeys = Array.isArray(report.tested_journeys) ? report.tested_journeys : [];
   if (!journeys.length) {
-    return `<div class="section-block" id="section-journeys"><h3>Tested Journeys</h3><p>No journeys recorded.</p></div>`;
+    return `<div class="section-block" id="section-journeys"><h3>What the tester tried</h3><p>We did not save this part for this test.</p></div>`;
   }
 
   const personaName = resolvePersonaName(row);
   const findings = Array.isArray(report.findings) ? report.findings : [];
-  return `
-    <div class="section-block" id="section-journeys">
-      <h3>Tested Journeys</h3>
-      ${journeys
-        .map(
-          (journey) => {
-            const satisfaction = computeJourneySatisfactionScore(report, journey);
-            const journeyStatus = String(journey?.status || "completed").toLowerCase();
-            const journeyId = String(journey?.id || journey?.journey_id || journey?.journeyId || "").toLowerCase();
-            const relatedFindings = findings.filter((finding) => {
-              const findingJourneyId = String(finding?.journey_id || finding?.journeyId || finding?.journey || "").toLowerCase();
-              return journeyId && findingJourneyId && findingJourneyId.includes(journeyId);
-            });
-            const voice = buildJourneyOpinion(journey, relatedFindings);
-            const shouldShowVoice = journeyStatus !== "completed" || relatedFindings.length > 0;
-            const anchorId = `journey-${toAnchorToken(journey.name || journey.id || journeyId || "journey")}`;
-            const screenshotMarkup = renderEvidenceThumbnails(
-              report,
-              journey?.evidence?.screenshots || [],
-              journey?.name || journey?.id || "Journey",
-              journey?.summary || ""
-            );
-            return `
-              <article id="${escapeHtml(anchorId)}">
-                <h4>${escapeHtml(journey.name || journey.id || "Journey")}</h4>
-                <p>Status: ${escapeHtml(journey.status || "completed")} · Satisfaction: ${escapeHtml(
-                  String(satisfaction)
-                )}/100</p>
-                <p>${escapeHtml(redactVendorText(journey.summary || ""))}</p>
-                ${shouldShowVoice ? renderTesterVoice(personaName, voice) : ""}
-                ${screenshotMarkup}
-                <ul>${(journey.steps || []).map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ul>
-                ${renderLinkRow(journey.evidence?.screenshots || [], "Screenshot")}
-                ${renderLinkRow(journey.evidence?.videos || [], "Video")}
-              </article>
+  const getRelatedFindings = (journey) => {
+    const journeyTokens = [
+      journey?.id,
+      journey?.journey_id,
+      journey?.journeyId,
+      journey?.name,
+      journey?.flow,
+      journey?.flow_id,
+      journey?.flowId
+    ]
+      .map((item) => String(item || "").trim().toLowerCase())
+      .filter(Boolean);
+    const journeyPages = Array.isArray(journey?.pages)
+      ? journey.pages.map((page) => String(page || "").trim().toLowerCase()).filter(Boolean)
+      : [];
+
+    return findings.filter((finding) => {
+      const findingTokens = [
+        finding?.journey_id,
+        finding?.journeyId,
+        finding?.journey,
+        finding?.flow_id,
+        finding?.flowId,
+        finding?.flow
+      ]
+        .map((item) => String(item || "").trim().toLowerCase())
+        .filter(Boolean);
+      const findingPage = String(finding?.page || finding?.route || "").trim().toLowerCase();
+      const hasTokenMatch =
+        Boolean(journeyTokens.length) &&
+        findingTokens.some((token) => journeyTokens.some((journeyToken) => token.includes(journeyToken)));
+      const hasPageMatch =
+        Boolean(findingPage) &&
+        journeyPages.some(
+          (journeyPage) => findingPage.includes(journeyPage) || journeyPage.includes(findingPage)
+        );
+      return hasTokenMatch || hasPageMatch;
+    });
+  };
+  const getTone = (status, satisfaction, issueCount) => {
+    const normalized = normalizeRunStatus(status) || String(status || "").toLowerCase();
+    if (normalized === "blocked" || normalized === "failed" || satisfaction < 45) {
+      return "critical";
+    }
+    if (normalized === "partial" || issueCount > 1 || satisfaction < 76) {
+      return "caution";
+    }
+    return "clear";
+  };
+  const getCardPosition = (index) => {
+    const waveOffsets = [112, 338, 188, 414];
+    return {
+      x: 132 + index * 418,
+      y: waveOffsets[index % waveOffsets.length] + Math.floor(index / waveOffsets.length) * 52
+    };
+  };
+  const renderConnectors = (layouts) => {
+    if (!Array.isArray(layouts) || layouts.length < 2) {
+      return "";
+    }
+    return layouts
+      .slice(0, -1)
+      .map((layout, index) => {
+        const next = layouts[index + 1];
+        const startX = layout.x + 356;
+        const startY = layout.y + 152;
+        const endX = next.x + 8;
+        const endY = next.y + 152;
+        const deltaX = endX - startX;
+        const deltaY = endY - startY;
+        const length = Math.max(48, Math.round(Math.hypot(deltaX, deltaY)));
+        const angle = (Math.atan2(deltaY, deltaX) * 180) / Math.PI;
+        return `
+          <div
+            class="journey-canvas-link"
+            aria-hidden="true"
+            style="left:${Math.round(startX)}px; top:${Math.round(startY)}px; width:${length}px; transform:rotate(${angle.toFixed(2)}deg);"
+          ></div>
+        `;
+      })
+      .join("");
+  };
+
+  const cardData = journeys.map((journey, index) => {
+    const satisfaction = computeJourneySatisfactionScore(report, journey);
+    const journeyStatus = String(journey?.status || "completed").toLowerCase();
+    const journeyId = String(journey?.id || journey?.journey_id || journey?.journeyId || "").toLowerCase();
+    const relatedFindings = getRelatedFindings(journey);
+    const voice = buildJourneyOpinion(journey, relatedFindings);
+    const shouldShowVoice = journeyStatus !== "completed" || relatedFindings.length > 0;
+    const anchorId = `journey-${toAnchorToken(journey.name || journey.id || journeyId || `journey-${index + 1}`)}`;
+    const displayTitle = simplifyJourneyTitle(journey?.name || journey?.id || "Thing the tester tried");
+    const screenshots = Array.isArray(journey?.evidence?.screenshots) ? journey.evidence.screenshots : [];
+    const videos = Array.isArray(journey?.evidence?.videos) ? journey.evidence.videos : [];
+    const screenshotSummary = getEvidenceAttachmentSummary(report, "screenshot", screenshots);
+    const videoSummary = getEvidenceAttachmentSummary(report, "video", videos);
+    const compactPreviewMarkup = renderEvidenceThumbnails(
+      report,
+      screenshots,
+      displayTitle,
+      simplifyJourneySummary(journey?.summary || "", displayTitle),
+      { maxItems: 1, compact: true, showCaption: false, emptyMarkup: "" }
+    );
+    const stepCount = Array.isArray(journey?.steps) ? journey.steps.length : 0;
+    const steps = Array.isArray(journey?.steps)
+      ? journey.steps
+          .slice(0, 5)
+          .map((step) => simplifyJourneyText(step))
+          .filter(Boolean)
+      : [];
+    const observationProof = Array.isArray(journey?.observations)
+      ? journey.observations.map((item) => String(item || "").trim()).find(Boolean) || ""
+      : "";
+    const proofCount =
+      screenshotSummary.renderableCount +
+      screenshotSummary.referenceCount +
+      videoSummary.renderableCount +
+      videoSummary.referenceCount +
+      (observationProof ? 1 : 0);
+    const linksMarkup = [
+      screenshots.length ? renderLinkRow(report, screenshots, "Screenshot") : "",
+      videos.length ? renderLinkRow(report, videos, "Video") : ""
+    ]
+      .filter(Boolean)
+      .join("");
+    const proofMarkup = compactPreviewMarkup
+      ? `
+          <div class="journey-flow-proof">
+            <div class="journey-flow-proof-head">
+              <span>Proof</span>
+              <small>${escapeHtml(proofCount === 1 ? "1 proof item" : `${proofCount} proof items`)}</small>
+            </div>
+            ${compactPreviewMarkup}
+          </div>
+        `
+      : observationProof
+        ? `
+            <div class="journey-flow-proof journey-flow-proof--text">
+              <div class="journey-flow-proof-head">
+                <span>Proof</span>
+                <small>${escapeHtml(proofCount === 1 ? "1 proof item" : `${proofCount} proof items`)}</small>
+              </div>
+              <p class="journey-flow-proof-copy">${escapeHtml(truncateText(observationProof, 220))}</p>
+            </div>
+          `
+        : linksMarkup
+          ? `
+              <div class="journey-flow-proof journey-flow-proof--links">
+                <div class="journey-flow-proof-head">
+                  <span>Proof</span>
+                  <small>${escapeHtml(proofCount === 1 ? "1 proof item" : `${proofCount} proof items`)}</small>
+                </div>
+                <div class="journey-flow-links">${linksMarkup}</div>
+              </div>
+            `
+          : `
+              <div class="journey-flow-proof journey-flow-proof--empty">
+                <div class="journey-flow-proof-head">
+                  <span>Proof</span>
+                  <small>No proof saved</small>
+                </div>
+                <p class="journey-flow-proof-copy">No screenshot, video, or saved error text was attached to this try.</p>
+              </div>
             `;
+    const position = getCardPosition(index);
+    const tone = getTone(journeyStatus, satisfaction, relatedFindings.length);
+    const summaryText = truncateText(simplifyJourneySummary(journey?.summary || "", displayTitle), 220);
+    return {
+      position,
+      markup: `
+        <article class="journey-flow-card journey-flow-card--${tone}" id="${escapeHtml(anchorId)}" style="left:${position.x}px; top:${position.y}px;">
+          <div class="journey-flow-card-head">
+            <div class="journey-flow-card-title">
+              <span class="journey-flow-kicker">Try ${index + 1}</span>
+              <h4>${escapeHtml(displayTitle)}</h4>
+            </div>
+            <div class="journey-flow-score">
+              <span class="journey-flow-status">${escapeHtml(journey.status || "completed")}</span>
+              <strong>${escapeHtml(String(satisfaction))}</strong>
+              <span>score</span>
+            </div>
+          </div>
+          <p class="journey-flow-summary">${escapeHtml(summaryText)}</p>
+          <div class="journey-flow-step-strip">
+            ${
+              steps.length
+                ? steps
+                    .map(
+                      (step, stepIndex) => `
+                        <div class="journey-flow-step">
+                          <span>${stepIndex + 1}</span>
+                          <p>${escapeHtml(truncateText(String(step || ""), 72))}</p>
+                        </div>
+                      `
+                    )
+                    .join("")
+                : `
+                    <div class="journey-flow-step journey-flow-step--empty">
+                      <p>We did not save the step-by-step list for this one.</p>
+                    </div>
+                  `
+            }
+          </div>
+          ${
+            shouldShowVoice
+              ? `
+                  <div class="journey-flow-note">
+                    <span>${escapeHtml(personaName)}</span>
+                    <p>${escapeHtml(voice)}</p>
+                  </div>
+                `
+              : ""
           }
+          ${proofMarkup}
+          <div class="journey-flow-meta">
+            <span>${escapeHtml(String(stepCount))} step${stepCount === 1 ? "" : "s"} saved</span>
+            <span>${escapeHtml(String(relatedFindings.length))} problem${relatedFindings.length === 1 ? "" : "s"} linked</span>
+            <span>${escapeHtml(String(proofCount))} proof item${proofCount === 1 ? "" : "s"}</span>
+          </div>
+        </article>
+      `
+    };
+  });
+  const layouts = cardData.map((item) => item.position);
+  const stageWidth = Math.max(1760, ...layouts.map((layout) => layout.x + 520));
+  const stageHeight = Math.max(980, ...layouts.map((layout) => layout.y + 620));
+  return `
+    <section class="report-journey-section" id="section-journeys">
+      <div class="report-journey-head">
+        <div>
+          <p class="report-panel-kicker">This test</p>
+          <h3>What the tester tried</h3>
+        </div>
+        <p>This is a map of the test. Each card is one thing the tester tried to do, like sign up or make a video. It helps you see what they tried first, what they tried next, and where something went wrong.</p>
+      </div>
+      <div class="journey-canvas-shell journey-canvas-shell--wide">
+        <div
+          class="journey-canvas-viewport"
+          data-journey-canvas="${escapeHtml(`journey-canvas-${toAnchorToken(report?.run_id || row?.run_id || "journeys")}`)}"
+          data-initial-left="88"
+          data-initial-top="72"
+          tabindex="0"
+          aria-label="Map of what the tester tried in this run. Drag to look around."
+        >
+          <div class="journey-canvas-stage" style="--journey-stage-width:${stageWidth}px; --journey-stage-height:${stageHeight}px;">
+            <div class="journey-canvas-label journey-canvas-label--origin" aria-hidden="true">Start</div>
+            <div class="journey-canvas-label journey-canvas-label--outcome" aria-hidden="true">What happened</div>
+            ${renderConnectors(layouts)}
+            ${cardData.map((item) => item.markup).join("")}
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderSecondaryReportSections(report, row, replayPlayerId) {
+  const hasReplay = buildEvidenceView(report).screenshots.length > 0;
+  const hasCoverage = Boolean(report && typeof report.feature_inventory === "object");
+  const replayMarkup = hasReplay ? renderReplayReview(report, replayPlayerId) : "";
+  const coverageMarkup = hasCoverage ? renderFeatureInventory(report) : "";
+  const sections = [
+    replayMarkup ? { title: "Saved pictures", body: replayMarkup } : null,
+    coverageMarkup ? { title: "Parts checked", body: coverageMarkup } : null
+  ].filter(Boolean);
+
+  if (!sections.length) {
+    return "";
+  }
+
+  return `
+    <section class="report-secondary-sections" id="section-evidence">
+      <div class="report-section-head">
+        <h3>Proof</h3>
+        <p>This section shows the saved pictures and which parts of the site the tester reached.</p>
+      </div>
+      ${sections
+        .map(
+          (section, index) => `
+            <details class="report-secondary-panel" ${index === 0 ? "open" : ""}>
+              <summary>${escapeHtml(section.title)}</summary>
+              <div class="report-secondary-panel-body">${section.body}</div>
+            </details>
+          `
         )
         .join("")}
-    </div>
+    </section>
   `;
 }
 
 function renderFindings(report, row = {}, replayPlayerId = "") {
   const findings = sortFindingsByPriority(Array.isArray(report.findings) ? report.findings : []);
   if (!findings.length) {
-    return `<div class="section-block" id="section-findings"><h3>Findings</h3><p>No findings were recorded in this run.</p></div>`;
+    return "";
   }
 
-  const personaName = resolvePersonaName(row);
   const screenshotIndexMap = buildEvidenceIndexMap(report, "screenshot");
   return `
-    <div class="section-block" id="section-findings">
-      <h3>Findings</h3>
-      ${findings
+    <section class="report-findings-ledger" id="section-findings">
+      <div class="report-section-head">
+        <h3>Problems</h3>
+        <p>${escapeHtml(String(findings.length))} problem${findings.length === 1 ? "" : "s"}, ordered from biggest to smallest.</p>
+      </div>
+      <div class="finding-ledger-list">
+        ${findings
         .map(
           (finding, findingIndex) => {
             const emotion = getEmotionVisual(finding?.emotional_reaction?.primary);
-            const typeVisual = getFindingTypeVisual(finding?.type);
-            const opinion = buildFindingOpinion(finding);
+            const emotionIntensity = Math.max(0, Number(finding?.emotional_reaction?.intensity) || 0);
+            const typeLabel = formatFindingTypeLabel(finding?.type);
+            const severity = normalizeSeverity(finding?.severity);
             const priorityScore = computeFindingPriorityScore(finding);
             const recommendation = deriveFindingRecommendation(report, finding, findingIndex);
+            const proofModel = buildFindingProofModel(report, finding, { maxItems: 1 });
+            const journeyLabel = getFindingJourneyLabel(finding);
+            const confidencePct = toConfidencePercent(finding?.confidence);
             const findingAnchorId = `finding-${toAnchorToken(finding?.id || finding?.title || `finding-${findingIndex + 1}`)}`;
             const findingFrameIndex = findFirstEvidenceIndex(finding?.evidence?.screenshots || [], screenshotIndexMap);
-            const jumpButtonMarkup =
-              replayPlayerId && Number.isInteger(findingFrameIndex) && findingFrameIndex >= 0
-                ? `<button type="button" class="finding-jump-button" data-replay-target="${escapeHtml(
-                    replayPlayerId
-                  )}" data-frame-index="${escapeHtml(findingFrameIndex)}">Jump To Replay Frame ${escapeHtml(
-                    findingFrameIndex + 1
-                  )}</button>`
-                : "";
-            const screenshotMarkup = renderEvidenceThumbnails(
-              report,
-              finding?.evidence?.screenshots || [],
-              finding?.title || finding?.id || "Finding",
-              finding?.observed_behavior || finding?.title || ""
-            );
+            const modalDataAttributes = buildFindingModalDataAttributes(finding, findingIndex);
             return `
-              <details class="finding-card" id="${escapeHtml(findingAnchorId)}" open>
-                <summary>
-                  <span class="finding-summary-title">
-                    <span class="finding-type-chip ${escapeHtml(typeVisual.toneClass)}" aria-hidden="true">${escapeHtml(typeVisual.icon)}</span>
-                    <span>${escapeHtml(finding.title || finding.id)}</span>
-                  </span>
-                  <span class="finding-summary-meta">
-                    ${escapeHtml(typeVisual.label)} · Priority ${escapeHtml(priorityScore)}/100 · ${escapeHtml(String(finding.severity || "medium").toUpperCase())}
-                  </span>
-                </summary>
-                <div class="finding-card-body">
-                  ${jumpButtonMarkup}
-                  ${renderTesterVoice(personaName, opinion, `${emotion.emoji} ${emotion.label}`)}
-                  <div class="finding-section">
-                    <span class="finding-section-label">Description</span>
-                    <p><strong>Expected:</strong> ${escapeHtml(finding.expected_behavior)}</p>
-                    <p><strong>Observed:</strong> ${escapeHtml(redactVendorText(finding.observed_behavior))}</p>
+              <article class="finding-ledger-item" id="${escapeHtml(findingAnchorId)}">
+                <div class="finding-ledger-head">
+                  <div class="finding-ledger-heading">
+                    <h4>${escapeHtml(finding.title || finding.id || `Finding ${findingIndex + 1}`)}</h4>
+                    <p class="finding-ledger-meta">
+                      ${escapeHtml(typeLabel)} · ${escapeHtml(journeyLabel)} · Priority ${escapeHtml(String(priorityScore))}/100
+                    </p>
                   </div>
-                  <div class="finding-section finding-section-recommendation">
-                    <div class="finding-section-head">
-                      <span class="finding-section-label">Recommendation</span>
-                      ${renderLlmCopyButtons("finding", { findingIndex })}
-                    </div>
-                    <p>${escapeHtml(recommendation)}</p>
-                  </div>
-                  <div class="finding-section">
-                    <span class="finding-section-label">Evidence</span>
-                    ${screenshotMarkup}
-                    ${renderLinkRow(finding.evidence?.screenshots || [], "Screenshot")}
-                    ${renderLinkRow(finding.evidence?.videos || [], "Video")}
-                  </div>
-                  <div class="finding-section finding-section-meta">
-                    <span class="finding-section-label">Confidence</span>
-                    <p>Emotion: ${escapeHtml(finding.emotional_reaction?.primary)} (${escapeHtml(
-                      finding.emotional_reaction?.intensity
-                    )}/5) · Confidence: ${escapeHtml(finding.confidence)}</p>
+                  <div class="finding-ledger-badges">
+                    <span class="issue-severity ${escapeHtml(`severity-${severity}`)}">${escapeHtml(severity.toUpperCase())}</span>
+                    <span class="app-inline-pill">${escapeHtml(proofModel.label)}</span>
                   </div>
                 </div>
-              </details>
+                <div class="finding-ledger-body">
+                  ${renderFindingProofCard(report, finding, finding?.title || finding?.id || "Finding", {
+                    maxItems: 1,
+                    replayFrame: findingFrameIndex,
+                    replayTarget: replayPlayerId
+                  })}
+                  <div class="finding-ledger-state">
+                    <div class="finding-ledger-stat">
+                      <span>Tester felt</span>
+                      <strong>${escapeHtml(`${emotion.emoji} ${emotion.label}`)}</strong>
+                      <small>${escapeHtml(`${emotionIntensity}/5`)}</small>
+                    </div>
+                    <div class="finding-ledger-stat">
+                      <span>How sure we are</span>
+                      <strong>${escapeHtml(`${confidencePct}%`)}</strong>
+                      <small>${escapeHtml(proofModel.state === "verified" ? "Picture saved" : proofModel.state === "fallback" ? "Using a test picture" : "No picture saved")}</small>
+                    </div>
+                    <div class="finding-ledger-stat">
+                      <span>Part of the test</span>
+                      <strong>${escapeHtml(journeyLabel)}</strong>
+                      <small>${escapeHtml(typeLabel)}</small>
+                    </div>
+                  </div>
+                  <div class="finding-ledger-compare">
+                    <section class="finding-ledger-copy">
+                      <span class="finding-section-label">Should have happened</span>
+                      <p>${escapeHtml(finding.expected_behavior || "We did not save this part.")}</p>
+                    </section>
+                    <section class="finding-ledger-copy finding-ledger-copy-observed">
+                      <span class="finding-section-label">What happened</span>
+                      <p>${escapeHtml(redactVendorText(finding.observed_behavior || "We did not save this part."))}</p>
+                    </section>
+                  </div>
+                  <div class="finding-ledger-copy">
+                    <span class="finding-section-label">Fix idea</span>
+                    <p>${escapeHtml(recommendation)}</p>
+                  </div>
+                  <div class="finding-ledger-actions">
+                    <button type="button" ${modalDataAttributes}>More</button>
+                  </div>
+                </div>
+              </article>
             `;
           }
         )
         .join("")}
-    </div>
+      </div>
+    </section>
   `;
 }
 
@@ -4835,23 +5968,23 @@ function renderFeatureInventory(report) {
           return `<li>${escapeHtml(label)} (${escapeHtml(String(interactions))} interactions)</li>`;
         })
         .join("")}</ul>`
-    : "<p>No feature surfaces visited.</p>";
+    : "<p>No parts of the site were opened.</p>";
 
   const blockedMarkup = blockedFeatures.length
     ? `<ul>${blockedFeatures
         .map((feature) => `<li>${escapeHtml(feature?.label || "Feature")} · ${escapeHtml(feature?.reason || "blocked")}</li>`)
         .join("")}</ul>`
-    : "<p>No blocked feature candidates.</p>";
+    : "<p>No blocked parts were saved.</p>";
 
   return `
     <div class="section-block">
-      <h3>Feature Coverage</h3>
-      <p>Discovered: ${escapeHtml(String(discovered))} · Attempted: ${escapeHtml(String(attempted))} · Visited: ${escapeHtml(
+      <h3>Parts checked</h3>
+      <p>Seen: ${escapeHtml(String(discovered))} · Tried: ${escapeHtml(String(attempted))} · Opened: ${escapeHtml(
         String(visited)
       )} · Blocked: ${escapeHtml(String(blocked))}</p>
-      <h4>Visited Features</h4>
+      <h4>Opened parts</h4>
       ${visitedMarkup}
-      <h4>Blocked Features</h4>
+      <h4>Blocked parts</h4>
       ${blockedMarkup}
     </div>
   `;
@@ -4958,6 +6091,15 @@ function humanizeFailureCode(code) {
   if (!normalized) {
     return "";
   }
+  if (normalized === "ERR_NAME_NOT_RESOLVED" || normalized === "NET::ERR_NAME_NOT_RESOLVED") {
+    return "The target URL could not be reached.";
+  }
+  if (normalized === "ERR_CONNECTION_REFUSED" || normalized === "NET::ERR_CONNECTION_REFUSED") {
+    return "The target site refused the connection.";
+  }
+  if (normalized === "ERR_CONNECTION_TIMED_OUT" || normalized === "NET::ERR_CONNECTION_TIMED_OUT") {
+    return "The target site did not respond in time.";
+  }
   if (normalized === "LOGIN_TRIGGER_NOT_FOUND") {
     return "No login or sign-up entry point was found.";
   }
@@ -4973,14 +6115,75 @@ function humanizeFailureCode(code) {
     .replace(/^\w/, (match) => match.toUpperCase());
 }
 
+function cleanAutomationErrorText(value) {
+  return String(value || "")
+    .replace(/\u001b\[[0-9;]*m/g, "")
+    .replace(/\b(?:page\.goto|locator\.[a-z]+|page\.waitFor[a-zA-Z]+)\s*:\s*/gi, "")
+    .replace(/\bCall log\s*:[\s\S]*$/i, "")
+    .replace(/,\s*waiting until\s*["'][^"']+["']/gi, "")
+    .replace(/\bwaiting until\s*["'][^"']+["']/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function humanizeFailureExcerpt(message, options = {}) {
+  const cleaned = cleanAutomationErrorText(message);
+  if (!cleaned) {
+    return "";
+  }
+
+  const lowered = cleaned.toLowerCase();
+  if (/err_name_not_resolved|name[_\s-]*not[_\s-]*resolved/.test(lowered)) {
+    return "The target URL could not be opened because the host name did not resolve. Check that the URL is complete and publicly reachable.";
+  }
+  if (/err_connection_refused|connection refused/.test(lowered)) {
+    return "The target site refused the connection before the run could continue.";
+  }
+  if (/err_connection_timed_out|timed out/.test(lowered)) {
+    return "The target site did not respond before the navigation timeout.";
+  }
+  if (/no visible login\/sign up trigger found/.test(lowered)) {
+    return "The worker reached the landing page but could not find a visible way into login or sign-up.";
+  }
+  if (/intercepts pointer events|role=\"dialog\"/.test(lowered)) {
+    return "A blocking dialog covered the page and prevented the next action.";
+  }
+  if (/otp/.test(lowered) && /not found|missing|blocked/.test(lowered)) {
+    return "The run was blocked before it could complete OTP verification.";
+  }
+  if (/navigation/.test(lowered) && /https?:\/\//.test(lowered)) {
+    return "The run could not open the target page.";
+  }
+
+  const maxLength = Math.max(80, Number(options.maxLength) || 220);
+  return truncateText(cleaned, maxLength);
+}
+
+function humanizeFailureClassification(classification) {
+  const value = String(classification || "").trim().toLowerCase();
+  if (!value) {
+    return "";
+  }
+  if (value === "failed_pre_submit") {
+    return "The run failed before it could enter the requested flow.";
+  }
+  if (value === "navigation_failed") {
+    return "The run failed while trying to open the target page.";
+  }
+  return value
+    .replaceAll("_", " ")
+    .replace(/^\w/, (match) => match.toUpperCase());
+}
+
 function extractRunFailureContext(report, liveStatus) {
   const safeReport = report && typeof report === "object" ? report : {};
   const metadata = safeReport.metadata && typeof safeReport.metadata === "object" ? safeReport.metadata : {};
   const failureEvent = getLatestRunLogEvent(liveStatus, "run_failed");
   const errorCode = String(failureEvent?.data?.error || metadata.failure_code || "").trim();
   const classification = String(failureEvent?.data?.classification || metadata.classification || "").trim();
-  const excerpt = String(metadata.raw_agent_output_excerpt || "").trim();
+  const rawExcerpt = String(metadata.raw_agent_output_excerpt || "").trim();
   const summaryNote = String(safeReport.summary?.note || "").trim();
+  const excerpt = humanizeFailureExcerpt(rawExcerpt);
 
   let headline = humanizeFailureCode(errorCode);
   let detail = "";
@@ -4988,7 +6191,7 @@ function extractRunFailureContext(report, liveStatus) {
   if (errorCode === "LOGIN_TRIGGER_NOT_FOUND") {
     detail =
       "The worker reached the landing page, dismissed overlays, and still could not find a visible path into login or sign-up.";
-  } else if (excerpt && /no visible login\/sign up trigger found/i.test(excerpt)) {
+  } else if (rawExcerpt && /no visible login\/sign up trigger found/i.test(rawExcerpt)) {
     headline = "No login or sign-up entry point was found.";
     detail =
       "The worker reached the landing page but no visible authentication trigger was exposed strongly enough to continue.";
@@ -4998,16 +6201,22 @@ function extractRunFailureContext(report, liveStatus) {
   }
 
   if (!headline) {
-    headline = "Run ended before the requested flow could complete.";
+    headline =
+      humanizeFailureClassification(classification) ||
+      humanizeFailureExcerpt(rawExcerpt, { maxLength: 120 }) ||
+      "Run ended before the requested flow could complete.";
   }
   if (!detail) {
-    detail = excerpt || summaryNote || "The worker stopped before it could validate the target flow end to end.";
+    detail =
+      excerpt ||
+      humanizeFailureExcerpt(summaryNote) ||
+      "The worker stopped before it could validate the target flow end to end.";
   }
 
   return {
     errorCode,
     classification,
-    excerpt,
+    excerpt: rawExcerpt,
     headline,
     detail
   };
@@ -5386,31 +6595,31 @@ function buildRiskSummaryMessage(mode, verdict, snapshot, environment = "product
   const releaseLens = isReleaseReadinessEnvironment(environment);
   if (mode === "no_runs") {
     return releaseLens
-      ? "Run your first test to assess release readiness."
-      : "Run your first test to assess production health.";
+      ? "Run your first test to see if this is ready to ship."
+      : "Run your first test to see how this site is doing.";
   }
   if (mode === "failed") {
     return releaseLens
-      ? "Run execution failed before coverage completed. Retry before making release decisions. Any journey data below is incomplete coverage only."
-      : "Run execution failed before coverage completed. Retry before trusting environment health. Any journey data below is incomplete coverage only.";
+      ? "The test failed before it finished. Run it again before you decide to ship."
+      : "The test failed before it finished. Run it again before you trust this result.";
   }
   if (mode === "partial") {
-    return "Partial coverage only. Findings below are directional until a full run completes.";
+    return "The test only finished part of the job. Treat this as a clue, not a final answer.";
   }
   if (mode === "running") {
-    return `${snapshot.criticalCount} critical signal${snapshot.criticalCount === 1 ? "" : "s"} detected so far. Final verdict may shift as agent coverage increases.`;
+    return `${snapshot.criticalCount} big problem${snapshot.criticalCount === 1 ? "" : "s"} seen so far. This may change before the test ends.`;
   }
   if (verdict === "blocked") {
     return releaseLens
-      ? `${snapshot.criticalCount} critical blocker${snapshot.criticalCount === 1 ? "" : "s"} and ${snapshot.brokenJourneys} broken journey${snapshot.brokenJourneys === 1 ? "" : "s"} require fixes before release.`
-      : `${snapshot.criticalCount} critical issue${snapshot.criticalCount === 1 ? "" : "s"} impacting ${snapshot.brokenJourneys} journey${snapshot.brokenJourneys === 1 ? "" : "s"} in production.`;
+      ? `${snapshot.criticalCount} big problem${snapshot.criticalCount === 1 ? "" : "s"} and ${snapshot.brokenJourneys} broken part${snapshot.brokenJourneys === 1 ? "" : "s"} need fixes before shipping.`
+      : `${snapshot.criticalCount} big problem${snapshot.criticalCount === 1 ? "" : "s"} hit ${snapshot.brokenJourneys} part${snapshot.brokenJourneys === 1 ? "" : "s"} of the site.`;
   }
   if (verdict === "risky") {
     return releaseLens
-      ? "Release has notable friction. Fix top blockers before shipping."
-      : "Friction detected across key flows. Prioritize top issues to protect production UX.";
+      ? "The test finished, but it still found problems worth fixing before shipping."
+      : "The test finished, but it still found problems worth fixing.";
   }
-  return releaseLens ? "No high-risk blockers detected in this run." : "Environment looks stable. No high-risk blockers detected.";
+  return releaseLens ? "This test did not show any big shipping blockers." : "This test did not show any big problems.";
 }
 
 function buildRunningSummaryMessage(liveStatus, row, snapshot) {
@@ -5418,18 +6627,18 @@ function buildRunningSummaryMessage(liveStatus, row, snapshot) {
   if (queueExperience.queueStatus === "queued" || queueExperience.queueStatus === "retryable") {
     const etaCopy =
       queueExperience.estimatedStartSeconds && queueExperience.estimatedStartSeconds > 0
-        ? `Estimated start ${queueExperience.etaLabel}.`
-        : "Start time updates as soon as queue depth is known.";
+        ? `It should start around ${queueExperience.etaLabel}.`
+        : "We will show the start time when the queue is clearer.";
     return `${queueExperience.headline} ${queueExperience.detail} ${etaCopy}`.trim();
   }
   const screenshotCount = Array.isArray(liveStatus?.artifacts?.local_screenshots) ? liveStatus.artifacts.local_screenshots.length : 0;
   if (screenshotCount > 0) {
-    return `Worker is live. ${screenshotCount} browser frame${screenshotCount === 1 ? "" : "s"} captured so far while the agent explores the site.`;
+    return `The tester is live. ${screenshotCount} picture${screenshotCount === 1 ? "" : "s"} saved so far.`;
   }
   if (snapshot.criticalCount > 0) {
-    return `${snapshot.criticalCount} critical signal${snapshot.criticalCount === 1 ? "" : "s"} detected so far. Final verdict may shift as coverage expands.`;
+    return `${snapshot.criticalCount} big problem${snapshot.criticalCount === 1 ? "" : "s"} seen so far. This may change before the test ends.`;
   }
-  return "Run is live. Findings, persona reactions, and browser frames will appear as soon as the first exploration steps complete.";
+  return "The test is running now. Problems, notes, and pictures will show up as the tester moves through the site.";
 }
 
 function buildHeroMetricModel(mode, report, snapshot, liveStatus = null, row = null) {
@@ -5439,30 +6648,30 @@ function buildHeroMetricModel(mode, report, snapshot, liveStatus = null, row = n
     const pagesVisited = buildCoverageSnapshot(report).pagesVisited;
     if (queueStatus === "queued" || queueStatus === "retryable") {
       return [
-        { label: "Queue Status", value: queueStatus === "retryable" ? "Retrying" : "Queued" },
-        { label: "Runs Ahead", value: queueExperience.queueAhead === null ? "—" : String(queueExperience.queueAhead) },
-        { label: "Queue Age", value: queueExperience.queueAgeLabel },
-        { label: "Est. Start", value: queueExperience.etaLabel }
+        { label: "Status", value: queueStatus === "retryable" ? "Retrying" : "Queued" },
+        { label: "Tests ahead", value: queueExperience.queueAhead === null ? "—" : String(queueExperience.queueAhead) },
+        { label: "Wait time", value: queueExperience.queueAgeLabel },
+        { label: "Starts around", value: queueExperience.etaLabel }
       ];
     }
 
     const findingsCount = Array.isArray(report?.findings) ? report.findings.length : 0;
     const journeysCount = Array.isArray(report?.tested_journeys) ? report.tested_journeys.length : 0;
     return [
-      { label: "Critical Signals", value: String(snapshot.criticalCount) },
-      { label: "Draft Findings", value: String(findingsCount) },
-      { label: "Journeys Started", value: String(journeysCount) },
-      { label: "Pages Visited", value: String(pagesVisited) }
+      { label: "Big problems", value: String(snapshot.criticalCount) },
+      { label: "Problems so far", value: String(findingsCount) },
+      { label: "Things tried", value: String(journeysCount) },
+      { label: "Pages opened", value: String(pagesVisited) }
     ];
   }
 
   const coverage = buildCoverageSnapshot(report);
   if (mode === "failed") {
     return [
-      { label: "Critical Findings", value: String(snapshot.criticalCount) },
-      { label: "Findings Captured", value: String(coverage.findingsCount) },
-      { label: "Journeys Attempted", value: String(coverage.attemptedJourneys) },
-      { label: "Pages Visited", value: String(coverage.pagesVisited) }
+      { label: "Big problems", value: String(snapshot.criticalCount) },
+      { label: "Problems saved", value: String(coverage.findingsCount) },
+      { label: "Things tried", value: String(coverage.attemptedJourneys) },
+      { label: "Pages opened", value: String(coverage.pagesVisited) }
     ];
   }
 
@@ -5470,18 +6679,18 @@ function buildHeroMetricModel(mode, report, snapshot, liveStatus = null, row = n
     const coveredJourneys = coverage.completedJourneys + coverage.partialJourneys;
     const coverageValue = coverage.attemptedJourneys ? `${coveredJourneys}/${coverage.attemptedJourneys}` : "0/0";
     return [
-      { label: "Critical Findings", value: String(snapshot.criticalCount) },
-      { label: "Major Findings", value: String(snapshot.majorCount) },
-      { label: "Journeys Covered", value: coverageValue },
-      { label: "Avg Satisfaction", value: `${snapshot.avgSatisfaction}/100` }
+      { label: "Big problems", value: String(snapshot.criticalCount) },
+      { label: "Other problems", value: String(snapshot.majorCount) },
+      { label: "Things finished", value: coverageValue },
+      { label: "Test score", value: `${snapshot.avgSatisfaction}/100` }
     ];
   }
 
   return [
-    { label: "Critical", value: String(snapshot.criticalCount) },
-    { label: "Major", value: String(snapshot.majorCount) },
-    { label: "Journeys Impacted", value: String(snapshot.brokenJourneys) },
-    { label: "Avg Satisfaction", value: `${snapshot.avgSatisfaction}/100` }
+    { label: "Big problems", value: String(snapshot.criticalCount) },
+    { label: "Other problems", value: String(snapshot.majorCount) },
+    { label: "Things blocked", value: String(snapshot.brokenJourneys) },
+    { label: "Test score", value: `${snapshot.avgSatisfaction}/100` }
   ];
 }
 
@@ -5514,6 +6723,7 @@ function renderTopFixes(report, row, mode = "completed") {
       const findingUrl = shareBaseUrl ? `${shareBaseUrl}#${findingAnchorId}` : "";
       const journeyLabel = getFindingJourneyLabel(finding);
       const opinion = buildFindingOpinion(finding);
+      const proofModel = buildFindingProofModel(report, finding, { maxItems: 1 });
       const screenshotMarkup = renderEvidenceThumbnails(
         report,
         finding?.evidence?.screenshots || [],
@@ -5522,7 +6732,7 @@ function renderTopFixes(report, row, mode = "completed") {
         { maxItems: 1, showCaption: false, compact: true }
       );
       const replayFrame = findFirstEvidenceIndex(finding?.evidence?.screenshots || [], screenshotIndexMap);
-      const hasScreenshot = Boolean(String(screenshotMarkup || "").trim());
+      const hasScreenshot = proofModel.images.length > 0;
       const priorityScore = computeFindingPriorityScore(finding);
       const modalDataAttributes = buildFindingModalDataAttributes(finding, index);
 
@@ -5541,13 +6751,17 @@ function renderTopFixes(report, row, mode = "completed") {
           </p>
           <p class="app-top-fix-quote">${escapeHtml(opinion)}</p>
           <div class="app-top-fix-actions">
-            ${hasScreenshot ? `<span class="app-inline-pill">Screenshot</span>` : ""}
+            ${
+              hasScreenshot
+                ? `<span class="app-inline-pill">${escapeHtml(proofModel.label)}</span>`
+                : `<span class="app-inline-pill">Proof Missing</span>`
+            }
             ${Number.isInteger(replayFrame) && replayFrame >= 0 ? `<span class="app-inline-pill">Replay ${escapeHtml(String(replayFrame + 1))}</span>` : ""}
             <button type="button" ${modalDataAttributes}>Details</button>
             ${findingUrl ? `<a href="${escapeHtml(findingUrl)}" target="_blank" rel="noreferrer">Open Finding</a>` : ""}
             ${findingUrl ? `<button type="button" class="share-link-button" data-share-url="${escapeHtml(findingUrl)}">Copy Link</button>` : ""}
           </div>
-          ${screenshotMarkup}
+          ${hasScreenshot ? screenshotMarkup : ""}
         </article>
       `;
     })
@@ -6007,7 +7221,10 @@ function describeLiveRunLogEntry(entry, row) {
   }
 
   if (eventName === "run_failed") {
-    const detail = humanizeFailureCode(data?.error) || String(data?.classification || "").replaceAll("_", " ");
+    const detail =
+      humanizeFailureCode(data?.error) ||
+      humanizeFailureExcerpt(data?.message || data?.reason || "") ||
+      humanizeFailureClassification(data?.classification);
     return {
       tag: "Failure",
       title: "Run failed",
@@ -6098,6 +7315,11 @@ function renderLiveBrowserFrameSlot(latestScreenshotUrl, latestScreenshotIndex) 
     `;
   }
 
+  const caption =
+    Number.isFinite(latestScreenshotIndex) && latestScreenshotIndex >= 0
+      ? `Latest browser frame · ${String(latestScreenshotIndex + 1)}`
+      : "Latest browser frame";
+
   return `
     <div class="app-live-browser-frame-slot" data-live-browser-preview-slot="true">
       <a
@@ -6113,10 +7335,46 @@ function renderLiveBrowserFrameSlot(latestScreenshotUrl, latestScreenshotIndex) 
           alt="Latest browser frame"
           loading="eager"
         />
-        <small data-live-browser-preview-caption="true">Latest browser frame · ${escapeHtml(String(latestScreenshotIndex + 1))}</small>
+        <small data-live-browser-preview-caption="true">${escapeHtml(caption)}</small>
       </a>
     </div>
   `;
+}
+
+function resolveLiveBrowserFramePreview(runId, liveStatus, report = null) {
+  const liveArtifacts = liveStatus && typeof liveStatus.artifacts === "object" ? liveStatus.artifacts : null;
+  const progress = liveStatus && typeof liveStatus.progress === "object" ? liveStatus.progress : null;
+  const liveScreenshots = Array.isArray(liveArtifacts?.local_screenshots) ? liveArtifacts.local_screenshots : [];
+  const latestScreenshotIndex = liveScreenshots.length ? liveScreenshots.length - 1 : -1;
+  if (latestScreenshotIndex >= 0 && runId) {
+    return {
+      latestScreenshotIndex,
+      latestScreenshotUrl: `${buildEvidenceAssetUrl(runId, "screenshot", latestScreenshotIndex)}&live_tick=${encodeURIComponent(
+        progress?.updated_at || Date.now()
+      )}`
+    };
+  }
+
+  const liveLatestFrameUrl =
+    liveStatus && liveStatus.live_report && typeof liveStatus.live_report === "object"
+      ? String(liveStatus.live_report.latest_frame_url || "").trim()
+      : "";
+  if (liveLatestFrameUrl) {
+    return {
+      latestScreenshotIndex: -1,
+      latestScreenshotUrl: liveLatestFrameUrl
+    };
+  }
+
+  const reportScreenshots =
+    report && report.evidence_gallery && typeof report.evidence_gallery === "object" && Array.isArray(report.evidence_gallery.screenshots)
+      ? report.evidence_gallery.screenshots
+      : [];
+  const fallbackUrl = String(reportScreenshots.slice(-1)[0] || "").trim();
+  return {
+    latestScreenshotIndex: -1,
+    latestScreenshotUrl: fallbackUrl
+  };
 }
 
 function renderLiveStream(runId, liveStatus, report = null, row = null) {
@@ -6127,17 +7385,10 @@ function renderLiveStream(runId, liveStatus, report = null, row = null) {
 
   const progress = liveStatus && typeof liveStatus.progress === "object" ? liveStatus.progress : null;
   const liveArtifacts = liveStatus && typeof liveStatus.artifacts === "object" ? liveStatus.artifacts : null;
-  const liveScreenshots = Array.isArray(liveArtifacts?.local_screenshots) ? liveArtifacts.local_screenshots : [];
   const liveSessionEmbedUrl = String(liveArtifacts?.live_stream_embed_url || "").trim();
   const liveSessionViewerUrl = String(liveArtifacts?.live_stream_viewer_url || liveSessionEmbedUrl || "").trim();
   const liveSessionViewerIsViewOnly = isViewOnlyNoVncUrl(liveSessionViewerUrl);
-  const latestScreenshotIndex = liveScreenshots.length ? liveScreenshots.length - 1 : -1;
-  const latestScreenshotUrl =
-    latestScreenshotIndex >= 0
-      ? `${buildEvidenceAssetUrl(runId, "screenshot", latestScreenshotIndex)}&live_tick=${encodeURIComponent(
-          progress?.updated_at || Date.now()
-        )}`
-      : "";
+  const { latestScreenshotIndex, latestScreenshotUrl } = resolveLiveBrowserFramePreview(runId, liveStatus, report);
   const percent = Math.max(0, Math.min(100, Number(progress?.percent) || 0));
   const queueExperience = buildQueueExperience(liveStatus);
   const phasesMarkup = renderLivePhaseList(buildLivePhaseItems(liveStatus, report, row));
@@ -6241,7 +7492,7 @@ function renderLiveStream(runId, liveStatus, report = null, row = null) {
           <h4>${escapeHtml(terminal.headline)}</h4>
           <p>${escapeHtml(terminal.detail)}</p>
           ${
-            terminal.failure.errorCode || terminal.failure.classification
+            dashboardDebugEnabled && (terminal.failure.errorCode || terminal.failure.classification)
               ? `<small>${escapeHtml(
                   [
                     terminal.failure.errorCode ? `Code: ${terminal.failure.errorCode}` : "",
@@ -6295,14 +7546,7 @@ function updateLiveStreamPanel(runId, liveStatus, report, row, showLiveMission) 
   const liveSessionViewerUrl = String(liveArtifacts?.live_stream_viewer_url || liveSessionEmbedUrl || "").trim();
   const progress = liveStatus && typeof liveStatus.progress === "object" ? liveStatus.progress : null;
   const percent = Math.max(0, Math.min(100, Number(progress?.percent) || 0));
-  const liveScreenshots = Array.isArray(liveArtifacts?.local_screenshots) ? liveArtifacts.local_screenshots : [];
-  const latestScreenshotIndex = liveScreenshots.length ? liveScreenshots.length - 1 : -1;
-  const latestScreenshotUrl =
-    latestScreenshotIndex >= 0
-      ? `${buildEvidenceAssetUrl(runId, "screenshot", latestScreenshotIndex)}&live_tick=${encodeURIComponent(
-          progress?.updated_at || Date.now()
-        )}`
-      : "";
+  const { latestScreenshotIndex, latestScreenshotUrl } = resolveLiveBrowserFramePreview(runId, liveStatus, report);
   const liveSessionViewerIsViewOnly = isViewOnlyNoVncUrl(liveSessionViewerUrl);
   const nextPhasesMarkup = renderLivePhaseList(buildLivePhaseItems(liveStatus, report, row));
   const currentFrame = elements.liveStreamPanel.querySelector(".app-live-session-frame");
@@ -6480,13 +7724,23 @@ function attachShareButtons(root = null) {
 
     button.addEventListener("click", async () => {
       const shareUrl = String(button.getAttribute("data-share-url") || "").trim();
-      const baselineLabel = String(button.getAttribute("data-label") || button.textContent || "Copy share URL").trim();
+      const baselineLabel = String(
+        button.getAttribute("data-label") ||
+          button.getAttribute("aria-label") ||
+          button.getAttribute("title") ||
+          button.textContent ||
+          "Copy share link"
+      ).trim();
       const isIconButton = button.getAttribute("data-icon-button") === "1";
+      const shouldShowToast = button.getAttribute("data-show-toast") === "1";
       if (!button.getAttribute("data-label")) {
         button.setAttribute("data-label", baselineLabel);
       }
 
       const ok = await copyTextToClipboard(shareUrl);
+      if (shouldShowToast) {
+        showReportToast(ok ? "Link copied" : "Copy failed", ok ? "success" : "error");
+      }
       if (isIconButton) {
         const statusLabel = ok ? "Link copied" : "Copy failed";
         button.classList.toggle("is-copied", ok);
@@ -6538,9 +7792,11 @@ function renderAppPanels(report, row, liveStatus = null) {
       extractRunFailureContext,
       buildRiskSummaryMessage,
       buildTargetLabelFromUrl,
+      buildDashboardMissionModel,
       normalizeScopeModeInput,
       formatRelativeTime,
       formatStatusLabel,
+      escapeHtml,
       applyDashboardShareAction,
       renderAppEvidencePanel,
       renderTopFixes,
@@ -6731,6 +7987,107 @@ function attachReplayPlayers(root = null) {
   }
 }
 
+function attachJourneyCanvases(root = null) {
+  const host = root || elements.reportDetail;
+  if (!host) {
+    return;
+  }
+
+  const viewports = Array.from(host.querySelectorAll("[data-journey-canvas]"));
+  for (const viewport of viewports) {
+    if (viewport.getAttribute("data-bound") === "1") {
+      continue;
+    }
+
+    const shell = viewport.closest(".journey-canvas-shell");
+    const canvasId = String(viewport.getAttribute("data-journey-canvas") || "").trim();
+    const resetButton = shell ? shell.querySelector(`[data-journey-reset="${canvasId}"]`) : null;
+    const initialLeft = Math.max(0, Number(viewport.getAttribute("data-initial-left")) || 0);
+    const initialTop = Math.max(0, Number(viewport.getAttribute("data-initial-top")) || 0);
+    let activePointerId = null;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+
+    const resetView = (behavior = "smooth", shouldFocus = true) => {
+      viewport.scrollTo({ left: initialLeft, top: initialTop, behavior });
+      if (shouldFocus) {
+        viewport.focus({ preventScroll: true });
+      }
+    };
+    const finishDrag = () => {
+      if (activePointerId === null) {
+        return;
+      }
+      try {
+        viewport.releasePointerCapture(activePointerId);
+      } catch {}
+      activePointerId = null;
+      viewport.classList.remove("is-dragging");
+    };
+
+    viewport.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "touch" && event.button !== 0) {
+        return;
+      }
+      if (event.target && typeof event.target.closest === "function" && event.target.closest("a, button, input, textarea, select, summary")) {
+        return;
+      }
+      activePointerId = event.pointerId;
+      startX = event.clientX;
+      startY = event.clientY;
+      startLeft = viewport.scrollLeft;
+      startTop = viewport.scrollTop;
+      viewport.classList.add("is-dragging");
+      try {
+        viewport.setPointerCapture(activePointerId);
+      } catch {}
+      event.preventDefault();
+    });
+
+    viewport.addEventListener("pointermove", (event) => {
+      if (activePointerId === null || event.pointerId !== activePointerId) {
+        return;
+      }
+      viewport.scrollLeft = startLeft - (event.clientX - startX);
+      viewport.scrollTop = startTop - (event.clientY - startY);
+    });
+
+    viewport.addEventListener("pointerup", finishDrag);
+    viewport.addEventListener("pointercancel", finishDrag);
+    viewport.addEventListener("lostpointercapture", finishDrag);
+    viewport.addEventListener("keydown", (event) => {
+      const step = 84;
+      if (event.key === "Home") {
+        event.preventDefault();
+        resetView("smooth", false);
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        viewport.scrollBy({ left: -step, behavior: "smooth" });
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        viewport.scrollBy({ left: step, behavior: "smooth" });
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        viewport.scrollBy({ top: -step, behavior: "smooth" });
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        viewport.scrollBy({ top: step, behavior: "smooth" });
+      }
+    });
+
+    if (resetButton) {
+      resetButton.addEventListener("click", () => resetView());
+    }
+
+    viewport.setAttribute("data-bound", "1");
+    window.requestAnimationFrame(() => resetView("auto", false));
+  }
+}
+
 async function renderSelectedReport() {
   const runId = state.selectedRunId;
   if (!runId) {
@@ -6758,16 +8115,33 @@ async function renderSelectedReport() {
   state.activeRenderedRow = row;
   state.replayControllers.clear();
   const replayPlayerId = `replay-main-${toAnchorToken(report?.run_id || runId || "run")}`;
+  const mode = deriveDashboardMode(report, row, statusPayload);
+  const liveWatchMarkup = renderLiveWatch(runId, row);
+  const journeysMarkup = renderJourneys(report, row);
+  const priorityMarkup = renderPrioritySummary(report, mode);
+  const findingsMarkup = renderFindings(report, row, replayPlayerId);
+  const secondaryMarkup = renderSecondaryReportSections(report, row, replayPlayerId);
   const detailMarkup = `
-    ${renderSelectedHeader(report, row)}
-    ${renderLiveWatch(runId, row)}
-    ${renderQuickJumpNav()}
-    ${renderPrioritySummary(report)}
-    ${renderReplayReview(report, replayPlayerId)}
-    ${renderCounts(report)}
-    ${renderFindings(report, row, replayPlayerId)}
-    ${renderJourneys(report, row)}
-    ${renderFeatureInventory(report)}
+    <div class="report-detail-shell">
+      ${renderSelectedHeader(report, row, statusPayload)}
+      ${journeysMarkup}
+      <div class="report-detail-columns ${secondaryMarkup ? "report-detail-columns--split" : ""}">
+        <div class="report-main-column">
+          ${liveWatchMarkup}
+          ${priorityMarkup}
+          ${findingsMarkup}
+        </div>
+        ${
+          secondaryMarkup
+            ? `
+              <aside class="report-side-column">
+                ${secondaryMarkup}
+              </aside>
+            `
+            : ""
+        }
+      </div>
+    </div>
   `;
 
   dashboardRenderState.mountReportDetail({
@@ -6776,6 +8150,7 @@ async function renderSelectedReport() {
     isReportViewMode: isReportViewMode(),
     attachReplayPlayers,
     attachReplayJumpButtons,
+    attachJourneyCanvases,
     attachShareButtons,
     attachLlmCopyButtons
   });
@@ -6820,19 +8195,7 @@ async function loadAndRenderReports() {
       elements,
       hasAppDashboardUi
     });
-    const projects = await requestProjectCatalog();
-    if (!isDashboardLoadRequestCurrent(loadRequestId)) {
-      return;
-    }
-    applyProjectCatalog(projects, { deferEmpty: true });
-    debugDashboardLog("projects resolved", {
-      count: state.brandOptions.length,
-      status: state.projectCatalogStatus,
-      selectedBrand: state.filters.brand
-    });
-    ensureSingleProjectSelection();
-    renderBrandSuggestions();
-    syncProjectSwitcherVisibility();
+    markDashboardShellReady({ force: true });
 
     let fetchedRuns = await requestRunCollection();
     if (!isDashboardLoadRequestCurrent(loadRequestId)) {
@@ -6854,36 +8217,16 @@ async function loadAndRenderReports() {
       });
       if (derivedProjects.length) {
         mergeSavedProjects(derivedProjects);
-        setProjectCatalogStatus(state.brandOptions.length ? PROJECT_CATALOG_STATES.READY : PROJECT_CATALOG_STATES.EMPTY);
-        const selectionChanged = ensureSingleProjectSelection();
+        setProjectCatalogStatus(state.brandOptions.length ? PROJECT_CATALOG_STATES.READY : PROJECT_CATALOG_STATES.LOADING);
+        ensureSingleProjectSelection();
         debugDashboardLog("after derived merge", {
           projectCount: state.brandOptions.length,
           status: state.projectCatalogStatus,
-          selectedBrand: state.filters.brand,
-          selectionChanged
+          selectedBrand: state.filters.brand
         });
         renderBrandSuggestions();
         syncProjectSwitcherVisibility();
-        if (selectionChanged) {
-          fetchedRuns = await requestRunCollection();
-          if (!isDashboardLoadRequestCurrent(loadRequestId)) {
-            return;
-          }
-          applyRunCollection(fetchedRuns);
-          debugDashboardLog("runs refetched after derived selection", {
-            fetchedCount: Array.isArray(fetchedRuns) ? fetchedRuns.length : 0,
-            allRuns: state.allRuns.length,
-            visibleRuns: state.runs.length,
-            selectedRunId: state.selectedRunId
-          });
-        }
       }
-    }
-
-    if (!state.brandOptions.length) {
-      setProjectCatalogStatus(PROJECT_CATALOG_STATES.EMPTY);
-      renderBrandSuggestions();
-      syncProjectSwitcherVisibility();
     }
 
     state.onboarding.hasAnyRuns =
@@ -6914,11 +8257,13 @@ async function loadAndRenderReports() {
     renderAppRunPicker();
     updateOnboardingVisibility();
     syncUrlFromState();
+    void hydrateProjectCatalogInBackground(loadRequestId);
     await renderSelectedReport();
     if (!isDashboardLoadRequestCurrent(loadRequestId)) {
       return;
     }
     shouldMarkShellReady = true;
+    ensureWorkerHealthPolling();
     ensureLivePolling();
   } catch (error) {
     if (!isDashboardLoadRequestCurrent(loadRequestId)) {
@@ -6955,6 +8300,9 @@ function stopLivePolling() {
 
 async function pollSelectedRunLiveStatus() {
   if (state.livePollingInFlight) {
+    return;
+  }
+  if (document.visibilityState === "hidden") {
     return;
   }
   if (!isDashboardAuthorized()) {
@@ -7017,7 +8365,7 @@ function ensureLivePolling() {
   pollSelectedRunLiveStatus();
   state.livePollingTimer = window.setInterval(() => {
     pollSelectedRunLiveStatus();
-  }, 1200);
+  }, LIVE_STATUS_POLL_INTERVAL_MS);
 }
 
 function installOnboardingInteractions() {
@@ -7357,6 +8705,7 @@ function installDashboardActionHandlers() {
 async function bootstrapDashboardContent() {
   state.dashboardBootstrapComplete = false;
   resetDashboardShellReady();
+  renderWorkerHealthIndicator();
   if (requiresDashboardAuth && !isDashboardAuthReady()) {
     setDashboardLoading(true);
     await waitForDashboardAuthReady();
@@ -7364,10 +8713,13 @@ async function bootstrapDashboardContent() {
 
   try {
     if (isDashboardAuthorized()) {
+      ensureWorkerHealthPolling();
       await loadAndRenderReports();
       return;
     }
 
+    stopWorkerHealthPolling();
+    state.workerHealth = null;
     resetDashboardCollections();
     renderBrandSuggestions();
     syncProjectSwitcherVisibility();
@@ -7476,6 +8828,7 @@ if (hasReportsUi) {
   applyUrlFiltersToState();
   syncInputsFromState();
   applyAppViewMode();
+  renderWorkerHealthIndicator();
   ensureOnboardingStateInitialized();
   updateOnboardingVisibility();
   void bootstrapDashboardContent();
@@ -7492,6 +8845,8 @@ if (hasReportsUi) {
       const authorized = Boolean(event?.detail?.authorized);
       if (!authorized) {
         stopLivePolling();
+        stopWorkerHealthPolling();
+        state.workerHealth = null;
         state.reportCache.clear();
         state.liveStatusCache.clear();
         resetDashboardCollections();
@@ -7507,6 +8862,7 @@ if (hasReportsUi) {
         syncProjectSwitcherVisibility();
         return;
       }
+      ensureWorkerHealthPolling();
       resetDashboardCollections();
       resetDashboardShellReady();
       state.onboarding.hasAnyRuns = null;

@@ -110,3 +110,58 @@ test("shouldFallbackToNextEngine falls back after failed vision-only agent runs"
     false
   );
 });
+
+test("buildStoredExecutionPayload strips embedded media before persisting final rows", () => {
+  const payload = __private.buildStoredExecutionPayload(
+    {
+      status: "completed",
+      evidence_gallery: {
+        screenshots: ["data:image/png;base64,abc", "https://example.com/final.png"]
+      },
+      findings: [
+        {
+          evidence: {
+            screenshots: ["data:image/png;base64,def", "https://example.com/finding.png"]
+          }
+        }
+      ],
+      tested_journeys: [
+        {
+          evidence: {
+            screenshots: ["data:image/png;base64,ghi", "https://example.com/journey.png"]
+          }
+        }
+      ]
+    },
+    "Before\n![inline](data:image/png;base64,zzz)\n" + "x".repeat(13000),
+    {
+      artifacts: {
+        captured_screenshots: ["data:image/png;base64,abc"],
+        local_screenshots: ["/tmp/one.png"]
+      },
+      runLog: [
+        {
+          ts: "2026-03-19T00:00:00.000Z",
+          event: "progress",
+          data: {
+            note: "ok",
+            nested: {
+              screenshot: "data:image/png;base64,xyz"
+            }
+          }
+        }
+      ]
+    }
+  );
+
+  assert.equal(payload.reportMarkdown.length, 12000);
+  assert.equal(payload.reportMarkdown.includes("data:image/"), false);
+  assert.deepEqual(payload.artifacts.local_screenshots, ["/tmp/one.png"]);
+  assert.equal(payload.artifacts.captured_screenshots, undefined);
+  assert.equal(payload.artifacts.captured_screenshot_count, 1);
+  assert.deepEqual(payload.findings[0].evidence.screenshots, ["https://example.com/finding.png"]);
+  assert.deepEqual(payload.reportJson.evidence_gallery.screenshots, ["https://example.com/final.png"]);
+  assert.deepEqual(payload.reportJson.findings[0].evidence.screenshots, ["https://example.com/finding.png"]);
+  assert.deepEqual(payload.reportJson.tested_journeys[0].evidence.screenshots, ["https://example.com/journey.png"]);
+  assert.equal(payload.runLog[0].data.note, "ok");
+});

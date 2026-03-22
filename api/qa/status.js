@@ -32,6 +32,16 @@ module.exports = async (req, res) => {
   const publicBaseUrl = getPublicBaseUrl(req);
   const brand = sanitizeString(extractBrandKey(loaded.row), 256);
   const liveReport = payload.report_json && typeof payload.report_json === "object" ? payload.report_json : null;
+  const liveReportEvidence =
+    liveReport && liveReport.evidence_gallery && typeof liveReport.evidence_gallery === "object"
+      ? liveReport.evidence_gallery
+      : null;
+  const liveLatestFrameUrl = Array.isArray(liveReportEvidence?.screenshots)
+    ? liveReportEvidence.screenshots
+        .map((item) => sanitizeString(item, 2000000))
+        .filter(Boolean)
+        .slice(-1)[0] || null
+    : null;
   const liveProgress = payload.progress && typeof payload.progress === "object" ? payload.progress : null;
   const storedArtifacts = payload.artifacts && typeof payload.artifacts === "object" ? payload.artifacts : {};
   const mergedLiveArtifacts = {
@@ -83,7 +93,8 @@ module.exports = async (req, res) => {
           status: sanitizeString(liveReport.status, 64) || null,
           summary: liveReport.summary || null,
           findings: Array.isArray(liveReport.findings) ? liveReport.findings.slice(0, 30) : [],
-          tested_journeys: Array.isArray(liveReport.tested_journeys) ? liveReport.tested_journeys.slice(0, 12) : []
+          tested_journeys: Array.isArray(liveReport.tested_journeys) ? liveReport.tested_journeys.slice(0, 12) : [],
+          latest_frame_url: liveLatestFrameUrl
         }
       : null,
     ui_report_url: `${publicBaseUrl}/dashboard?${uiParams.toString()}`

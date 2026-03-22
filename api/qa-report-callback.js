@@ -1,4 +1,10 @@
 const crypto = require("crypto");
+const {
+  sanitizeArtifactsForCallback,
+  sanitizeReportMarkdown,
+  sanitizeReportForCallback,
+  sanitizeRunLogForCallback
+} = require("../lib/qa-core");
 
 const ALLOWED_FINDING_TYPES = new Set([
   "bug",
@@ -25,6 +31,10 @@ const ALLOWED_EMOTIONS = new Set([
 
 function sanitizeString(value, maxLength) {
   return String(value || "").trim().slice(0, maxLength);
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function parseTimestamp(value) {
@@ -209,6 +219,27 @@ module.exports = async (req, res) => {
     return res.status(400).json({ ok: false, error: findingsValidation.error });
   }
 
+  const payloadReport = sanitizeReportForCallback(isPlainObject(body.report_json) ? body.report_json : body);
+  const payloadArtifacts = sanitizeArtifactsForCallback(body.artifacts || payloadReport?.artifacts || {});
+  const payloadFindings = Array.isArray(payloadReport?.findings) ? payloadReport.findings : [];
+  const payload = {
+    ...body,
+    ...payloadReport,
+    findings: payloadFindings,
+    report_json: payloadReport,
+    report_markdown: sanitizeReportMarkdown(body.report_markdown || body.reportMarkdown, 12000),
+    artifacts: payloadArtifacts,
+    run_log: sanitizeRunLogForCallback(body.run_log || body.runLog),
+    artifact_expires_at:
+      sanitizeString(
+        body.artifact_expires_at ||
+          body.artifactExpiresAt ||
+          payloadArtifacts?.artifact_expires_at ||
+          payloadReport?.artifacts?.artifact_expires_at,
+        128
+      ) || null
+  };
+
   const summarySource = body.summary;
   const summary =
     typeof summarySource === "string"
@@ -227,11 +258,11 @@ module.exports = async (req, res) => {
     target: sanitizeString(body.target || body.domain || body.app || body.url, 320) || null,
     status: sanitizeString(body.status, 64) || "completed",
     report_url: sanitizeString(body.report_url || body.reportUrl || body.report_link, 2048) || null,
-    findings,
+    findings: payloadFindings,
     summary: summary || null,
     source: sanitizeString(body.source, 64) || "qa_bot",
     delivered_at: parseTimestamp(body.delivered_at || body.completed_at || body.finished_at),
-    payload: body,
+    payload,
     request_meta: {
       ip,
       user_agent: sanitizeString(req.headers["user-agent"], 512),

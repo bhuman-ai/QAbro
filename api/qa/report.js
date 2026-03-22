@@ -113,6 +113,11 @@ module.exports = async (req, res) => {
 
   const runId = sanitizeString(req.query?.run_id || req.query?.runId, 128);
   const format = sanitizeString(req.query?.format, 32).toLowerCase();
+  const skipMarkdown =
+    format !== "markdown" &&
+    ["1", "true", "yes"].includes(
+      sanitizeString(req.query?.skip_markdown || req.query?.skipMarkdown, 16).toLowerCase()
+    );
 
   if (!runId) {
     return res.status(400).json({ ok: false, error: "run_id is required" });
@@ -150,20 +155,23 @@ module.exports = async (req, res) => {
     rawAgentMessage: sanitizeString(payload.raw_agent_output || payload.agent_output, 4000)
   });
 
-  let markdown = sanitizeString(payload.report_markdown, 200000);
-  if (!markdown) {
-    try {
-      markdown = buildMarkdownReport(reportJson, {
-        scope_mode: runRequest.scope_mode || "core_20m",
-        brand_persona: runRequest.brand_persona || FALLBACK_BRAND_PERSONA,
-        target_url: runRequest.target_url || payload.target || row.target || ""
-      });
-    } catch (error) {
-      console.warn("Failed to build stored QA markdown", {
-        run_id: row.run_id || null,
-        error: error instanceof Error ? error.message : String(error || "Unknown error")
-      });
-      markdown = buildFallbackMarkdown(reportJson, runRequest, row);
+  let markdown = null;
+  if (!skipMarkdown) {
+    markdown = sanitizeString(payload.report_markdown, 200000);
+    if (!markdown) {
+      try {
+        markdown = buildMarkdownReport(reportJson, {
+          scope_mode: runRequest.scope_mode || "core_20m",
+          brand_persona: runRequest.brand_persona || FALLBACK_BRAND_PERSONA,
+          target_url: runRequest.target_url || payload.target || row.target || ""
+        });
+      } catch (error) {
+        console.warn("Failed to build stored QA markdown", {
+          run_id: row.run_id || null,
+          error: error instanceof Error ? error.message : String(error || "Unknown error")
+        });
+        markdown = buildFallbackMarkdown(reportJson, runRequest, row);
+      }
     }
   }
 

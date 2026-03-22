@@ -130,10 +130,15 @@
       typeof helpers.buildRiskSummaryMessage === "function" ? helpers.buildRiskSummaryMessage : () => "";
     const buildTargetLabelFromUrl =
       typeof helpers.buildTargetLabelFromUrl === "function" ? helpers.buildTargetLabelFromUrl : () => "";
+    const buildDashboardMissionModel =
+      typeof helpers.buildDashboardMissionModel === "function"
+        ? helpers.buildDashboardMissionModel
+        : () => ({ headline: "", steps: [], personaLabel: "Audience", personaDetail: "", metaPills: [] });
     const normalizeScopeModeInput =
       typeof helpers.normalizeScopeModeInput === "function" ? helpers.normalizeScopeModeInput : (value) => String(value || "");
     const formatRelativeTime = typeof helpers.formatRelativeTime === "function" ? helpers.formatRelativeTime : () => "";
     const formatStatusLabel = typeof helpers.formatStatusLabel === "function" ? helpers.formatStatusLabel : (value) => String(value || "");
+    const escapeHtml = typeof helpers.escapeHtml === "function" ? helpers.escapeHtml : (value) => String(value || "");
     const applyDashboardShareAction =
       typeof helpers.applyDashboardShareAction === "function" ? helpers.applyDashboardShareAction : () => {};
     const renderAppEvidencePanel =
@@ -167,6 +172,7 @@
     const isLive = isQueueActiveStatus(queueStatus);
     const showLiveMission = isLive || isLiveViewMode();
     const mission = resolveRunMission(row, report);
+    const missionModel = buildDashboardMissionModel(mission, row);
     const verdictMeta = isLive ? buildLiveVerdictMeta(queueStatus) : buildVerdictMeta(verdict, environment);
     const heroMetrics = buildHeroMetricModel(mode, report, snapshot, liveStatus, row);
     const findingsCount = Array.isArray(report?.findings) ? report.findings.length : 0;
@@ -193,24 +199,38 @@
       elements.dashboardPrimaryGoal.hidden = false;
     }
     if (elements.dashboardPrimaryGoalText) {
-      elements.dashboardPrimaryGoalText.textContent = mission.goal;
+      const stepsMarkup = Array.isArray(missionModel.steps) && missionModel.steps.length
+        ? `<ol class="primary-goal-steps">${missionModel.steps
+            .map(
+              (step, index) => `
+                <li class="primary-goal-step">
+                  <span class="primary-goal-step-index">${escapeHtml(String(index + 1))}</span>
+                  <span class="primary-goal-step-text">${escapeHtml(step)}</span>
+                </li>
+              `
+            )
+            .join("")}</ol>`
+        : "";
+      elements.dashboardPrimaryGoalText.innerHTML = `
+        <p class="primary-goal-headline">${escapeHtml(missionModel.headline || mission.goal || "Mission context updates with the selected run.")}</p>
+        ${stepsMarkup}
+      `;
     }
     if (elements.dashboardPrimaryGoalMeta) {
-      const targetLabel = String(mission.config.brandName || buildTargetLabelFromUrl(mission.config.targetUrl) || row?.target || "")
-        .trim()
-        .slice(0, 320);
-      const scopeLabel = normalizeScopeModeInput(mission.config.scopeMode).replaceAll("_", " ");
-      const metaParts = [];
-      if (targetLabel) {
-        metaParts.push(`Target: ${targetLabel}`);
-      }
-      if (scopeLabel) {
-        metaParts.push(`Mode: ${scopeLabel}`);
-      }
-      elements.dashboardPrimaryGoalMeta.textContent = metaParts.join(" · ") || "Goal context updates with the selected run.";
+      const metaMarkup = Array.isArray(missionModel.metaPills) && missionModel.metaPills.length
+        ? missionModel.metaPills
+            .map((item) => `<span class="primary-goal-meta-pill">${escapeHtml(item)}</span>`)
+            .join("")
+        : '<span class="primary-goal-meta-note">Target, run mode, and task count appear here.</span>';
+      elements.dashboardPrimaryGoalMeta.innerHTML = metaMarkup;
     }
     if (elements.dashboardPrimaryGoalPersona) {
-      elements.dashboardPrimaryGoalPersona.textContent = mission.persona || "No persona selected";
+      elements.dashboardPrimaryGoalPersona.textContent = missionModel.personaLabel || "Audience";
+      if (missionModel.personaDetail) {
+        elements.dashboardPrimaryGoalPersona.setAttribute("title", missionModel.personaDetail);
+      } else {
+        elements.dashboardPrimaryGoalPersona.removeAttribute("title");
+      }
     }
     if (elements.riskCriticalLabel) {
       elements.riskCriticalLabel.textContent = heroMetrics[0]?.label || "Critical";

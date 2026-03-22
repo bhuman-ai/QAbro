@@ -24,6 +24,21 @@ test("extractBrandKey prefers run_request metadata", () => {
   assert.equal(extractBrandKey(row), "brand_123");
 });
 
+test("extractBrandKey prefers stored top-level value when present", () => {
+  const row = {
+    brand_key: "brand_top_level",
+    payload: {
+      run_request: {
+        metadata: {
+          brand_id: "brand_nested"
+        }
+      }
+    }
+  };
+
+  assert.equal(extractBrandKey(row), "brand_top_level");
+});
+
 test("extractOwnerUserId reads owner metadata from run request", () => {
   const row = {
     payload: {
@@ -36,6 +51,21 @@ test("extractOwnerUserId reads owner metadata from run request", () => {
   };
 
   assert.equal(extractOwnerUserId(row), "user_abc");
+});
+
+test("extractOwnerUserId prefers stored top-level value when present", () => {
+  const row = {
+    owner_user_id: "user_top_level",
+    payload: {
+      run_request: {
+        metadata: {
+          owner_user_id: "user_nested"
+        }
+      }
+    }
+  };
+
+  assert.equal(extractOwnerUserId(row), "user_top_level");
 });
 
 test("summarizeReportRow returns dashboard-friendly shape", () => {
@@ -192,8 +222,63 @@ test("listQaReports filters by owner_user_id", async () => {
   assert.equal(result.total, 1);
   assert.equal(result.items[0].run_id, "run_owner_a");
   assert.equal(capturedUrls.length, 1);
+  assert.match(decodeURIComponent(capturedUrls[0]), /owner_user_id=eq\.user_alpha/);
+});
+
+test("listQaReports falls back to legacy payload filter before computed columns exist", async () => {
+  const rows = [
+    {
+      run_id: "run_owner_a",
+      target: "a.example",
+      status: "completed",
+      delivered_at: "2026-03-04T00:00:00.000Z",
+      payload: {
+        queue: { status: "completed" },
+        run_request: { metadata: { owner_user_id: "user_alpha" } },
+        report_json: { findings: [], tested_journeys: [], recommendations: [], summary: {} }
+      }
+    }
+  ];
+  const capturedUrls = [];
+  let requestCount = 0;
+
+  const result = await listQaReports(
+    { owner_user_id: "user_alpha", limit: "50", offset: "0" },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async (url) => {
+        capturedUrls.push(String(url));
+        requestCount += 1;
+        if (requestCount === 1) {
+          return {
+            ok: false,
+            status: 400,
+            async json() {
+              return {
+                message: "Could not find the 'owner_user_id' column of 'swarmtest_reports' in the schema cache"
+              };
+            }
+          };
+        }
+
+        return {
+          ok: true,
+          status: 200,
+          async json() {
+            return rows;
+          }
+        };
+      }
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.total, 1);
+  assert.equal(capturedUrls.length, 2);
+  assert.match(decodeURIComponent(capturedUrls[0]), /owner_user_id=eq\.user_alpha/);
   assert.match(
-    decodeURIComponent(capturedUrls[0]),
+    decodeURIComponent(capturedUrls[1]),
     /payload=cs\.\{"run_request":\{"metadata":\{"owner_user_id":"user_alpha"\}\}\}/
   );
 });
