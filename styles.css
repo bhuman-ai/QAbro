@@ -957,6 +957,134 @@ a {
   box-shadow: 0 26px 48px hsl(225 35% 4% / 0.18);
 }
 
+.hero-simple {
+  min-height: auto;
+  padding-top: 112px;
+  padding-bottom: 88px;
+}
+
+.hero-grid-simple {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 36px;
+  align-items: start;
+}
+
+.hero-copy-simple {
+  display: grid;
+  gap: 20px;
+}
+
+.hero-copy-simple .status-pill {
+  margin-bottom: 0;
+}
+
+.hero-copy-simple .hero-copy {
+  margin: 0;
+  max-width: 520px;
+}
+
+.hero-simple-points {
+  display: grid;
+  gap: 12px;
+}
+
+.hero-simple-points article {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid hsl(var(--border) / 0.6);
+  background: hsl(var(--card) / 0.5);
+}
+
+.hero-simple-points strong {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: hsl(var(--primary) / 0.14);
+  color: hsl(var(--primary));
+  font-size: 13px;
+}
+
+.hero-simple-points span {
+  color: hsl(var(--foreground));
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.home-qa-panel {
+  display: grid;
+  gap: 16px;
+  max-width: 680px;
+}
+
+.home-qa-panel-head {
+  display: grid;
+  gap: 6px;
+}
+
+.home-qa-panel-head h2 {
+  font-size: 28px;
+  line-height: 1.05;
+}
+
+.home-qa-panel-head p {
+  color: hsl(var(--muted-foreground));
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.home-qa-panel .scan-form {
+  margin-bottom: 0;
+}
+
+.home-qa-panel .scan-fields {
+  grid-template-columns: 1fr;
+}
+
+.home-qa-panel .scan-submit-btn {
+  width: 100%;
+}
+
+.section-how-simple {
+  padding-top: 72px;
+}
+
+.section-head-simple {
+  margin-bottom: 24px;
+}
+
+.section-head-simple h2 {
+  margin-bottom: 10px;
+}
+
+.section-head-simple p {
+  color: hsl(var(--muted-foreground));
+  max-width: 620px;
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.steps-simple {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.steps-simple .step {
+  min-height: 100%;
+}
+
+.section-cta-simple {
+  padding-top: 72px;
+}
+
 .scan-form {
   margin-bottom: 14px;
 }
@@ -1522,6 +1650,11 @@ a {
   }
 
   .scan-result-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-grid-simple,
+  .steps-simple {
     grid-template-columns: 1fr;
   }
 }

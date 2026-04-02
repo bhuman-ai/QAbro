@@ -29,7 +29,7 @@
 
         <nav class="main-nav" aria-label="Primary">
           <a href="/">Home</a>
-          <a href="/reports.html" aria-current="page">Reports</a>
+          <a href="/reports.html" aria-current="page">Dashboard</a>
         </nav>
 
         <div class="topbar-actions">
@@ -42,17 +42,17 @@
     <main class="reports-main">
       <section class="reports-hero">
         <div class="container">
-          <p class="status-pill"><span class="dot"></span> QA Report Console</p>
-          <h1>Brand-Level QA Reports</h1>
-          <p>Filter by brand and inspect every run with findings, tested journeys, evidence gallery, and recommendations.</p>
+          <p class="status-pill"><span class="dot"></span> Test reports</p>
+          <h1>Open a test. See what broke.</h1>
+          <p>Pick a project, open a test, and read the report from top to bottom.</p>
         </div>
       </section>
 
       <section class="reports-console container dashboard-auth-shell" id="dashboardAuthShell" data-dashboard-auth-gate="true">
         <article class="card-surface dashboard-auth-card" id="dashboardAuthCard">
           <header>
-            <h3>Dashboard Access</h3>
-            <p>Create an account or sign in to access brand QA reports.</p>
+            <h3>Open your tests</h3>
+            <p>Use your email to open the dashboard.</p>
           </header>
 
           <div class="dashboard-auth-tabs" role="tablist" aria-label="Authentication mode">
@@ -65,7 +65,7 @@
               <span>Email</span>
               <input name="email" type="email" required autocomplete="email" placeholder="you@company.com" />
             </label>
-            <button class="btn btn-primary" type="submit">Send Sign-In Link</button>
+            <button class="btn btn-primary" type="submit">Email Me a Link</button>
           </form>
 
           <form id="authSignUpForm" class="dashboard-auth-form" action="#" method="post" autocomplete="on" hidden>
@@ -74,13 +74,13 @@
               <input name="email" type="email" required autocomplete="email" placeholder="you@company.com" />
             </label>
             <label>
-              <span>Invite Code</span>
-              <input name="invite_code" type="text" required autocomplete="off" placeholder="Enter invite code" />
+              <span>Code</span>
+              <input name="invite_code" type="text" required autocomplete="off" placeholder="Enter code" />
             </label>
-            <button class="btn btn-primary" type="submit">Send Invite Link</button>
+            <button class="btn btn-primary" type="submit">Create Account</button>
           </form>
 
-          <p class="dashboard-auth-note">Invite code required for sign-up.</p>
+          <p class="dashboard-auth-note">Use the sign-up tab only if you have a code.</p>
           <p class="dashboard-auth-message" id="dashboardAuthMessage" aria-live="polite"></p>
           <p class="dashboard-auth-user" id="dashboardAuthUserHint"></p>
         </article>
@@ -89,42 +89,47 @@
       <section class="reports-console container" id="reportsConsole" data-dashboard-protected="true" hidden aria-hidden="true">
         <div class="reports-controls card-surface">
           <div class="field">
-            <label for="brandFilter">Brand</label>
-            <input id="brandFilter" type="text" placeholder="e.g. speakeasy, swarmtester, brand_id" list="brandOptions" />
+            <label for="brandFilter">Project</label>
+            <input id="brandFilter" type="text" placeholder="Project name or id" list="brandOptions" />
             <datalist id="brandOptions"></datalist>
-          </div>
-          <div class="field">
-            <label for="targetFilter">Target Contains</label>
-            <input id="targetFilter" type="text" placeholder="e.g. bhuman.ai" />
-          </div>
-          <div class="field">
-            <label for="statusFilter">Status</label>
-            <select id="statusFilter">
-              <option value="">All</option>
-              <option value="queued">queued</option>
-              <option value="processing">processing</option>
-              <option value="retryable">retryable</option>
-              <option value="completed">completed</option>
-              <option value="partial">partial</option>
-              <option value="failed">failed</option>
-              <option value="failed_validation">failed_validation</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="searchFilter">Search</label>
-            <input id="searchFilter" type="text" placeholder="run_id, target, brand" />
           </div>
           <div class="control-actions">
             <button id="applyFilters" class="btn btn-primary" type="button">Apply</button>
             <button id="refreshReports" class="btn btn-ghost" type="button">Refresh</button>
           </div>
+          <details class="reports-more-filters">
+            <summary>More filters</summary>
+            <div class="reports-more-filters-grid">
+              <div class="field">
+                <label for="targetFilter">Site</label>
+                <input id="targetFilter" type="text" placeholder="example.com" />
+              </div>
+              <div class="field">
+                <label for="statusFilter">Status</label>
+                <select id="statusFilter">
+                  <option value="">All</option>
+                  <option value="queued">queued</option>
+                  <option value="processing">processing</option>
+                  <option value="retryable">retryable</option>
+                  <option value="completed">completed</option>
+                  <option value="partial">partial</option>
+                  <option value="failed">failed</option>
+                  <option value="failed_validation">failed_validation</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="searchFilter">Search</label>
+                <input id="searchFilter" type="text" placeholder="run id, site, project" />
+              </div>
+            </div>
+          </details>
         </div>
 
         <div class="brand-summary card-surface">
           <div class="brand-context">
-            <p class="brand-context-label">Active Brand</p>
-            <h2 id="activeBrandLabel">All Brands</h2>
-            <p id="activeBrandMeta">Showing all QA runs currently stored.</p>
+            <p class="brand-context-label">Current project</p>
+            <h2 id="activeBrandLabel">All projects</h2>
+            <p id="activeBrandMeta">Showing every saved test.</p>
           </div>
           <div class="brand-metrics">
             <article class="metric-card">
@@ -148,8 +153,8 @@
 
         <div class="brand-chips card-surface">
           <div class="brand-chips-head">
-            <h3>Brand Quick Filter</h3>
-            <span id="brandChipsCount">0 brands</span>
+            <h3>Quick pick</h3>
+            <span id="brandChipsCount">0 projects</span>
           </div>
           <div id="brandChips" class="brand-chip-list"></div>
         </div>
@@ -157,7 +162,7 @@
         <div class="reports-layout">
           <aside class="reports-list card-surface">
             <div class="reports-list-head">
-              <h2>Runs</h2>
+              <h2>Tests</h2>
               <span id="reportsCount">0</span>
             </div>
             <div id="reportsItems" class="reports-items"></div>

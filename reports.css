@@ -42,6 +42,30 @@
   gap: 18px;
 }
 
+.reports-more-filters {
+  grid-column: 1 / -1;
+  border-top: 1px solid hsl(var(--border) / 0.55);
+  padding-top: 12px;
+}
+
+.reports-more-filters summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.reports-more-filters summary::-webkit-details-marker {
+  display: none;
+}
+
+.reports-more-filters-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
 [data-dashboard-protected="true"][hidden],
 [data-auth-signout="true"][hidden],
 .dashboard-auth-shell[hidden],
@@ -7685,6 +7709,108 @@ body.live-view-mode .app-live-session-frame {
   }
 
   .coverage-attempt-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.report-detail-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.report-item-simple-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.report-item-simple-copy {
+  min-width: 0;
+}
+
+.report-item-simple-copy h3 {
+  margin: 0 0 6px;
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.report-item-simple-copy p,
+.report-item-simple-meta {
+  margin: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.report-item-simple-meta {
+  margin-top: 10px;
+}
+
+.report-more-details,
+.finding-detail-more {
+  border-radius: 18px;
+  border: 1px solid hsl(var(--border) / 0.62);
+  background: hsl(var(--card) / 0.72);
+  padding: 16px 18px;
+}
+
+.report-more-details summary,
+.finding-detail-more summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.report-more-details summary::-webkit-details-marker,
+.finding-detail-more summary::-webkit-details-marker {
+  display: none;
+}
+
+.report-more-details-body,
+.finding-detail-more-body {
+  display: grid;
+  gap: 18px;
+  margin-top: 16px;
+}
+
+.finding-ledger-item-simple {
+  display: grid;
+  gap: 14px;
+}
+
+.finding-ledger-item-simple .finding-ledger-head {
+  align-items: flex-start;
+}
+
+.finding-ledger-item-simple .finding-ledger-meta {
+  margin-top: 6px;
+}
+
+.finding-ledger-item-simple .finding-ledger-actions {
+  justify-content: flex-start;
+}
+
+.finding-detail-grid {
+  gap: 16px;
+}
+
+.finding-detail-section > p {
+  margin: 0;
+}
+
+.finding-detail-subnote {
+  margin-top: 10px;
+}
+
+@media (max-width: 800px) {
+  .report-item-simple-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .reports-more-filters-grid {
     grid-template-columns: 1fr;
   }
 }

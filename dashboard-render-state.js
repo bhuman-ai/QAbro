@@ -43,13 +43,13 @@
     };
     
     if (elements.reportDetailPanel) {
-        elements.reportDetailPanel.innerHTML = '<div class="empty-detail"><h2>Select a run</h2><p>Report details will appear here.</p></div>';
+        elements.reportDetailPanel.innerHTML = '<div class="empty-detail"><h2>Pick a test</h2><p>The report will open here.</p></div>';
     }
 
     if (hasAppDashboardUi) {
-      updatePanelWithPlaceholder(elements.runsPanelContent, '<h3>No runs yet</h3><p>Your recent test runs will appear here.</p>');
-      updatePanelWithPlaceholder(elements.topFixesItems, '<h3>Prioritized Blockers</h3><p>Select a run to see the most critical issues.</p>');
-      updatePanelWithPlaceholder(elements.personaSignalsItems, '<h3>Persona Signals</h3><p>See how different user personas reacted to your app.</p>');
+      updatePanelWithPlaceholder(elements.runsPanelContent, '<h3>No tests yet</h3><p>Your recent tests will appear here.</p>');
+      updatePanelWithPlaceholder(elements.topFixesItems, '<h3>Fix first</h3><p>Pick a test to see the biggest problems.</p>');
+      updatePanelWithPlaceholder(elements.personaSignalsItems, '<h3>What felt hard</h3><p>Pick a test to see where users struggled.</p>');
       
       if (renderRecentRunsTable && elements.runsPanelContent) {
         renderRecentRunsTable();

@@ -1900,6 +1900,192 @@ body {
   font-size: 12px;
 }
 
+.dashboard-grid {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.dashboard-header {
+  padding: 14px 18px;
+}
+
+.dashboard-nav {
+  top: 104px;
+  padding: 8px;
+}
+
+.dashboard-nav a {
+  height: 38px;
+  padding: 0 14px;
+  font-size: 12px;
+}
+
+#appQaDashboard {
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.app-shell-main {
+  gap: 14px;
+}
+
+.app-shell-sidebar {
+  order: -1;
+  position: static;
+}
+
+.app-shell-sidebar-content {
+  gap: 12px;
+}
+
+.app-shell-sidebar-content > .app-sidecard:not(:first-child):not(.app-live-mission) {
+  display: none;
+}
+
+.theme-mode-control,
+.worker-health-chip,
+.app-panel-toolbar-left,
+#refreshReports,
+.app-panel-header-metrics,
+.app-panel-chip-row,
+.app-run-picker-shell,
+.app-panel-count,
+.app-secondary-actions,
+.app-evidence-panel {
+  display: none !important;
+}
+
+.dashboard-header-right {
+  gap: 12px;
+}
+
+.topbar-project-shell {
+  max-width: 320px;
+}
+
+.app-panel-toolbar {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  justify-content: flex-end;
+}
+
+.app-panel-header,
+.app-panel,
+.app-sidecard {
+  border-radius: 20px;
+}
+
+.app-panel-header {
+  padding: 18px 20px;
+  gap: 10px;
+}
+
+.app-panel-header-main h2 {
+  margin-bottom: 6px;
+  font-size: 28px;
+}
+
+.app-panel-header-meta {
+  max-width: none;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.app-shell-columns {
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.app-panel {
+  padding: 18px;
+}
+
+.app-panel-head {
+  align-items: center;
+}
+
+.app-panel-head h3 {
+  font-size: 20px;
+}
+
+.runs-panel-content {
+  gap: 10px;
+}
+
+.report-item {
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.app-panel-report-detail {
+  min-height: 480px;
+}
+
+.app-risk-metrics {
+  margin-top: 14px;
+}
+
+.app-sidecard-copy {
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.app-hero-actions {
+  margin-top: 14px;
+}
+
+.dashboard-auth-card {
+  width: min(420px, 100%);
+}
+
+.app-onboarding {
+  width: min(760px, calc(100vw - 28px));
+  margin: 0 auto;
+  padding: 22px;
+}
+
+.app-onboarding-layout {
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.app-onboarding-aside {
+  order: 2;
+}
+
+.app-onboarding-steps {
+  gap: 8px;
+}
+
+.onboarding-step-note,
+.onboarding-launch-note,
+.onboarding-launch-sequence,
+.onboarding-subsection-head p,
+.onboarding-sidecard-head p {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.onboarding-help-card,
+.app-onboarding-aside .onboarding-sidecard:last-child,
+.onboarding-final-checklist + .onboarding-final-checklist {
+  display: none;
+}
+
+.onboarding-choice-grid,
+.onboarding-toggle-grid,
+.onboarding-review-grid {
+  grid-template-columns: 1fr;
+}
+
+.onboarding-choice,
+.onboarding-toggle,
+.onboarding-review-card {
+  border-radius: 16px;
+}
+
 @media (max-width: 1280px) {
   #appQaDashboard {
     grid-template-columns: 1fr;
@@ -1959,9 +2145,5 @@ body {
   .app-toolbar-meta,
   .app-panel-count {
     justify-content: center;
-  }
-
-  .app-secondary-actions {
-    display: grid;
   }
 }

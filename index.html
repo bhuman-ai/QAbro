@@ -28,9 +28,8 @@
           </a>
 
           <nav class="main-nav" aria-label="Primary">
-            <a href="#features">Features</a>
-            <a href="#how-it-works">How It Works</a>
-            <a href="/dashboard">Reports</a>
+            <a href="#how-it-works">How it works</a>
+            <a href="/dashboard">Dashboard</a>
           </nav>
 
           <div class="topbar-actions">
@@ -41,136 +40,41 @@
       </header>
 
       <main>
-        <section id="hero" class="hero">
+        <section id="hero" class="hero hero-simple">
           <div class="hero-overlay" aria-hidden="true"></div>
-          <div class="container hero-grid">
-            <div class="hero-copy-column">
+          <div class="container hero-grid hero-grid-simple">
+            <div class="hero-copy-column hero-copy-simple">
               <p class="status-pill">
                 <span class="dot"></span>
-                Live now
+                Real browser QA
               </p>
-
-              <h1>
-                AI Agents That
-                <span>Break Your App</span>
-                Before Users Do
-              </h1>
-
-              <p class="hero-copy">
-                Run real AI QA on React apps, Next.js products, auth flows, dashboards, and mobile web journeys.
-              </p>
-              <p class="hero-support">
-                Launch browser agents, review video-backed bug reports, and schedule recurring checks that alert your team when something breaks.
-              </p>
-
-              <div class="hero-actions">
-                <a class="btn btn-primary btn-hero-primary" href="/dashboard?mode=signup">Start Testing</a>
-                <a class="btn btn-ghost" href="/dashboard">View Reports</a>
-              </div>
-
-              <p class="hero-proof-label">Trusted by fast-moving product teams</p>
-              <div class="hero-proof-row" aria-label="Swarm Tester proof points">
+              <h1>Test your site like a real new user.</h1>
+              <p class="hero-copy">Enter your site and your email. We run the test and send the report.</p>
+              <div class="hero-simple-points" aria-label="Simple summary">
                 <article>
-                  <strong>12k+</strong>
-                  <span>Bugs surfaced in beta</span>
+                  <strong>1.</strong>
+                  <span>We open the real site.</span>
                 </article>
                 <article>
-                  <strong>500+</strong>
-                  <span>Apps tested so far</span>
+                  <strong>2.</strong>
+                  <span>We try the main flow.</span>
                 </article>
                 <article>
-                  <strong>98%</strong>
-                  <span>Reports judged useful</span>
+                  <strong>3.</strong>
+                  <span>You get a clear report.</span>
                 </article>
               </div>
             </div>
 
-            <div class="hero-stage" aria-label="Swarm Tester in action">
-              <div class="hero-stage-header">
-                <div>
-                  <strong>Watch a QA agent work</strong>
-                  <span>BHuman, ClusterSEO, and Workolo being tested in one slower reel with reactions, friction notes, and blocker capture.</span>
-                </div>
-                <a href="/dashboard" class="hero-stage-link">Open dashboard</a>
+            <section class="proof-demo home-qa-panel" aria-label="Start a QA run">
+              <div class="home-qa-panel-head">
+                <h2>Start a test</h2>
+                <p>One site. One email. One clear next step.</p>
               </div>
-              <div class="hero-stage-frame">
-                <video class="hero-stage-video" autoplay muted loop playsinline preload="auto">
-                  <source src="assets/home-qa-demo.mp4" type="video/mp4" />
-                </video>
-                <div class="hero-platform-pills" aria-hidden="true">
-                  <span>BHuman</span>
-                  <span>ClusterSEO</span>
-                  <span>Workolo</span>
-                </div>
-                <div class="hero-reactions" aria-hidden="true">
-                  <article class="hero-reaction hero-reaction-1">
-                    <span class="hero-reaction-emoji">🙂</span>
-                    <div>
-                      <strong>BHuman: this start is clear</strong>
-                      <span>I can tell what to do next from the presenter flow right away.</span>
-                    </div>
-                  </article>
-                  <article class="hero-reaction hero-reaction-2">
-                    <span class="hero-reaction-emoji">😕</span>
-                    <div>
-                      <strong>ClusterSEO: auth got confusing</strong>
-                      <span>I stayed on Log in when I needed the site to take me into sign up.</span>
-                    </div>
-                  </article>
-                  <article class="hero-reaction hero-reaction-3">
-                    <span class="hero-reaction-emoji">🐞</span>
-                    <div>
-                      <strong>Workolo: this blocked the run</strong>
-                      <span>The OTP gate stopped progress and the flow never really recovered.</span>
-                    </div>
-                  </article>
-                </div>
-              </div>
-              <div class="hero-stage-strip">
-                <article>
-                  <img src="assets/home-run-setup.png" alt="Swarm Tester run setup flow showing app selection and mission summary." loading="lazy" />
-                  <div>
-                    <strong>Configure the mission</strong>
-                    <span>Choose the app, persona, and goal.</span>
-                  </div>
-                </article>
-                <article>
-                  <img src="assets/home-live-report.png" alt="Swarm Tester detailed report showing video, findings, and supporting evidence." loading="lazy" />
-                  <div>
-                    <strong>Review the evidence</strong>
-                    <span>Open a detailed report with clips, logs, and steps.</span>
-                  </div>
-                </article>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="integration-strip" aria-label="Integrations">
-          <div class="container integration-strip-inner">
-            <p>Trusted by developers shipping with the stack they already use</p>
-            <div class="integration-list">
-              <span class="integration-item integration-github"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3.5a8.5 8.5 0 0 0-2.69 16.56c.42.08.57-.18.57-.41v-1.43c-2.32.5-2.81-.99-2.81-.99-.38-.96-.93-1.22-.93-1.22-.76-.52.06-.51.06-.51.84.06 1.28.86 1.28.86.75 1.28 1.96.91 2.44.69.08-.54.29-.91.53-1.12-1.85-.21-3.8-.93-3.8-4.16 0-.92.33-1.67.86-2.26-.09-.21-.37-1.06.08-2.21 0 0 .71-.23 2.33.86a8.1 8.1 0 0 1 4.24 0c1.62-1.09 2.33-.86 2.33-.86.45 1.15.17 2 .08 2.21.54.59.86 1.34.86 2.26 0 3.24-1.95 3.95-3.81 4.16.3.26.56.77.56 1.56v2.31c0 .23.15.49.58.41A8.5 8.5 0 0 0 12 3.5Z" stroke="currentColor" stroke-width="1.2"/></svg><span>GitHub</span></span>
-              <span class="integration-item integration-vercel"><svg viewBox="0 0 24 24" fill="none"><path d="m12 5 7 12H5l7-12Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span>Vercel</span></span>
-              <span class="integration-item integration-slack"><svg viewBox="0 0 24 24" fill="none"><path d="M8 4.5A2.5 2.5 0 1 0 5.5 7H8V4.5Zm0 5H5.5a2.5 2.5 0 1 0 2.5 2.5V9.5Zm2 0v2.5a2.5 2.5 0 1 0 2.5-2.5H10Zm5-5A2.5 2.5 0 1 0 12.5 7H15V4.5Zm0 5v2.5a2.5 2.5 0 1 0 2.5-2.5H15Zm-5 5H7.5A2.5 2.5 0 1 0 10 17v-2.5Zm5 0V17a2.5 2.5 0 1 0 2.5-2.5H15Z" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Slack</span></span>
-              <span class="integration-item integration-jira"><svg viewBox="0 0 24 24" fill="none"><path d="M8 4h8a2 2 0 0 1 2 2v3H12a4 4 0 0 0-4 4H4V8a4 4 0 0 1 4-4Z" stroke="currentColor" stroke-width="1.2"/><path d="M10 10h8a2 2 0 0 1 2 2v4a4 4 0 0 1-4 4h-4v-6a4 4 0 0 0-2-3.46V10Z" stroke="currentColor" stroke-width="1.2"/></svg><span>Jira</span></span>
-              <span class="integration-item integration-playwright"><svg viewBox="0 0 24 24" fill="none"><path d="M6 6h12v12H6z" stroke="currentColor" stroke-width="1.2"/><path d="M9 9h6v6H9z" stroke="currentColor" stroke-width="1.2"/></svg><span>Playwright</span></span>
-            </div>
-          </div>
-        </section>
-
-        <section class="section section-proof">
-          <div class="container proof-shell">
-            <div class="proof-copy">
-              <p class="section-kicker">Try the swarm</p>
-              <h2>Queue a real QA run.</h2>
-              <p>Paste a public URL and your work email. We will run the real browser-backed QA, record the flow, and email the finished report when it is ready.</p>
-            </div>
-            <div class="proof-demo">
               <form class="scan-form" id="scanForm" novalidate>
                 <div class="scan-fields">
                   <label class="scan-input-shell scan-input-shell-url" for="scanUrl">
-                    <span class="scan-input-prefix">https://</span>
+                    <span class="scan-input-prefix">site</span>
                     <input
                       id="scanUrl"
                       name="url"
@@ -198,163 +102,70 @@
                       autocapitalize="off"
                     />
                   </label>
-                  <button class="scan-submit-btn" type="submit">Queue Real QA</button>
+                  <button class="scan-submit-btn" type="submit">Start Test</button>
                 </div>
               </form>
-              <p class="scan-form-note">We will email the finished report and share link when the run completes.</p>
+              <p class="scan-form-note">We email the report when the run is done.</p>
               <div class="scan-console" id="scanConsole" aria-live="polite">
                 <div class="scan-console-head">
                   <span class="scan-console-dot"></span>
-                  <strong>Real QA queue</strong>
-                  <span>Browser-backed run + report delivery</span>
+                  <strong>Test queue</strong>
+                  <span>Live status and report delivery</span>
                 </div>
-                <pre class="scan-console-body" id="scanConsoleBody">[SWARM-01] Enter a public site and work email to queue a real QA run…</pre>
+                <pre class="scan-console-body" id="scanConsoleBody">[SWARM-01] Enter a public site and email to start a real QA run…</pre>
               </div>
               <article class="scan-result" id="scanResult" hidden>
                 <div class="scan-result-head">
                   <div>
-                    <strong>Run queued</strong>
+                    <strong>Test started</strong>
                     <span id="scanResultSummary">We will email the finished report once the run is done.</span>
                   </div>
-                  <a class="btn btn-primary" id="scanResultAction" href="/dashboard?mode=signup">Open live report</a>
+                  <a class="btn btn-primary" id="scanResultAction" href="/dashboard?mode=signup">Open report</a>
                 </div>
                 <div class="scan-result-grid" id="scanResultGrid"></div>
               </article>
-            </div>
+            </section>
           </div>
         </section>
 
-        <section id="features" class="section section-features">
-          <div class="container section-head">
-            <h2>Everything you need to ship with confidence</h2>
-            <p>Real runs, readable reports, and recurring monitoring built to help engineering move from evidence to fix quickly.</p>
+        <section id="how-it-works" class="section section-how section-how-simple">
+          <div class="container section-head section-head-simple">
+            <h2>How it works</h2>
+            <p>Keep it simple: choose a site, wait for the run, read the report.</p>
           </div>
 
-          <div class="container card-grid">
-            <article class="feature-card">
-              <div class="feature-preview feature-preview-bug" aria-hidden="true">
-                <div class="mini-window">
-                  <div class="mini-window-bar"></div>
-                  <div class="mini-code">
-                    <span class="mini-code-line">POST /signup</span>
-                    <span class="mini-code-line mini-code-line-error">500 at 01:18 after submit</span>
-                    <span class="mini-code-line">stayed on the same form</span>
-                  </div>
-                </div>
+          <div class="container steps steps-horizontal steps-simple">
+            <article class="step step-horizontal">
+              <strong>1</strong>
+              <div>
+                <h3>Add your site</h3>
+                <p class="step-detail">Paste the public URL your users start from.</p>
               </div>
-              <h3>Bug detection with evidence</h3>
-              <p>Agents catch the failure, save the video, and pin the report to the exact step where progress stopped.</p>
             </article>
-            <article class="feature-card">
-              <div class="feature-preview feature-preview-fix" aria-hidden="true">
-                <div class="mini-fix-card">
-                  <span class="mini-fix-label">Fix suggestion</span>
-                  <strong>Switch to sign-up before filling the form</strong>
-                  <p>Auth stayed on Log in and submitted the wrong flow.</p>
-                </div>
+            <article class="step step-horizontal">
+              <strong>2</strong>
+              <div>
+                <h3>We run the test</h3>
+                <p class="step-detail">A browser agent signs up, clicks through, and records what happens.</p>
               </div>
-              <h3>Actionable analysis</h3>
-              <p>Reports explain what happened in plain English and generate a concrete fix prompt for the AI dev working on the feature.</p>
             </article>
-            <article class="feature-card">
-              <div class="feature-preview feature-preview-persona" aria-hidden="true">
-                <div class="mini-persona-swarm">
-                  <article>
-                    <span class="mini-persona-avatar">🧭</span>
-                    <strong>Newbie</strong>
-                    <span>Needs a clear next step</span>
-                  </article>
-                  <article>
-                    <span class="mini-persona-avatar">⚡</span>
-                    <strong>Expert</strong>
-                    <span>Wants speed and shortcuts</span>
-                  </article>
-                  <article>
-                    <span class="mini-persona-avatar">🕵️</span>
-                    <strong>Edge case</strong>
-                    <span>Pushes weird states on purpose</span>
-                  </article>
-                </div>
+            <article class="step step-horizontal">
+              <strong>3</strong>
+              <div>
+                <h3>You open the report</h3>
+                <p class="step-detail">See what broke, where it broke, and what to fix first.</p>
               </div>
-              <h3>Persona-driven QA</h3>
-              <p>Run the same product through different user lenses so you see where beginners stall and where power users get slowed down.</p>
-            </article>
-            <article class="feature-card">
-              <div class="feature-preview feature-preview-alert" aria-hidden="true">
-                <div class="mini-alert-stack">
-                  <span class="mini-alert-row">Tue 09:00 - signup regression</span>
-                  <span class="mini-alert-row">Email alert sent</span>
-                  <span class="mini-alert-row">Share report with team</span>
-                </div>
-              </div>
-              <h3>Recurring checks and alerts</h3>
-              <p>Schedule regular QA runs, route findings into your workflow, and let the product tell your team when something regresses.</p>
             </article>
           </div>
         </section>
 
-        <section id="how-it-works" class="section section-how">
-          <div class="container section-head">
-            <h2>From zero to a report your team can use</h2>
-            <p>The setup is short, the run is real, and the result is evidence you can hand straight to engineering.</p>
-          </div>
-
-          <div class="container setup-shell">
-            <div class="steps steps-horizontal">
-              <article class="step step-horizontal">
-                <strong>01</strong>
-                <div>
-                  <h3>Point at the app</h3>
-                  <p class="step-detail">Set the real entry URL your users see.</p>
-                </div>
-              </article>
-              <article class="step step-horizontal">
-                <strong>02</strong>
-                <div>
-                  <h3>Define the mission</h3>
-                  <p class="step-detail">Choose the persona and the outcome the run must reach.</p>
-                </div>
-              </article>
-              <article class="step step-horizontal">
-                <strong>03</strong>
-                <div>
-                  <h3>Launch the run</h3>
-                  <p class="step-detail">Browser agents explore the product, not a mocked flow.</p>
-                </div>
-              </article>
-              <article class="step step-horizontal">
-                <strong>04</strong>
-                <div>
-                  <h3>Review what broke</h3>
-                  <p class="step-detail">Share a report with clips, logs, and fix-ready summaries.</p>
-                </div>
-              </article>
-            </div>
-
-            <aside class="setup-snippet">
-              <div class="setup-snippet-head">
-                <div>
-                  <strong>Example mission</strong>
-                  <span>Use the same shape in the dashboard, API, or MCP flow.</span>
-                </div>
-                <button class="copy-snippet-btn" type="button" data-copy-target="missionSnippet">Copy</button>
-              </div>
-              <pre class="setup-snippet-code"><code id="missionSnippet"><span class="code-punct">{</span>
-  <span class="code-key">"url"</span><span class="code-punct">:</span> <span class="code-string">"https://app.example.com"</span><span class="code-punct">,</span>
-  <span class="code-key">"goal"</span><span class="code-punct">:</span> <span class="code-string">"Create the first campaign"</span><span class="code-punct">,</span>
-  <span class="code-key">"persona"</span><span class="code-punct">:</span> <span class="code-string">"First-time PM"</span><span class="code-punct">,</span>
-  <span class="code-key">"must_reach"</span><span class="code-punct">:</span> <span class="code-string">"campaign created"</span>
-<span class="code-punct">}</span></code></pre>
-            </aside>
-          </div>
-        </section>
-        <section class="section section-cta">
+        <section class="section section-cta section-cta-simple">
           <div class="container cta-panel">
-            <h2>Start running QA today</h2>
-            <p>Point Swarm Tester at your app, launch a run, and get shareable reports with evidence, recurring checks, and alerts.</p>
+            <h2>Need the full dashboard?</h2>
+            <p>Open your runs, live status, and reports in one place.</p>
             <div class="cta-actions">
-              <a class="btn btn-primary" href="/dashboard?mode=signup">Create Account</a>
-              <a class="btn btn-ghost" href="/dashboard">Open Dashboard</a>
+              <a class="btn btn-primary" href="/dashboard?mode=signup">Open Dashboard</a>
+              <a class="btn btn-ghost" href="/dashboard?mode=signin">Sign In</a>
             </div>
           </div>
         </section>
@@ -373,12 +184,9 @@
           </a>
 
           <nav class="main-nav" aria-label="Footer">
-            <a href="#features">Features</a>
-            <a href="#how-it-works">How It Works</a>
+            <a href="#how-it-works">How it works</a>
             <a href="/dashboard?mode=signin">Sign In</a>
-            <a href="/dashboard?mode=signup">Get Started</a>
-            <a href="mailto:team@enrichanything.com?subject=Swarm%20Tester%20demo">Book Demo</a>
-            <a href="/dashboard">Reports</a>
+            <a href="/dashboard?mode=signup">Open Dashboard</a>
           </nav>
 
           <p>&copy; <span id="year"></span> Swarm Tester. All rights reserved.</p>

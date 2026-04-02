@@ -179,7 +179,7 @@
     const journeysCount = Array.isArray(report?.tested_journeys) ? report.tested_journeys.length : 0;
 
     if (elements.healthHeroTitle) {
-      elements.healthHeroTitle.textContent = releaseLens ? `${environmentLabel} Release Readiness` : `${environmentLabel} Health`;
+      elements.healthHeroTitle.textContent = isLive || isLiveViewMode() ? "Live test" : "Next step";
     }
     if (elements.dashboardStateBadge) {
       elements.dashboardStateBadge.className = `issue-severity ${verdictMeta.severityClass}`;
@@ -257,16 +257,16 @@
       elements.riskAvgSatisfaction.textContent = heroMetrics[3]?.value || "0";
     }
 
-    let primaryActionLabel = "Review Findings";
+    let primaryActionLabel = "Open Report";
     let primaryActionMode = "review";
     if (mode === "no_runs") {
-      primaryActionLabel = "Start First Test";
+      primaryActionLabel = "Start Test";
       primaryActionMode = "start";
     } else if (mode === "running") {
-      primaryActionLabel = queueStatus === "queued" || queueStatus === "retryable" ? "Queued for Start" : "Watching Live";
+      primaryActionLabel = queueStatus === "queued" || queueStatus === "retryable" ? "Open Live" : "Watch Live";
       primaryActionMode = "watch";
     } else if (mode === "partial" || mode === "failed") {
-      primaryActionLabel = "Retry Run";
+      primaryActionLabel = "Try Again";
       primaryActionMode = "retry";
     }
 
@@ -299,7 +299,7 @@
     renderAppEvidencePanel(report, row);
 
     if (elements.topFixesTitle) {
-      elements.topFixesTitle.textContent = mode === "failed" ? "Validated Blockers" : "Needs Attention";
+      elements.topFixesTitle.textContent = mode === "failed" ? "Fix before retry" : "Fix first";
     }
     if (elements.topFixesItems) {
       elements.topFixesItems.innerHTML = renderTopFixes(report, row, mode);
@@ -321,7 +321,7 @@
       }
     }
     if (elements.personaSignalsTitle) {
-      elements.personaSignalsTitle.textContent = mode === "failed" ? "Signals Before Failure" : "What users struggled with";
+      elements.personaSignalsTitle.textContent = mode === "failed" ? "What felt hard before it stopped" : "What felt hard";
     }
     if (elements.personaSignalsItems) {
       elements.personaSignalsItems.innerHTML = renderPersonaSignals(report, row, mode);
@@ -340,11 +340,11 @@
 
     if (elements.appProgressTitle) {
       if (mode === "failed") {
-        elements.appProgressTitle.textContent = "Coverage Before Failure";
+        elements.appProgressTitle.textContent = "Path before failure";
       } else if (mode === "partial") {
-        elements.appProgressTitle.textContent = "Partial Journey Coverage";
+        elements.appProgressTitle.textContent = "Partial path";
       } else {
-        elements.appProgressTitle.textContent = "Journey Health";
+        elements.appProgressTitle.textContent = "Path health";
       }
     }
     if (elements.testProgressItems) {

@@ -303,20 +303,20 @@ const hasReportsUi = hasLegacyReportsUi || hasAppDashboardUi;
 const onboardingGatedSections = Array.from(document.querySelectorAll("[data-onboarding-gated='true']"));
 const ONBOARDING_STEP_META = {
   1: {
-    title: "Choose the app",
-    subtitle: "Start with the real product entry point your users see."
+    title: "Choose the site",
+    subtitle: "Start with the page a real user sees first."
   },
   2: {
-    title: "Choose the persona",
-    subtitle: "Choose the ICPs the model should roleplay during the run."
+    title: "Choose the user",
+    subtitle: "Pick the kind of person this test should act like."
   },
   3: {
-    title: "Define the mission",
-    subtitle: "Pick the post-onboarding outcomes the swarm must reach."
+    title: "Choose the goal",
+    subtitle: "Pick the main thing the user should finish."
   },
   4: {
-    title: "Review and launch",
-    subtitle: "Confirm the app, persona, and goals before launch."
+    title: "Start the test",
+    subtitle: "Check the setup, then start."
   }
 };
 const ONBOARDING_MAX_STEP = 4;
@@ -2563,13 +2563,9 @@ function renderFindingDetailModalContent(report, row, finding, findingIndex) {
   const title = safeFinding.title || safeFinding.observed_behavior || safeFinding.id || `Finding ${findingIndex + 1}`;
   const typeVisual = getFindingTypeVisual(safeFinding.type);
   const severity = normalizeSeverity(safeFinding.severity);
-  const priorityScore = getDisplayProblemPriorityScore(safeFinding);
   const confidencePct = toConfidencePercent(safeFinding.confidence);
   const journeyLabel = getFindingJourneyLabel(safeFinding);
   const recommendation = deriveFindingRecommendation(safeReport, safeFinding, findingIndex);
-  const opinion = buildFindingOpinion(safeFinding);
-  const emotion = getEmotionVisual(safeFinding?.emotional_reaction?.primary);
-  const personaName = resolvePersonaName(safeRow);
   const findingAnchorId = `finding-${toAnchorToken(safeFinding?.id || safeFinding?.title || `finding-${findingIndex + 1}`)}`;
   const shareBaseUrl = buildReportShareUrl(safeReport?.run_id || safeRow?.run_id, safeRow);
   const findingUrl = shareBaseUrl ? `${shareBaseUrl}#${findingAnchorId}` : "";
@@ -2589,6 +2585,14 @@ function renderFindingDetailModalContent(report, row, finding, findingIndex) {
   const deliveredAt = safeRow?.delivered_at ? formatRelativeTime(safeRow.delivered_at) : "";
   const evidenceSummaryText =
     [screenshotSummary.text, videoSummary.text].filter(Boolean).join(" · ") || "No evidence attached";
+  const advancedSections = [
+    renderFindingTimelineSection(safeFinding),
+    renderFindingRelevantLogsSection(safeFinding),
+    `<section class="finding-detail-section"><h3>Diagnostic details</h3>${renderFindingDiagnosticDetails(safeFinding)}</section>`,
+    renderFindingEngineeringTriageSection(safeReport, safeFinding)
+  ]
+    .filter((markup) => String(markup || "").trim())
+    .join("");
 
   return `
     <div class="finding-detail-header">
@@ -2597,111 +2601,56 @@ function renderFindingDetailModalContent(report, row, finding, findingIndex) {
         <div class="finding-detail-heading">
           <h2 id="findingDetailModalTitle">${escapeHtml(title)}</h2>
           <p class="finding-detail-meta">
-            ${escapeHtml(typeVisual.label)} · ${escapeHtml(journeyLabel)} · sure ${escapeHtml(String(confidencePct))}%${deliveredAt ? ` · ${escapeHtml(deliveredAt)}` : ""}
+            ${escapeHtml(typeVisual.label)} · ${escapeHtml(journeyLabel)} · ${escapeHtml(severity.toUpperCase())} · ${escapeHtml(String(confidencePct))}% sure${deliveredAt ? ` · ${escapeHtml(deliveredAt)}` : ""}
           </p>
         </div>
       </div>
       <div class="finding-detail-actions">
-        ${findingUrl ? `<a href="${escapeHtml(findingUrl)}" target="_blank" rel="noreferrer">Open full report</a>` : ""}
+        ${findingUrl ? `<a href="${escapeHtml(findingUrl)}" target="_blank" rel="noreferrer">Open report</a>` : ""}
         ${findingUrl ? `<button type="button" data-share-url="${escapeHtml(findingUrl)}" data-label="Copy finding link">Copy link</button>` : ""}
-      </div>
-      <div class="finding-detail-facts">
-        <div class="finding-detail-fact">
-          <span>Size</span>
-          <strong>${escapeHtml(severity.toUpperCase())}</strong>
-        </div>
-        <div class="finding-detail-fact">
-          <span>Fix first score</span>
-          <strong>${escapeHtml(String(priorityScore))}/100</strong>
-        </div>
-        <div class="finding-detail-fact">
-          <span>Proof</span>
-          <strong>${escapeHtml(evidenceSummaryText)}</strong>
-        </div>
-        <div class="finding-detail-fact">
-          <span>Page</span>
-          <strong>${escapeHtml(targetLabel)}</strong>
-        </div>
       </div>
     </div>
     <div class="finding-detail-grid">
-      <section class="finding-detail-section finding-detail-section-proof">
-        <div class="finding-detail-section-head">
-          <h3>Proof</h3>
-        </div>
-        ${renderFindingProofCard(safeReport, safeFinding, title, {
-          maxItems: 1,
-          replayFrame
-        })}
-        ${
-          screenshotSummary.renderableCount > 1
-            ? `<div class="finding-detail-supporting">
-                <p class="finding-detail-supporting-label">Relevant pictures around where it got stuck</p>
-                ${renderFindingScreenshotGallery(safeReport, safeFinding, title)}
-              </div>`
-            : ""
-        }
-        <div class="finding-detail-supporting">
-          ${renderLinkRow(safeReport, safeFinding?.evidence?.screenshots || [], "Screenshot")}
-          ${renderLinkRow(safeReport, safeFinding?.evidence?.videos || [], "Video")}
-        </div>
-      </section>
-      ${renderFindingTimelineSection(safeFinding)}
-      ${renderFindingRelevantLogsSection(safeFinding)}
-      <section class="finding-detail-section finding-detail-section-emphasis">
-        <h3>What happened</h3>
-        ${renderTesterVoice(personaName, opinion, `${emotion.emoji} ${emotion.label}`)}
-        <div class="finding-detail-copy">
-          <p><strong>Should have happened</strong> ${escapeHtml(safeFinding.expected_behavior || "We did not save this part.")}</p>
-          <p><strong>What happened</strong> ${escapeHtml(simplifyReportNarrative(safeFinding.observed_behavior || "We did not save this part."))}</p>
-        </div>
+      <section class="finding-detail-section">
+        <h3>What went wrong</h3>
+        <p>${escapeHtml(simplifyReportNarrative(safeFinding.observed_behavior || "We did not save this part."))}</p>
       </section>
       <section class="finding-detail-section">
-        <h3>Diagnostic details</h3>
-        ${renderFindingDiagnosticDetails(safeFinding)}
+        <h3>What should have happened</h3>
+        <p>${escapeHtml(safeFinding.expected_behavior || "We did not save this part.")}</p>
       </section>
       <section class="finding-detail-section">
         <div class="finding-detail-section-head">
-          <h3>Fix idea</h3>
+          <h3>What to fix</h3>
           ${renderLlmCopyButtons("finding", { findingIndex })}
         </div>
         <p>${escapeHtml(recommendation)}</p>
         ${fixHint ? `<p class="finding-detail-subnote"><strong>Helpful hint</strong> ${escapeHtml(fixHint)}</p>` : ""}
       </section>
-      ${renderFindingEngineeringTriageSection(safeReport, safeFinding)}
       <section class="finding-detail-section">
-        <h3>More facts</h3>
-        <div class="finding-detail-facts finding-detail-facts-compact">
-          <div class="finding-detail-fact">
-            <span>Problem type</span>
-            <strong>${escapeHtml(typeVisual.label)}</strong>
-          </div>
-          <div class="finding-detail-fact">
-            <span>Proof status</span>
-            <strong>${escapeHtml(proofModel.label)}</strong>
-          </div>
-          <div class="finding-detail-fact">
-            <span>Tester reaction</span>
-            <strong>${escapeHtml(emotion.label)}</strong>
-          </div>
-          <div class="finding-detail-fact">
-            <span>Test</span>
-            <strong>${escapeHtml(safeReport?.run_id || safeRow?.run_id || "Unknown")}</strong>
-          </div>
-          <div class="finding-detail-fact">
-            <span>Saved proof</span>
-            <strong>${
-              proofModel.primaryAsset
-                ? proofModel.primaryAsset.kind === "video"
-                  ? "Video"
-                  : Number.isInteger(replayFrame) && replayFrame >= 0
-                    ? `Picture ${escapeHtml(String(replayFrame + 1))}`
-                    : "Picture"
-                : "No saved proof"
-            }</strong>
-          </div>
+        <h3>Proof</h3>
+        ${renderFindingProofCard(safeReport, safeFinding, title, {
+          maxItems: 1,
+          replayFrame
+        })}
+        <p class="finding-detail-subnote"><strong>Saved proof</strong> ${escapeHtml(evidenceSummaryText)} · ${escapeHtml(targetLabel)}</p>
+        <div class="finding-detail-supporting">
+          ${renderLinkRow(safeReport, safeFinding?.evidence?.screenshots || [], "Screenshot")}
+          ${renderLinkRow(safeReport, safeFinding?.evidence?.videos || [], "Video")}
         </div>
       </section>
+      ${
+        advancedSections
+          ? `
+            <details class="finding-detail-more">
+              <summary>See extra details</summary>
+              <div class="finding-detail-more-body">
+                ${advancedSections}
+              </div>
+            </details>
+          `
+          : ""
+      }
     </div>
   `;
 }
@@ -3405,7 +3354,7 @@ function setOnboardingSubmitLabel(label) {
   if (!elements.onboardingSubmitButton) {
     return;
   }
-  elements.onboardingSubmitButton.dataset.defaultLabel = String(label || "Launch Mission");
+  elements.onboardingSubmitButton.dataset.defaultLabel = String(label || "Start Test");
   elements.onboardingSubmitButton.textContent = elements.onboardingSubmitButton.dataset.defaultLabel;
 }
 
@@ -3962,9 +3911,9 @@ function updateOnboardingVisibility() {
     refreshOnboardingPreview();
   }
 
-  setOnboardingSubmitLabel("Launch Mission");
+  setOnboardingSubmitLabel("Start Test");
   if (elements.launchSwarmButton) {
-    elements.launchSwarmButton.textContent = "New Run";
+    elements.launchSwarmButton.textContent = "Start Test";
   }
 }
 
@@ -8225,13 +8174,24 @@ function renderBrandSummary() {
     ? Math.round((riskValues.reduce((acc, value) => acc + value, 0) / riskValues.length) * 10) / 10
     : 0;
 
-  elements.activeBrandLabel.textContent = `${activeBrand} / ${environment}`;
-  const personaSuffix = runsCount > 0 && state.filters.persona ? ` Persona set: ${state.filters.persona}.` : "";
-  elements.activeBrandMeta.textContent = `Last tested ${latestRunTime} · ${runsCount} run${runsCount === 1 ? "" : "s"} · ${findingsCount} finding${findingsCount === 1 ? "" : "s"}.${personaSuffix}`;
-  elements.metricRuns.textContent = String(runsCount);
-  elements.metricCompleted.textContent = String(completedCount);
-  elements.metricFindings.textContent = String(findingsCount);
-  elements.metricRisk.textContent = String(avgRisk);
+  elements.activeBrandLabel.textContent = activeBrand;
+  const personaSuffix = runsCount > 0 && state.filters.persona ? ` User: ${state.filters.persona}.` : "";
+  elements.activeBrandMeta.textContent =
+    runsCount > 0
+      ? `${environment} view. Last tested ${latestRunTime}. ${findingsCount} problem${findingsCount === 1 ? "" : "s"} across ${runsCount} test${runsCount === 1 ? "" : "s"}.${personaSuffix}`
+      : `${environment} view. Start a test to see what breaks first.`;
+  if (elements.metricRuns) {
+    elements.metricRuns.textContent = String(runsCount);
+  }
+  if (elements.metricCompleted) {
+    elements.metricCompleted.textContent = String(completedCount);
+  }
+  if (elements.metricFindings) {
+    elements.metricFindings.textContent = String(findingsCount);
+  }
+  if (elements.metricRisk) {
+    elements.metricRisk.textContent = String(avgRisk);
+  }
 
   if (elements.metricPersonas) {
     elements.metricPersonas.textContent = String(personaCount);
@@ -8421,8 +8381,8 @@ function renderRunsList() {
     elements.reportsItems.innerHTML = '<div class="empty-state">No reports found for these filters.</div>';
     elements.reportDetail.innerHTML = `
       <div class="empty-detail">
-        <h2>No report selected</h2>
-        <p>Try adjusting brand/target/status filters.</p>
+        <h2>No test yet</h2>
+        <p>Start a test or change the filters.</p>
       </div>
     `;
     return;
@@ -8442,24 +8402,22 @@ function renderRunsList() {
       const findingsCount = Array.isArray(liveStatus?.live_report?.findings)
         ? liveStatus.live_report.findings.length
         : run.findings_count;
+      const targetLabel = buildTargetLabelFromUrl(run.target || "") || run.target || run.brand_key || run.run_id;
+      const relativeTime = formatRelativeTime(run.delivered_at);
+      const statusLabel = formatStatusLabel(queueStatus || displayStatus);
+      const riskLabel = Number.isFinite(Number(run.risk_score)) ? `${Number(run.risk_score)}/100` : "No score";
       return `
         <article class="report-item ${active}" data-run-id="${escapeHtml(run.run_id)}">
-          <div class="report-item-head">
-            ${renderRunPreview(run)}
-            <div>
-              <div class="report-title-row">
-                <h3>${escapeHtml(run.target || run.brand_key || run.run_id)}</h3>
-                ${run.brand_key ? `<span class="report-brand-pill">${escapeHtml(run.brand_key)}</span>` : ""}
-              </div>
-              <p>${escapeHtml(run.run_id)}</p>
-              <p>${escapeHtml(formatDate(run.delivered_at))}</p>
-              <div class="badges">
-                <span class="badge ${statusBadgeClass(displayStatus)}">${escapeHtml(displayStatus || "unknown")}</span>
-                <span class="badge">findings ${escapeHtml(findingsCount)}</span>
-                <span class="badge">risk ${escapeHtml(run.risk_score ?? "n/a")}</span>
-              </div>
+          <div class="report-item-simple-head">
+            <div class="report-item-simple-copy">
+              <h3>${escapeHtml(targetLabel)}</h3>
+              <p>${escapeHtml(statusLabel)} · ${escapeHtml(relativeTime)}</p>
             </div>
+            <span class="issue-severity ${escapeHtml(statusBadgeClass(displayStatus))}">${escapeHtml(displayStatus || "unknown")}</span>
           </div>
+          <p class="report-item-simple-meta">
+            ${escapeHtml(String(findingsCount || 0))} problem${Number(findingsCount || 0) === 1 ? "" : "s"} · score ${escapeHtml(riskLabel)}
+          </p>
         </article>
       `;
     })
@@ -11193,17 +11151,13 @@ function renderFindings(report, row = {}, replayPlayerId = "") {
     <section class="report-findings-ledger" id="section-findings">
       <div class="report-section-head">
         <h3>Problems</h3>
-        <p>${escapeHtml(String(findings.length))} problem${findings.length === 1 ? "" : "s"}, ordered from biggest to smallest.</p>
+        <p>${escapeHtml(String(findings.length))} problem${findings.length === 1 ? "" : "s"}, top to bottom.</p>
       </div>
       <div class="finding-ledger-list">
         ${findings
-        .map(
-          (finding, findingIndex) => {
-            const emotion = getEmotionVisual(finding?.emotional_reaction?.primary);
-            const emotionIntensity = Math.max(0, Number(finding?.emotional_reaction?.intensity) || 0);
+          .map((finding, findingIndex) => {
             const typeLabel = formatFindingTypeLabel(finding?.type);
             const severity = normalizeSeverity(finding?.severity);
-            const priorityScore = getDisplayProblemPriorityScore(finding);
             const recommendation = deriveFindingRecommendation(report, finding, findingIndex);
             const proofModel = buildFindingProofModel(report, finding, { maxItems: 1 });
             const proofToneClass = getFindingIssueToneClass(finding);
@@ -11212,82 +11166,42 @@ function renderFindings(report, row = {}, replayPlayerId = "") {
             const findingAnchorId = `finding-${toAnchorToken(finding?.id || finding?.title || `finding-${findingIndex + 1}`)}`;
             const findingFrameIndex = findFirstEvidenceIndex(finding?.evidence?.screenshots || [], screenshotIndexMap);
             const modalDataAttributes = buildFindingModalDataAttributes(finding, findingIndex);
-            const llmCopyMarkup = renderLlmCopyButtons("finding", {
-              findingIndex,
-              findingToken: buildFindingModalToken(finding, findingIndex)
-            });
             return `
-              <article class="finding-ledger-item" id="${escapeHtml(findingAnchorId)}">
+              <article class="finding-ledger-item finding-ledger-item-simple" id="${escapeHtml(findingAnchorId)}">
                 <div class="finding-ledger-head">
                   <div class="finding-ledger-heading">
                     <h4>${escapeHtml(finding.title || finding.id || `Finding ${findingIndex + 1}`)}</h4>
                     <p class="finding-ledger-meta">
-                      ${escapeHtml(typeLabel)} · ${escapeHtml(journeyLabel)} · Priority ${escapeHtml(String(priorityScore))}/100
+                      ${escapeHtml(journeyLabel)} · ${escapeHtml(typeLabel)} · ${escapeHtml(String(confidencePct))}% sure
                     </p>
                   </div>
-                  <div class="finding-ledger-badges">
-                    <span class="issue-severity ${escapeHtml(`severity-${severity}`)}">${escapeHtml(severity.toUpperCase())}</span>
-                    <span class="app-inline-pill ${escapeHtml(`tone-${proofToneClass}`)}">${escapeHtml(proofModel.label)}</span>
-                  </div>
+                  <span class="issue-severity ${escapeHtml(`severity-${severity}`)}">${escapeHtml(severity.toUpperCase())}</span>
                 </div>
-                <div class="finding-ledger-body">
-                  ${renderFindingProofCard(report, finding, finding?.title || finding?.id || "Finding", {
-                    maxItems: 1,
-                    toneClass: proofToneClass,
-                    replayFrame: findingFrameIndex,
-                    replayTarget: replayPlayerId
-                  })}
-                  <div class="finding-ledger-state">
-                    <div class="finding-ledger-stat">
-                      <span>Tester felt</span>
-                      <strong>${escapeHtml(`${emotion.emoji} ${emotion.label}`)}</strong>
-                      <small>${escapeHtml(`${emotionIntensity}/5`)}</small>
-                    </div>
-                    <div class="finding-ledger-stat">
-                      <span>How sure we are</span>
-                      <strong>${escapeHtml(`${confidencePct}%`)}</strong>
-                      <small>${escapeHtml(
-                        proofModel.state === "verified"
-                          ? proofModel.primaryAsset?.kind === "video"
-                            ? "Video saved"
-                            : "Picture saved"
-                          : proofModel.state === "fallback"
-                            ? proofModel.primaryAsset?.kind === "video"
-                              ? "Using a test video"
-                              : "Using a test picture"
-                            : "No proof saved"
-                      )}</small>
-                    </div>
-                    <div class="finding-ledger-stat">
-                      <span>Part of the test</span>
-                      <strong>${escapeHtml(journeyLabel)}</strong>
-                      <small>${escapeHtml(typeLabel)}</small>
-                    </div>
-                  </div>
-                  <div class="finding-ledger-compare">
-                    <section class="finding-ledger-copy">
-                      <span class="finding-section-label">Should have happened</span>
-                      <p>${escapeHtml(finding.expected_behavior || "We did not save this part.")}</p>
-                    </section>
-                    <section class="finding-ledger-copy finding-ledger-copy-observed">
-                      <span class="finding-section-label">What happened</span>
-                      <p>${escapeHtml(simplifyReportNarrative(finding.observed_behavior || "We did not save this part."))}</p>
-                    </section>
-                  </div>
-                  <div class="finding-ledger-copy">
-                    <span class="finding-section-label">Fix idea</span>
-                    <p>${escapeHtml(recommendation)}</p>
-                  </div>
-                  <div class="finding-ledger-actions">
-                    ${llmCopyMarkup}
-                    <button type="button" ${modalDataAttributes}>More</button>
-                  </div>
+                ${
+                  proofModel.primaryAsset
+                    ? renderFindingProofCard(report, finding, finding?.title || finding?.id || "Finding", {
+                        maxItems: 1,
+                        toneClass: proofToneClass,
+                        replayFrame: findingFrameIndex,
+                        replayTarget: replayPlayerId
+                      })
+                    : ""
+                }
+                <div class="finding-ledger-copy finding-ledger-copy-observed">
+                  <span class="finding-section-label">What went wrong</span>
+                  <p>${escapeHtml(simplifyReportNarrative(finding.observed_behavior || "We did not save this part."))}</p>
+                </div>
+                <div class="finding-ledger-copy">
+                  <span class="finding-section-label">What to fix</span>
+                  <p>${escapeHtml(recommendation)}</p>
+                </div>
+                <div class="finding-ledger-actions">
+                  <button type="button" ${modalDataAttributes}>Details</button>
                 </div>
               </article>
             `;
-          }
-        )
-        .join("")}
+          })
+          .join("")}
       </div>
     </section>
   `;
@@ -14167,27 +14081,35 @@ async function renderSelectedReport() {
   state.replayControllers.clear();
   const replayPlayerId = `replay-main-${toAnchorToken(report?.run_id || runId || "run")}`;
   const mode = deriveDashboardMode(report, row, statusPayload);
+  const countsMarkup = renderCounts(report, row, statusPayload);
   const liveWatchMarkup = renderLiveWatch(runId, row);
-  const sharedPromoMarkup = renderSharedReportPromotionBanner(report, row);
   const experienceTimelineMarkup = renderExperienceTimelineSection(report, row);
   const journeysMarkup = renderJourneys(report, row);
   const priorityMarkup = renderPrioritySummary(report, mode);
   const engineeringTriageMarkup = renderEngineeringTriageSection(report, row, statusPayload);
   const findingsMarkup = renderFindings(report, row, replayPlayerId);
+  const advancedMarkup = [experienceTimelineMarkup, journeysMarkup, engineeringTriageMarkup]
+    .filter((markup) => String(markup || "").trim())
+    .join("");
   const detailMarkup = `
     <div class="report-detail-shell">
       ${renderSelectedHeader(report, row, statusPayload)}
-      ${sharedPromoMarkup}
-      ${experienceTimelineMarkup}
-      ${journeysMarkup}
-      <div class="report-detail-columns">
-        <div class="report-main-column">
-          ${liveWatchMarkup}
-          ${priorityMarkup}
-          ${engineeringTriageMarkup}
-          ${findingsMarkup}
-        </div>
-      </div>
+      ${countsMarkup}
+      ${liveWatchMarkup}
+      ${priorityMarkup}
+      ${findingsMarkup}
+      ${
+        advancedMarkup
+          ? `
+            <details class="report-more-details">
+              <summary>See full journey and extra details</summary>
+              <div class="report-more-details-body">
+                ${advancedMarkup}
+              </div>
+            </details>
+          `
+          : ""
+      }
     </div>
   `;
 

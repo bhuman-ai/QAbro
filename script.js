@@ -103,9 +103,9 @@ if (scanForm && scanUrl && scanEmail && scanConsoleBody && scanResult && scanRes
   };
 
   const renderScanResult = (payload) => {
-    scanResultSummary.textContent = payload?.summary || "Quick scan complete.";
+    scanResultSummary.textContent = payload?.summary || "Test ready.";
     scanResultAction.href = payload?.actionUrl || "/dashboard?mode=signup";
-    scanResultAction.textContent = payload?.actionLabel || "Open live report";
+    scanResultAction.textContent = payload?.actionLabel || "Open report";
     scanResultGrid.innerHTML = Array.isArray(payload?.findings)
       ? payload.findings.map(renderFindingCard).join("")
       : "";
@@ -137,21 +137,21 @@ if (scanForm && scanUrl && scanEmail && scanConsoleBody && scanResult && scanRes
     const queueDetail = formatEstimatedStart(estimatedStart);
     return [
       {
-        kind: "Queued",
+        kind: "Started",
         pillClass: "scan-result-pill-queued",
-        title: "A real browser QA run is queued",
-        description: payload?.message || `We queued ${payload?.target_url || "your site"} for a real browser-backed run.`
+        title: "Your test is in line",
+        description: payload?.message || `We added ${payload?.target_url || "your site"} to the real browser test queue.`
       },
       {
         kind: "Email",
         pillClass: "scan-result-pill-proof",
-        title: "The finished report will be emailed",
+        title: "We will email the report",
         description: payload?.email ? `We will send the finished report and share link to ${payload.email}.` : "We will email the finished report when it is ready."
       },
       {
-        kind: "Status",
+        kind: "Next",
         pillClass: "scan-result-pill-friction",
-        title: "You can track the run immediately",
+        title: "You can open the report page now",
         description: [queueDetail, typeof queueAhead === "number" ? `${queueAhead} run${queueAhead === 1 ? "" : "s"} ahead in your queue.` : "", queueMessage]
           .filter(Boolean)
           .join(" ")
@@ -169,19 +169,19 @@ if (scanForm && scanUrl && scanEmail && scanConsoleBody && scanResult && scanRes
 
     if (!targetUrl) {
       setConsoleLines([
-        "[SWARM-00] Waiting for a URL…",
-        "[SWARM-01] Add a public site like clusterseo.com or your-site.com to queue the run."
+        "[SWARM-00] Waiting for a site…",
+        "[SWARM-01] Add a public site like clusterseo.com or your-site.com to start the test."
       ]);
-      scanResultSummary.textContent = "Enter a public site to queue a real QA run.";
+      scanResultSummary.textContent = "Enter a public site to start the test.";
       scanResultGrid.innerHTML = `
         <article>
           <span class="scan-result-pill scan-result-pill-friction">Input needed</span>
-          <strong>Add a site URL first</strong>
-          <p>Paste a public domain like clusterseo.com, example.com, or app.yourcompany.com and then queue the run.</p>
+          <strong>Add a site first</strong>
+          <p>Paste a public domain like clusterseo.com, example.com, or app.yourcompany.com.</p>
         </article>
       `;
       scanResultAction.href = "#";
-      scanResultAction.textContent = "Enter a URL";
+      scanResultAction.textContent = "Enter site";
       scanResult.hidden = false;
       scanUrl.focus();
       scanUrl.select();
@@ -190,15 +190,15 @@ if (scanForm && scanUrl && scanEmail && scanConsoleBody && scanResult && scanRes
 
     if (!email) {
       setConsoleLines([
-        `[SWARM-00] URL captured for ${targetUrl}.`,
-        "[SWARM-01] Add a work email so we know where to send the finished report."
+        `[SWARM-00] Site saved for ${targetUrl}.`,
+        "[SWARM-01] Add your work email so we know where to send the report."
       ]);
-      scanResultSummary.textContent = "Add a work email so we can send the report when the run finishes.";
+      scanResultSummary.textContent = "Add your work email so we can send the report.";
       scanResultGrid.innerHTML = `
         <article>
           <span class="scan-result-pill scan-result-pill-friction">Email needed</span>
-          <strong>Add your work email</strong>
-          <p>We use it to send the finished report and share link as soon as the real QA run completes.</p>
+          <strong>Add your email</strong>
+          <p>We use it to send the finished report and share link as soon as the test finishes.</p>
         </article>
       `;
       scanResultAction.href = "#";
@@ -212,12 +212,12 @@ if (scanForm && scanUrl && scanEmail && scanConsoleBody && scanResult && scanRes
     setConsoleLines([
       `[SWARM-00] Preparing a real QA run for ${targetUrl}…`,
       "[SWARM-01] Validating the target URL and email destination…",
-      "[SWARM-02] Creating a browser-backed run request…"
+      "[SWARM-02] Starting the browser-backed test…"
     ]);
 
     if (submitButton) {
       submitButton.disabled = true;
-      submitButton.textContent = "Queueing…";
+      submitButton.textContent = "Starting…";
     }
 
     try {
@@ -236,19 +236,19 @@ if (scanForm && scanUrl && scanEmail && scanConsoleBody && scanResult && scanRes
 
       if (!response.ok || !payload?.ok) {
         const errorPayload = {
-          summary: payload?.error || "The real QA run could not be queued.",
+          summary: payload?.error || "The test could not be started.",
           findings: [
             {
               kind: "Needs attention",
               pillClass: "scan-result-pill-friction",
-              title: "The run could not be queued yet",
+              title: "The test did not start",
               description: payload?.error || "Try again in a moment or use a different public URL."
             },
             {
               kind: "Next step",
               pillClass: "scan-result-pill-proof",
-              title: "We have not run the browser QA yet",
-              description: "Nothing was tested yet. This request failed before the worker queue accepted the run."
+              title: "Nothing was tested yet",
+              description: "This request failed before the worker queue accepted the run."
             }
           ],
           actionUrl: "/dashboard?mode=signup",
@@ -257,7 +257,7 @@ if (scanForm && scanUrl && scanEmail && scanConsoleBody && scanResult && scanRes
 
         streamConsoleLines(
           [
-            `[SWARM-03] ${payload?.error || "The real QA run could not be queued."}`,
+            `[SWARM-03] ${payload?.error || "The test could not be started."}`,
             "[SWARM-04] Nothing was tested yet because the worker queue never accepted the request."
           ],
           () => renderScanResult(errorPayload)
@@ -266,40 +266,40 @@ if (scanForm && scanUrl && scanEmail && scanConsoleBody && scanResult && scanRes
       }
 
       const queueLines = [
-        `[SWARM-03] Queued run ${payload.run_id || "run_pending"} for ${payload.target_url || targetUrl}.`,
+        `[SWARM-03] Started run ${payload.run_id || "run_pending"} for ${payload.target_url || targetUrl}.`,
         payload?.queue?.summary
           ? `[SWARM-04] ${payload.queue.summary}`
           : "[SWARM-04] Waiting for the next available worker slot.",
         payload?.estimated_start_label
           ? `[SWARM-05] ${formatEstimatedStart(payload.estimated_start_seconds)}`
-          : "[SWARM-05] The homepage will keep the live report link ready while the worker queue catches up.",
+          : "[SWARM-05] The report page is ready while the worker queue catches up.",
         `[SWARM-06] We will email ${payload.email || email} when the report is ready.`,
-        "[SWARM-07] The link below opens the live report page right away so you can check status as the run moves."
+        "[SWARM-07] The link below opens the report page right away so you can check status."
       ];
 
       streamConsoleLines(queueLines, () =>
         renderScanResult({
-          summary: payload?.message || "The real QA run is queued.",
+          summary: payload?.message || "The test is queued.",
           findings: buildQueuedCards(payload),
           actionUrl: payload?.share_url || payload?.ui_report_url || "/dashboard?mode=signup",
-          actionLabel: "Check live status"
+          actionLabel: "Open report"
         })
       );
     } catch (_error) {
       const fallback = {
-        summary: "The real QA request hit a network error before the run could be queued.",
+        summary: "The request hit a network error before the test could start.",
         findings: [
           {
             kind: "Network issue",
             pillClass: "scan-result-pill-friction",
-            title: "The request did not reach the QA queue",
-            description: "The homepage could not hand this request off to the real worker fleet just now."
+            title: "The request did not reach the queue",
+            description: "The homepage could not hand this request off to the worker fleet just now."
           },
           {
             kind: "Next step",
             pillClass: "scan-result-pill-proof",
             title: "Try again in a moment",
-            description: "Once the queue accepts the request, Swarm Tester will open the browser, record the run, and email the full report."
+            description: "Once the queue accepts the request, Swarm Tester will open the browser, record the run, and email the report."
           }
         ],
         actionUrl: "/dashboard?mode=signup",
@@ -308,7 +308,7 @@ if (scanForm && scanUrl && scanEmail && scanConsoleBody && scanResult && scanRes
 
       streamConsoleLines(
         [
-          "[SWARM-03] The real QA request hit a network problem before it could be queued.",
+          "[SWARM-03] The real QA request hit a network problem before it could start.",
           "[SWARM-04] No browser run started yet."
         ],
         () => renderScanResult(fallback)
@@ -317,7 +317,7 @@ if (scanForm && scanUrl && scanEmail && scanConsoleBody && scanResult && scanRes
       window.setTimeout(() => {
         if (submitButton) {
           submitButton.disabled = false;
-          submitButton.textContent = "Queue Real QA";
+          submitButton.textContent = "Start Test";
         }
       }, 200);
     }
