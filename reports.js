@@ -484,7 +484,8 @@ const state = {
     hasAnyRuns: null,
     initialized: false,
     step: 1,
-    githubRedirectHandled: false
+    githubRedirectHandled: false,
+    pendingRepoSelectionFocus: false
   }
 };
 const dashboardProjects = window.SwarmDashboardProjects;
@@ -3302,10 +3303,9 @@ function reconcileOnboardingStateWithRuns() {
     setStoredOnboardingCompleted(true);
     promotedCompleted = true;
   }
-  if (state.onboarding.forceOpen) {
+  if (!state.onboarding.manualOverride && state.onboarding.forceOpen) {
     state.onboarding.forceOpen = false;
   }
-  state.onboarding.manualOverride = false;
   return { hasExistingRuns: true, promotedCompleted };
 }
 
@@ -3430,11 +3430,46 @@ function focusOnboardingActiveControl() {
       return;
     }
     if (step === ONBOARDING_MAX_STEP) {
+      const connection = getCachedRepoConnection(getOnboardingBrandKey());
+      const repoSelectionRequired =
+        Boolean(connection.installation_id) &&
+        Array.isArray(connection.repositories) &&
+        connection.repositories.length > 0 &&
+        !connection.selected_repo_full_name;
+      if (repoSelectionRequired && !elements.onboardingRepoConnectionSelectWrap?.hidden) {
+        elements.onboardingRepoConnectionSelect?.focus();
+        elements.onboardingRepoConnectionSelect?.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
       elements.onboardingSubmitButton?.focus();
       return;
     }
     elements.onboardingNextButton?.focus();
   }, 80);
+}
+
+function maybeFocusOnboardingRepoConnectionSelection(options = {}) {
+  if (!state.onboarding.pendingRepoSelectionFocus) {
+    return;
+  }
+  const safeBrandKey = sanitizeBrandKey(options.brandKey || getOnboardingBrandKey());
+  const connection = getCachedRepoConnection(safeBrandKey);
+  const shouldFocus =
+    clampOnboardingStep(state.onboarding.step || 1) === ONBOARDING_MAX_STEP &&
+    state.onboarding.forceOpen === true &&
+    Boolean(connection.installation_id) &&
+    Array.isArray(connection.repositories) &&
+    connection.repositories.length > 0 &&
+    !connection.selected_repo_full_name &&
+    !elements.onboardingRepoConnectionSelectWrap?.hidden;
+  if (!shouldFocus) {
+    return;
+  }
+  state.onboarding.pendingRepoSelectionFocus = false;
+  window.setTimeout(() => {
+    elements.onboardingRepoConnectionSelect?.focus();
+    elements.onboardingRepoConnectionSelect?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, 40);
 }
 
 function getUserMissionScenariosFromValue(value) {
@@ -4512,6 +4547,9 @@ async function loadOnboardingRepoConnection(brandKey, options = {}) {
       applyRepoConnectionToOnboardingFields(normalized);
     }
     refreshOnboardingLaunchSummary();
+    if (getOnboardingBrandKey() === safeBrandKey) {
+      maybeFocusOnboardingRepoConnectionSelection({ brandKey: safeBrandKey });
+    }
     return normalized;
   } catch (error) {
     const existing = getCachedRepoConnection(safeBrandKey);
@@ -4548,6 +4586,7 @@ async function persistOnboardingRepoConnectionSelection(options = {}) {
     path_allowlist: parseLineListInput(elements.onboardingRepoTriagePaths?.value || "", 8)
   });
   const normalized = setCachedRepoConnection(safeBrandKey, saved);
+  state.onboarding.pendingRepoSelectionFocus = false;
   applyRepoConnectionToOnboardingFields(normalized);
   renderOnboardingRepoConnectionUi();
   refreshOnboardingLaunchSummary();
@@ -4587,6 +4626,7 @@ function consumeGitHubAppRedirectState() {
 
   prefillOnboardingFromConfig(restoreConfig);
   state.onboarding.step = ONBOARDING_MAX_STEP;
+  state.onboarding.pendingRepoSelectionFocus = status === "repo_selection_required";
   openOnboardingModal({ resetStep: false, manual: true, trusted: true });
   void loadOnboardingRepoConnectionForCurrentBrand({ force: true, includeRepositories: true });
 
@@ -14613,6 +14653,7 @@ function closeOnboardingModal() {
   }
   state.onboarding.manualOverride = false;
   state.onboarding.forceOpen = false;
+  state.onboarding.pendingRepoSelectionFocus = false;
   void persistOnboardingSeen();
   updateOnboardingVisibility();
 }
