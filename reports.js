@@ -256,8 +256,10 @@ const elements = {
   applyFilters: document.getElementById("applyFilters"),
   refreshReports: document.getElementById("refreshReports"),
   reportsCount: document.getElementById("reportsCount"),
-  reportsItems: document.getElementById("reportsItems"),
-  reportDetail: document.getElementById("reportDetail"),
+  reportsItems: document.getElementById("reportsItems") || document.getElementById("runsPanelContent"),
+  runsPanelContent: document.getElementById("runsPanelContent") || document.getElementById("reportsItems"),
+  reportDetail: document.getElementById("reportDetail") || document.getElementById("reportDetailPanel"),
+  reportDetailPanel: document.getElementById("reportDetailPanel") || document.getElementById("reportDetail"),
   activeBrandLabel: document.getElementById("activeBrandLabel"),
   activeBrandMeta: document.getElementById("activeBrandMeta"),
   metricRuns: document.getElementById("metricRuns"),
@@ -8476,6 +8478,7 @@ function attachRunClickHandlers() {
     node.addEventListener("click", () => {
       state.selectedRunId = node.getAttribute("data-run-id");
       state.requestedRunId = state.selectedRunId;
+      window.SwarmDashboardShell?.revealPanel?.("reports");
       syncUrlFromState();
       renderRunsList();
       renderSelectedReport().catch((error) => {
@@ -14693,6 +14696,7 @@ function openDashboardReportView(runId) {
   state.selectedRunId = safeRunId;
   state.requestedRunId = safeRunId;
   state.appViewMode = APP_VIEW_MODES.REPORT;
+  window.SwarmDashboardShell?.revealPanel?.("reports");
   syncUrlFromState();
   applyAppViewMode();
   renderSelectedReport().catch(() => {
@@ -14709,6 +14713,7 @@ function openDashboardLiveView(runId, options = {}) {
     state.requestedRunId = safeRunId;
   }
   state.appViewMode = APP_VIEW_MODES.LIVE;
+  window.SwarmDashboardShell?.revealPanel?.("settings");
   syncUrlFromState();
   applyAppViewMode();
   renderSelectedReport().catch(() => {
@@ -15186,6 +15191,7 @@ if (hasReportsUi) {
       closeFindingDetailModal({ restoreFocus: false });
       state.selectedRunId = runId;
       state.requestedRunId = runId;
+      window.SwarmDashboardShell?.revealPanel?.("reports");
       syncUrlFromState();
       renderRunsList();
       await renderSelectedReport();

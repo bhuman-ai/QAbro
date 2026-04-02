@@ -12,252 +12,553 @@
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
+    <link rel="stylesheet" href="styles.css?v=20260326y" />
+    <link rel="stylesheet" href="reports.css?v=20260330a" />
+    <link rel="stylesheet" href="dashboard.css?v=20260402b" />
   </head>
   <body>
-<div class="dashboard-grid">
+    <div class="dashboard-grid">
       <header class="dashboard-header">
         <div class="dashboard-header-left">
           <a class="brand" href="/dashboard" aria-label="Swarm Tester dashboard">
             <span class="brand-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M12 6V3m4.2 1.4-2.1 2.1m-4.2 0L7.8 4.4M7.5 12H4.4m15.2 0h-3.1m-7.8 3.3 1.6 1.6m3.4 0 1.6-1.6M12 18.2V21" />
-                </svg>
-              </span>
-              <span class="brand-label">Swarm Tester</span>
-            </a>
+              <svg viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6V3m4.2 1.4-2.1 2.1m-4.2 0L7.8 4.4M7.5 12H4.4m15.2 0h-3.1m-7.8 3.3 1.6 1.6m3.4 0 1.6-1.6M12 18.2V21" />
+              </svg>
+            </span>
+            <span class="brand-label">Swarm Tester</span>
+          </a>
         </div>
         <div class="dashboard-header-right">
           <div class="topbar-project-shell" id="topbarProjectShell" hidden aria-hidden="true">
             <label class="topbar-project-switcher" for="brandFilter">
               <span class="topbar-project-label">Project</span>
               <div class="topbar-project-control">
-                  <select id="brandFilter" aria-label="Project switcher">
-                    <option value="" disabled selected>Loading projects...</option>
-                  </select>
-                </div>
-              </label>
+                <select id="brandFilter" aria-label="Project switcher">
+                  <option value="" disabled selected>Loading projects...</option>
+                </select>
+              </div>
+            </label>
           </div>
           <div class="topbar-actions">
             <div class="theme-mode-control" aria-label="Theme mode" role="group">
-                <div class="theme-mode-pills" id="themeModeSwitcher">
-                  <button type="button" class="theme-mode-btn" data-theme-mode="light" aria-label="Light mode" title="Light mode">
-                    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                      <circle cx="10" cy="10" r="3.5"></circle>
-                      <path d="M10 2.5v2.1M10 15.4v2.1M2.5 10h2.1M15.4 10h2.1M4.8 4.8l1.5 1.5M13.7 13.7l1.5 1.5M4.8 15.2l1.5-1.5M13.7 6.3l1.5-1.5"></path>
-                    </svg>
-                  </button>
-                  <button type="button" class="theme-mode-btn" data-theme-mode="dark" aria-label="Dark mode" title="Dark mode">
-                    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                      <path d="M12.8 2.9a7 7 0 1 0 4.3 10.3A6 6 0 1 1 12.8 2.9Z"></path>
-                    </svg>
-                  </button>
-                  <button type="button" class="theme-mode-btn" data-theme-mode="system" aria-label="System theme mode" title="System mode">
-                    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                      <rect x="2.5" y="3.5" width="15" height="10.5" rx="1.5"></rect>
-                      <path d="M7.5 16.5h5M10 14v2.5"></path>
-                    </svg>
-                  </button>
-                </div>
+              <div class="theme-mode-pills" id="themeModeSwitcher">
+                <button type="button" class="theme-mode-btn" data-theme-mode="light" aria-label="Light mode" title="Light mode">
+                  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <circle cx="10" cy="10" r="3.5"></circle>
+                    <path d="M10 2.5v2.1M10 15.4v2.1M2.5 10h2.1M15.4 10h2.1M4.8 4.8l1.5 1.5M13.7 13.7l1.5 1.5M4.8 15.2l1.5-1.5M13.7 6.3l1.5-1.5"></path>
+                  </svg>
+                </button>
+                <button type="button" class="theme-mode-btn" data-theme-mode="dark" aria-label="Dark mode" title="Dark mode">
+                  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <path d="M12.8 2.9a7 7 0 1 0 4.3 10.3A6 6 0 1 1 12.8 2.9Z"></path>
+                  </svg>
+                </button>
+                <button type="button" class="theme-mode-btn" data-theme-mode="system" aria-label="System theme mode" title="System mode">
+                  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <rect x="2.5" y="3.5" width="15" height="10.5" rx="1.5"></rect>
+                    <path d="M7.5 16.5h5M10 14v2.5"></path>
+                  </svg>
+                </button>
+              </div>
             </div>
             <div class="worker-health-chip" id="workerHealthChip" hidden aria-hidden="true" aria-live="polite">
-                <span class="worker-health-dot" aria-hidden="true"></span>
-                <span class="worker-health-text" id="workerHealthText">Checking workers…</span>
-              </div>
+              <span class="worker-health-dot" aria-hidden="true"></span>
+              <span class="worker-health-text" id="workerHealthText">Checking workers…</span>
+            </div>
             <span class="app-user-chip topbar-user-chip" id="dashboardAuthUserChip" hidden title="Account">QA</span>
             <button class="btn btn-ghost" type="button" data-auth-signout="true" hidden>Sign Out</button>
           </div>
         </div>
       </header>
+
       <nav class="dashboard-nav" id="dashboardNav" aria-label="Main navigation">
-<ul>
-  <li><a href="#" class="active" data-panel="runs">Runs</a></li>
-  <li><a href="#" data-panel="reports">Reports</a></li>
-  <li><a href="#" data-panel="settings">Settings</a></li>
-</ul>
+        <ul>
+          <li><a href="#" class="active" data-panel="runs">Runs</a></li>
+          <li><a href="#" data-panel="reports">Report</a></li>
+          <li><a href="#" data-panel="settings">Insights</a></li>
+        </ul>
       </nav>
+
       <main class="dashboard-main">
         <div class="dashboard-main-content">
-          <div id="qa-dashboard" class="dashboard-auth-shell" data-dashboard-auth-gate="true">
-            <article class="card-surface dashboard-auth-card" id="dashboardAuthCard">
-              <header>
-                <h3>Dashboard Access</h3>
-                <p>Create an account or sign in to access brand QA reports.</p>
-              </header>
+          <div id="qa-dashboard">
+            <div id="dashboardAuthShell" class="dashboard-auth-shell" data-dashboard-auth-gate="true">
+              <article class="card-surface dashboard-auth-card" id="dashboardAuthCard">
+                <header>
+                  <h3>Dashboard Access</h3>
+                  <p>Create an account or sign in to access brand QA reports.</p>
+                </header>
 
-              <div class="dashboard-auth-tabs" role="tablist" aria-label="Authentication mode">
-                <button id="authModeSignIn" type="button" role="tab" aria-selected="true">Sign In</button>
-                <button id="authModeSignUp" type="button" role="tab" aria-selected="false">Sign Up</button>
+                <div class="dashboard-auth-tabs" role="tablist" aria-label="Authentication mode">
+                  <button id="authModeSignIn" type="button" role="tab" aria-selected="true">Sign In</button>
+                  <button id="authModeSignUp" type="button" role="tab" aria-selected="false">Sign Up</button>
+                </div>
+
+                <form id="authSignInForm" class="dashboard-auth-form" action="#" method="post" autocomplete="on">
+                  <label>
+                    <span>Email</span>
+                    <input name="email" type="email" required autocomplete="email" placeholder="you@company.com" />
+                  </label>
+                  <button class="btn btn-primary" type="submit">Send Sign-In Link</button>
+                </form>
+
+                <form id="authSignUpForm" class="dashboard-auth-form" action="#" method="post" autocomplete="on" hidden>
+                  <label>
+                    <span>Email</span>
+                    <input name="email" type="email" required autocomplete="email" placeholder="you@company.com" />
+                  </label>
+                  <label>
+                    <span>Invite Code</span>
+                    <input name="invite_code" type="text" required autocomplete="off" placeholder="Enter invite code" />
+                  </label>
+                  <button class="btn btn-primary" type="submit">Create Account</button>
+                </form>
+
+                <p class="dashboard-auth-message" id="dashboardAuthMessage" aria-live="polite"></p>
+                <p class="dashboard-auth-user" id="dashboardAuthUserHint"></p>
+              </article>
+            </div>
+
+            <section id="appQaDashboard" class="app-shell" data-dashboard-protected="true" hidden aria-hidden="true">
+              <div class="app-shell-main">
+                <div class="app-loading-overlay dashboard-shell-overlay" id="dashboardLoadingOverlay" hidden aria-live="polite" aria-busy="true">
+                  <span class="app-loading-spinner" aria-hidden="true"></span>
+                  <p>Loading dashboard...</p>
+                </div>
+
+                <section class="card-surface app-panel-toolbar" id="appAuthHeader" data-shell-panel="runs" hidden>
+                  <div class="app-panel-toolbar-left">
+                    <label class="app-switcher environment">
+                      <span>Environment</span>
+                      <select id="environmentSwitcher" aria-label="Environment switcher">
+                        <option value="production">Production</option>
+                        <option value="staging">Staging</option>
+                        <option value="preview">Preview</option>
+                        <option value="local">Local</option>
+                      </select>
+                    </label>
+                    <input id="searchFilter" type="hidden" value="" />
+                  </div>
+                  <div class="app-panel-toolbar-actions">
+                    <span class="app-toolbar-meta" id="dashboardRunMeta">No run selected</span>
+                    <button class="btn btn-ghost" id="refreshReports" type="button">Run Again</button>
+                    <button class="btn btn-primary btn-new-run" id="launchSwarmButton" type="button">
+                      <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                        <path d="M10 4.2v11.6m-5.8-5.8h11.6"></path>
+                      </svg>
+                      <span>New Run</span>
+                    </button>
+                  </div>
+                </section>
+
+                <section class="card-surface app-panel-header" id="projectPanelHeader" data-shell-panel="runs">
+                  <div class="app-panel-header-main">
+                    <p class="app-panel-eyebrow">Project Snapshot</p>
+                    <h2 id="activeBrandLabel">No project selected</h2>
+                    <p id="activeBrandMeta" class="app-panel-header-meta">Choose a project to inspect recent QA missions.</p>
+                  </div>
+                  <div class="app-panel-header-metrics">
+                    <article class="app-summary-metric">
+                      <span>Runs</span>
+                      <strong id="metricRuns">0</strong>
+                    </article>
+                    <article class="app-summary-metric">
+                      <span>Completed</span>
+                      <strong id="metricCompleted">0</strong>
+                    </article>
+                    <article class="app-summary-metric">
+                      <span>Findings</span>
+                      <strong id="metricFindings">0</strong>
+                    </article>
+                    <article class="app-summary-metric">
+                      <span>Avg Risk</span>
+                      <strong id="metricRisk">0</strong>
+                    </article>
+                  </div>
+                  <div class="app-panel-chip-row">
+                    <span class="app-panel-chip-row-label" id="brandChipsCount">0 brands</span>
+                    <div id="brandChips" class="app-panel-chip-list">
+                      <div class="app-empty compact"><p>No brands loaded yet.</p></div>
+                    </div>
+                  </div>
+                </section>
+
+                <div class="app-shell-columns">
+                  <section class="card-surface app-panel app-panel-runs" id="runsPanel" data-shell-panel="runs">
+                    <header class="app-panel-head">
+                      <div>
+                        <p class="app-panel-kicker">Run Feed</p>
+                        <h3>Recent missions</h3>
+                      </div>
+                      <div class="app-panel-head-actions">
+                        <span class="app-panel-count" id="reportsCount">0</span>
+                        <label class="app-run-picker-shell">
+                          <span>Selected run</span>
+                          <select id="appRunPicker" class="app-run-picker" aria-label="Select run"></select>
+                        </label>
+                      </div>
+                    </header>
+                    <div class="app-panel-content runs-panel-content" id="runsPanelContent">
+                      <div class="app-empty">
+                        <h3>No runs yet</h3>
+                        <p>Completed QA runs for this project will appear here.</p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section class="card-surface app-panel app-panel-report-detail" id="reportDetailPanel" data-shell-panel="reports">
+                    <div class="empty-detail">
+                      <h2>Select a run</h2>
+                      <p>Report details will appear here.</p>
+                    </div>
+                  </section>
+                </div>
               </div>
 
-              <form id="authSignInForm" class="dashboard-auth-form" action="#" method="post" autocomplete="on">
-                <label>
-                  <span>Email</span>
-                  <input name="email" type="email" required autocomplete="email" placeholder="you@company.com" />
-                </label>
-                <button class="btn btn-primary" type="submit">Send Sign-In Link</button>
-              </form>
+              <aside class="app-shell-sidebar" id="appShellSidebar" data-shell-panel="settings">
+                <div class="app-shell-sidebar-content" id="appShellSidebarContent">
+                  <section class="card-surface app-sidecard">
+                    <div class="app-card-head">
+                      <div>
+                        <h3 id="healthHeroTitle">Production Health</h3>
+                        <span id="dashboardPrimaryMeta">No run selected</span>
+                      </div>
+                      <div class="app-health-head-actions">
+                        <button
+                          id="dashboardShareAction"
+                          class="app-icon-button"
+                          type="button"
+                          hidden
+                          aria-label="Copy report link"
+                          title="Copy report link"
+                          data-icon-button="1"
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M9 9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2z" />
+                            <path d="M5 15V7a2 2 0 0 1 2-2h8" />
+                          </svg>
+                        </button>
+                        <span class="issue-severity severity-low" id="dashboardStateBadge">No Run</span>
+                      </div>
+                    </div>
+                    <p class="app-sidecard-copy" id="dashboardStateMessage">Start a run to get an environment health verdict and prioritized issues.</p>
+                    <article class="primary-goal-card app-primary-goal-card" id="dashboardPrimaryGoal">
+                      <div class="primary-goal-card-header">
+                        <span class="primary-goal-kicker">Mission</span>
+                        <span class="inline-pill primary-goal-persona-pill" id="dashboardPrimaryGoalPersona">Audience</span>
+                      </div>
+                      <div id="dashboardPrimaryGoalText" class="primary-goal-copy">
+                        <p class="primary-goal-headline">Start a run to see the mission here.</p>
+                      </div>
+                      <div id="dashboardPrimaryGoalMeta" class="primary-goal-meta">
+                        <span class="primary-goal-meta-note">Target, run mode, and task count appear here.</span>
+                      </div>
+                    </article>
+                    <div class="app-risk-metrics">
+                      <article class="app-risk-metric">
+                        <span id="riskCriticalLabel">Critical</span>
+                        <strong id="riskCriticalCount">0</strong>
+                      </article>
+                      <article class="app-risk-metric">
+                        <span id="riskMajorLabel">Major</span>
+                        <strong id="riskMajorCount">0</strong>
+                      </article>
+                      <article class="app-risk-metric">
+                        <span id="riskJourneyLabel">Journeys Impacted</span>
+                        <strong id="riskBrokenJourneys">0</strong>
+                      </article>
+                      <article class="app-risk-metric">
+                        <span id="riskSatisfactionLabel">Avg Satisfaction</span>
+                        <strong id="riskAvgSatisfaction">0</strong>
+                      </article>
+                    </div>
+                    <div class="app-hero-actions">
+                      <button id="dashboardPrimaryAction" class="btn btn-primary" type="button">Start First Test</button>
+                      <div class="app-secondary-actions" id="dashboardSecondaryActions">
+                        <button id="dashboardOpenReport" class="btn btn-ghost" type="button">Open Report</button>
+                        <button id="dashboardCompareRuns" class="btn btn-ghost" type="button">Compare Previous</button>
+                      </div>
+                    </div>
+                    <div class="app-evidence-panel" id="appEvidencePanel"></div>
+                  </section>
 
-              <form id="authSignUpForm" class="dashboard-auth-form" action="#" method="post" autocomplete="on" hidden>
-                <label>
-                  <span>Email</span>
-                  <input name="email" type="email" required autocomplete="email" placeholder="you@company.com" />
-                </label>
-                <label>
-                  <span>Invite Code</span>
-                  <input name="invite_code" type="text" required autocomplete="off" placeholder="Enter invite code" />
-                </label>
-                <button class="btn btn-primary" type="submit">Create Account</button>
-              </form>
+                  <section class="card-surface app-sidecard">
+                    <div class="app-card-head">
+                      <h3 id="personaSignalsTitle">What users struggled with</h3>
+                      <span id="personaSignalsMeta">Waiting for signal</span>
+                    </div>
+                    <div id="personaSignalsItems" class="persona-signals-list"></div>
+                  </section>
 
-              <p class="app-auth-message" id="authMessage" aria-live="polite"></p>
-            </article>
+                  <section class="card-surface app-sidecard">
+                    <div class="app-card-head">
+                      <h3 id="topFixesTitle">Needs Attention</h3>
+                      <span id="topFixesMeta">Ranked by impact and confidence.</span>
+                    </div>
+                    <div id="topFixesItems" class="app-top-fixes"></div>
+                  </section>
 
-            <section id="dashboardAppShell" class="app-shell" hidden>
-              <div class="app-shell-main">
-                <div class="app-shell-render-pulse" id="appShellPulse">
-                  <div class="app-shell-pulse-grid">
-                    <div class="pulse-bar"></div>
-                    <div class="pulse-bar"></div>
-                    <div class="pulse-bar"></div>
+                  <section class="card-surface app-sidecard">
+                    <div class="app-card-head">
+                      <h3 id="appProgressTitle">Journey Health</h3>
+                      <span id="appProgressMeta">No run selected</span>
+                    </div>
+                    <div id="testProgressItems" class="app-progress-list"></div>
+                  </section>
+
+                  <section class="card-surface app-sidecard">
+                    <div class="app-card-head">
+                      <h3>Changes Since Last Run</h3>
+                      <span id="regressionMeta">No baseline</span>
+                    </div>
+                    <div id="regressionSignalsItems" class="app-regression-list"></div>
+                  </section>
+
+                  <section class="card-surface app-sidecard app-live-mission" id="liveMissionSection" hidden aria-hidden="true">
+                    <div class="app-card-head compact">
+                      <h3>Live Mission Control</h3>
+                      <span id="liveMissionMeta">Awaiting live run</span>
+                    </div>
+                    <div class="app-live-grid">
+                      <article class="app-live-stream" id="liveStreamPanel"></article>
+                      <article class="app-live-column">
+                        <h4>Incoming Findings</h4>
+                        <div id="recentIssuesItems" class="app-issues-list"></div>
+                      </article>
+                      <article class="app-live-column">
+                        <h4>Live Agent Activity</h4>
+                        <div id="liveActivityItems" class="app-activity-list"></div>
+                      </article>
+                    </div>
+                  </section>
+                </div>
+              </aside>
+            </section>
+
+            <section class="finding-detail-modal" id="findingDetailModal" hidden aria-hidden="true">
+              <div class="finding-detail-backdrop" data-close-finding-modal="true"></div>
+              <div class="finding-detail-panel card-surface" role="dialog" aria-modal="true" aria-labelledby="findingDetailModalTitle">
+                <button
+                  type="button"
+                  class="finding-detail-close"
+                  id="findingDetailCloseButton"
+                  data-close-finding-modal="true"
+                  aria-label="Close finding details"
+                >
+                  ×
+                </button>
+                <div class="finding-detail-body" id="findingDetailModalBody">
+                  <div class="empty-detail">
+                    <h2 id="findingDetailModalTitle">Finding details</h2>
+                    <p>Select a finding to inspect its evidence.</p>
                   </div>
                 </div>
-
-                <div class="app-shell-content" id="appShellContent" hidden>
-                  <section class="app-panel-header" id="projectPanelHeader" hidden>
-                    <div class="app-panel-header-main">
-                      <h2 id="projectPanelTitle"></h2>
-                      <p id="projectPanelMeta" class="app-panel-header-meta"></p>
-                    </div>
-                    <div class="app-panel-header-actions">
-                      <div id="projectPanelActions"></div>
-                      <button class="btn btn-primary btn-new-run" id="projectNewRunButton" type="button">
-                        <svg viewBox="0 0 20 20" fill="none">
-                          <path d="M10 4.2v11.6m-5.8-5.8h11.6"></path>
-                        </svg>
-                        <span>New Run</span>
-                      </button>
-                    </div>
-                  </section>
-
-                  <section class="app-panel app-panel-runs" id="runsPanel" hidden>
-                    <div class="app-panel-placeholder" id="runsPanelEmpty">
-                      <div class="app-panel-placeholder-art">
-                        <svg viewBox="0 0 48 48" fill="none">
-                          <path d="M21 14 8 24l13 10m6-20 13 10L27 34" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-                        </svg>
-                      </div>
-                      <h3>No runs yet</h3>
-                      <p>Completed QA runs for this project will appear here.</p>
-                      <button class="btn btn-primary" id="runsPanelNewRunButton" type="button">Start a new run</button>
-                    </div>
-                    <div class="app-panel-content" id="runsPanelContent"></div>
-                  </section>
-
-                  <section class="app-panel app-panel-report-detail" id="reportDetailPanel"></section>
-                </div>
-              </div>
-
-              <div class="app-shell-sidebar" id="appShellSidebar" hidden>
-                <div class="app-shell-sidebar-content" id="appShellSidebarContent"></div>
               </div>
             </section>
 
-            <section id="onboardingShell" class="app-onboarding" hidden>
-              <header class="app-onboarding-header">
-                <h2 id="onboardingTitle">New QA Run</h2>
-                <div class="app-onboarding-tabs" role="tablist" aria-label="Onboarding steps" id="onboardingTabs">
-                  <button type="button" role="tab" aria-selected="true" data-step="site">What to test</button>
-                  <button type="button" role="tab" aria-selected="false" data-step="personas">Who to be</button>
-                  <button type="button" role="tab" aria-selected="false" data-step="goals">What to do</button>
-                  <button type="button" role="tab" aria-selected="false" data-step="triage">How to fix</button>
+            <section class="card-surface app-onboarding app-onboarding-modal" id="qa-onboarding" hidden aria-hidden="true">
+              <button type="button" class="onboarding-modal-close" id="onboardingCloseButton" aria-label="Close run setup">×</button>
+              <div class="app-onboarding-head">
+                <div class="app-onboarding-titlebar">
+                  <div>
+                    <p class="app-onboarding-kicker">New run</p>
+                    <h3 id="onboardingStepTitle">Choose the app</h3>
+                    <p class="app-onboarding-subtitle" id="onboardingStatusText">Pick the site, the ICP, and the job the swarm must complete after onboarding.</p>
+                  </div>
+                  <p class="app-onboarding-stepcount" id="onboardingStepCount">1 of 4</p>
                 </div>
-              </header>
+                <div class="app-onboarding-progress" role="progressbar" aria-valuemin="1" aria-valuemax="4" aria-valuenow="1">
+                  <span id="onboardingProgressBar"></span>
+                </div>
+                <ol class="app-onboarding-steps" id="onboardingStepPills" aria-label="Onboarding steps">
+                  <li class="active" data-step-pill="1">Site</li>
+                  <li data-step-pill="2">Persona</li>
+                  <li data-step-pill="3">Mission</li>
+                  <li data-step-pill="4">Review</li>
+                </ol>
+              </div>
 
-              <form id="onboardingForm" action="#" method="post" autocomplete="off">
-                <div class="app-onboarding-grid">
+              <form id="onboardingForm" class="app-onboarding-form app-onboarding-wizard" action="#" method="post">
+                <div class="app-onboarding-layout">
                   <div class="app-onboarding-main">
-                    <section class="onboarding-step" data-step="site">
-                      <article class="card-surface onboarding-card-grid">
-                        <label>
-                          <span>Site URL</span>
-                          <input
-                            id="onboardingSiteUrl"
-                            name="site_url"
-                            type="url"
-                            required
-                            autocomplete="off"
-                            placeholder="https://example.com"
-                          />
-                        </label>
-                        <label>
-                          <span>Auth entry URL</span>
-                          <input
-                            id="onboardingAuthUrl"
-                            name="auth_url"
-                            type="url"
-                            autocomplete="off"
-                            placeholder="Optional. For example: https://app.example.com/login"
-                          />
-                        </label>
-                      </article>
-                      <article class="card-surface">
-                        <h4>Login credentials</h4>
-                        <div class="onboarding-card-grid">
-                          <label>
-                            <span>Username or email</span>
-                            <input
-                              id="onboardingAuthUser"
-                              name="auth_user"
-                              type="text"
-                              autocomplete="off"
-                              placeholder="Optional. Saved securely."
-                            />
-                          </label>
-                          <label>
-                            <span>Password</span>
-                            <input
-                              id="onboardingAuthPass"
-                              name="auth_pass"
-                              type="password"
-                              autocomplete="off"
-                              placeholder="Optional. Saved securely."
-                            />
-                          </label>
+                    <section class="onboarding-step active" data-onboarding-step="1">
+                      <p class="onboarding-step-note">
+                        Start with the public app URL. We normalize the domain and begin from the same entry point a real user sees.
+                      </p>
+                      <label>
+                        <span>Site URL</span>
+                        <input
+                          id="onboardingTargetUrl"
+                          name="target_url"
+                          type="text"
+                          required
+                          placeholder="workolo.com"
+                          inputmode="url"
+                          autocapitalize="off"
+                          spellcheck="false"
+                          autocomplete="url"
+                        />
+                      </label>
+                      <small class="app-field-hint">We automatically add <strong>https://</strong> for you and infer the brand name from the domain.</small>
+                      <article class="onboarding-preview-card">
+                        <div class="onboarding-preview-icon">
+                          <img id="onboardingPreviewIcon" alt="Site icon preview" />
+                        </div>
+                        <div>
+                          <strong id="onboardingPreviewHost">Waiting for your site</strong>
+                          <p id="onboardingPreviewUrl">Type your domain and we will normalize the full URL.</p>
+                          <p class="onboarding-preview-brand">Brand name: <span id="onboardingPreviewBrandName">Waiting for URL</span></p>
                         </div>
                       </article>
-                    </section>
-                    <section class="onboarding-step" data-step="personas" hidden>
-                      <div class="card-surface-grid" id="onboardingPersonasGrid"></div>
-                    </section>
-                    <section class="onboarding-step" data-step="goals" hidden>
-                      <article class="card-surface">
-                        <div id="onboardingGoalsGrid" class="onboarding-goals-grid"></div>
+                      <article class="onboarding-help-card">
+                        <h4>What this run will do</h4>
+                        <p>The swarm will discover auth, clear onboarding, and keep going until it reaches a real in-product outcome or hits blocking friction.</p>
                       </article>
                     </section>
-                    <section class="onboarding-step" data-step="triage" hidden>
-                      <article class="card-surface">
-                        <label class="app-checkbox-card" for="onboardingRepoTriageEnabled">
-                          <input type="checkbox" id="onboardingRepoTriageEnabled" name="repo_triage_enabled" />
-                          <span>Code-aware diagnosis</span>
-                          <small>Optional. Connect a GitHub repo to let the swarm file bug reports with code snippets and triage hints.</small>
+
+                    <section class="onboarding-step" data-onboarding-step="2" hidden>
+                      <p class="onboarding-step-note">Choose the ICPs you care about. These personas shape how demanding, skeptical, or patient the tester will be.</p>
+                      <div class="onboarding-choice-grid" id="onboardingPersonaChoices">
+                        <button type="button" class="onboarding-choice" data-persona-choice="A first-time prospect evaluating whether the product is clear, trustworthy, and easy to start using.">
+                          <strong>First-time prospect</strong>
+                          <span>New to the product and judging whether the first experience feels obvious.</span>
+                        </button>
+                        <button type="button" class="onboarding-choice" data-persona-choice="A skeptical buyer checking proof, pricing clarity, and trust before committing.">
+                          <strong>Skeptical buyer</strong>
+                          <span>Needs convincing, watches for vague copy, friction, and missing proof.</span>
+                        </button>
+                        <button type="button" class="onboarding-choice" data-persona-choice="A busy operator trying to get to value fast with minimal patience for setup friction.">
+                          <strong>Busy operator</strong>
+                          <span>Wants the shortest path from signup to useful output.</span>
+                        </button>
+                        <button type="button" class="onboarding-choice" data-persona-choice="A power user expecting speed, control, and efficient workflows.">
+                          <strong>Power user</strong>
+                          <span>Pushes for shortcuts, depth, and smooth advanced flows.</span>
+                        </button>
+                        <button type="button" class="onboarding-choice" data-persona-choice="An accessibility-first user validating readability, keyboard flow, and clarity.">
+                          <strong>Accessibility-first</strong>
+                          <span>Checks focus order, readability, keyboard access, and UI clarity.</span>
+                        </button>
+                      </div>
+                      <label>
+                        <span>Custom persona details</span>
+                        <textarea id="onboardingPersonaCustom" rows="3" placeholder="Example: Founder evaluating whether the product can launch a campaign in one sitting without help."></textarea>
+                      </label>
+                      <small class="app-field-hint">Pick up to three personas, or describe the exact ICP you want the model to roleplay.</small>
+                    </section>
+
+                    <section class="onboarding-step" data-onboarding-step="3" hidden>
+                      <p class="onboarding-step-note">Choose the outcomes the swarm must reach after onboarding. Success means clearing onboarding and using the product for real.</p>
+                      <div class="onboarding-toggle-grid" id="onboardingCriticalChoices">
+                        <label class="onboarding-toggle">
+                          <input type="checkbox" value="Complete the primary workflow end to end after onboarding and confirm the first value moment is reachable." />
+                          <span class="onboarding-toggle-copy">
+                            <strong>Reach first value</strong>
+                            <small>Get through onboarding, then complete the main workflow a new user came for.</small>
+                          </span>
                         </label>
-                        <div id="onboardingRepoTriageSetup" hidden>
-                          <button class="btn" id="onboardingRepoConnectButton" type="button">Connect GitHub Repo</button>
-                          <div id="onboardingRepoConnection" hidden>
-                            <p id="onboardingRepoConnectionStatus"></p>
+                        <label class="onboarding-toggle">
+                          <input type="checkbox" value="Configure the workspace, settings, or integrations required to make the product usable after onboarding." />
+                          <span class="onboarding-toggle-copy">
+                            <strong>Set up the workspace</strong>
+                            <small>Push through configuration, integrations, permissions, and setup dependencies.</small>
+                          </span>
+                        </label>
+                        <label class="onboarding-toggle">
+                          <input type="checkbox" value="Create, save, and revisit the first real output inside the product after onboarding." />
+                          <span class="onboarding-toggle-copy">
+                            <strong>Create the first output</strong>
+                            <small>Make something real in-product and verify it persists when revisited.</small>
+                          </span>
+                        </label>
+                        <label class="onboarding-toggle">
+                          <input type="checkbox" value="Invite teammates, collaborate, or share results after onboarding if the product supports it." />
+                          <span class="onboarding-toggle-copy">
+                            <strong>Collaborate or share</strong>
+                            <small>Test invites, sharing, teamwork flows, or collaborative handoff moments.</small>
+                          </span>
+                        </label>
+                        <label class="onboarding-toggle">
+                          <input type="checkbox" value="Evaluate pricing, upgrade, trial-start, or checkout flows after product value is established." />
+                          <span class="onboarding-toggle-copy">
+                            <strong>Upgrade or checkout</strong>
+                            <small>Stress the revenue path after the persona understands the product.</small>
+                          </span>
+                        </label>
+                      </div>
+                      <label>
+                        <span>Custom goals or app-specific workflows</span>
+                        <textarea id="onboardingScenariosCustom" rows="3" placeholder="One goal per line. Example: Connect a CRM, generate a talking avatar, then export the final asset."></textarea>
+                      </label>
+                      <div class="onboarding-subsection">
+                        <div class="onboarding-subsection-head">
+                          <h4>Coverage depth</h4>
+                          <p>How far should the swarm push once it gets through onboarding and into the product?</p>
+                        </div>
+                        <div class="onboarding-intensity-grid" id="onboardingIntensityChoices">
+                          <button type="button" class="onboarding-intensity active" data-intensity-choice="standard_break" data-scope-mode="deep_45m">
+                            <strong>Balanced run</strong>
+                            <span>Recommended. Covers onboarding plus multiple core flows.</span>
+                          </button>
+                          <button type="button" class="onboarding-intensity" data-intensity-choice="quick_pulse" data-scope-mode="core_20m">
+                            <strong>Fast pass</strong>
+                            <span>Quick confidence check on the highest-risk path.</span>
+                          </button>
+                          <button type="button" class="onboarding-intensity" data-intensity-choice="full_chaos" data-scope-mode="feature_targeted">
+                            <strong>Deep sweep</strong>
+                            <span>More aggressive exploration of the goals you selected.</span>
+                          </button>
+                        </div>
+                      </div>
+                      <small id="onboardingScenarioHint" class="app-field-hint">Pick at least one post-onboarding goal. Onboarding is always included automatically.</small>
+                    </section>
+
+                    <section class="onboarding-step" data-onboarding-step="4" hidden>
+                      <p class="onboarding-step-note">Review the mission summary, then launch the swarm when the setup matches the customer story you want to test.</p>
+                      <article class="onboarding-subsection onboarding-final-checklist">
+                        <div class="onboarding-subsection-head">
+                          <h4>Before you launch</h4>
+                          <p>This run will start from the public surface, clear onboarding if needed, and keep pushing on the mission until it reaches a real product outcome or records user-facing blockers.</p>
+                        </div>
+                        <ul class="onboarding-checklist">
+                          <li>We start from the same entry point a real user sees.</li>
+                          <li>Onboarding is part of the run, not the finish line.</li>
+                          <li>The selected persona determines how patient or skeptical the tester acts.</li>
+                          <li>The mission is judged against the goals you set, not generic feature coverage.</li>
+                        </ul>
+                      </article>
+                      <article class="onboarding-subsection onboarding-final-checklist">
+                        <div class="onboarding-subsection-head">
+                          <h4>Code-aware diagnosis</h4>
+                          <p>Blind QA stays blind. This only runs after the blind report finds a real bug, dead end, or code-level trace worth diagnosing.</p>
+                        </div>
+                        <label>
+                          <span>After the blind run, scan the repo/workspace for likely fixes</span>
+                          <input id="onboardingRepoTriageEnabled" type="checkbox" />
+                        </label>
+                        <div class="onboarding-subsection">
+                          <div class="onboarding-subsection-head">
+                            <h5>GitHub repo connection</h5>
+                            <p id="onboardingRepoConnectionMeta">Connect a repo per brand. Blind QA stays blind until the run has already found something worth diagnosing.</p>
                           </div>
+                          <p class="app-field-hint" id="onboardingRepoConnectionLabel">No GitHub repo connected for this brand yet.</p>
+                          <div class="app-onboarding-actions">
+                            <button class="btn btn-ghost" id="onboardingRepoTriageConnect" type="button">Connect GitHub</button>
+                            <button class="btn btn-ghost" id="onboardingRepoTriageDisconnect" type="button" hidden>Disconnect</button>
+                          </div>
+                          <label id="onboardingRepoConnectionSelectWrap" hidden>
+                            <span>Connected repository</span>
+                            <select id="onboardingRepoConnectionSelect"></select>
+                          </label>
                         </div>
-                      </article>
-                      <article id="onboardingRepoTriageConfig" class="card-surface" hidden>
-                        <h4>Code-aware diagnosis config</h4>
                         <label>
-                          <span>Primary branch</span>
+                          <span>Repo target</span>
                           <input
-                            id="onboardingRepoTriageBranch"
-                            name="repo_triage_branch"
+                            id="onboardingRepoTriageRepo"
                             type="text"
-                            placeholder="main"
+                            placeholder="org/repo or current workspace"
                             autocapitalize="off"
                             spellcheck="false"
                           />
@@ -335,30 +636,41 @@
             </section>
 
             <div class="app-legacy-plumbing" hidden>
-              <span id="metricRuns">0</span>
-              <span id="metricCompleted">0</span>
-              <span id="metricFindings">0</span>
-              <span id="metricRisk">0</span>
+              <input id="targetFilter" type="text" value="" />
+              <select id="statusFilter" aria-label="Status filter">
+                <option value="">All statuses</option>
+                <option value="queued">queued</option>
+                <option value="processing">processing</option>
+                <option value="retryable">retryable</option>
+                <option value="completed">completed</option>
+                <option value="partial">partial</option>
+                <option value="failed">failed</option>
+                <option value="failed_validation">failed_validation</option>
+              </select>
+              <button id="applyFilters" type="button">Apply Filters</button>
               <span id="metricPersonas">0</span>
               <span id="metricBugs">0</span>
               <span id="metricFriction">0</span>
               <span id="metricComplete">0%</span>
               <span id="appEvidenceMeta"></span>
               <span id="activeSwarmNotice"></span>
-              <span id="brandChipsCount"></span>
-              <div id="brandChips"></div>
-              <span id="reportsCount">0</span>
-              <div id="reportsItems"></div>
-              <section id="reportDetail"></section>
+              <span id="recentRunsMeta">0 runs</span>
+              <table>
+                <tbody id="recentRunsRows"></tbody>
+              </table>
             </div>
           </div>
         </div>
       </main>
 
       <script src="auth.js?v=20260329a"></script>
+      <script src="dashboard-projects.js?v=20260318b"></script>
+      <script src="dashboard-runs.js?v=20260316a"></script>
       <script src="dashboard-report-runtime.js?v=20260327b"></script>
-      <script src="reports.js?v=20260401a"></script>
-      <script src="dashboard.js?v=20260401c"></script>
-      <script src="dashboard.js?v=20260401b"></script>
+      <script src="dashboard-render-state.js?v=20260402a"></script>
+      <script src="dashboard-panels.js?v=20260318c"></script>
+      <script src="reports.js?v=20260402a"></script>
+      <script src="dashboard.js?v=20260402a"></script>
     </div>
   </body>
+</html>
