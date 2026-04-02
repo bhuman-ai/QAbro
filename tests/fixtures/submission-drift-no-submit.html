@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Submission Drift Smoke Fixture</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        background: #f5f7fb;
+        color: #172033;
+      }
+      main {
+        max-width: 720px;
+        margin: 48px auto;
+        padding: 32px;
+        background: #ffffff;
+        border: 1px solid #d6deeb;
+        border-radius: 16px;
+        box-shadow: 0 18px 48px rgba(23, 32, 51, 0.08);
+      }
+      h1 {
+        margin-top: 0;
+        font-size: 28px;
+      }
+      p {
+        line-height: 1.5;
+      }
+      form {
+        display: grid;
+        gap: 18px;
+        margin-top: 24px;
+      }
+      label {
+        display: grid;
+        gap: 8px;
+        font-weight: 600;
+      }
+      input,
+      textarea {
+        font: inherit;
+        padding: 12px 14px;
+        border: 1px solid #b9c5db;
+        border-radius: 10px;
+      }
+      textarea {
+        min-height: 120px;
+        resize: vertical;
+      }
+      .note {
+        margin-top: 24px;
+        padding: 16px;
+        border-radius: 12px;
+        background: #eef4ff;
+        color: #34518a;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Directory Submission Drift Smoke</h1>
+      <p>This fixture intentionally has recognizable form fields but no final submit control.</p>
+      <form>
+        <label for="product-name">
+          Product Name
+          <input id="product-name" name="product_name" type="text" autocomplete="off">
+        </label>
+        <label for="tagline">
+          Tagline
+          <input id="tagline" name="tagline" type="text" autocomplete="off">
+        </label>
+        <label for="website-url">
+          Website URL
+          <input id="website-url" name="website_url" type="url" autocomplete="off">
+        </label>
+        <label for="contact-email">
+          Contact Email
+          <input id="contact-email" name="contact_email" type="email" autocomplete="off">
+        </label>
+        <label for="description">
+          Description
+          <textarea id="description" name="description"></textarea>
+        </label>
+      </form>
+      <div class="note">No submit button is present on purpose.</div>
+    </main>
+  </body>
+</html>

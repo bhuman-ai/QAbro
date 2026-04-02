@@ -1,5 +1,6 @@
 const { parseRequestBody, sanitizeString } = require("../../lib/qa-core");
 const { getInviteCode, getSupabaseAuthConfig, isValidEmail, resolveMagicLinkRedirectTo, sanitizeEmail } = require("../../lib/auth");
+const { buildPendingPromoMetadata, resolvePromoOfferByCode } = require("../../lib/promo-offers");
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") {
@@ -17,13 +18,15 @@ module.exports = async (req, res) => {
   const email = sanitizeEmail(body?.email);
   const inviteCode = sanitizeString(body?.invite_code || body?.inviteCode, 128);
   const redirectTo = resolveMagicLinkRedirectTo(req, body?.redirect_to || body?.redirectTo);
+  const shareRunId = sanitizeString(body?.share_run_id || body?.shareRunId, 128);
   const requiredInviteCode = getInviteCode();
+  const promoOffer = resolvePromoOfferByCode(inviteCode);
 
   if (!isValidEmail(email)) {
     return res.status(400).json({ ok: false, error: "Invalid email" });
   }
 
-  if (!inviteCode || inviteCode !== requiredInviteCode) {
+  if (!inviteCode || (inviteCode !== requiredInviteCode && !promoOffer)) {
     return res.status(403).json({ ok: false, error: "Invalid invite code" });
   }
 
@@ -31,6 +34,23 @@ module.exports = async (req, res) => {
   if (!config.ok) {
     return res.status(config.status || 500).json({ ok: false, error: config.error });
   }
+
+  const metadata = promoOffer
+    ? buildPendingPromoMetadata(
+        {
+          swarm_onboarding_seen: false,
+          swarm_signup_source: "shared_report_offer"
+        },
+        promoOffer,
+        {
+          source: "shared_report_signup",
+          shareRunId
+        }
+      )
+    : {
+        swarm_onboarding_seen: false,
+        swarm_signup_source: "dashboard_invite"
+      };
 
   const response = await config.fetchImpl(`${config.supabaseUrl}/auth/v1/otp`, {
     method: "POST",
@@ -45,10 +65,7 @@ module.exports = async (req, res) => {
       create_user: true,
       email_redirect_to: redirectTo,
       redirect_to: redirectTo,
-      data: {
-        swarm_onboarding_seen: false,
-        swarm_signup_source: "dashboard_invite"
-      }
+      data: metadata
     })
   });
 
@@ -76,6 +93,6 @@ module.exports = async (req, res) => {
   return res.status(200).json({
     ok: true,
     sent: true,
-    message: "Check your email for your sign-in link."
+    message: promoOffer ? "Team code accepted. Check your email for your sign-in link." : "Check your email for your sign-in link."
   });
 };

@@ -1,0 +1,211 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+
+const {
+  buildQaResourceUri,
+  buildQaRunRequest,
+  createQaApiClient,
+  createQaResourceReaders
+} = require("../lib/qa-mcp");
+const { readQaMcpStoredAuth, writeQaMcpStoredAuth } = require("../lib/qa-mcp-auth");
+
+function createJsonResponse(payload, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    async text() {
+      return JSON.stringify(payload);
+    }
+  };
+}
+
+test("buildQaRunRequest creates a feature-targeted signup-aware run request", () => {
+  const runRequest = buildQaRunRequest(
+    {
+      target_url: "https://preview.example.com/signup",
+      feature_name: "signup flow",
+      task_to_try: "Create a new account and reach the dashboard",
+      expected_success: "The tester ends up in the logged-in product",
+      persona: "A busy growth marketer evaluating the product for the first time."
+    },
+    {
+      defaultBrand: "example.com"
+    }
+  );
+
+  assert.equal(runRequest.target_url, "https://preview.example.com/signup");
+  assert.equal(runRequest.scope_mode, "feature_targeted");
+  assert.equal(runRequest.metadata.brand_key, "example.com");
+  assert.equal(runRequest.metadata.auth_policy, "signup_if_needed");
+  assert.match(runRequest.scenario_list[0], /signup flow/i);
+  assert.match(runRequest.scenario_list.join(" "), /logged-in product/i);
+});
+
+test("qa MCP client requestRun sends service token and owner headers", async () => {
+  const calls = [];
+  const client = createQaApiClient({
+    baseUrl: "https://swarmtester.com",
+    serviceToken: "svc_123",
+    ownerUserId: "user_123",
+    ownerEmail: "owner@example.com",
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return createJsonResponse({
+        ok: true,
+        queued: true,
+        run_id: "run_123",
+        report_url: "https://swarmtester.com/api/qa/report?run_id=run_123",
+        status_url: "https://swarmtester.com/api/qa/status?run_id=run_123",
+        ui_report_url: "https://swarmtester.com/dashboard?view=report&run_id=run_123"
+      });
+    }
+  });
+
+  const response = await client.requestRun({
+    target_url: "https://example.com",
+    task_to_try: "Create the first project"
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.headers["x-qa-service-token"], "svc_123");
+  assert.equal(calls[0].options.headers["x-owner-user-id"], "user_123");
+  assert.equal(calls[0].options.headers["x-owner-email"], "owner@example.com");
+});
+
+test("qa MCP client waitForRun polls until the report is ready and emits onPoll", async () => {
+  const pollStates = [
+    {
+      ok: true,
+      run_id: "run_wait",
+      report_ready: false,
+      report_status: "processing",
+      queue: { status: "processing" }
+    },
+    {
+      ok: true,
+      run_id: "run_wait",
+      report_ready: true,
+      report_status: "partial",
+      queue: { status: "completed" }
+    }
+  ];
+
+  let index = 0;
+  const observed = [];
+  const client = createQaApiClient({
+    baseUrl: "https://swarmtester.com",
+    serviceToken: "svc_123",
+    ownerUserId: "user_123",
+    ownerEmail: "owner@example.com",
+    fetchImpl: async () => createJsonResponse(pollStates[index++])
+  });
+
+  const result = await client.waitForRun("run_wait", {
+    timeout_seconds: 5,
+    poll_interval_seconds: 0.001,
+    onPoll(status, meta) {
+      observed.push({ status: status.report_status, poll_count: meta.poll_count });
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.timed_out, false);
+  assert.equal(result.status.report_status, "partial");
+  assert.deepEqual(observed, [
+    { status: "processing", poll_count: 1 },
+    { status: "partial", poll_count: 2 }
+  ]);
+});
+
+test("qa MCP resource readers expose status, report, and markdown resources", async () => {
+  const readers = createQaResourceReaders({
+    async getRunStatus(runId) {
+      assert.equal(runId, "run_456");
+      return {
+        ok: true,
+        run_id: runId,
+        report_ready: true,
+        report_status: "completed",
+        queue: { status: "completed" }
+      };
+    },
+    async getRunReport(runId) {
+      assert.equal(runId, "run_456");
+      return {
+        ok: true,
+        run_id: runId,
+        status: "completed",
+        summary: { note: "The tester completed the main flow." },
+        findings: [{ title: "No blocker", observed_behavior: "The feature worked." }],
+        markdown: "# Report\n\nEverything worked."
+      };
+    }
+  });
+
+  const statusResource = await readers.readRunStatus("run_456");
+  const reportResource = await readers.readRunReport("run_456");
+  const markdownResource = await readers.readRunReportMarkdown("run_456");
+
+  assert.equal(statusResource.uri, "qa://runs/run_456/status");
+  assert.equal(statusResource.mimeType, "application/json");
+  assert.match(statusResource.text, /"report_status": "completed"/);
+
+  assert.equal(reportResource.uri, "qa://runs/run_456/report");
+  assert.equal(reportResource.mimeType, "application/json");
+  assert.match(reportResource.text, /The tester completed the main flow/);
+
+  assert.equal(markdownResource.uri, "qa://runs/run_456/report.md");
+  assert.equal(markdownResource.mimeType, "text/markdown");
+  assert.match(markdownResource.text, /^# Report/m);
+});
+
+test("buildQaResourceUri encodes dynamic run ids", () => {
+  assert.equal(buildQaResourceUri("run_status", "run id/with spaces"), "qa://runs/run%20id%2Fwith%20spaces/status");
+  assert.equal(buildQaResourceUri("run_report", "run id/with spaces"), "qa://runs/run%20id%2Fwith%20spaces/report");
+  assert.equal(buildQaResourceUri("run_report_markdown", "run id/with spaces"), "qa://runs/run%20id%2Fwith%20spaces/report.md");
+});
+
+test("qa MCP client loads stored dashboard auth and sends dashboard token headers", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-mcp-auth-"));
+  const authPath = path.join(tempDir, "qa-mcp-auth.json");
+  writeQaMcpStoredAuth(
+    {
+      base_url: "https://swarmtester.com",
+      access_token: "access_saved_123",
+      refresh_token: "refresh_saved_123",
+      owner_user_id: "user_saved_123",
+      owner_email: "saved@example.com"
+    },
+    { authPath }
+  );
+
+  const calls = [];
+  const client = createQaApiClient({
+    baseUrl: "https://swarmtester.com",
+    authPath,
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return createJsonResponse({
+        ok: true,
+        user: {
+          id: "user_saved_123",
+          email: "saved@example.com"
+        }
+      });
+    }
+  });
+
+  const response = await client.getDashboardSession();
+  const stored = readQaMcpStoredAuth({ authPath });
+
+  assert.equal(response.ok, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.headers["x-dashboard-access-token"], "access_saved_123");
+  assert.equal(calls[0].options.headers["x-dashboard-refresh-token"], "refresh_saved_123");
+  assert.equal(stored.ok, true);
+  assert.equal(stored.auth.owner_email, "saved@example.com");
+});

@@ -4,3 +4,10 @@ node_modules/
 *.log
 .vercel
 .env*.local
+.env.worker
+.playwright-cli/
+output/
+Screenshot*.png
+tmp_*.js
+selffunded_dev_blast_*.csv
+supabase/.temp/

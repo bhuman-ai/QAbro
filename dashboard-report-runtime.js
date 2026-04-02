@@ -4,6 +4,11 @@
     return status === "queued" || status === "processing" || status === "retryable";
   }
 
+  function fallbackIsRepoTriageActiveStatus(value) {
+    const status = String(value || "").trim().toLowerCase();
+    return status === "queued" || status === "processing";
+  }
+
   function normalizeRunId(value) {
     return String(value || "").trim();
   }
@@ -25,7 +30,7 @@
   }
 
   function resolveSelectedRunRow(config = {}, helpers = {}) {
-    const runId = normalizeRunId(config.runId || config.selectedRunId);
+    const runId = normalizeRunId(config.runId || config.selectedRunId || config.requestedRunId);
     if (!runId) {
       return null;
     }
@@ -49,7 +54,7 @@
       return { report, row };
     }
 
-    const selectedRunId = normalizeRunId(config.selectedRunId);
+    const selectedRunId = normalizeRunId(config.selectedRunId || config.requestedRunId);
     if (!selectedRunId) {
       return { report: null, row: row || null };
     }
@@ -61,7 +66,7 @@
   }
 
   function shouldPollSelectedRun(config = {}, helpers = {}) {
-    const runId = normalizeRunId(config.selectedRunId);
+    const runId = normalizeRunId(config.selectedRunId || config.requestedRunId);
     if (!runId) {
       return { runId: "", row: null, cachedStatus: null, shouldPoll: false };
     }
@@ -70,11 +75,19 @@
     const cachedStatus = getLiveStatus(config.liveStatusCache, runId);
     const isQueueActiveStatus =
       typeof helpers.isQueueActiveStatus === "function" ? helpers.isQueueActiveStatus : fallbackIsQueueActiveStatus;
+    const isRepoTriageActiveStatus =
+      typeof helpers.isRepoTriageActiveStatus === "function"
+        ? helpers.isRepoTriageActiveStatus
+        : fallbackIsRepoTriageActiveStatus;
     const rowStatus = String(row?.queue_status || row?.status || "").toLowerCase();
     const cachedQueueStatus = String(cachedStatus?.queue?.queue_status || cachedStatus?.queue?.status || "").toLowerCase();
+    const rowRepoTriageStatus = String(row?.repo_triage_status || row?.repo_triage?.status || "").toLowerCase();
+    const cachedRepoTriageStatus = String(cachedStatus?.repo_triage?.status || "").toLowerCase();
     const shouldPoll =
       isQueueActiveStatus(rowStatus) ||
       isQueueActiveStatus(cachedQueueStatus) ||
+      isRepoTriageActiveStatus(rowRepoTriageStatus) ||
+      isRepoTriageActiveStatus(cachedRepoTriageStatus) ||
       (!row && !cachedStatus?.report_ready);
 
     return { runId, row, cachedStatus, shouldPoll };
@@ -101,13 +114,16 @@
       ...items[rowIndex],
       status: queueStatus || items[rowIndex].status,
       queue_status: queueStatus || items[rowIndex].queue_status,
-      findings_count: draftFindingsCount
+      findings_count: draftFindingsCount,
+      repo_triage_status: String(statusPayload?.repo_triage?.status || items[rowIndex].repo_triage_status || "").toLowerCase(),
+      repo_triage_summary: statusPayload?.repo_triage?.summary || items[rowIndex].repo_triage_summary || null,
+      repo_triage: statusPayload?.repo_triage || items[rowIndex].repo_triage || null
     };
     return items;
   }
 
   async function resolveSelectedReportRuntime(config = {}, helpers = {}) {
-    const runId = normalizeRunId(config.selectedRunId);
+    const runId = normalizeRunId(config.selectedRunId || config.requestedRunId);
     if (!runId) {
       return { runId: "", row: null, statusPayload: null, report: null, queueStatus: "" };
     }
@@ -116,8 +132,17 @@
     const rowStatus = String(row?.queue_status || row?.status || "").toLowerCase();
     const isQueueActiveStatus =
       typeof helpers.isQueueActiveStatus === "function" ? helpers.isQueueActiveStatus : fallbackIsQueueActiveStatus;
+    const isRepoTriageActiveStatus =
+      typeof helpers.isRepoTriageActiveStatus === "function"
+        ? helpers.isRepoTriageActiveStatus
+        : fallbackIsRepoTriageActiveStatus;
+    const rowRepoTriageStatus = String(row?.repo_triage_status || row?.repo_triage?.status || "").toLowerCase();
     let statusPayload = getLiveStatus(config.liveStatusCache, runId);
-    if (!statusPayload && typeof helpers.fetchRunStatus === "function" && (!row || isQueueActiveStatus(rowStatus))) {
+    if (
+      !statusPayload &&
+      typeof helpers.fetchRunStatus === "function" &&
+      (!row || isQueueActiveStatus(rowStatus) || isRepoTriageActiveStatus(rowRepoTriageStatus))
+    ) {
       try {
         statusPayload = await helpers.fetchRunStatus(runId);
       } catch {

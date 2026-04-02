@@ -1,8 +1,9 @@
 const fs = require("fs");
 const path = require("path");
 const { loadStoredReportByRunId, sanitizeString } = require("../../lib/qa-core");
-const { extractOwnerUserId } = require("../../lib/qa-queue");
+const { readQaShareKey, resolveQaReportReadAccess } = require("../../lib/qa-queue");
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
+const { fetchStoredEvidenceObject } = require("../../lib/qa-evidence-storage");
 
 function readEvidenceList(report, kind, payload = null) {
   const safeReport = report && typeof report === "object" ? report : {};
@@ -31,6 +32,17 @@ function readEvidenceList(report, kind, payload = null) {
     if (Array.isArray(evidence[field])) {
       values.push(...evidence[field]);
     }
+    if (kind === "video" && Array.isArray(journey?.step_video_clips)) {
+      for (const clip of journey.step_video_clips) {
+        const ref = sanitizeString(
+          clip?.video || clip?.video_url || clip?.videoUrl || clip?.source || clip?.url || clip?.path,
+          4096
+        );
+        if (ref) {
+          values.push(ref);
+        }
+      }
+    }
   }
 
   const safePayload = payload && typeof payload === "object" ? payload : {};
@@ -54,6 +66,59 @@ function readEvidenceList(report, kind, payload = null) {
   }
 
   return deduped;
+}
+
+function normalizeEvidenceSource(value) {
+  return sanitizeString(value, 4096).replaceAll("\\", "/");
+}
+
+function getEmbeddedEvidenceMaxLength(kind) {
+  return kind === "video" ? 8000000 : 2000000;
+}
+
+function readEvidenceMediaEntry(payload, kind, source) {
+  const safePayload = payload && typeof payload === "object" ? payload : {};
+  const evidenceMedia =
+    safePayload.evidence_media && typeof safePayload.evidence_media === "object"
+      ? safePayload.evidence_media
+      : {};
+  const field = kind === "video" ? "videos" : "screenshots";
+  const entries = Array.isArray(evidenceMedia[field]) ? evidenceMedia[field] : [];
+  if (!entries.length) {
+    return "";
+  }
+
+  const expectedSource = normalizeEvidenceSource(source);
+  if (!expectedSource) {
+    return "";
+  }
+
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+
+    const entrySource = normalizeEvidenceSource(entry.source || entry.path || entry.raw);
+    if (!entrySource || entrySource !== expectedSource) {
+      continue;
+    }
+
+    return {
+      source: entrySource,
+      content_type: sanitizeString(entry.content_type || entry.contentType, 128) || null,
+      data_url: sanitizeString(entry.data_url || entry.dataUrl || entry.value, getEmbeddedEvidenceMaxLength(kind)),
+      storage_bucket: sanitizeString(entry.storage_bucket || entry.storageBucket || entry.bucket, 128) || null,
+      storage_path:
+        sanitizeString(entry.storage_path || entry.storagePath || entry.object_path || entry.objectPath, 4096)
+          .replaceAll("\\", "/") || null
+    };
+  }
+
+  return null;
+}
+
+function readEmbeddedEvidenceSource(payload, kind, source) {
+  return sanitizeString(readEvidenceMediaEntry(payload, kind, source)?.data_url, getEmbeddedEvidenceMaxLength(kind));
 }
 
 function isHttpUrl(value) {
@@ -186,8 +251,8 @@ function getContentTypeFromUrlPath(value) {
   }
 }
 
-function decodeDataUrl(value) {
-  const dataUrl = sanitizeString(value, 2000000);
+function decodeDataUrl(value, maxLength = 2000000) {
+  const dataUrl = sanitizeString(value, maxLength);
   const match = dataUrl.match(/^data:([^;,]+);base64,([\s\S]+)$/i);
   if (!match) {
     return null;
@@ -209,16 +274,13 @@ function decodeDataUrl(value) {
   }
 }
 
-module.exports = async (req, res) => {
+async function handler(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const auth = await requireDashboardOrServiceAuth(req, res);
-  if (!auth.ok) {
-    return res.status(auth.status || 401).json({ ok: false, error: "Authentication required" });
-  }
+  const auth = await requireDashboardOrServiceAuth(req, res, { rejectInvalidServiceToken: false });
 
   const runId = sanitizeString(req.query?.run_id || req.query?.runId, 128);
   const kind = sanitizeString(req.query?.kind, 32).toLowerCase();
@@ -239,12 +301,14 @@ module.exports = async (req, res) => {
     return res.status(loaded.status || 500).json({ ok: false, error: loaded.error });
   }
 
-  const ownerUserId = sanitizeString(auth.user?.id, 128);
-  if (ownerUserId) {
-    const rowOwnerUserId = sanitizeString(extractOwnerUserId(loaded.row), 128);
-    if (!rowOwnerUserId || rowOwnerUserId !== ownerUserId) {
-      return res.status(404).json({ ok: false, error: "Run not found" });
-    }
+  const access = resolveQaReportReadAccess(loaded.row, {
+    authOk: auth.ok,
+    ownerUserId: sanitizeString(auth.user?.id, 128),
+    shareKey: readQaShareKey(req),
+    request: req
+  });
+  if (!access.ok) {
+    return res.status(access.status || 401).json({ ok: false, error: access.error || "Authentication required" });
   }
 
   const payload = loaded.row && loaded.row.payload && typeof loaded.row.payload === "object"
@@ -261,7 +325,8 @@ module.exports = async (req, res) => {
     return res.status(404).json({ ok: false, error: "Evidence item not found" });
   }
 
-  const dataUrlPayload = decodeDataUrl(source);
+  const embeddedSource = readEmbeddedEvidenceSource(payload, kind, source);
+  const dataUrlPayload = decodeDataUrl(embeddedSource || source, getEmbeddedEvidenceMaxLength(kind));
   if (dataUrlPayload) {
     const expectedPrefix = kind === "video" ? "video/" : "image/";
     if (!dataUrlPayload.contentType.toLowerCase().startsWith(expectedPrefix)) {
@@ -271,6 +336,24 @@ module.exports = async (req, res) => {
     res.setHeader("Content-Type", dataUrlPayload.contentType);
     res.setHeader("Cache-Control", "private, max-age=3600");
     return res.status(200).send(dataUrlPayload.data);
+  }
+
+  const evidenceEntry = readEvidenceMediaEntry(payload, kind, source);
+  if (evidenceEntry?.storage_bucket && evidenceEntry?.storage_path) {
+    const storedObject = await fetchStoredEvidenceObject(evidenceEntry);
+    if (storedObject?.data?.length) {
+      const normalizedContentType = sanitizeString(storedObject.contentType, 256).toLowerCase();
+      if (kind === "video" && !normalizedContentType.startsWith("video/") && normalizedContentType !== "application/vnd.apple.mpegurl") {
+        return res.status(415).json({ ok: false, error: "Evidence item is not playable video media" });
+      }
+      if (kind === "screenshot" && !normalizedContentType.startsWith("image/")) {
+        return res.status(415).json({ ok: false, error: "Evidence item is not image media" });
+      }
+
+      res.setHeader("Content-Type", storedObject.contentType);
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      return res.status(200).send(storedObject.data);
+    }
   }
 
   const localPath = resolveLocalEvidencePath(source);
@@ -334,4 +417,14 @@ module.exports = async (req, res) => {
   res.setHeader("Content-Type", contentType || headerContentType || "application/octet-stream");
   res.setHeader("Cache-Control", "private, max-age=600");
   return res.status(200).send(Buffer.from(arrayBuffer));
+}
+
+module.exports = handler;
+module.exports.__private = {
+  fetchStoredEvidenceObject,
+  getEmbeddedEvidenceMaxLength,
+  normalizeEvidenceSource,
+  readEvidenceMediaEntry,
+  readEmbeddedEvidenceSource,
+  readEvidenceList
 };

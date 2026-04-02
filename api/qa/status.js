@@ -1,5 +1,11 @@
-const { extractBrandKey, getQaRunStatus, normalizeQueueLifecycleStatus } = require("../../lib/qa-queue");
-const { getPublicBaseUrl, sanitizeString } = require("../../lib/qa-core");
+const {
+  extractBrandKey,
+  getQaRunStatus,
+  normalizeQueueLifecycleStatus,
+  readQaShareKey,
+  resolveQaReportReadAccess
+} = require("../../lib/qa-queue");
+const { getPublicBaseUrl, sanitizeRepoTriageState, sanitizeString } = require("../../lib/qa-core");
 const { buildLiveStreamArtifacts } = require("../../lib/qa-live-stream");
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
 
@@ -9,10 +15,7 @@ module.exports = async (req, res) => {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const auth = await requireDashboardOrServiceAuth(req, res);
-  if (!auth.ok) {
-    return res.status(auth.status || 401).json({ ok: false, error: "Authentication required" });
-  }
+  const auth = await requireDashboardOrServiceAuth(req, res, { rejectInvalidServiceToken: false });
 
   const runId = sanitizeString(req.query?.run_id || req.query?.runId, 128);
   if (!runId) {
@@ -20,10 +23,23 @@ module.exports = async (req, res) => {
   }
 
   const loaded = await getQaRunStatus(runId, {
-    ownerUserId: sanitizeString(auth.user?.id, 128)
+    authOk: auth.ok,
+    ownerUserId: sanitizeString(auth.user?.id, 128),
+    shareKey: readQaShareKey(req),
+    request: req
   });
   if (!loaded.ok) {
     return res.status(loaded.status || 500).json({ ok: false, error: loaded.error });
+  }
+
+  const access = resolveQaReportReadAccess(loaded.row, {
+    authOk: auth.ok,
+    ownerUserId: sanitizeString(auth.user?.id, 128),
+    shareKey: readQaShareKey(req),
+    request: req
+  });
+  if (!access.ok) {
+    return res.status(access.status || 401).json({ ok: false, error: access.error || "Authentication required" });
   }
 
   const payload = loaded.row && loaded.row.payload && typeof loaded.row.payload === "object"
@@ -53,10 +69,21 @@ module.exports = async (req, res) => {
     sanitizeString(loaded.queue?.queue_status || loaded.queue?.status, 64)
   );
   const reportReady = Boolean(payload.report_json) && !["queued", "processing", "retryable"].includes(queueStatus);
+  const repoTriage =
+    access.access_type === "owner"
+      ? sanitizeRepoTriageState(
+          payload.repo_triage,
+          payload.report_json?.metadata?.repo_triage || payload.run_request?.metadata?.repo_triage
+        )
+      : null;
   const runLog = Array.isArray(payload.run_log) ? payload.run_log.slice(-40) : [];
   const uiParams = new URLSearchParams({ view: "report", run_id: runId });
   if (brand) {
     uiParams.set("brand", brand);
+  }
+  const shareKey = readQaShareKey(req);
+  if (shareKey) {
+    uiParams.set("share_key", shareKey);
   }
 
   return res.status(200).json({
@@ -67,6 +94,7 @@ module.exports = async (req, res) => {
     report_url: loaded.queue?.report_url || null,
     status_url: loaded.queue?.status_url || null,
     report_status: payload.report_json?.status || sanitizeString(loaded.row?.status, 64) || null,
+    repo_triage: repoTriage,
     progress: liveProgress,
     artifacts: hasMergedArtifacts
       ? {

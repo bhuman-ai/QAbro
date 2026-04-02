@@ -24,6 +24,7 @@ const {
   validateReport
 } = require("../lib/qa-core");
 const { buildLiveStreamArtifacts } = require("../lib/qa-live-stream");
+const { __private: qaLocalPublishPrivate } = require("../lib/qa-local-publish");
 const {
   buildQueuePayload,
   claimNextQaRun,
@@ -31,12 +32,16 @@ const {
   sanitizeQueue,
   updateQueueRow
 } = require("../lib/qa-queue");
+const { enqueueRepoTriageJob } = require("../lib/qa-repo-triage-queue");
+const { shouldEnqueueRepoTriage, updateStoredReportRepoTriage } = require("../lib/qa-repo-triage");
 const {
   getWorkerHeartbeatThresholds,
   sanitizeWorkerStatus,
   upsertQaWorkerHeartbeat
 } = require("../lib/qa-workers");
 const { executeLocalAgentQaRun } = require("../lib/qa-local-agent");
+const repoTriageWorker = require("./qa-repo-triage-worker");
+const { buildEmbeddedEvidenceMedia } = qaLocalPublishPrivate;
 
 function loadEnvFileIfPresent(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -435,6 +440,7 @@ async function executeRunWithPlan(claimed, workerId, liveProgress) {
     try {
       const execution = await runner(executionRunRequest, {
         reportUrl: claimed.row.report_url,
+        skipCallbackPublication: true,
         onRunLog: liveProgress.onRunLog,
         onCandidateReport: liveProgress.onCandidateReport
       });
@@ -1175,12 +1181,93 @@ function createLiveProgressUpdater(claimed, workerId, options = {}) {
 
 function buildStoredExecutionPayload(finalReport, markdown, execution = {}) {
   const sanitizedReport = sanitizeReportForCallback(finalReport);
+  const evidenceMedia = buildEmbeddedEvidenceMedia(finalReport, execution.artifacts || {});
   return {
     reportJson: sanitizedReport,
     findings: Array.isArray(sanitizedReport?.findings) ? sanitizedReport.findings : [],
     reportMarkdown: sanitizeReportMarkdown(markdown, 12000),
     artifacts: sanitizeArtifactsForCallback(execution.artifacts || {}),
-    runLog: sanitizeRunLogForCallback(execution.runLog)
+    runLog: sanitizeRunLogForCallback(execution.runLog),
+    evidenceMedia
+  };
+}
+
+function uniqueEvidenceItems(values) {
+  return Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .map((value) => sanitizeString(value, 4096))
+        .filter(Boolean)
+    )
+  );
+}
+
+function collectExecutionScreenshotEvidence(finalReport, execution = {}) {
+  const report = finalReport && typeof finalReport === "object" ? finalReport : {};
+  const artifacts = execution.artifacts && typeof execution.artifacts === "object" ? execution.artifacts : {};
+  const screenshots = [
+    ...(Array.isArray(report?.evidence_gallery?.screenshots) ? report.evidence_gallery.screenshots : []),
+    ...((Array.isArray(report?.findings) ? report.findings : []).flatMap((finding) =>
+      Array.isArray(finding?.evidence?.screenshots) ? finding.evidence.screenshots : []
+    )),
+    ...((Array.isArray(report?.tested_journeys) ? report.tested_journeys : []).flatMap((journey) =>
+      Array.isArray(journey?.evidence?.screenshots) ? journey.evidence.screenshots : []
+    )),
+    ...(Array.isArray(artifacts.local_screenshots) ? artifacts.local_screenshots : []),
+    ...(Array.isArray(artifacts.captured_screenshots) ? artifacts.captured_screenshots : [])
+  ];
+  return uniqueEvidenceItems(screenshots);
+}
+
+function collectExecutionVideoEvidence(finalReport, execution = {}) {
+  const report = finalReport && typeof finalReport === "object" ? finalReport : {};
+  const artifacts = execution.artifacts && typeof execution.artifacts === "object" ? execution.artifacts : {};
+  const videos = [
+    ...(Array.isArray(report?.evidence_gallery?.videos) ? report.evidence_gallery.videos : []),
+    ...((Array.isArray(report?.findings) ? report.findings : []).flatMap((finding) =>
+      Array.isArray(finding?.evidence?.videos) ? finding.evidence.videos : []
+    )),
+    ...((Array.isArray(report?.tested_journeys) ? report.tested_journeys : []).flatMap((journey) =>
+      Array.isArray(journey?.evidence?.videos) ? journey.evidence.videos : []
+    )),
+    [
+      artifacts.blocker_clip_url,
+      artifacts.local_video_url,
+      artifacts.blocker_clip_path,
+      artifacts.local_video_path
+    ]
+  ].flat();
+  return uniqueEvidenceItems(videos);
+}
+
+function assessExecutionEvidence(finalReport, execution = {}, options = {}) {
+  const requiredScreenshots = Math.max(
+    1,
+    Number(options.requiredScreenshots || process.env.QA_REQUIRED_SCREENSHOT_COUNT) || 4
+  );
+  const requiredVideos = Math.max(
+    0,
+    Number(options.requiredVideos || process.env.QA_REQUIRED_VIDEO_COUNT) || 1
+  );
+  const screenshots = collectExecutionScreenshotEvidence(finalReport, execution);
+  const videos = collectExecutionVideoEvidence(finalReport, execution);
+  const missing = [];
+  if (screenshots.length < requiredScreenshots) {
+    missing.push(`at least ${requiredScreenshots} screenshots`);
+  }
+  if (videos.length < requiredVideos) {
+    missing.push(`at least ${requiredVideos} video artifact${requiredVideos === 1 ? "" : "s"}`);
+  }
+
+  return {
+    screenshots,
+    videos,
+    screenshotCount: screenshots.length,
+    videoCount: videos.length,
+    requiredScreenshots,
+    requiredVideos,
+    ok: missing.length === 0,
+    missing
   };
 }
 
@@ -1215,7 +1302,8 @@ async function markCallbackFailure(claimed, finalReport, markdown, execution, ca
     reportJson: storedExecution.reportJson,
     reportMarkdown: storedExecution.reportMarkdown,
     artifacts: storedExecution.artifacts,
-    runLog: storedExecution.runLog
+    runLog: storedExecution.runLog,
+    evidenceMedia: storedExecution.evidenceMedia
   });
 
   return updateQueueRow(claimed.row.run_id, {
@@ -1260,7 +1348,8 @@ async function markCallbackSuccess(claimed, finalReport, markdown, execution, ca
     reportJson: storedExecution.reportJson,
     reportMarkdown: storedExecution.reportMarkdown,
     artifacts: storedExecution.artifacts,
-    runLog: storedExecution.runLog
+    runLog: storedExecution.runLog,
+    evidenceMedia: storedExecution.evidenceMedia
   });
 
   return updateQueueRow(claimed.row.run_id, {
@@ -1270,6 +1359,81 @@ async function markCallbackSuccess(claimed, finalReport, markdown, execution, ca
     report_url: claimed.row?.report_url || finalReport.report_url || null,
     delivered_at: now,
     payload
+  });
+}
+
+async function maybeQueueRepoTriageAfterRun(claimed, finalReport) {
+  const now = new Date().toISOString();
+  const decision = shouldEnqueueRepoTriage(finalReport, claimed.runRequest);
+  if (!decision.enabled) {
+    return updateStoredReportRepoTriage(claimed.row.run_id, {
+      repoTriage: {
+        status: "disabled",
+        updated_at: now
+      }
+    });
+  }
+
+  if (!decision.shouldQueue) {
+    return updateStoredReportRepoTriage(claimed.row.run_id, {
+      repoTriage: {
+        ...decision.config,
+        status: "skipped",
+        signal_count: 0,
+        signal_types: [],
+        summary: decision.reason,
+        reason: decision.reason,
+        completed_at: now,
+        updated_at: now
+      }
+    });
+  }
+
+  const ownerMetadata = isPlainObject(claimed.runRequest?.metadata) ? claimed.runRequest.metadata : {};
+  const queued = await enqueueRepoTriageJob(
+    {
+      run_id: claimed.row.run_id,
+      target: finalReport.target,
+      target_url: claimed.runRequest?.target_url || finalReport?.metadata?.target_url || "",
+      report_status: finalReport.status,
+      finding_count: Array.isArray(finalReport.findings) ? finalReport.findings.length : 0,
+      repo_triage: decision.config
+    },
+    {
+      ownerUserId: sanitizeString(ownerMetadata.owner_user_id || ownerMetadata.ownerUserId, 128),
+      ownerEmail: sanitizeString(ownerMetadata.owner_email || ownerMetadata.ownerEmail, 320),
+      brandKey: sanitizeString(ownerMetadata.brand_key || ownerMetadata.brandId || ownerMetadata.brand_id, 256),
+      statusUrl: claimed.payload?.status_url,
+      reportUrl: claimed.row?.report_url
+    }
+  );
+
+  if (!queued.ok) {
+    return updateStoredReportRepoTriage(claimed.row.run_id, {
+      repoTriage: {
+        ...decision.config,
+        status: "failed",
+        signal_count: decision.findings.length,
+        signal_types: decision.signalTypes || [],
+        summary: queued.error || "Could not enqueue repo triage.",
+        reason: queued.error || "Could not enqueue repo triage.",
+        completed_at: now,
+        updated_at: now
+      }
+    });
+  }
+
+  return updateStoredReportRepoTriage(claimed.row.run_id, {
+    repoTriage: {
+      ...decision.config,
+      status: "queued",
+      job_id: queued.row?.job_id || null,
+      signal_count: decision.findings.length,
+      signal_types: decision.signalTypes || [],
+      summary: "Blind QA finished. Code-aware diagnosis is queued.",
+      queued_at: now,
+      updated_at: now
+    }
   });
 }
 
@@ -1353,7 +1517,14 @@ async function processOne(workerId, options = {}) {
         actions: {},
         reportUrl: claimed.row.report_url,
         deliveredAt: new Date().toISOString(),
-        failureMessage
+        failureMessage,
+        runLog: [
+          {
+            ts: new Date().toISOString(),
+            event: "run_failed",
+            data: { message: failureMessage }
+          }
+        ]
       }),
       markdown: "",
       artifacts: {},
@@ -1377,13 +1548,59 @@ async function processOne(workerId, options = {}) {
 
   let finalReport = execution.report;
   let markdown = execution.markdown;
-  const reportValidation = validateReport(finalReport);
+  let reportValidation = validateReport(finalReport);
 
   if (!reportValidation.ok) {
+    const normalizedReport = normalizeReport({
+      candidateReport: {
+        ...finalReport
+      },
+      runRequest: claimed.runRequest,
+      artifacts: execution.artifacts,
+      actions: execution.agentActions || {},
+      reportUrl: claimed.row.report_url,
+      deliveredAt: new Date().toISOString(),
+      runLog: Array.isArray(execution.runLog) ? execution.runLog : []
+    });
+    reportValidation = validateReport(normalizedReport);
+
+    if (reportValidation.ok) {
+      finalReport = normalizedReport;
+      markdown = buildMarkdownReport(finalReport, claimed.runRequest, {
+        generated_at: new Date().toISOString(),
+        raw_agent_message_excerpt: execution.rawAgentMessage || ""
+      });
+    } else {
+      finalReport = normalizeReport({
+        candidateReport: {
+          ...finalReport,
+          status: "failed_validation"
+        },
+        runRequest: claimed.runRequest,
+        artifacts: execution.artifacts,
+        actions: execution.agentActions || {},
+        reportUrl: claimed.row.report_url,
+        deliveredAt: new Date().toISOString(),
+        failureMessage: `Local validation failed before callback delivery: ${reportValidation.error}`,
+        runLog: Array.isArray(execution.runLog) ? execution.runLog : [],
+        rawAgentMessage: execution.rawAgentMessage || ""
+      });
+      finalReport.status = "failed_validation";
+      markdown = buildMarkdownReport(finalReport, claimed.runRequest, {
+        generated_at: new Date().toISOString(),
+        raw_agent_message_excerpt: reportValidation.error
+      });
+    }
+  }
+
+  const evidenceAssessment = assessExecutionEvidence(finalReport, execution);
+  if (!evidenceAssessment.ok) {
+    const evidenceFailureMessage = `Evidence capture requirements not met: missing ${evidenceAssessment.missing.join(
+      " and "
+    )}. Captured ${evidenceAssessment.screenshotCount} screenshot(s) and ${evidenceAssessment.videoCount} video artifact(s).`;
     finalReport = normalizeReport({
       candidateReport: {
         ...finalReport,
-        findings: [],
         status: "failed_validation"
       },
       runRequest: claimed.runRequest,
@@ -1391,17 +1608,34 @@ async function processOne(workerId, options = {}) {
       actions: execution.agentActions || {},
       reportUrl: claimed.row.report_url,
       deliveredAt: new Date().toISOString(),
-      failureMessage: `Local validation failed before callback delivery: ${reportValidation.error}`
+      failureMessage: evidenceFailureMessage,
+      runLog: Array.isArray(execution.runLog) ? execution.runLog : [],
+      failureDiagnostics:
+        finalReport && typeof finalReport.failure_diagnostics === "object" ? finalReport.failure_diagnostics : null,
+      rawAgentMessage: execution.rawAgentMessage || ""
     });
     finalReport.status = "failed_validation";
     markdown = buildMarkdownReport(finalReport, claimed.runRequest, {
       generated_at: new Date().toISOString(),
-      raw_agent_message_excerpt: reportValidation.error
+      raw_agent_message_excerpt: evidenceFailureMessage
     });
+    liveProgress.onRunLog({
+      ts: new Date().toISOString(),
+      event: "evidence_requirements_failed",
+      data: {
+        screenshot_count: evidenceAssessment.screenshotCount,
+        video_count: evidenceAssessment.videoCount,
+        required_screenshots: evidenceAssessment.requiredScreenshots,
+        required_videos: evidenceAssessment.requiredVideos,
+        message: evidenceFailureMessage
+      }
+    });
+    await liveProgress.flushNow();
   }
 
   const callbackUrl =
     process.env.QA_CALLBACK_URL || `${process.env.QA_PUBLIC_APP_URL || DEFAULT_PUBLIC_BASE_URL}/api/qa-report-callback`;
+  const evidenceMedia = buildEmbeddedEvidenceMedia(finalReport, execution.artifacts || {});
   const callbackResult = await sendFinalCallback({
     report: finalReport,
     markdown,
@@ -1417,6 +1651,7 @@ async function processOne(workerId, options = {}) {
       },
       status_url: claimed.payload?.status_url || null,
       run_request: claimed.runRequest,
+      ...(evidenceMedia ? { evidence_media: evidenceMedia } : {}),
       worker: {
         worker_id: workerId
       }
@@ -1433,6 +1668,7 @@ async function processOne(workerId, options = {}) {
         callbackResult,
         workerId
       );
+      await maybeQueueRepoTriageAfterRun(claimed, finalReport);
       const finalEventType = ["completed", "partial"].includes(
         String(finalReport.status || "").toLowerCase()
       )
@@ -1506,6 +1742,7 @@ async function processOne(workerId, options = {}) {
     callbackResult,
     workerId
   );
+  await maybeQueueRepoTriageAfterRun(claimed, finalReport);
   const finalEventType = ["completed", "partial"].includes(String(finalReport.status || "").toLowerCase())
     ? "run.completed"
     : "run.failed";
@@ -1553,6 +1790,16 @@ async function main() {
     for (;;) {
       const result = await processOne(args.workerId, { heartbeat });
       if (!result.processed) {
+        const repoTriageResult = await repoTriageWorker.processOne(`${args.workerId}-repo-triage`);
+        if (repoTriageResult?.processed) {
+          console.log(JSON.stringify(repoTriageResult, null, 2));
+          if (args.once) {
+            return;
+          }
+          await heartbeat.onSleep("awaiting_next_job");
+          continue;
+        }
+
         if (args.once) {
           console.log(JSON.stringify(result, null, 2));
           return;
@@ -1589,6 +1836,9 @@ module.exports = {
     buildExecutionRunRequest,
     shouldFallbackToNextEngine,
     buildStoredExecutionPayload,
+    collectExecutionScreenshotEvidence,
+    collectExecutionVideoEvidence,
+    assessExecutionEvidence,
     createWorkerHeartbeat
   }
 };

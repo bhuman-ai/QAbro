@@ -140,6 +140,8 @@
     const detailMarkup = String(config.detailMarkup || "");
     const isReportViewMode = Boolean(config.isReportViewMode);
     const attachReplayPlayers = typeof config.attachReplayPlayers === "function" ? config.attachReplayPlayers : null;
+    const attachExperienceTimelinePlayers =
+      typeof config.attachExperienceTimelinePlayers === "function" ? config.attachExperienceTimelinePlayers : null;
     const attachReplayJumpButtons =
       typeof config.attachReplayJumpButtons === "function" ? config.attachReplayJumpButtons : null;
     const attachJourneyCanvases = typeof config.attachJourneyCanvases === "function" ? config.attachJourneyCanvases : null;
@@ -149,6 +151,7 @@
     if (elements.reportDetail) {
       elements.reportDetail.innerHTML = detailMarkup;
       if (attachReplayPlayers) attachReplayPlayers(elements.reportDetail);
+      if (attachExperienceTimelinePlayers) attachExperienceTimelinePlayers(elements.reportDetail);
       if (attachReplayJumpButtons) attachReplayJumpButtons(elements.reportDetail);
       if (attachJourneyCanvases) attachJourneyCanvases(elements.reportDetail);
       if (attachShareButtons) attachShareButtons(elements.reportDetail);
@@ -158,6 +161,7 @@
     if (isReportViewMode && elements.appReportOnlyPanel) {
       elements.appReportOnlyPanel.innerHTML = detailMarkup;
       if (attachReplayPlayers) attachReplayPlayers(elements.appReportOnlyPanel);
+      if (attachExperienceTimelinePlayers) attachExperienceTimelinePlayers(elements.appReportOnlyPanel);
       if (attachReplayJumpButtons) attachReplayJumpButtons(elements.appReportOnlyPanel);
       if (attachJourneyCanvases) attachJourneyCanvases(elements.appReportOnlyPanel);
       if (attachShareButtons) attachShareButtons(elements.appReportOnlyPanel);

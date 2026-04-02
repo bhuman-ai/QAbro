@@ -158,3 +158,260 @@ test("report handler normalizes sparse stored report payloads", async () => {
     global.fetch = originalFetch;
   }
 });
+
+test("report handler requires owner-authenticated access by run_id", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    async json() {
+      return [
+        {
+          id: "row_public_1",
+          run_id: "run_public_1",
+          target: "clusterseo.com",
+          status: "partial",
+          source: "qa_bot",
+          report_url: "https://swarmtester.com/api/qa/report?run_id=run_public_1",
+          delivered_at: "2026-03-27T20:00:00.000Z",
+          payload: {
+            run_request: {
+              run_id: "run_public_1",
+              target_url: "https://clusterseo.com",
+              metadata: {
+                brand_id: "clusterseo.com",
+                owner_user_id: "user_456"
+              }
+            },
+            report_json: {
+              run_id: "run_public_1",
+              target: "clusterseo.com",
+              status: "partial",
+              summary: {
+                note: "Public report row"
+              },
+              findings: []
+            }
+          }
+        }
+      ];
+    }
+  });
+
+  try {
+    await withEnv(
+      {
+        QA_SERVICE_TOKEN: "service-token",
+        SUPABASE_URL: "https://supabase.example",
+        SUPABASE_SERVICE_KEY: "service-key"
+      },
+      async () => {
+        const req = {
+          method: "GET",
+          query: {
+            run_id: "run_public_1"
+          },
+          headers: {
+            host: "swarmtester.com",
+            "x-qa-service-token": "service-token",
+            "x-owner-user-id": "user_456"
+          }
+        };
+        const res = createRes();
+
+        await reportHandler(req, res);
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.body.ok, true);
+        assert.equal(res.body.run_id, "run_public_1");
+        assert.equal(res.body.report.status, "partial");
+        assert.match(res.body.ui_report_url, /run_id=run_public_1/);
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("report handler allows shared-link access by run_id", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    async json() {
+      return [
+        {
+          id: "row_shared_1",
+          run_id: "run_shared_1",
+          target: "clusterseo.com",
+          status: "partial",
+          source: "qa_bot",
+          report_url: "https://swarmtester.com/api/qa/report?run_id=run_shared_1",
+          delivered_at: "2026-03-27T20:00:00.000Z",
+          payload: {
+            share: {
+              enabled: true,
+              token: "share_abc123"
+            },
+            run_request: {
+              run_id: "run_shared_1",
+              target_url: "https://clusterseo.com",
+              metadata: {
+                brand_id: "clusterseo.com",
+                owner_user_id: "user_456"
+              }
+            },
+            report_json: {
+              run_id: "run_shared_1",
+              target: "clusterseo.com",
+              status: "partial",
+              summary: {
+                note: "Shared report row"
+              },
+              findings: []
+            }
+          }
+        }
+      ];
+    }
+  });
+
+  try {
+    await withEnv(
+      {
+        SUPABASE_URL: "https://supabase.example",
+        SUPABASE_SERVICE_KEY: "service-key"
+      },
+      async () => {
+        const req = {
+          method: "GET",
+          query: {
+            run_id: "run_shared_1",
+            share_key: "share_abc123"
+          },
+          headers: {
+            host: "swarmtester.com"
+          }
+        };
+        const res = createRes();
+
+        await reportHandler(req, res);
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.body.ok, true);
+        assert.equal(res.body.run_id, "run_shared_1");
+        assert.match(res.body.ui_report_url, /share_key=share_abc123/);
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("report handler redacts engineering triage for shared-link reads", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    async json() {
+      return [
+        {
+          id: "row_repo_triage_1",
+          run_id: "run_repo_triage_1",
+          target: "acme.example",
+          status: "completed",
+          source: "qa_bot",
+          report_url: "https://swarmtester.com/api/qa/report?run_id=run_repo_triage_1",
+          delivered_at: "2026-04-01T11:00:00.000Z",
+          payload: {
+            share: {
+              enabled: true,
+              token: "share_repo_triage_abc"
+            },
+            run_request: {
+              run_id: "run_repo_triage_1",
+              target_url: "https://acme.example/signup",
+              metadata: {
+                brand_id: "acme",
+                owner_user_id: "user_123",
+                repo_triage: {
+                  enabled: true,
+                  repo: "acme/web"
+                }
+              }
+            },
+            repo_triage: {
+              enabled: true,
+              status: "completed",
+              summary: "Matched the blocker to auth/signup.tsx."
+            },
+            report_json: {
+              run_id: "run_repo_triage_1",
+              target: "acme.example",
+              status: "completed",
+              summary: {
+                note: "Blind report is ready."
+              },
+              findings: [],
+              engineering_triage: {
+                summary: "Matched the blocker to auth/signup.tsx.",
+                per_finding: [
+                  {
+                    finding_id: "finding_bug_1",
+                    suspected_files: ["apps/web/src/auth/signup.tsx:42"]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ];
+    }
+  });
+
+  try {
+    await withEnv(
+      {
+        QA_SERVICE_TOKEN: "service-token",
+        SUPABASE_URL: "https://supabase.example",
+        SUPABASE_SERVICE_KEY: "service-key"
+      },
+      async () => {
+        const ownerReq = {
+          method: "GET",
+          query: {
+            run_id: "run_repo_triage_1"
+          },
+          headers: {
+            host: "swarmtester.com",
+            "x-qa-service-token": "service-token",
+            "x-owner-user-id": "user_123"
+          }
+        };
+        const ownerRes = createRes();
+        await reportHandler(ownerReq, ownerRes);
+        assert.equal(ownerRes.statusCode, 200);
+        assert.equal(ownerRes.body.report.engineering_triage.summary, "Matched the blocker to auth/signup.tsx.");
+        assert.equal(ownerRes.body.report.metadata.repo_triage.enabled, true);
+
+        const sharedReq = {
+          method: "GET",
+          query: {
+            run_id: "run_repo_triage_1",
+            share_key: "share_repo_triage_abc"
+          },
+          headers: {
+            host: "swarmtester.com"
+          }
+        };
+        const sharedRes = createRes();
+        await reportHandler(sharedReq, sharedRes);
+        assert.equal(sharedRes.statusCode, 200);
+        assert.equal(sharedRes.body.report.engineering_triage, undefined);
+        assert.equal(sharedRes.body.report.metadata.repo_triage, undefined);
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

@@ -984,23 +984,43 @@ test("executeVisionOnlyModeAttempt ignores maxSteps and keeps going until the pl
   assert.match(result.rawAgentMessage, /status: completed/i);
 });
 
-test("executeVisionOnlyModeAttempt treats product confusion as a completed run with blocked journey", async () => {
+test("executeVisionOnlyModeAttempt overrides invented placeholder emails with the managed inbox email", async () => {
   let currentUrl = "about:blank";
+  const typedValues = [];
 
   const page = {
     goto: async (url) => {
       currentUrl = String(url || "");
     },
     url: () => currentUrl,
-    screenshot: async () => Buffer.from("vision-confusion-source"),
+    screenshot: async () => Buffer.from("vision-email-source"),
     waitForTimeout: async () => {},
     mouse: {
+      move: async () => {},
+      click: async () => {},
       wheel: async () => {}
     },
     keyboard: {
+      type: async (value) => {
+        typedValues.push(String(value || ""));
+      },
       press: async () => {}
     }
   };
+
+  const plannerDecisions = [
+    {
+      action: "type",
+      target: "Email input field in sign in popup",
+      text: "testemail@example.com",
+      reason: "Enter email to receive a one-time code"
+    },
+    {
+      action: "done",
+      reason: "Email step completed"
+    }
+  ];
+  let plannerIndex = 0;
 
   const result = await executeVisionOnlyModeAttempt({
     stagehand: {
@@ -1011,19 +1031,83 @@ test("executeVisionOnlyModeAttempt treats product confusion as a completed run w
     runRequest: {
       ...createRunRequest(),
       metadata: {
-        goal: "Generate a personalized video"
+        goal: "Create a generated AI video",
+        vision_forced_email: "real-inbox@mail.tm"
       }
     },
     options: {
       visionApiKey: "test-openai-api-key",
       visionActionDelayMs: 1,
-      visionPlannerClient: async () => ({
-        action: "fail",
-        reason: "The persona is stuck on a generating screen and cannot find proof that a new video was created."
-      })
+      visionPlannerClient: async () => plannerDecisions[plannerIndex++] || plannerDecisions[plannerDecisions.length - 1]
     },
     runLog: [],
     artifacts: {
+      captured_screenshots: [],
+      screenshot_event_count: 0
+    },
+    captureState: {
+      maxCount: 8,
+      maxBytes: 1500000,
+      capturedBytes: 0
+    },
+    coordinateFallbackConfig: {
+      enabled: true,
+      localizeBox: async () => ({
+        strategy: "mock",
+        box: { center_x: 10, center_y: 10 }
+      })
+    }
+  });
+
+  assert.deepEqual(typedValues, ["real-inbox@mail.tm"]);
+  assert.equal(result.candidateReport.status, "completed");
+  assert.match(result.rawAgentMessage, /status: completed/i);
+});
+
+test("executeVisionOnlyModeAttempt stops after repeated wait decisions on the same state", async () => {
+  let currentUrl = "https://speakeasy.example.com/verify";
+  const page = {
+    goto: async (url) => {
+      currentUrl = String(url || "");
+    },
+    url: () => currentUrl,
+    screenshot: async () => Buffer.from("vision-wait-source"),
+    waitForTimeout: async () => {},
+    mouse: {
+      wheel: async () => {}
+    },
+    keyboard: {
+      press: async () => {}
+    }
+  };
+
+  const runLog = [];
+  const result = await executeVisionOnlyModeAttempt({
+    stagehand: {
+      context: {
+        awaitActivePage: async () => page
+      }
+    },
+    runRequest: {
+      ...createRunRequest(),
+      metadata: {
+        goal: "Finish the verification step and continue."
+      }
+    },
+    options: {
+      visionApiKey: "test-openai-api-key",
+      visionActionDelayMs: 1,
+      visionMaxWaitStreak: 4,
+      visionPlannerClient: async () => ({
+        action: "wait",
+        target: "verification process to complete",
+        amount: 1,
+        reason: "Waiting for verification to finish"
+      })
+    },
+    runLog,
+    artifacts: {
+      local_video_url: "https://example.com/run.webm",
       captured_screenshots: [],
       screenshot_event_count: 0
     },
@@ -1041,9 +1125,130 @@ test("executeVisionOnlyModeAttempt treats product confusion as a completed run w
     }
   });
 
-  assert.equal(result.candidateReport.status, "completed");
+  assert.equal(result.candidateReport.status, "partial");
+  assert.match(result.candidateReport.summary.note, /same waiting state/i);
+  assert.ok(runLog.some((entry) => entry.event === "vision_only_wait_streak_blocked"));
+});
+
+test("executeVisionOnlyModeAttempt builds a partial blocked report from real vision history", async () => {
+  let currentUrl = "about:blank";
+  let clickCount = 0;
+
+  const page = {
+    goto: async (url) => {
+      currentUrl = String(url || "");
+    },
+    url: () => currentUrl,
+    screenshot: async () => Buffer.from("vision-confusion-source"),
+    waitForTimeout: async () => {},
+    mouse: {
+      wheel: async () => {},
+      move: async () => {},
+      click: async () => {
+        clickCount += 1;
+        if (clickCount >= 3) {
+          currentUrl = "https://speakeasy.example.com/generate";
+        }
+      }
+    },
+    keyboard: {
+      press: async () => {},
+      type: async () => {}
+    }
+  };
+
+  const plannerDecisions = [
+    { action: "click", target: "Start Free" },
+    { action: "click", target: "Start building" },
+    { action: "click", target: "Describe and generate with AI" },
+    { action: "type", target: "Presenter description", text: "A confident presenter" },
+    { action: "click", target: "Generate presenter" },
+    { action: "wait", target: "Generating presenter", amount: 1 },
+    { action: "wait", target: "Generating presenter", amount: 1 },
+    { action: "click", target: "Retry generation button" },
+    { action: "wait", target: "Generating presenter", amount: 1 },
+    {
+      action: "fail",
+      reason: "Presenter generation timed out after 89 seconds and no completed presenter state appeared."
+    }
+  ];
+  let plannerIndex = 0;
+
+  const result = await executeVisionOnlyModeAttempt({
+    stagehand: {
+      context: {
+        awaitActivePage: async () => page
+      }
+    },
+    runRequest: {
+      ...createRunRequest(),
+      metadata: {
+        goal: "Generate a personalized video"
+      }
+    },
+    options: {
+      visionApiKey: "test-openai-api-key",
+      visionActionDelayMs: 1,
+      visionPlannerClient: async () => plannerDecisions[plannerIndex++] || plannerDecisions[plannerDecisions.length - 1]
+    },
+    runLog: [],
+    artifacts: {
+      local_screenshots: [
+        "/tmp/auth-entry-loaded.png",
+        "/tmp/auth-form-filled.png",
+        "/tmp/auth-flow-completed.png"
+      ],
+      local_video_url: "https://example.com/run.webm",
+      captured_screenshots: [],
+      screenshot_event_count: 0
+    },
+    captureState: {
+      maxCount: 8,
+      maxBytes: 1500000,
+      capturedBytes: 0
+    },
+    coordinateFallbackConfig: {
+      enabled: true,
+      localizeBox: async () => ({
+        strategy: "mock",
+        box: { center_x: 1, center_y: 1 }
+      })
+    }
+  });
+
+  assert.equal(result.candidateReport.status, "partial");
   assert.equal(result.candidateReport.tested_journeys[0].status, "blocked");
-  assert.match(result.candidateReport.summary.note, /stuck on a generating screen/i);
+  assert.match(result.candidateReport.summary.note, /timed out/i);
+  assert.equal(result.candidateReport.findings.length, 1);
+  assert.match(result.candidateReport.findings[0].title, /presenter/i);
+  assert.doesNotMatch(result.candidateReport.findings[0].title, /persona got blocked in the product/i);
+  assert.equal(result.candidateReport.findings[0].page.url, "https://speakeasy.example.com/generate");
+  assert.equal(result.candidateReport.findings[0].diagnostic_details.current_url, "https://speakeasy.example.com/generate");
+  assert.match(result.candidateReport.findings[0].diagnostic_details.last_successful_step, /Generate presenter/i);
+  assert.doesNotMatch(result.candidateReport.findings[0].diagnostic_details.last_successful_step, /Retry generation/i);
+  assert.equal(result.candidateReport.findings[0].diagnostic_details.attempted_actions[0].action, "click");
+  assert.match(
+    String(result.candidateReport.findings[0].diagnostic_details.attempted_actions[0].ts || ""),
+    /^20\d\d-/
+  );
+  assert.equal(result.candidateReport.findings[0].diagnostic_details.attempted_actions[3].action, "type");
+  assert.ok(
+    result.candidateReport.findings[0].diagnostic_details.attempted_actions.some((attempt) =>
+      /retry generation/i.test(String(attempt.target || ""))
+    )
+  );
+  assert.ok(
+    result.candidateReport.findings[0].diagnostic_details.attempted_actions.some(
+      (attempt) => attempt.action === "wait"
+    )
+  );
+  assert.equal(
+    result.candidateReport.findings[0].evidence.screenshots.some((item) =>
+      /auth-entry|auth-form|auth-flow/i.test(String(item || ""))
+    ),
+    false
+  );
+  assert.ok(result.candidateReport.findings[0].evidence.videos.includes("https://example.com/run.webm"));
   assert.equal(result.agentActions.flows_blocked, 1);
-  assert.match(result.rawAgentMessage, /status: completed/i);
+  assert.match(result.rawAgentMessage, /status: partial/i);
 });

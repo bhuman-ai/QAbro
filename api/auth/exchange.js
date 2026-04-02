@@ -1,5 +1,6 @@
 const { parseRequestBody, sanitizeString } = require("../../lib/qa-core");
 const { getSupabaseAuthConfig, sanitizePublicUser, setSessionCookies } = require("../../lib/auth");
+const { redeemPendingPromoForAccessToken } = require("../../lib/promo-offers");
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") {
@@ -44,8 +45,16 @@ module.exports = async (req, res) => {
     refresh_token: refreshToken
   });
 
+  let resolvedUser = data && typeof data === "object" ? data : null;
+  const promoRedemption = await redeemPendingPromoForAccessToken(accessToken, {
+    source: "signup_magic_link"
+  });
+  if (promoRedemption.ok && promoRedemption.user && typeof promoRedemption.user === "object") {
+    resolvedUser = promoRedemption.user;
+  }
+
   return res.status(200).json({
     ok: true,
-    user: sanitizePublicUser(data && typeof data === "object" ? data : null)
+    user: sanitizePublicUser(resolvedUser)
   });
 };

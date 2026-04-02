@@ -5,12 +5,32 @@ const {
   normalizeReport,
   sanitizeString
 } = require("../../lib/qa-core");
-const { extractBrandKey, extractOwnerUserId } = require("../../lib/qa-queue");
+const { extractBrandKey, resolveQaReportReadAccess, readQaShareKey } = require("../../lib/qa-queue");
 const { buildLiveStreamArtifacts } = require("../../lib/qa-live-stream");
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
 
 const FALLBACK_BRAND_PERSONA =
   "General non-developer business user with moderate technical comfort.";
+
+function redactEngineeringTriage(report) {
+  if (!report || typeof report !== "object") {
+    return report;
+  }
+
+  const nextReport = {
+    ...report
+  };
+  delete nextReport.engineering_triage;
+
+  if (nextReport.metadata && typeof nextReport.metadata === "object") {
+    nextReport.metadata = {
+      ...nextReport.metadata
+    };
+    delete nextReport.metadata.repo_triage;
+  }
+
+  return nextReport;
+}
 
 function buildStoredReportCandidate(row, payload, mergedArtifacts) {
   if (payload.report_json && typeof payload.report_json === "object") {
@@ -106,10 +126,7 @@ module.exports = async (req, res) => {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const auth = await requireDashboardOrServiceAuth(req, res);
-  if (!auth.ok) {
-    return res.status(auth.status || 401).json({ ok: false, error: "Authentication required" });
-  }
+  const auth = await requireDashboardOrServiceAuth(req, res, { rejectInvalidServiceToken: false });
 
   const runId = sanitizeString(req.query?.run_id || req.query?.runId, 128);
   const format = sanitizeString(req.query?.format, 32).toLowerCase();
@@ -129,12 +146,14 @@ module.exports = async (req, res) => {
   }
 
   const row = loaded.row;
-  const ownerUserId = sanitizeString(auth.user?.id, 128);
-  if (ownerUserId) {
-    const rowOwnerUserId = sanitizeString(extractOwnerUserId(row), 128);
-    if (!rowOwnerUserId || rowOwnerUserId !== ownerUserId) {
-      return res.status(404).json({ ok: false, error: "Run not found" });
-    }
+  const access = resolveQaReportReadAccess(row, {
+    authOk: auth.ok,
+    ownerUserId: sanitizeString(auth.user?.id, 128),
+    shareKey: readQaShareKey(req),
+    request: req
+  });
+  if (!access.ok) {
+    return res.status(access.status || 401).json({ ok: false, error: access.error || "Authentication required" });
   }
 
   const payload = row && row.payload && typeof row.payload === "object" ? row.payload : {};
@@ -144,7 +163,7 @@ module.exports = async (req, res) => {
     ...buildLiveStreamArtifacts(storedArtifacts)
   };
   const runRequest = buildStoredRunRequest(row, payload);
-  const reportJson = normalizeReport({
+  let reportJson = normalizeReport({
     candidateReport: buildStoredReportCandidate(row, payload, mergedArtifacts),
     runRequest,
     artifacts: mergedArtifacts,
@@ -152,8 +171,18 @@ module.exports = async (req, res) => {
     reportUrl: row.report_url,
     deliveredAt: row.delivered_at,
     failureMessage: sanitizeString(payload.failure_message || payload.error, 2000),
-    rawAgentMessage: sanitizeString(payload.raw_agent_output || payload.agent_output, 4000)
+    rawAgentMessage: sanitizeString(payload.raw_agent_output || payload.agent_output, 4000),
+    runLog: Array.isArray(payload.run_log) ? payload.run_log : [],
+    failureDiagnostics:
+      payload.failure_diagnostics && typeof payload.failure_diagnostics === "object"
+        ? payload.failure_diagnostics
+        : payload.report_json?.failure_diagnostics && typeof payload.report_json.failure_diagnostics === "object"
+          ? payload.report_json.failure_diagnostics
+          : null
   });
+  if (access.access_type !== "owner") {
+    reportJson = redactEngineeringTriage(reportJson);
+  }
 
   let markdown = null;
   if (!skipMarkdown) {
@@ -185,6 +214,9 @@ module.exports = async (req, res) => {
   const uiParams = new URLSearchParams({ view: "report", run_id: runId });
   if (brand) {
     uiParams.set("brand", brand);
+  }
+  if (access.access_type === "shared_link" && access.share_key) {
+    uiParams.set("share_key", access.share_key);
   }
 
   return res.status(200).json({

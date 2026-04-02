@@ -1,0 +1,5 @@
+output
+.playwright-cli
+.tmp
+*.swp
+Screenshot*.png

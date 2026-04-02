@@ -3,6 +3,27 @@ const assert = require("node:assert/strict");
 
 const { __private, buildRunQaReport, classifyOutcome } = require("../scripts/local-workolo-matrix");
 
+function createLocatorCollection(items) {
+  return {
+    count: async () => items.length,
+    nth: (index) => items[index],
+    first() {
+      return createLocatorCollection(items.length ? [items[0]] : []);
+    },
+    filter() {
+      return this;
+    }
+  };
+}
+
+function createLocatorItem(options = {}) {
+  return {
+    isVisible: async () => options.visible !== false,
+    click: async () => {},
+    evaluate: async () => options.evaluateResult || null
+  };
+}
+
 test("chooseInputValue reuses onboarding email for email-labeled fields", () => {
   assert.equal(
     __private.chooseInputValue(
@@ -218,6 +239,11 @@ test("buildRunQaReport marks onboarding_incomplete_with_feature_progress as a co
   assert.equal(missionJourney.status, "blocked");
   const blockerFinding = report.report.findings.find((item) => item.id === "finding_mission_blocked_before_completion");
   assert.equal(blockerFinding.type, "confusion_point");
+  assert.equal(blockerFinding.diagnostic_details.page_loaded, true);
+  assert.equal(blockerFinding.diagnostic_details.current_url, "https://example.com/feature");
+  assert.equal(blockerFinding.diagnostic_details.last_successful_step, "Reached the signed-in product area and exercised at least one in-product surface.");
+  assert.ok(Array.isArray(blockerFinding.diagnostic_details.attempted_actions));
+  assert.ok(blockerFinding.diagnostic_details.attempted_actions.length >= 1);
 });
 
 test("buildRunQaReport marks mission completion as completed even if heuristic classification is partial", () => {
@@ -377,6 +403,26 @@ test("scoreMissionActionCandidate prefers matching section context for generic c
   assert.ok(matchingCandidate > unrelatedCandidate);
 });
 
+test("areMissionSnapshotsSemanticallyEquivalent ignores small transient text changes on the same page", () => {
+  assert.equal(
+    __private.areMissionSnapshotsSemanticallyEquivalent(
+      {
+        currentUrl: "https://www.bhuman.ai/campaign",
+        pageText:
+          "Welcome Campaign Select your data source from CSV Zapier Leadr Map your column headers to video variables",
+        visualHash: "hash-one"
+      },
+      {
+        currentUrl: "https://www.bhuman.ai/campaign",
+        pageText:
+          "Welcome Campaign Please upload a CSV file or choose a valid data method Select your data source from CSV Zapier Leadr Map your column headers to video variables",
+        visualHash: "hash-two"
+      }
+    ),
+    true
+  );
+});
+
 test("runMissionJudgeLoop ignores configured round caps and continues until the judge says complete", async () => {
   const originalFetch = global.fetch;
   const decisions = [
@@ -447,6 +493,82 @@ test("runMissionJudgeLoop ignores configured round caps and continues until the 
     assert.equal(result.mission_judgment.rounds_attempted, 2);
     assert.equal(result.mission_judgment.stop_reason, "mission_completed");
     assert.match(result.mission_judgment.final_reason, /generated asset/i);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("runMissionJudgeLoop stops after repeated no-change click rounds on the same app screen", async () => {
+  const originalFetch = global.fetch;
+  let fetchCallCount = 0;
+
+  global.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      output_text: JSON.stringify({
+        complete: false,
+        confidence: 0.61,
+        reason: "Open Speakeasy is still visible, so try that next.",
+        next_action: {
+          action: "click",
+          target: "Open Speakeasy"
+        }
+      })
+    })
+  });
+  const countingFetch = global.fetch;
+  global.fetch = async (...args) => {
+    fetchCallCount += 1;
+    return countingFetch(...args);
+  };
+
+  const openSpeakeasy = createLocatorItem();
+  const visibleButtonCollection = createLocatorCollection([openSpeakeasy]);
+  const emptyCollection = createLocatorCollection([]);
+  const page = {
+    screenshot: async () => Buffer.from("same-dashboard-state"),
+    url: () => "https://www.bhuman.ai/dashboard",
+    locator: (selector) => {
+      if (selector === "body") {
+        return {
+          innerText: async () => "Welcome to BHuman 2.0 Primary workspace Speakeasy Open Speakeasy"
+        };
+      }
+      return emptyCollection;
+    },
+    getByRole: (role, options = {}) => {
+      if (role === "button" && options.name instanceof RegExp && options.name.test("Open Speakeasy")) {
+        return visibleButtonCollection;
+      }
+      return emptyCollection;
+    },
+    getByLabel: () => emptyCollection,
+    getByPlaceholder: () => emptyCollection,
+    getByText: () => emptyCollection,
+    waitForTimeout: async () => {},
+    keyboard: {
+      press: async () => {}
+    },
+    evaluate: async () => [],
+    title: async () => "BHuman Dashboard"
+  };
+
+  try {
+    const result = await __private.runMissionJudgeLoop(page, [], null, {
+      config: {
+        goal: "Enter Speakeasy and begin creating a video",
+        brandPersona: "Skeptical marketer",
+        openAiApiKey: "test-openai-api-key",
+        missionJudgeStaleRoundLimit: 3,
+        missionJudgeStateChangeTimeoutMs: 50
+      }
+    });
+
+    assert.equal(fetchCallCount, 2);
+    assert.equal(result.mission_judgment.completed, false);
+    assert.equal(result.mission_judgment.stop_reason, "stalled_no_state_change");
+    assert.match(result.mission_judgment.final_reason, /same in-app page state/i);
+    assert.equal(__private.didMissionEndBlocked({ mission_judgment: result.mission_judgment }), true);
   } finally {
     global.fetch = originalFetch;
   }

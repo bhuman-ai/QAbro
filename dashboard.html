@@ -12,8 +12,8 @@
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260307i" />
-    <link rel="stylesheet" href="reports.css?v=20260318c" />
+    <link rel="stylesheet" href="styles.css?v=20260326y" />
+    <link rel="stylesheet" href="reports.css?v=20260330a" />
   </head>
   <body>
     <div class="site-shell">
@@ -29,6 +29,8 @@
               </span>
               <span class="brand-label">Swarm Tester</span>
             </a>
+          </div>
+          <div class="app-shell-topbar-right">
             <div class="topbar-project-shell" id="topbarProjectShell" hidden aria-hidden="true">
               <label class="topbar-project-switcher" for="brandFilter">
                 <span class="topbar-project-label">Project</span>
@@ -39,35 +41,35 @@
                 </div>
               </label>
             </div>
-          </div>
-          <div class="topbar-actions">
-            <div class="theme-mode-control" aria-label="Theme mode" role="group">
-              <div class="theme-mode-pills" id="themeModeSwitcher">
-                <button type="button" class="theme-mode-btn" data-theme-mode="light" aria-label="Light mode" title="Light mode">
-                  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                    <circle cx="10" cy="10" r="3.5"></circle>
-                    <path d="M10 2.5v2.1M10 15.4v2.1M2.5 10h2.1M15.4 10h2.1M4.8 4.8l1.5 1.5M13.7 13.7l1.5 1.5M4.8 15.2l1.5-1.5M13.7 6.3l1.5-1.5"></path>
-                  </svg>
-                </button>
-                <button type="button" class="theme-mode-btn" data-theme-mode="dark" aria-label="Dark mode" title="Dark mode">
-                  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                    <path d="M12.8 2.9a7 7 0 1 0 4.3 10.3A6 6 0 1 1 12.8 2.9Z"></path>
-                  </svg>
-                </button>
-                <button type="button" class="theme-mode-btn" data-theme-mode="system" aria-label="System theme mode" title="System mode">
-                  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                    <rect x="2.5" y="3.5" width="15" height="10.5" rx="1.5"></rect>
-                    <path d="M7.5 16.5h5M10 14v2.5"></path>
-                  </svg>
-                </button>
+            <div class="topbar-actions">
+              <div class="theme-mode-control" aria-label="Theme mode" role="group">
+                <div class="theme-mode-pills" id="themeModeSwitcher">
+                  <button type="button" class="theme-mode-btn" data-theme-mode="light" aria-label="Light mode" title="Light mode">
+                    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                      <circle cx="10" cy="10" r="3.5"></circle>
+                      <path d="M10 2.5v2.1M10 15.4v2.1M2.5 10h2.1M15.4 10h2.1M4.8 4.8l1.5 1.5M13.7 13.7l1.5 1.5M4.8 15.2l1.5-1.5M13.7 6.3l1.5-1.5"></path>
+                    </svg>
+                  </button>
+                  <button type="button" class="theme-mode-btn" data-theme-mode="dark" aria-label="Dark mode" title="Dark mode">
+                    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                      <path d="M12.8 2.9a7 7 0 1 0 4.3 10.3A6 6 0 1 1 12.8 2.9Z"></path>
+                    </svg>
+                  </button>
+                  <button type="button" class="theme-mode-btn" data-theme-mode="system" aria-label="System theme mode" title="System mode">
+                    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                      <rect x="2.5" y="3.5" width="15" height="10.5" rx="1.5"></rect>
+                      <path d="M7.5 16.5h5M10 14v2.5"></path>
+                    </svg>
+                  </button>
+                </div>
               </div>
+              <div class="worker-health-chip" id="workerHealthChip" hidden aria-hidden="true" aria-live="polite">
+                <span class="worker-health-dot" aria-hidden="true"></span>
+                <span class="worker-health-text" id="workerHealthText">Checking workers…</span>
+              </div>
+              <span class="app-user-chip topbar-user-chip" id="dashboardAuthUserChip" hidden title="Account">QA</span>
+              <button class="btn btn-ghost" type="button" data-auth-signout="true" hidden>Sign Out</button>
             </div>
-            <div class="worker-health-chip" id="workerHealthChip" hidden aria-hidden="true" aria-live="polite">
-              <span class="worker-health-dot" aria-hidden="true"></span>
-              <span class="worker-health-text" id="workerHealthText">Checking workers…</span>
-            </div>
-            <span class="app-user-chip topbar-user-chip" id="dashboardAuthUserChip" hidden title="Account">QA</span>
-            <button class="btn btn-ghost" type="button" data-auth-signout="true" hidden>Sign Out</button>
           </div>
         </div>
       </header>
@@ -191,6 +193,7 @@
                 <div class="app-sidebar-group">
                   <p>Manage</p>
                   <a href="#recentRunsRows">Runs</a>
+                  <a href="#distributionPacksSection">Distribution</a>
                   <a href="#qa-onboarding">Settings</a>
                 </div>
               </aside>
@@ -267,6 +270,74 @@
                   <div id="personaSignalsItems" class="persona-signals-list"></div>
                 </section>
 
+                <div class="app-monitoring-grid">
+                  <section class="card-surface app-schedule-panel">
+                    <div class="app-card-head">
+                      <div>
+                        <h3>Regular QA</h3>
+                        <span id="qaScheduleMeta">Pick a project to start recurring checks.</span>
+                      </div>
+                      <span class="issue-severity severity-low" id="qaScheduleStateBadge">Idle</span>
+                    </div>
+                    <form class="app-schedule-form" id="qaScheduleForm">
+                      <div class="app-schedule-fields">
+                        <label class="app-schedule-field">
+                          <span>Cadence</span>
+                          <select id="qaScheduleFrequency">
+                            <option value="6">Every 6 hours</option>
+                            <option value="12">Every 12 hours</option>
+                            <option value="24" selected>Daily</option>
+                            <option value="168">Weekly</option>
+                          </select>
+                        </label>
+                        <label class="app-schedule-field">
+                          <span>Mode</span>
+                          <select id="qaScheduleScopeMode">
+                            <option value="core_20m">Fast pass</option>
+                            <option value="deep_45m" selected>Balanced run</option>
+                            <option value="feature_targeted">Deep sweep</option>
+                          </select>
+                        </label>
+                        <label class="app-schedule-field app-schedule-field-wide">
+                          <span>Persona</span>
+                          <input id="qaSchedulePersona" type="text" placeholder="General non-developer business user with moderate technical comfort." />
+                        </label>
+                        <label class="app-schedule-field app-schedule-field-wide">
+                          <span>Mission</span>
+                          <textarea id="qaScheduleMission" rows="3" placeholder="Sign up or sign in as needed, enter the product, and finish one meaningful task."></textarea>
+                        </label>
+                        <label class="app-schedule-field app-schedule-field-wide">
+                          <span>Alert email (optional)</span>
+                          <input id="qaScheduleEmail" type="email" placeholder="you@company.com" />
+                          <small class="app-field-hint" id="qaScheduleEmailHint">Leave blank to send alerts to your signed-in owner email.</small>
+                        </label>
+                        <label class="app-schedule-field app-schedule-field-wide">
+                          <span>Alert webhook (optional)</span>
+                          <input id="qaScheduleWebhook" type="url" placeholder="https://hooks.slack.com/... or Zapier webhook" />
+                        </label>
+                      </div>
+                      <div class="app-schedule-actions">
+                        <button id="qaScheduleSaveAction" class="btn btn-primary" type="button">Save schedule</button>
+                        <button id="qaScheduleRunNowAction" class="btn btn-ghost" type="button">Run now</button>
+                        <button id="qaScheduleToggleAction" class="btn btn-ghost" type="button">Pause</button>
+                      </div>
+                      <p class="app-schedule-message" id="qaScheduleMessage">Save a schedule and Swarm Tester will keep checking this project for you.</p>
+                    </form>
+                  </section>
+
+                  <section class="card-surface app-alerts-panel">
+                    <div class="app-card-head">
+                      <div>
+                        <h3>Alert Inbox</h3>
+                        <span id="qaAlertsMeta">No open alerts.</span>
+                      </div>
+                    </div>
+                    <div id="qaAlertsItems" class="app-alerts-list">
+                      <div class="app-empty"><p>No open alerts.</p></div>
+                    </div>
+                  </section>
+                </div>
+
                 <section class="card-surface app-live-mission" id="liveMissionSection" hidden aria-hidden="true">
                   <div class="app-card-head compact">
                     <h3>Live Mission Control</h3>
@@ -283,6 +354,207 @@
                       <div id="liveActivityItems" class="app-activity-list"></div>
                     </article>
                   </div>
+                </section>
+
+                <section class="card-surface distribution-packs-section" id="distributionPacksSection">
+                  <div class="app-card-head distribution-packs-head">
+                    <div>
+                      <h3>Distribution Packs</h3>
+                      <span id="distributionPacksMeta">Sellable launch and presence bundles, classified by real connector viability.</span>
+                    </div>
+                    <div class="distribution-track-switcher" id="distributionTrackSwitcher" role="tablist" aria-label="Distribution pack track">
+                      <button type="button" class="distribution-track-btn active" data-distribution-track="startup" aria-selected="true">Startup</button>
+                      <button type="button" class="distribution-track-btn" data-distribution-track="physical_local" aria-selected="false">Local Presence</button>
+                    </div>
+                  </div>
+                  <div class="distribution-packs-layout">
+                    <div class="distribution-packs-grid" id="distributionPacksGrid">
+                      <article class="distribution-pack-card distribution-pack-card-loading">
+                        <strong>Loading packs…</strong>
+                        <p>Fetching product-facing distribution bundles.</p>
+                      </article>
+                    </div>
+                    <aside class="distribution-scorecard-shell">
+                      <div class="distribution-scorecard-summary" id="distributionScorecardSummary">
+                        <span class="distribution-summary-pill is-green">0 green</span>
+                        <span class="distribution-summary-pill is-yellow">0 yellow</span>
+                        <span class="distribution-summary-pill is-red">0 red</span>
+                      </div>
+                      <div class="distribution-scorecard-list" id="distributionScorecardList">
+                        <article class="distribution-scorecard-item distribution-scorecard-item-loading">
+                          <strong>Loading scorecard…</strong>
+                          <p>Connector viability appears here.</p>
+                        </article>
+                      </div>
+                    </aside>
+                  </div>
+                  <section class="distribution-launcher" aria-labelledby="distributionLauncherTitle">
+                    <div class="distribution-launcher-head">
+                      <div>
+                        <h4 id="distributionLauncherTitle">Run A Pack</h4>
+                        <p>Prepare assets, run preflight, then queue the selected bundle against a submission brand.</p>
+                      </div>
+                      <span class="distribution-launcher-state" id="distributionLauncherState">Idle</span>
+                    </div>
+                    <div class="distribution-launcher-grid">
+                      <form class="distribution-launcher-form" id="distributionLauncherForm">
+                        <label class="distribution-field">
+                          <span>Submission brand</span>
+                          <select id="distributionBrandSelect">
+                            <option value="">Loading brands…</option>
+                          </select>
+                        </label>
+                        <label class="distribution-field">
+                          <span>Product pack</span>
+                          <select id="distributionPackSelect">
+                            <option value="">Loading packs…</option>
+                          </select>
+                        </label>
+                        <div class="distribution-launcher-flags">
+                          <label class="distribution-check">
+                            <input type="checkbox" id="distributionSubmitLive" />
+                            <span>Queue live submit</span>
+                          </label>
+                          <label class="distribution-check">
+                            <input type="checkbox" id="distributionNoHumanActions" />
+                            <span>No human actions</span>
+                          </label>
+                        </div>
+                        <div class="distribution-launcher-actions">
+                          <button type="button" class="btn btn-ghost" id="distributionPrepareAction">Prepare Assets</button>
+                          <button type="button" class="btn btn-ghost" id="distributionPreflightAction">Run Preflight</button>
+                          <button type="button" class="btn btn-primary" id="distributionQueueAction">Queue Pack</button>
+                        </div>
+                        <p class="distribution-launcher-message" id="distributionLauncherMessage">Choose a submission brand and a product pack to start.</p>
+                      </form>
+                      <div class="distribution-launcher-results">
+                        <article class="distribution-result-card">
+                          <header>
+                            <strong>Brand</strong>
+                            <span id="distributionBrandMeta">No brand selected</span>
+                          </header>
+                          <div class="distribution-result-body" id="distributionBrandSummary">
+                            <p>Select a submission brand to see website, track, and current manifest coverage.</p>
+                          </div>
+                          <div class="distribution-mailbox-setup">
+                            <div class="distribution-mailbox-head">
+                              <strong>Mailbox Setup</strong>
+                              <span id="distributionBrandSaveMeta">Client-owned inbox</span>
+                            </div>
+                            <div class="distribution-mailbox-grid">
+                              <label class="distribution-field">
+                                <span>Identity mode</span>
+                                <select id="distributionIdentityMode">
+                                  <option value="client_owned">Client owned</option>
+                                  <option value="brand_mailbox">Brand mailbox</option>
+                                  <option value="managed_transitional">Managed transitional</option>
+                                  <option value="founder_personal">Founder personal</option>
+                                </select>
+                              </label>
+                              <label class="distribution-field">
+                                <span>Mailbox provider</span>
+                                <select id="distributionMailboxProvider">
+                                  <option value="">Auto detect</option>
+                                  <option value="gmail">Gmail / Google Workspace</option>
+                                  <option value="outlook">Outlook / Microsoft 365</option>
+                                  <option value="yahoo">Yahoo</option>
+                                  <option value="zoho">Zoho</option>
+                                  <option value="icloud">iCloud</option>
+                                  <option value="forwardemail">Forward Email</option>
+                                  <option value="mailpool">Mailpool</option>
+                                  <option value="custom">Custom IMAP / SMTP</option>
+                                </select>
+                              </label>
+                              <label class="distribution-field">
+                                <span>Mailbox email</span>
+                                <input type="email" id="distributionMailboxEmail" placeholder="listings@client.com" />
+                              </label>
+                              <label class="distribution-field">
+                                <span>IMAP / login user</span>
+                                <input type="text" id="distributionMailboxUsername" placeholder="Usually same as mailbox email" />
+                              </label>
+                              <label class="distribution-field">
+                                <span>Inbox auth</span>
+                                <select id="distributionMailboxAuthMethod">
+                                  <option value="unknown">Unknown</option>
+                                  <option value="oauth">OAuth</option>
+                                  <option value="app_password">App password</option>
+                                  <option value="provider_password">Provider password</option>
+                                  <option value="imap_password">IMAP password</option>
+                                  <option value="smtp_imap_password">SMTP + IMAP password</option>
+                                </select>
+                              </label>
+                              <label class="distribution-field">
+                                <span>IMAP host</span>
+                                <input type="text" id="distributionMailboxHost" placeholder="imap.gmail.com" />
+                              </label>
+                              <label class="distribution-field">
+                                <span>IMAP port</span>
+                                <input type="number" id="distributionMailboxPort" min="1" max="65535" placeholder="993" />
+                              </label>
+                              <label class="distribution-field">
+                                <span>SMTP host</span>
+                                <input type="text" id="distributionMailboxSmtpHost" placeholder="smtp.gmail.com" />
+                              </label>
+                              <label class="distribution-field">
+                                <span>SMTP port</span>
+                                <input type="number" id="distributionMailboxSmtpPort" min="1" max="65535" placeholder="465" />
+                              </label>
+                              <label class="distribution-field">
+                                <span>App password / token</span>
+                                <input type="password" id="distributionMailboxPassword" placeholder="Leave blank to keep current secret" />
+                              </label>
+                            </div>
+                            <div class="distribution-launcher-flags">
+                              <label class="distribution-check">
+                                <input type="checkbox" id="distributionMailboxSecure" />
+                                <span>IMAP uses SSL / TLS</span>
+                              </label>
+                              <label class="distribution-check">
+                                <input type="checkbox" id="distributionMailboxSmtpSecure" />
+                                <span>SMTP uses SSL / TLS</span>
+                              </label>
+                              <label class="distribution-check">
+                                <input type="checkbox" id="distributionMailboxReady" />
+                                <span>Inbox access is ready for OTP / magic links</span>
+                              </label>
+                            </div>
+                            <div class="distribution-mailbox-actions">
+                              <button type="button" class="btn btn-ghost" id="distributionSaveBrandAction">Save Mailbox</button>
+                              <p class="distribution-launcher-message" id="distributionBrandSaveMessage">Mailbox setup is stored on the submission brand and used for new-account verification flows.</p>
+                            </div>
+                          </div>
+                        </article>
+                        <article class="distribution-result-card">
+                          <header>
+                            <strong>Asset Manifest</strong>
+                            <span id="distributionManifestMeta">No manifest loaded</span>
+                          </header>
+                          <div class="distribution-result-body" id="distributionManifestSummary">
+                            <p>Prepare assets to generate the latest manifest for the selected pack.</p>
+                          </div>
+                        </article>
+                        <article class="distribution-result-card">
+                          <header>
+                            <strong>Preflight</strong>
+                            <span id="distributionPreflightMeta">Not run</span>
+                          </header>
+                          <div class="distribution-result-body" id="distributionPreflightSummary">
+                            <p>Run preflight to see which connectors are ready, assisted, or blocked.</p>
+                          </div>
+                        </article>
+                        <article class="distribution-result-card">
+                          <header>
+                            <strong>Queued Jobs</strong>
+                            <span id="distributionQueueMeta">Nothing queued</span>
+                          </header>
+                          <div class="distribution-result-body" id="distributionQueueSummary">
+                            <p>Queued submit jobs and their current state will appear here.</p>
+                          </div>
+                        </article>
+                      </div>
+                    </div>
+                  </section>
                 </section>
 
                 <section class="card-surface app-blockers">
@@ -529,6 +801,46 @@
                           <li>The mission is judged against the goals you set, not generic feature coverage.</li>
                         </ul>
                       </article>
+                      <article class="onboarding-subsection onboarding-final-checklist">
+                        <div class="onboarding-subsection-head">
+                          <h4>Code-aware diagnosis</h4>
+                          <p>Blind QA stays blind. This only runs after the blind report finds a real bug, dead end, or code-level trace worth diagnosing.</p>
+                        </div>
+                        <label>
+                          <span>After the blind run, scan the repo/workspace for likely fixes</span>
+                          <input id="onboardingRepoTriageEnabled" type="checkbox" />
+                        </label>
+                        <div class="onboarding-subsection">
+                          <div class="onboarding-subsection-head">
+                            <h5>GitHub repo connection</h5>
+                            <p id="onboardingRepoConnectionMeta">Connect a repo per brand. Blind QA stays blind until the run has already found something worth diagnosing.</p>
+                          </div>
+                          <p class="app-field-hint" id="onboardingRepoConnectionLabel">No GitHub repo connected for this brand yet.</p>
+                          <div class="app-onboarding-actions">
+                            <button class="btn btn-ghost" id="onboardingRepoTriageConnect" type="button">Connect GitHub</button>
+                            <button class="btn btn-ghost" id="onboardingRepoTriageDisconnect" type="button" hidden>Disconnect</button>
+                          </div>
+                          <label id="onboardingRepoConnectionSelectWrap" hidden>
+                            <span>Connected repository</span>
+                            <select id="onboardingRepoConnectionSelect"></select>
+                          </label>
+                        </div>
+                        <label>
+                          <span>Repo target</span>
+                          <input
+                            id="onboardingRepoTriageRepo"
+                            type="text"
+                            placeholder="org/repo or current workspace"
+                            autocapitalize="off"
+                            spellcheck="false"
+                          />
+                        </label>
+                        <label>
+                          <span>Path allowlist</span>
+                          <textarea id="onboardingRepoTriagePaths" rows="3" placeholder="Optional. One path per line, for example:\napps/web\npackages/ui"></textarea>
+                        </label>
+                        <small class="app-field-hint">Use this to keep diagnosis focused on the code that actually owns the tested surface.</small>
+                      </article>
                     </section>
                   </div>
 
@@ -556,6 +868,11 @@
                           <span class="onboarding-review-label">Coverage</span>
                           <strong id="onboardingReviewCoverage">Balanced run</strong>
                           <p id="onboardingReviewCoverageMeta">Broader coverage that keeps pushing after onboarding.</p>
+                        </article>
+                        <article class="onboarding-review-card">
+                          <span class="onboarding-review-label">Code-aware diagnosis</span>
+                          <strong id="onboardingReviewRepoTriage">Blind-only report</strong>
+                          <p id="onboardingReviewRepoTriageMeta">Repo access is off, so this run stays purely blind.</p>
                         </article>
                       </div>
                     </section>
@@ -611,13 +928,13 @@
         </section>
       </main>
 
-      <script src="auth.js?v=20260312b"></script>
+      <script src="auth.js?v=20260329a"></script>
       <script src="dashboard-projects.js?v=20260318b"></script>
       <script src="dashboard-runs.js?v=20260316a"></script>
-      <script src="dashboard-report-runtime.js?v=20260318b"></script>
-      <script src="dashboard-render-state.js?v=20260318b"></script>
+      <script src="dashboard-report-runtime.js?v=20260327b"></script>
+      <script src="dashboard-render-state.js?v=20260326d"></script>
       <script src="dashboard-panels.js?v=20260318c"></script>
-      <script src="reports.js?v=20260318g"></script>
+      <script src="reports.js?v=20260401a"></script>
     </div>
   </body>
 </html>

@@ -1,5 +1,6 @@
 const {
   DEFAULT_EXECUTION_ENGINE,
+  sanitizeRepoTriageState,
   buildTaskPrompt,
   buildSystemPrompt,
   getPublicBaseUrl,
@@ -10,6 +11,7 @@ const {
   validateRunRequest
 } = require("../../lib/qa-core");
 const { enqueueQaRun } = require("../../lib/qa-queue");
+const { buildInitialRepoTriageState } = require("../../lib/qa-repo-triage");
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
 
 function extractRunBrand(runRequest) {
@@ -120,6 +122,12 @@ async function handler(req, res) {
       error: "owner_user_id is required when using service token auth"
     });
   }
+  if (auth.is_service_token && !ownerEmail) {
+    return res.status(400).json({
+      ok: false,
+      error: "owner_email is required when using service token auth"
+    });
+  }
   runRequest.metadata = {
     ...(runRequest.metadata && typeof runRequest.metadata === "object" ? runRequest.metadata : {}),
     owner_user_id: ownerUserId || null,
@@ -151,7 +159,10 @@ async function handler(req, res) {
   const queued = await enqueueQaRun(runRequest, {
     publicBaseUrl,
     reportUrl,
-    statusUrl
+    statusUrl,
+    additionalPayload: {
+      repo_triage: sanitizeRepoTriageState(buildInitialRepoTriageState(runRequest))
+    }
   });
 
   if (!queued.ok) {

@@ -20,6 +20,47 @@
       .replaceAll("'", "&#039;");
   }
 
+  function normalizeProjectMetadata(value, depth = 0) {
+    if (!value || typeof value !== "object") {
+      return {};
+    }
+
+    if (depth >= 2) {
+      return {};
+    }
+
+    const metadata = {};
+    let count = 0;
+    for (const [key, rawValue] of Object.entries(value)) {
+      if (count >= 20) {
+        break;
+      }
+      const safeKey = String(key || "").trim().slice(0, 128);
+      if (!safeKey) {
+        continue;
+      }
+      if (rawValue === null || ["string", "number", "boolean"].includes(typeof rawValue)) {
+        metadata[safeKey] = typeof rawValue === "string" ? String(rawValue).trim().slice(0, 512) : rawValue;
+        count += 1;
+        continue;
+      }
+      if (Array.isArray(rawValue)) {
+        metadata[safeKey] = rawValue
+          .slice(0, 12)
+          .map((item) => (typeof item === "string" ? String(item).trim().slice(0, 320) : item))
+          .filter((item) => item !== undefined);
+        count += 1;
+        continue;
+      }
+      if (typeof rawValue === "object") {
+        metadata[safeKey] = normalizeProjectMetadata(rawValue, depth + 1);
+        count += 1;
+      }
+    }
+
+    return metadata;
+  }
+
   function normalizeSavedProject(project, helpers = {}) {
     const normalizeBrandKey =
       typeof helpers.normalizeBrandKey === "function" ? helpers.normalizeBrandKey : fallbackNormalizeBrandKey;
@@ -35,7 +76,8 @@
       lastUsedAt: String(project?.last_used_at || project?.lastUsedAt || "").trim(),
       createdAt: String(project?.created_at || project?.createdAt || "").trim(),
       runCount: Math.max(0, Number(project?.run_count || project?.runCount) || 0),
-      latestRunAt: String(project?.latest_run_at || project?.latestRunAt || "").trim()
+      latestRunAt: String(project?.latest_run_at || project?.latestRunAt || "").trim(),
+      metadata: normalizeProjectMetadata(project?.metadata)
     };
   }
 
@@ -140,7 +182,8 @@
         last_used_at: normalized.lastUsedAt || null,
         created_at: normalized.createdAt || null,
         run_count: normalized.runCount || 0,
-        latest_run_at: normalized.latestRunAt || null
+        latest_run_at: normalized.latestRunAt || null,
+        metadata: normalizeProjectMetadata(normalized.metadata)
       });
     }
 
@@ -156,7 +199,8 @@
         last_used_at: normalized.lastUsedAt || new Date().toISOString(),
         created_at: normalized.createdAt || null,
         run_count: normalized.runCount || 0,
-        latest_run_at: normalized.latestRunAt || normalized.lastUsedAt || null
+        latest_run_at: normalized.latestRunAt || normalized.lastUsedAt || null,
+        metadata: normalizeProjectMetadata(normalized.metadata)
       });
     }
 
@@ -183,8 +227,8 @@
       return null;
     }
 
-    const projectMetadata = {};
-    const source = String(metadata.source || "").trim();
+    const projectMetadata = normalizeProjectMetadata(metadata);
+    const source = String(metadata.source || projectMetadata.source || "").trim();
     if (source) {
       projectMetadata.source = source;
     }

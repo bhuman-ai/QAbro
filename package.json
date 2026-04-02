@@ -6,14 +6,31 @@
   "type": "commonjs",
   "scripts": {
     "test": "node --test tests/*.test.js",
+    "mcp:qa": "node scripts/qa-mcp-server.js",
+    "mcp:qa:http": "node scripts/qa-mcp-http-server.js",
+    "mcp:qa:login": "node scripts/qa-mcp-login.js",
     "qa:worker": "node scripts/qa-worker.js",
     "qa:worker:once": "node scripts/qa-worker.js --once",
+    "submission:worker": "node scripts/submission-worker.js",
+    "submission:worker:once": "node scripts/submission-worker.js --once",
+    "submission:seed:forney": "node scripts/seed-forney-brand-profile.js",
+    "submission:pack:recon": "node scripts/submission-pack-recon.js",
+    "submission:pack:preflight": "node scripts/submission-pack-preflight.js",
+    "submission:pack:submit": "node scripts/submission-pack-submit.js",
+    "submission:smoke:mailbox": "node scripts/smoke-submission-mailbox.js",
+    "submission:smoke:pack-submit": "node scripts/smoke-submission-pack-submit.js",
+    "submission:smoke:drift": "node scripts/smoke-submission-drift-loop.js",
     "qa:dashboard:smoke": "node scripts/smoke-dashboard-authenticated.js",
     "qa:customerio:login": "node scripts/run-customerio-login-once.js",
-    "qa:agent-task": "node scripts/run-browser-agent-task.js"
+    "qa:agent-task": "node scripts/run-browser-agent-task.js",
+    "stripe:bootstrap:share-offer": "node scripts/bootstrap-stripe-share-offer.js"
   },
   "dependencies": {
     "@browserbasehq/stagehand": "^3.1.0",
+    "@modelcontextprotocol/sdk": "^1.28.0",
+    "imapflow": "^1.2.18",
+    "nodemailer": "^6.10.1",
+    "stripe": "^18.5.0",
     "zod": "^4.3.6"
   }
 }

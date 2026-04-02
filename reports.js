@@ -2,13 +2,89 @@ const STORAGE_ACTIVE_BRAND_KEY = "swarmtester.activeBrand";
 const STORAGE_ACTIVE_PERSONA_KEY = "swarmtester.activePersona";
 const STORAGE_ONBOARDING_COMPLETED_KEY_PREFIX = "swarmtester.onboarding.completed";
 const STORAGE_THEME_MODE_KEY = "swarmtester.theme.mode";
+const STORAGE_GITHUB_APP_RETURN_KEY = "swarmtester.githubAppReturn";
 const ADD_NEW_PROJECT_OPTION_VALUE = "__add_new__";
 const DEFAULT_DASHBOARD_PERSONA = "General non-developer business user with moderate technical comfort.";
 const DEFAULT_ONBOARDING_SCENARIO = "Clear signup, authentication, and onboarding to reach a usable in-product state.";
+const DEFAULT_SHARED_REPORT_PROMO = Object.freeze({
+  enabled: true,
+  headline: "Try Swarm Tester for your own product.",
+  body: "Start the Team plan, run Swarm Tester on your site, and get replay, proof, and AI-ready fixes your team can act on. The first month is free with the team code.",
+  ctaLabel: "Start free month",
+  ctaUrl: "/dashboard",
+  couponCode: "TEAMREPORT",
+  couponLabel: "Team code",
+  note: "Team plan is $99/month after the free first month. The code works during sign-up and is also applied at checkout."
+});
 const IMAGE_URL_PATTERN = /\.(png|jpe?g|gif|webp|avif|svg|bmp|ico)(?:$|[?#])/i;
 const VIDEO_URL_PATTERN = /\.(mp4|webm|ogg|mov|m4v|m3u8)(?:$|[?#])/i;
 const DATA_IMAGE_PATTERN = /^data:image\/[a-z0-9.+-]+;base64,/i;
 const DATA_VIDEO_PATTERN = /^data:video\/[a-z0-9.+-]+;base64,/i;
+const DISTRIBUTION_MAILBOX_PROVIDER_PRESETS = Object.freeze({
+  gmail: Object.freeze({
+    domains: ["gmail.com", "googlemail.com"],
+    imapHost: "imap.gmail.com",
+    imapPort: "993",
+    imapSecure: true,
+    smtpHost: "smtp.gmail.com",
+    smtpPort: "465",
+    smtpSecure: true
+  }),
+  outlook: Object.freeze({
+    domains: ["outlook.com", "hotmail.com", "live.com", "msn.com"],
+    imapHost: "outlook.office365.com",
+    imapPort: "993",
+    imapSecure: true,
+    smtpHost: "smtp.office365.com",
+    smtpPort: "587",
+    smtpSecure: false
+  }),
+  yahoo: Object.freeze({
+    domains: ["yahoo.com", "ymail.com", "rocketmail.com"],
+    imapHost: "imap.mail.yahoo.com",
+    imapPort: "993",
+    imapSecure: true,
+    smtpHost: "smtp.mail.yahoo.com",
+    smtpPort: "465",
+    smtpSecure: true
+  }),
+  zoho: Object.freeze({
+    domains: ["zoho.com", "zohomail.com"],
+    imapHost: "imap.zoho.com",
+    imapPort: "993",
+    imapSecure: true,
+    smtpHost: "smtp.zoho.com",
+    smtpPort: "465",
+    smtpSecure: true
+  }),
+  icloud: Object.freeze({
+    domains: ["icloud.com", "me.com", "mac.com"],
+    imapHost: "imap.mail.me.com",
+    imapPort: "993",
+    imapSecure: true,
+    smtpHost: "smtp.mail.me.com",
+    smtpPort: "587",
+    smtpSecure: false
+  }),
+  mailpool: Object.freeze({
+    domains: [],
+    imapHost: "",
+    imapPort: "993",
+    imapSecure: true,
+    smtpHost: "",
+    smtpPort: "587",
+    smtpSecure: false
+  }),
+  forwardemail: Object.freeze({
+    domains: ["forwardemail.net"],
+    imapHost: "imap.forwardemail.net",
+    imapPort: "993",
+    imapSecure: true,
+    smtpHost: "smtp.forwardemail.net",
+    smtpPort: "465",
+    smtpSecure: true
+  })
+});
 
 const elements = {
   appDashboardRoot: document.getElementById("appQaDashboard"),
@@ -43,6 +119,22 @@ const elements = {
   dashboardPrimaryGoalText: document.getElementById("dashboardPrimaryGoalText"),
   dashboardPrimaryGoalMeta: document.getElementById("dashboardPrimaryGoalMeta"),
   dashboardPrimaryGoalPersona: document.getElementById("dashboardPrimaryGoalPersona"),
+  qaScheduleForm: document.getElementById("qaScheduleForm"),
+  qaScheduleMeta: document.getElementById("qaScheduleMeta"),
+  qaScheduleStateBadge: document.getElementById("qaScheduleStateBadge"),
+  qaScheduleFrequency: document.getElementById("qaScheduleFrequency"),
+  qaScheduleScopeMode: document.getElementById("qaScheduleScopeMode"),
+  qaSchedulePersona: document.getElementById("qaSchedulePersona"),
+  qaScheduleMission: document.getElementById("qaScheduleMission"),
+  qaScheduleEmail: document.getElementById("qaScheduleEmail"),
+  qaScheduleEmailHint: document.getElementById("qaScheduleEmailHint"),
+  qaScheduleWebhook: document.getElementById("qaScheduleWebhook"),
+  qaScheduleSaveAction: document.getElementById("qaScheduleSaveAction"),
+  qaScheduleRunNowAction: document.getElementById("qaScheduleRunNowAction"),
+  qaScheduleToggleAction: document.getElementById("qaScheduleToggleAction"),
+  qaScheduleMessage: document.getElementById("qaScheduleMessage"),
+  qaAlertsMeta: document.getElementById("qaAlertsMeta"),
+  qaAlertsItems: document.getElementById("qaAlertsItems"),
   personaSignalsTitle: document.getElementById("personaSignalsTitle"),
   personaSignalsItems: document.getElementById("personaSignalsItems"),
   personaSignalsMeta: document.getElementById("personaSignalsMeta"),
@@ -51,6 +143,46 @@ const elements = {
   liveMissionMeta: document.getElementById("liveMissionMeta"),
   liveStreamPanel: document.getElementById("liveStreamPanel"),
   liveActivityItems: document.getElementById("liveActivityItems"),
+  distributionPacksSection: document.getElementById("distributionPacksSection"),
+  distributionPacksMeta: document.getElementById("distributionPacksMeta"),
+  distributionTrackSwitcher: document.getElementById("distributionTrackSwitcher"),
+  distributionPacksGrid: document.getElementById("distributionPacksGrid"),
+  distributionScorecardSummary: document.getElementById("distributionScorecardSummary"),
+  distributionScorecardList: document.getElementById("distributionScorecardList"),
+  distributionLauncherForm: document.getElementById("distributionLauncherForm"),
+  distributionLauncherState: document.getElementById("distributionLauncherState"),
+  distributionLauncherMessage: document.getElementById("distributionLauncherMessage"),
+  distributionBrandSelect: document.getElementById("distributionBrandSelect"),
+  distributionPackSelect: document.getElementById("distributionPackSelect"),
+  distributionSubmitLive: document.getElementById("distributionSubmitLive"),
+  distributionNoHumanActions: document.getElementById("distributionNoHumanActions"),
+  distributionPrepareAction: document.getElementById("distributionPrepareAction"),
+  distributionPreflightAction: document.getElementById("distributionPreflightAction"),
+  distributionQueueAction: document.getElementById("distributionQueueAction"),
+  distributionBrandMeta: document.getElementById("distributionBrandMeta"),
+  distributionBrandSummary: document.getElementById("distributionBrandSummary"),
+  distributionBrandSaveMeta: document.getElementById("distributionBrandSaveMeta"),
+  distributionIdentityMode: document.getElementById("distributionIdentityMode"),
+  distributionMailboxProvider: document.getElementById("distributionMailboxProvider"),
+  distributionMailboxEmail: document.getElementById("distributionMailboxEmail"),
+  distributionMailboxUsername: document.getElementById("distributionMailboxUsername"),
+  distributionMailboxAuthMethod: document.getElementById("distributionMailboxAuthMethod"),
+  distributionMailboxHost: document.getElementById("distributionMailboxHost"),
+  distributionMailboxPort: document.getElementById("distributionMailboxPort"),
+  distributionMailboxSecure: document.getElementById("distributionMailboxSecure"),
+  distributionMailboxSmtpHost: document.getElementById("distributionMailboxSmtpHost"),
+  distributionMailboxSmtpPort: document.getElementById("distributionMailboxSmtpPort"),
+  distributionMailboxSmtpSecure: document.getElementById("distributionMailboxSmtpSecure"),
+  distributionMailboxPassword: document.getElementById("distributionMailboxPassword"),
+  distributionMailboxReady: document.getElementById("distributionMailboxReady"),
+  distributionSaveBrandAction: document.getElementById("distributionSaveBrandAction"),
+  distributionBrandSaveMessage: document.getElementById("distributionBrandSaveMessage"),
+  distributionManifestMeta: document.getElementById("distributionManifestMeta"),
+  distributionManifestSummary: document.getElementById("distributionManifestSummary"),
+  distributionPreflightMeta: document.getElementById("distributionPreflightMeta"),
+  distributionPreflightSummary: document.getElementById("distributionPreflightSummary"),
+  distributionQueueMeta: document.getElementById("distributionQueueMeta"),
+  distributionQueueSummary: document.getElementById("distributionQueueSummary"),
   topFixesTitle: document.getElementById("topFixesTitle"),
   topFixesItems: document.getElementById("topFixesItems"),
   topFixesMeta: document.getElementById("topFixesMeta"),
@@ -97,6 +229,17 @@ const elements = {
   onboardingReviewGoals: document.getElementById("onboardingReviewGoals"),
   onboardingReviewCoverage: document.getElementById("onboardingReviewCoverage"),
   onboardingReviewCoverageMeta: document.getElementById("onboardingReviewCoverageMeta"),
+  onboardingReviewRepoTriage: document.getElementById("onboardingReviewRepoTriage"),
+  onboardingReviewRepoTriageMeta: document.getElementById("onboardingReviewRepoTriageMeta"),
+  onboardingRepoTriageEnabled: document.getElementById("onboardingRepoTriageEnabled"),
+  onboardingRepoConnectionLabel: document.getElementById("onboardingRepoConnectionLabel"),
+  onboardingRepoConnectionMeta: document.getElementById("onboardingRepoConnectionMeta"),
+  onboardingRepoConnectionSelectWrap: document.getElementById("onboardingRepoConnectionSelectWrap"),
+  onboardingRepoConnectionSelect: document.getElementById("onboardingRepoConnectionSelect"),
+  onboardingRepoTriageConnect: document.getElementById("onboardingRepoTriageConnect"),
+  onboardingRepoTriageDisconnect: document.getElementById("onboardingRepoTriageDisconnect"),
+  onboardingRepoTriageRepo: document.getElementById("onboardingRepoTriageRepo"),
+  onboardingRepoTriagePaths: document.getElementById("onboardingRepoTriagePaths"),
   onboardingPrevButton: document.getElementById("onboardingPrevButton"),
   onboardingNextButton: document.getElementById("onboardingNextButton"),
   onboardingSubmitButton: document.getElementById("onboardingSubmitButton"),
@@ -247,14 +390,18 @@ const state = {
   allRuns: [],
   runs: [],
   savedProjects: [],
+  repoConnections: new Map(),
+  repoConnectionLoadingBrand: "",
   brandOptions: [],
   personaOptions: [],
   selectedRunId: null,
   requestedRunId: "",
+  shareKey: parseShareKeyFromParams(initialUrlParams),
   reportCache: new Map(),
   liveStatusCache: new Map(),
   optimisticRuns: new Map(),
   replayControllers: new Map(),
+  journeyCanvasPositions: new Map(),
   livePollingTimer: null,
   livePollingInFlight: false,
   workerHealth: null,
@@ -268,6 +415,67 @@ const state = {
   activeRenderedRow: null,
   findingModalTrigger: null,
   appViewMode: parseAppViewMode(initialUrlParams),
+  submissionCatalog: {
+    activeTrack: "startup",
+    loading: false,
+    error: "",
+    trackData: {
+      startup: null,
+      physical_local: null
+    }
+  },
+  submissionLauncher: {
+    brands: [],
+    loadingBrands: false,
+    brandsError: "",
+    selectedBrandProfileId: "",
+    selectedPackId: "",
+    latestManifest: null,
+    loadingManifest: false,
+    manifestError: "",
+    prepareJob: null,
+    prepareJobTimer: null,
+    preparing: false,
+    preflight: null,
+    preflighting: false,
+    queueBatch: null,
+    queueStatuses: {},
+    queuePollTimer: null,
+    queueing: false,
+    brandForm: {
+      sourceBrandProfileId: "",
+      identityMode: "client_owned",
+      mailboxProvider: "",
+      mailboxEmail: "",
+      mailboxUsername: "",
+      mailboxAuthMethod: "unknown",
+      mailboxHost: "",
+      mailboxPort: "993",
+      mailboxSecure: true,
+      mailboxSmtpHost: "",
+      mailboxSmtpPort: "465",
+      mailboxSmtpSecure: true,
+      mailboxPassword: "",
+      mailboxReady: false
+    },
+    savingBrand: false,
+    brandSaveMessage: "Mailbox setup is stored on the submission brand and used for new-account verification flows.",
+    brandSaveTone: "",
+    message: "Choose a submission brand and a product pack to start.",
+    messageTone: "",
+    lastAction: "idle"
+  },
+  qaAutomation: {
+    schedules: [],
+    alerts: [],
+    loading: false,
+    saving: false,
+    running: false,
+    emailConfigured: null,
+    defaultAlertEmail: "",
+    message: "Save a schedule and Swarm Tester will keep checking this project for you.",
+    tone: ""
+  },
   onboarding: {
     completed: false,
     forceOpen: false,
@@ -275,7 +483,8 @@ const state = {
     syncInFlight: null,
     hasAnyRuns: null,
     initialized: false,
-    step: 1
+    step: 1,
+    githubRedirectHandled: false
   }
 };
 const dashboardProjects = window.SwarmDashboardProjects;
@@ -307,6 +516,18 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function sanitizeOptionalString(value, maxLength = 4000) {
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return "";
+  }
+  return text.slice(0, Math.max(1, Number(maxLength) || 1));
+}
+
+function sanitizeString(value, maxLength = 4000) {
+  return sanitizeOptionalString(value, maxLength);
 }
 
 function debugDashboardLog(...parts) {
@@ -609,6 +830,10 @@ function parseRunIdFromParams(params) {
   return String(params.get("run_id") || params.get("runId") || "").trim();
 }
 
+function parseShareKeyFromParams(params) {
+  return String(params.get("share_key") || params.get("shareKey") || "").trim();
+}
+
 function normalizeBrandFilterValue(value) {
   const raw = String(value || "").trim();
   if (!raw || raw === ADD_NEW_PROJECT_OPTION_VALUE) {
@@ -830,6 +1055,36 @@ function setStoredPersona(persona) {
   }
 }
 
+function storeGitHubAppReturnState(config = {}) {
+  try {
+    const payload = JSON.stringify(config && typeof config === "object" ? config : {});
+    localStorage.setItem(STORAGE_GITHUB_APP_RETURN_KEY, payload);
+  } catch {
+    return;
+  }
+}
+
+function readGitHubAppReturnState() {
+  try {
+    const raw = String(localStorage.getItem(STORAGE_GITHUB_APP_RETURN_KEY) || "").trim();
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearGitHubAppReturnState() {
+  try {
+    localStorage.removeItem(STORAGE_GITHUB_APP_RETURN_KEY);
+  } catch {
+    return;
+  }
+}
+
 function applyUrlFiltersToState() {
   const params = new URLSearchParams(window.location.search);
   state.appViewMode = parseAppViewMode(params);
@@ -839,6 +1094,7 @@ function applyUrlFiltersToState() {
   state.filters.status = String(params.get("status") || "").trim();
   state.filters.q = String(params.get("q") || "").trim();
   state.filters.env = String(params.get("env") || state.filters.env || "production").trim().toLowerCase() || "production";
+  state.shareKey = parseShareKeyFromParams(params);
   state.requestedRunId = parseRunIdFromParams(params);
   if (state.requestedRunId) {
     state.selectedRunId = state.requestedRunId;
@@ -874,10 +1130,22 @@ function syncUrlFromState() {
   if (state.filters.q) params.set("q", state.filters.q);
   if (state.filters.env) params.set("env", state.filters.env);
   if (state.selectedRunId) params.set("run_id", state.selectedRunId);
+  if (state.shareKey) params.set("share_key", state.shareKey);
   const dashboardHash = document.getElementById("qa-dashboard") ? "#qa-dashboard" : "";
 
   const next = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${dashboardHash}`;
   window.history.replaceState({}, "", next);
+}
+
+function appendActiveShareKey(params) {
+  if (!(params instanceof URLSearchParams)) {
+    return params;
+  }
+  const shareKey = String(state.shareKey || "").trim();
+  if (shareKey) {
+    params.set("share_key", shareKey);
+  }
+  return params;
 }
 
 function buildReportShareUrl(runId, row = {}) {
@@ -892,6 +1160,9 @@ function buildReportShareUrl(runId, row = {}) {
   const brand = normalizeBrandFilterValue(row?.brand_key);
   if (brand) {
     params.set("brand", brand);
+  }
+  if (state.shareKey) {
+    params.set("share_key", state.shareKey);
   }
 
   return `${window.location.origin}/dashboard?${params.toString()}`;
@@ -913,6 +1184,9 @@ function buildDashboardRunUrl(runId, row = {}) {
   const env = normalizeEnvironment(row?.environment || row?.env || state.filters.env || "production");
   if (env) {
     params.set("env", env);
+  }
+  if (state.shareKey) {
+    params.set("share_key", state.shareKey);
   }
   const dashboardHash = document.getElementById("qa-dashboard") ? "#qa-dashboard" : "";
   return `${window.location.pathname}?${params.toString()}${dashboardHash}`;
@@ -950,6 +1224,193 @@ async function copyTextToClipboard(value) {
   }
 }
 
+function canManageReportSharing() {
+  return isDashboardAuthorized();
+}
+
+async function requestSharedReportLink(runId) {
+  const params = new URLSearchParams({ run_id: String(runId || "").trim() });
+  const response = await fetch(`/api/qa/share?${params.toString()}`, {
+    method: "POST",
+    credentials: "same-origin"
+  });
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    throw new Error("Sign in required to manage shared links.");
+  }
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "Failed to create shared link");
+  }
+  return data;
+}
+
+async function requestPromoRedemption(code, shareRunId = "") {
+  const response = await fetch("/api/promo/redeem", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      code: String(code || "").trim(),
+      share_run_id: String(shareRunId || "").trim()
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    throw new Error("Sign in to redeem this team code.");
+  }
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "Could not redeem team code");
+  }
+  return data;
+}
+
+async function requestShareOfferCheckout(code, shareRunId = "") {
+  const user = window.SwarmAuth && typeof window.SwarmAuth.getUser === "function" ? window.SwarmAuth.getUser() : null;
+  const response = await fetch("/api/stripe/share-offer", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      code: String(code || "").trim(),
+      share_run_id: String(shareRunId || "").trim(),
+      email: String(user?.email || "").trim()
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    const error = String(data?.error || "").trim() || "Could not start checkout";
+    const normalizedError = error.toLowerCase();
+    if (response.status === 409 || normalizedError.includes("not configured")) {
+      return { ok: false, unavailable: true, error };
+    }
+    throw new Error(error);
+  }
+  return {
+    ok: true,
+    checkoutUrl: String(data.checkout_url || "").trim()
+  };
+}
+
+function userHasRedeemedPromoCode(code) {
+  const normalizedCode = String(code || "").trim().toUpperCase();
+  if (!normalizedCode || !window.SwarmAuth || typeof window.SwarmAuth.getUser !== "function") {
+    return false;
+  }
+  const user = window.SwarmAuth.getUser();
+  const offers = Array.isArray(user?.redeemed_offers) ? user.redeemed_offers : [];
+  return offers.some((item) => String(item?.code || "").trim().toUpperCase() === normalizedCode);
+}
+
+function buildPromoRedeemUrl(code, options = {}) {
+  const baseUrl = String(options.baseUrl || "/dashboard").trim() || "/dashboard";
+  const url = new URL(baseUrl, window.location.origin);
+  const promoCode = String(code || "").trim().toUpperCase();
+  const shareRunId = String(options.shareRunId || "").trim();
+  if (promoCode) {
+    url.searchParams.set("promo", promoCode);
+    url.searchParams.set("mode", "signup");
+  }
+  if (shareRunId) {
+    url.searchParams.set("share_run_id", shareRunId);
+  }
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function readWindowPromoConfig() {
+  const candidate = window.SwarmReportSharePromo;
+  return candidate && typeof candidate === "object" ? candidate : {};
+}
+
+function getSharedReportPromotionConfig() {
+  const source = {
+    ...DEFAULT_SHARED_REPORT_PROMO,
+    ...readWindowPromoConfig()
+  };
+  return {
+    enabled: source.enabled !== false,
+    headline: String(source.headline || DEFAULT_SHARED_REPORT_PROMO.headline).trim(),
+    body: String(source.body || DEFAULT_SHARED_REPORT_PROMO.body).trim(),
+    ctaLabel: String(source.ctaLabel || source.cta_label || DEFAULT_SHARED_REPORT_PROMO.ctaLabel).trim(),
+    ctaUrl: String(source.ctaUrl || source.cta_url || DEFAULT_SHARED_REPORT_PROMO.ctaUrl).trim(),
+    couponCode: String(source.couponCode || source.coupon_code || "").trim(),
+    couponLabel: String(source.couponLabel || source.coupon_label || DEFAULT_SHARED_REPORT_PROMO.couponLabel).trim(),
+    note: String(source.note || "").trim()
+  };
+}
+
+function renderSharedReportPromotionBanner(report, row = {}) {
+  if (!hasSharedReportAccess()) {
+    return "";
+  }
+
+  const promo = getSharedReportPromotionConfig();
+  if (!promo.enabled || !promo.ctaUrl) {
+    return "";
+  }
+
+  const targetName = String(
+    report?.target ||
+      row?.target ||
+      row?.brand_name ||
+      toDisplayProjectName(row?.brand_key || "") ||
+      "this product"
+  ).trim();
+  const shareRunId = String(report?.run_id || row?.run_id || state.selectedRunId || state.requestedRunId || "").trim();
+  const hasRedeemed = promo.couponCode ? userHasRedeemedPromoCode(promo.couponCode) : false;
+  const redeemUrl = promo.couponCode ? buildPromoRedeemUrl(promo.couponCode, { baseUrl: promo.ctaUrl, shareRunId }) : "";
+
+  const couponMarkup = promo.couponCode
+    ? `
+      <div class="report-share-banner-code">
+        <span class="report-share-banner-code-label">${escapeHtml(promo.couponLabel || "Team code")}</span>
+        <code>${escapeHtml(promo.couponCode)}</code>
+        <button
+          type="button"
+          class="report-action-button"
+          data-copy-text="${escapeHtml(promo.couponCode)}"
+          data-label="Copy code"
+        >
+          Copy code
+        </button>
+      </div>
+    `
+    : "";
+
+  const actionMarkup = promo.couponCode
+    ? `
+      <button
+        type="button"
+        class="report-action-button report-action-button-primary"
+        data-redeem-promo-code="${escapeHtml(promo.couponCode)}"
+        data-redeem-url="${escapeHtml(redeemUrl)}"
+        data-redeem-share-run="${escapeHtml(shareRunId)}"
+        data-label="${escapeHtml(hasRedeemed ? "Offer redeemed" : promo.ctaLabel || "Redeem team offer")}"
+      >
+        ${escapeHtml(hasRedeemed ? "Offer redeemed" : promo.ctaLabel || "Redeem team offer")}
+      </button>
+    `
+    : `<a class="report-action-button report-action-button-primary" href="${escapeHtml(promo.ctaUrl)}" target="_blank" rel="noreferrer">${escapeHtml(promo.ctaLabel || "Try Swarm Tester")}</a>`;
+
+  return `
+    <section class="report-share-banner" aria-label="Shared report promotion">
+      <div class="report-share-banner-copy">
+        <p class="report-share-banner-kicker">Shared report</p>
+        <h2>${escapeHtml(promo.headline)}</h2>
+        <p>${escapeHtml(promo.body.replaceAll("your site", targetName === "this product" ? "your site" : `${targetName}`))}</p>
+        ${promo.note ? `<p class="report-share-banner-note">${escapeHtml(promo.note)}</p>` : ""}
+      </div>
+      <div class="report-share-banner-actions">
+        ${couponMarkup}
+        ${actionMarkup}
+      </div>
+    </section>
+  `;
+}
+
 let reportToastTimerId = 0;
 
 function showReportToast(message, tone = "success") {
@@ -984,28 +1445,17 @@ function showReportToast(message, tone = "success") {
   }, 1800);
 }
 
-function renderLlmLogo(model) {
-  const target = String(model || "").trim().toLowerCase();
-  if (target === "claude") {
-    return '<span class="llm-logo llm-logo-claude" aria-hidden="true">✦</span>';
-  }
-  return '<span class="llm-logo llm-logo-codex" aria-hidden="true">◎</span>';
-}
-
 function renderLlmCopyButtons(scope, options = {}) {
   const safeScope = String(scope || "").trim().toLowerCase();
   const findingIndex = Number(options.findingIndex);
   const indexAttr = Number.isInteger(findingIndex) && findingIndex >= 0 ? ` data-llm-finding-index="${findingIndex}"` : "";
-  const actionLabel = safeScope === "final" ? "Copy Final Fix" : "Copy Fix";
+  const findingToken = String(options.findingToken || "").trim();
+  const tokenAttr = findingToken ? ` data-llm-finding-token="${escapeHtml(findingToken)}"` : "";
+  const actionLabel = safeScope === "final" ? "Copy Full Fix for AI Dev" : "Copy Fix for AI Dev";
   return `
     <div class="llm-copy-actions">
-      <button type="button" class="llm-copy-button claude" data-llm-scope="${escapeHtml(safeScope)}" data-llm-target="claude"${indexAttr}>
-        ${renderLlmLogo("claude")}
-        <span>${escapeHtml(actionLabel)} for Claude</span>
-      </button>
-      <button type="button" class="llm-copy-button codex" data-llm-scope="${escapeHtml(safeScope)}" data-llm-target="codex"${indexAttr}>
-        ${renderLlmLogo("codex")}
-        <span>${escapeHtml(actionLabel)} for GPT Codex</span>
+      <button type="button" class="llm-copy-button llm-copy-button-unified" data-llm-copy="1" data-llm-scope="${escapeHtml(safeScope)}"${indexAttr}${tokenAttr}>
+        <span>${escapeHtml(actionLabel)}</span>
       </button>
     </div>
   `;
@@ -1108,10 +1558,352 @@ function buildFindingModalDataAttributes(finding, findingIndex = 0) {
   ].join(" ");
 }
 
+function formatFindingAttemptForPrompt(attempt, index = 0) {
+  const safeAttempt = attempt && typeof attempt === "object" ? attempt : {};
+  const step = Number.isFinite(Number(safeAttempt?.step)) ? Math.round(Number(safeAttempt.step)) : index + 1;
+  const action = redactVendorText(String(safeAttempt?.action || "").trim()) || "inspect";
+  const target = redactVendorText(String(safeAttempt?.target || "").trim()) || "affected area";
+  const outcome = redactVendorText(String(safeAttempt?.outcome || "").trim()) || "state observed";
+  const extras = [
+    redactVendorText(String(safeAttempt?.ts || "").trim()) ? `At: ${redactVendorText(String(safeAttempt.ts).trim())}` : "",
+    redactVendorText(String(safeAttempt?.url || "").trim()) ? `URL: ${redactVendorText(String(safeAttempt.url).trim())}` : "",
+    redactVendorText(String(safeAttempt?.note || "").trim()) ? `Note: ${redactVendorText(String(safeAttempt.note).trim())}` : ""
+  ].filter(Boolean);
+  return `${step}. ${action} -> ${target} -> ${outcome}${extras.length ? ` (${extras.join(" | ")})` : ""}`;
+}
+
+function collectFindingEvidenceBundle(report, finding, options = {}) {
+  const safeReport = report && typeof report === "object" ? report : {};
+  const safeFinding = finding && typeof finding === "object" ? finding : {};
+  const maxMediaItems = Math.max(1, Math.min(8, Number(options?.maxMediaItems) || 6));
+  const maxLogs = Math.max(1, Math.min(12, Number(options?.maxLogs) || 8));
+  const maxAttempts = Math.max(1, Math.min(16, Number(options?.maxAttempts) || 10));
+  const diagnostics = getFindingDiagnosticDetails(safeFinding);
+  const screenshotRefs = getRelevantFindingScreenshotRefs(safeReport, safeFinding, { maxItems: maxMediaItems });
+  const videoRefs = Array.isArray(safeFinding?.evidence?.videos) ? safeFinding.evidence.videos : [];
+  const screenshotSummary = getEvidenceAttachmentSummary(safeReport, "screenshot", screenshotRefs);
+  const videoSummary = getEvidenceAttachmentSummary(safeReport, "video", videoRefs);
+  const screenshotItems = resolveEvidenceImageItems(safeReport, screenshotRefs, { maxItems: maxMediaItems });
+  const videoItems = resolveEvidenceVideoItems(safeReport, videoRefs, { maxItems: maxMediaItems });
+  const proofModel = buildFindingProofModel(safeReport, safeFinding, {
+    maxItems: maxMediaItems,
+    preferVideo: true,
+    requireVideo: false
+  });
+  const mediaItems = [];
+  const seenMediaUrls = new Set();
+  const pushMediaItem = (kind, item, source = "finding") => {
+    const url = String(item?.url || "").trim();
+    if (!url || seenMediaUrls.has(url)) {
+      return;
+    }
+    seenMediaUrls.add(url);
+    mediaItems.push({ kind, url, source });
+  };
+
+  if (proofModel?.primaryAsset?.url) {
+    pushMediaItem(String(proofModel.primaryAsset.kind || "").trim().toLowerCase() === "video" ? "video" : "screenshot", proofModel.primaryAsset, proofModel.state === "fallback" ? "run fallback" : "primary");
+  }
+  videoItems.forEach((item) => pushMediaItem("video", item));
+  screenshotItems.forEach((item) => pushMediaItem("screenshot", item));
+
+  const consoleLogs = Array.isArray(safeFinding?.evidence?.console_logs)
+    ? safeFinding.evidence.console_logs.map((item) => redactVendorText(String(item || "").trim())).filter(Boolean).slice(0, maxLogs)
+    : [];
+  const networkLogs = Array.isArray(safeFinding?.evidence?.network_logs)
+    ? safeFinding.evidence.network_logs.map((item) => redactVendorText(String(item || "").trim())).filter(Boolean).slice(0, maxLogs)
+    : [];
+  const attemptedActions = Array.isArray(diagnostics?.attempted_actions)
+    ? diagnostics.attempted_actions.slice(0, maxAttempts).map((attempt, index) => formatFindingAttemptForPrompt(attempt, index))
+    : [];
+
+  return {
+    diagnostics,
+    proofModel,
+    screenshotSummary,
+    videoSummary,
+    mediaItems,
+    screenshotReferences: screenshotSummary.references.slice(0, maxMediaItems),
+    videoReferences: videoSummary.references.slice(0, maxMediaItems),
+    consoleLogs,
+    networkLogs,
+    attemptedActions
+  };
+}
+
+function buildFindingEvidencePromptLines(report, finding, options = {}) {
+  const bundle = collectFindingEvidenceBundle(report, finding, options);
+  const diagnostics = bundle.diagnostics && typeof bundle.diagnostics === "object" ? bundle.diagnostics : {};
+  const lines = [
+    "Diagnostics",
+    `- Current URL: ${redactVendorText(String(diagnostics?.current_url || finding?.page?.url || "n/a").trim()) || "n/a"}`,
+    `- Current state: ${redactVendorText(String(diagnostics?.current_state || "n/a").trim()) || "n/a"}`,
+    `- Last good step: ${redactVendorText(String(diagnostics?.last_successful_step || "n/a").trim()) || "n/a"}`,
+    `- Why this was reported: ${redactVendorText(String(diagnostics?.failure_reason || finding?.observed_behavior || "n/a").trim()) || "n/a"}`
+  ];
+
+  if (Number.isFinite(Number(diagnostics?.repeated_state_count)) && Number(diagnostics.repeated_state_count) > 0) {
+    lines.push(`- Same-state repeats: ${Math.round(Number(diagnostics.repeated_state_count))}`);
+  }
+
+  lines.push("", "Evidence");
+  lines.push(`- Proof state: ${bundle.proofModel?.label || "Unknown"}`);
+  lines.push(`- Screenshot proof: ${bundle.screenshotSummary.text || "None"}`);
+  lines.push(`- Video proof: ${bundle.videoSummary.text || "None"}`);
+
+  if (bundle.mediaItems.length) {
+    lines.push("- Renderable proof URLs:");
+    bundle.mediaItems.forEach((item, index) => {
+      const label = item.kind === "video" ? "Video" : "Screenshot";
+      const sourceSuffix = item.source && item.source !== "finding" ? ` (${item.source})` : "";
+      lines.push(`  ${index + 1}. ${label}${sourceSuffix}: ${item.url}`);
+    });
+  }
+
+  if (bundle.screenshotReferences.length) {
+    lines.push("- Screenshot references without inline preview:");
+    bundle.screenshotReferences.forEach((item, index) => {
+      lines.push(`  ${index + 1}. ${item}`);
+    });
+  }
+
+  if (bundle.videoReferences.length) {
+    lines.push("- Video references without inline preview:");
+    bundle.videoReferences.forEach((item, index) => {
+      lines.push(`  ${index + 1}. ${item}`);
+    });
+  }
+
+  lines.push("", "Actions tried");
+  if (bundle.attemptedActions.length) {
+    bundle.attemptedActions.forEach((item) => lines.push(`- ${item}`));
+  } else {
+    lines.push("- No exact action trail was saved.");
+  }
+
+  lines.push("", "Relevant logs");
+  if (bundle.consoleLogs.length) {
+    lines.push("- Console:");
+    bundle.consoleLogs.forEach((item) => lines.push(`  - ${item}`));
+  } else {
+    lines.push("- Console: no nearby console events were saved.");
+  }
+
+  if (bundle.networkLogs.length) {
+    lines.push("- Network:");
+    bundle.networkLogs.forEach((item) => lines.push(`  - ${item}`));
+  } else {
+    lines.push("- Network: no nearby network events were saved.");
+  }
+
+  return lines;
+}
+
+function dedupeProblemRefs(values, maxItems = 8) {
+  const source = Array.isArray(values) ? values : [];
+  const unique = [];
+  const seen = new Set();
+  for (const value of source) {
+    const raw = String(value || "").trim();
+    if (!raw || seen.has(raw)) {
+      continue;
+    }
+    seen.add(raw);
+    unique.push(raw);
+    if (unique.length >= maxItems) {
+      break;
+    }
+  }
+  return unique;
+}
+
+function normalizeProblemSignature(...parts) {
+  return parts
+    .map((part) => String(part || "").trim().toLowerCase())
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function buildTimelineProblemAttempt(stepValue, span, index = 0) {
+  const pageUrl = redactVendorText(String(span?.page?.url || "").trim());
+  const fallbackOutcome =
+    redactVendorText(String(span?.summary || span?.label || "This part of the flow felt rough.").trim()) ||
+    "This part of the flow felt rough.";
+  const raw = redactVendorText(String(stepValue || "").trim());
+  if (!raw) {
+    return {
+      step: index + 1,
+      action: "inspect",
+      target: redactVendorText(String(span?.label || "affected area").trim()) || "affected area",
+      outcome: fallbackOutcome,
+      url: pageUrl || ""
+    };
+  }
+
+  const arrowParts = raw
+    .split(/\s*->\s*/g)
+    .map((part) => redactVendorText(part).trim())
+    .filter(Boolean);
+  if (arrowParts.length >= 3) {
+    return {
+      step: index + 1,
+      action: arrowParts[0],
+      target: arrowParts[1],
+      outcome: arrowParts.slice(2).join(" -> "),
+      url: pageUrl || ""
+    };
+  }
+
+  const colonMatch = raw.match(/^([a-z][a-z0-9_ ]{1,40})\s*:\s*(.+)$/i);
+  if (colonMatch) {
+    return {
+      step: index + 1,
+      action: colonMatch[1].trim().toLowerCase(),
+      target: colonMatch[2].trim(),
+      outcome: fallbackOutcome,
+      url: pageUrl || ""
+    };
+  }
+
+  return {
+    step: index + 1,
+    action: /^\d+$/.test(raw) ? "step" : "inspect",
+    target: /^\d+$/.test(raw) ? `Step ${raw}` : raw,
+    outcome: fallbackOutcome,
+    url: pageUrl || ""
+  };
+}
+
+function buildTimelineProblemEntry(report, span, index = 0) {
+  const safeSpan = span && typeof span === "object" ? span : {};
+  const specificCopy = buildExperienceTimelineSpecificCopy(
+    report,
+    safeSpan,
+    redactVendorText(String(safeSpan.label || "").trim()) || `Friction point ${index + 1}`,
+    redactVendorText(String(safeSpan.summary || safeSpan.label || "This part of the flow slowed the tester down.").trim()) ||
+      "This part of the flow slowed the tester down."
+  );
+  const label = specificCopy.label;
+  const summary = specificCopy.summary;
+  const pageUrl = redactVendorText(String(safeSpan?.page?.url || "").trim());
+  const pageTitle = redactVendorText(String(safeSpan?.page?.title || "").trim());
+  const metrics = safeSpan?.metrics && typeof safeSpan.metrics === "object" ? safeSpan.metrics : {};
+  const evidence = safeSpan?.evidence && typeof safeSpan.evidence === "object" ? safeSpan.evidence : {};
+  const resolvedAttempts = resolveExperienceTimelineAttempts(report, safeSpan);
+  const attemptedActions = resolvedAttempts.length
+    ? resolvedAttempts.slice(0, 6).map((attempt, actionIndex) => ({
+        step: Number.isFinite(Number(attempt?.step)) ? Math.round(Number(attempt.step)) : actionIndex + 1,
+        action: redactVendorText(String(attempt?.action || "inspect").trim()) || "inspect",
+        target: redactVendorText(String(attempt?.target || label).trim()) || label,
+        outcome: redactVendorText(String(attempt?.outcome || summary).trim()) || summary,
+        url: pageUrl || redactVendorText(String(attempt?.url || "").trim())
+      }))
+    : [
+        {
+          step: 1,
+          action: "inspect",
+          target: label,
+          outcome: summary,
+          url: pageUrl || ""
+        }
+      ];
+  const lastSuccessfulStep = attemptedActions.length
+    ? formatExperienceTimelineAttemptLine(attemptedActions[0]).replace(/\s+—.*$/, "")
+    : `Reached ${label}`;
+  const screenshotRefs = dedupeProblemRefs([...(Array.isArray(evidence.screenshot_ids) ? evidence.screenshot_ids : []), ...(Array.isArray(evidence.frame_ids) ? evidence.frame_ids : [])], 8);
+  const videoItem = resolveExperienceTimelineVideoItem(report);
+  const videoRef = String(videoItem?.raw || videoItem?.url || "").trim();
+  const priorityScore = Math.max(48, Math.min(89, Math.round(Number(safeSpan.score) || 62)));
+
+  return {
+    id: `timeline-${toAnchorToken(String(safeSpan.id || `span-${index + 1}`), `timeline-${index + 1}`)}`,
+    title: label,
+    type: "frustration_point",
+    severity: "medium",
+    confidence: Math.max(0.35, Math.min(0.95, Number(safeSpan.confidence) || 0.74)),
+    expected_behavior: `${label} should stay smooth and keep the tester moving forward.`,
+    observed_behavior: summary,
+    fix_hint:
+      redactVendorText(String(safeSpan.fix_direction || "").trim()) ||
+      "Reduce the friction in this step so the user can keep moving without hesitation.",
+    journey: pageTitle || "General flow",
+    page: pageUrl ? { url: pageUrl } : {},
+    emotional_reaction: {
+      primary: "frustration",
+      intensity: 2,
+      signals: summary ? [summary] : []
+    },
+    evidence: {
+      proof_source: videoRef ? "run_fallback" : "none",
+      screenshots: screenshotRefs,
+      videos: videoRef ? [videoRef] : [],
+      console_logs: Array.isArray(evidence.console_logs) ? evidence.console_logs.slice(0, 6) : [],
+      network_logs: Array.isArray(evidence.network_logs) ? evidence.network_logs.slice(0, 6) : []
+    },
+    diagnostic_details: {
+      page_loaded: Boolean(pageUrl),
+      current_url: pageUrl || "",
+      current_state: summary,
+      last_successful_step: lastSuccessfulStep,
+      failure_reason: summary,
+      attempted_actions: attemptedActions,
+      ...(Number(metrics.same_state_count) > 0 ? { repeated_state_count: Math.round(Number(metrics.same_state_count)) } : {})
+    },
+    _problemPriorityScore: priorityScore,
+    _problemSource: "experience_timeline",
+    _timelineSpanId: String(safeSpan.id || `span-${index + 1}`),
+    _timelineLevel: "friction"
+  };
+}
+
+function getDisplayProblemPriorityScore(problem) {
+  const explicit = Number(problem?._problemPriorityScore);
+  if (Number.isFinite(explicit)) {
+    return Math.max(0, Math.min(100, Math.round(explicit)));
+  }
+  return computeFindingPriorityScore(problem);
+}
+
+function buildDisplayProblemEntries(report) {
+  const findings = Array.isArray(report?.findings) ? report.findings : [];
+  const timeline = getExperienceTimeline(report);
+  const syntheticProblems = [];
+  const seen = new Set(
+    findings.map((finding) =>
+      normalizeProblemSignature(finding?.title, finding?.observed_behavior, finding?.page?.url)
+    )
+  );
+
+  if (timeline?.spans?.length) {
+    const frictionSpans = timeline.spans.filter((span) => String(span?.level || "").trim().toLowerCase() === "friction");
+    frictionSpans.forEach((span, index) => {
+      const candidate = buildTimelineProblemEntry(report, span, index);
+      const signature = normalizeProblemSignature(candidate?.title, candidate?.observed_behavior, candidate?.page?.url);
+      if (!signature || seen.has(signature)) {
+        return;
+      }
+      seen.add(signature);
+      syntheticProblems.push(candidate);
+    });
+  }
+
+  return [...findings, ...syntheticProblems].sort((left, right) => {
+    const scoreDiff = getDisplayProblemPriorityScore(right) - getDisplayProblemPriorityScore(left);
+    if (scoreDiff !== 0) {
+      return scoreDiff;
+    }
+    const severityDiff = findingSeverityWeight(right?.severity) - findingSeverityWeight(left?.severity);
+    if (severityDiff !== 0) {
+      return severityDiff;
+    }
+    return String(left?.title || left?.id || "").localeCompare(String(right?.title || right?.id || ""));
+  });
+}
+
 function resolveActiveFindingContext(trigger) {
   const target = trigger instanceof HTMLElement ? trigger : null;
   const { report, row } = resolveActiveReportContext();
-  const findings = sortFindingsByPriority(Array.isArray(report?.findings) ? report.findings : []);
+  const findings = buildDisplayProblemEntries(report);
   if (!report || !findings.length) {
     return { report, row, finding: null, findingIndex: -1 };
   }
@@ -1188,6 +1980,105 @@ function summarizeEvidenceLinks(report, kind, links, options = {}) {
   };
 }
 
+function findingNeedsRelevantScreenshotTail(finding) {
+  const diagnostics = getFindingDiagnosticDetails(finding);
+  const repeatedStateCount = Number(diagnostics?.repeated_state_count);
+  if (Number.isFinite(repeatedStateCount) && repeatedStateCount > 0) {
+    return true;
+  }
+
+  const message = String(
+    [
+      finding?.observed_behavior,
+      diagnostics?.current_state,
+      diagnostics?.failure_reason
+    ]
+      .filter(Boolean)
+      .join(" ")
+  )
+    .trim()
+    .slice(0, 4000)
+    .toLowerCase();
+
+  return /timed out|timeout|stalled|same waiting state|same state|never advanced|did not advance|did not progress|spinner|generating/.test(message);
+}
+
+function getRecentEvidenceRefs(values, maxItems = 6) {
+  const source = Array.isArray(values) ? values : [];
+  if (!source.length) {
+    return [];
+  }
+
+  const recent = [];
+  const seen = new Set();
+  for (let index = source.length - 1; index >= 0; index -= 1) {
+    const raw = String(source[index] || "").trim();
+    if (!raw || seen.has(raw)) {
+      continue;
+    }
+    seen.add(raw);
+    recent.push(raw);
+    if (recent.length >= maxItems) {
+      break;
+    }
+  }
+
+  return recent;
+}
+
+function isLikelyAuthCheckpointRef(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  return Boolean(
+    raw &&
+      /(auth[-_]|authentry|login|sign-?in|otp|magic[-_]?link|verification|submit-attempted|auth-flow|email)/.test(raw)
+  );
+}
+
+function filterMixedAuthCheckpointRefs(values) {
+  const list = Array.isArray(values) ? values : [];
+  if (!list.length) {
+    return [];
+  }
+
+  const hasNonAuth = list.some((item) => !isLikelyAuthCheckpointRef(item));
+  if (!hasNonAuth) {
+    return list;
+  }
+
+  return list.filter((item) => !isLikelyAuthCheckpointRef(item));
+}
+
+function getRelevantFindingScreenshotRefs(report, finding, options = {}) {
+  const screenshots = Array.isArray(finding?.evidence?.screenshots) ? finding.evidence.screenshots : [];
+  if (!findingNeedsRelevantScreenshotTail(finding)) {
+    return screenshots;
+  }
+
+  const repeatedStateCount = Number(getFindingDiagnosticDetails(finding)?.repeated_state_count);
+  const recentWindow = Math.max(
+    4,
+    Math.min(8, Number.isFinite(repeatedStateCount) && repeatedStateCount > 0 ? Math.round(repeatedStateCount) + 1 : Number(options?.maxItems) || 6)
+  );
+  const galleryScreenshots =
+    report?.evidence_gallery && typeof report.evidence_gallery === "object" && Array.isArray(report.evidence_gallery.screenshots)
+      ? report.evidence_gallery.screenshots
+      : [];
+
+  const merged = [];
+  const seen = new Set();
+  for (const ref of [...getRecentEvidenceRefs(screenshots, recentWindow), ...getRecentEvidenceRefs(galleryScreenshots, recentWindow)]) {
+    const raw = String(ref || "").trim();
+    if (!raw || seen.has(raw)) {
+      continue;
+    }
+    seen.add(raw);
+    merged.push(raw);
+  }
+
+  const filtered = filterMixedAuthCheckpointRefs(merged);
+  return filtered.length ? filtered : merged.length ? merged : screenshots;
+}
+
 function resolveEvidenceImageItems(report, links, options = {}) {
   return summarizeEvidenceLinks(report, "screenshot", links, options).items;
 }
@@ -1223,70 +2114,124 @@ function getEvidenceAttachmentSummary(report, kind, links) {
   };
 }
 
-function getFindingProofState(report, finding, summary = null) {
+function getFindingProofState(report, finding, screenshotSummary = null, videoSummary = null) {
   const source = String(finding?.evidence?.proof_source || "").trim().toLowerCase();
-  const resolvedSummary =
-    summary && typeof summary === "object"
-      ? summary
+  const resolvedScreenshotSummary =
+    screenshotSummary && typeof screenshotSummary === "object"
+      ? screenshotSummary
       : summarizeEvidenceLinks(report, "screenshot", finding?.evidence?.screenshots || [], { maxItems: 24 });
-  const imageCount = Number.isInteger(resolvedSummary?.renderableCount) ? resolvedSummary.renderableCount : 0;
-  if (source === "run_fallback" && imageCount) {
+  const resolvedVideoSummary =
+    videoSummary && typeof videoSummary === "object"
+      ? videoSummary
+      : summarizeEvidenceLinks(report, "video", finding?.evidence?.videos || [], { maxItems: 24 });
+  const screenshotCount = Number.isInteger(resolvedScreenshotSummary?.renderableCount)
+    ? resolvedScreenshotSummary.renderableCount
+    : 0;
+  const videoCount = Number.isInteger(resolvedVideoSummary?.renderableCount)
+    ? resolvedVideoSummary.renderableCount
+    : 0;
+  const totalRenderable = screenshotCount + videoCount;
+  if (source === "run_fallback" && totalRenderable) {
     return "fallback";
   }
   if (source === "none") {
     return "missing";
   }
-  if (imageCount) {
+  if (totalRenderable) {
     return "verified";
   }
   return "missing";
 }
 
 function buildFindingProofModel(report, finding, options = {}) {
-  const screenshots = Array.isArray(finding?.evidence?.screenshots) ? finding.evidence.screenshots : [];
-  const summary = summarizeEvidenceLinks(report, "screenshot", screenshots, { maxItems: 24 });
-  const images = summary.items.slice(0, Math.max(1, Math.min(12, Number(options?.maxItems) || 1)));
-  const state = getFindingProofState(report, finding, summary);
+  const screenshots = getRelevantFindingScreenshotRefs(report, finding, { maxItems: 12 });
+  const videos = Array.isArray(finding?.evidence?.videos) ? finding.evidence.videos : [];
+  const screenshotSummary = summarizeEvidenceLinks(report, "screenshot", screenshots, { maxItems: 24 });
+  const videoSummary = summarizeEvidenceLinks(report, "video", videos, { maxItems: 24 });
+  const images = screenshotSummary.items.slice(0, Math.max(1, Math.min(12, Number(options?.maxItems) || 1)));
+  const videoItems = videoSummary.items.slice(0, Math.max(1, Math.min(6, Number(options?.maxItems) || 1)));
+  const requireVideo = options?.requireVideo !== false;
+  const preferVideo = options?.preferVideo !== false;
+  const state = requireVideo
+    ? videoSummary.renderableCount
+      ? getFindingProofState(report, finding, { renderableCount: 0, referenceCount: 0 }, videoSummary)
+      : "missing"
+    : getFindingProofState(report, finding, screenshotSummary, videoSummary);
   const source = String(finding?.evidence?.proof_source || "").trim().toLowerCase();
   const proofLabels = {
-    verified: "Claim Screenshot",
-    fallback: "Run Screenshot",
+    verified: "Proof Attached",
+    fallback: "Run Proof",
     missing: "Proof Missing"
   };
-  let note = "Screenshot captured for this finding.";
-  if (state === "fallback" && summary.renderableCount) {
-    note = "No claim-specific screenshot was attached. Showing the closest run-level capture for context.";
-  } else if (source === "run_fallback" && summary.referenceCount) {
-    note = "No claim-specific screenshot was attached, and the remaining run-level reference is not a renderable image.";
-  } else if (!summary.renderableCount && summary.referenceCount) {
-    note = "Screenshot references exist, but no renderable image proof is available for this finding.";
+  const primaryAsset = requireVideo
+    ? videoItems[0]
+      ? { kind: "video", ...videoItems[0] }
+      : null
+    : preferVideo
+      ? videoItems[0]
+        ? { kind: "video", ...videoItems[0] }
+        : images[0]
+          ? { kind: "screenshot", ...images[0] }
+          : null
+      : images[0]
+        ? { kind: "screenshot", ...images[0] }
+        : videoItems[0]
+          ? { kind: "video", ...videoItems[0] }
+          : null;
+  const totalRenderable = screenshotSummary.renderableCount + videoSummary.renderableCount;
+  const totalReferences = screenshotSummary.referenceCount + videoSummary.referenceCount;
+  let note = requireVideo ? "Video captured for this finding." : "Proof captured for this finding.";
+  if (state === "fallback" && primaryAsset?.kind === "screenshot") {
+    note = "No claim-specific screenshot was attached. Showing the closest run-level picture for context.";
+  } else if (state === "fallback" && primaryAsset?.kind === "video") {
+    note = "No claim-specific screenshot was attached. Showing the closest run-level video for context.";
+  } else if (requireVideo && !videoSummary.renderableCount && screenshotSummary.renderableCount) {
+    note = "Video proof is required for this finding. Saved pictures exist separately, but no playable video was attached.";
+  } else if (requireVideo && !videoSummary.renderableCount && videoSummary.referenceCount) {
+    note = "Video proof references exist, but no playable video is available for this finding.";
+  } else if (!totalRenderable && totalReferences) {
+    note = "Proof references exist, but no renderable screenshot or video is available for this finding.";
+  } else if (primaryAsset?.kind === "video") {
+    note = "Video captured for this finding.";
+  } else if (primaryAsset?.kind === "screenshot") {
+    note = "Screenshot captured for this finding.";
   } else if (state === "missing") {
-    note = "This finding does not yet have screenshot proof attached.";
+    note = "This finding does not yet have screenshot or video proof attached.";
   }
 
   return {
     state,
     label: proofLabels[state] || proofLabels.missing,
     note,
+    primaryAsset,
     images,
-    imageCount: summary.renderableCount,
-    referenceCount: summary.referenceCount,
-    screenshotCount: screenshots.length
+    videos: videoItems,
+    imageCount: screenshotSummary.renderableCount,
+    videoCount: videoSummary.renderableCount,
+    renderableCount: totalRenderable,
+    referenceCount: totalReferences,
+    screenshotCount: screenshots.length,
+    videoReferenceCount: videos.length,
+    screenshotSummary,
+    videoSummary
   };
 }
 
 function renderFindingProofCard(report, finding, title, options = {}) {
   const model = buildFindingProofModel(report, finding, {
-    maxItems: options.maxItems || 1
+    maxItems: options.maxItems || 1,
+    preferVideo: options.preferVideo !== false,
+    requireVideo: options.requireVideo !== false
   });
+  const toneClass = String(options.toneClass || getFindingIssueToneClass(finding) || "severity-low").trim();
   const replayFrame = Number.isInteger(options.replayFrame) && options.replayFrame >= 0 ? options.replayFrame : -1;
   const replayTarget = String(options.replayTarget || "").trim();
-  const primaryImage = model.images[0] || null;
+  const primaryAsset = model.primaryAsset || null;
   const actions = [];
 
-  if (primaryImage) {
+  if (primaryAsset) {
     actions.push(
-      `<a href="${escapeHtml(primaryImage.url)}" target="_blank" rel="noreferrer">Open screenshot</a>`
+      `<a href="${escapeHtml(primaryAsset.url)}" target="_blank" rel="noreferrer">Open ${escapeHtml(primaryAsset.kind)}</a>`
     );
   }
   if (replayTarget && replayFrame >= 0) {
@@ -1300,16 +2245,20 @@ function renderFindingProofCard(report, finding, title, options = {}) {
   }
 
   return `
-    <div class="finding-proof-card is-${escapeHtml(model.state)}">
+    <div class="finding-proof-card is-${escapeHtml(model.state)} tone-${escapeHtml(toneClass)}">
       <div class="finding-proof-head">
         <span class="finding-section-label">${escapeHtml(options.kicker || "Proof")}</span>
-        <span class="finding-proof-badge is-${escapeHtml(model.state)}">${escapeHtml(model.label)}</span>
+        <span class="finding-proof-badge is-${escapeHtml(model.state)} tone-${escapeHtml(toneClass)}">${escapeHtml(model.label)}</span>
       </div>
       ${
-        primaryImage
-          ? `<a class="finding-proof-media" href="${escapeHtml(primaryImage.url)}" target="_blank" rel="noreferrer">
-              <img src="${escapeHtml(primaryImage.url)}" alt="${escapeHtml(title)} screenshot proof" loading="lazy" onerror="this.closest('.finding-proof-media').style.display='none'" />
+        primaryAsset?.kind === "screenshot"
+          ? `<a class="finding-proof-media" href="${escapeHtml(primaryAsset.url)}" target="_blank" rel="noreferrer">
+              <img src="${escapeHtml(primaryAsset.url)}" alt="${escapeHtml(title)} screenshot proof" loading="lazy" onerror="this.closest('.finding-proof-media').style.display='none'" />
             </a>`
+          : primaryAsset?.kind === "video"
+            ? `<div class="finding-proof-media">
+                <video src="${escapeHtml(primaryAsset.url)}" controls preload="metadata" playsinline onerror="this.closest('.finding-proof-media').style.display='none'"></video>
+              </div>`
           : `<div class="finding-proof-empty">
               <strong>${escapeHtml(model.label)}</strong>
               <p>${escapeHtml(model.note)}</p>
@@ -1317,10 +2266,19 @@ function renderFindingProofCard(report, finding, title, options = {}) {
       }
       <p class="finding-proof-note">${escapeHtml(model.note)}</p>
       ${
-        model.referenceCount > 0 && model.images.length
-          ? `<p class="finding-proof-count">${escapeHtml(String(model.referenceCount))} screenshot ref${
-              model.referenceCount === 1 ? "" : "s"
-            } attached</p>`
+        model.referenceCount > 0 && model.renderableCount
+          ? `<p class="finding-proof-count">${escapeHtml(
+              [
+                model.screenshotSummary.referenceCount
+                  ? `${model.screenshotSummary.referenceCount} screenshot ref${model.screenshotSummary.referenceCount === 1 ? "" : "s"}`
+                  : "",
+                model.videoSummary.referenceCount
+                  ? `${model.videoSummary.referenceCount} video ref${model.videoSummary.referenceCount === 1 ? "" : "s"}`
+                  : ""
+              ]
+                .filter(Boolean)
+                .join(" · ")
+            )}</p>`
           : ""
       }
       ${
@@ -1329,8 +2287,11 @@ function renderFindingProofCard(report, finding, title, options = {}) {
           : ""
       }
       ${
-        !primaryImage && model.referenceCount
-          ? `<div class="finding-proof-supporting">${renderLinkRow(report, finding?.evidence?.screenshots || [], "Screenshot")}</div>`
+        (!primaryAsset && model.referenceCount) || model.videoCount > 0
+          ? `<div class="finding-proof-supporting">
+              ${renderLinkRow(report, finding?.evidence?.screenshots || [], "Screenshot")}
+              ${renderLinkRow(report, finding?.evidence?.videos || [], "Video")}
+            </div>`
           : ""
       }
     </div>
@@ -1338,7 +2299,7 @@ function renderFindingProofCard(report, finding, title, options = {}) {
 }
 
 function renderFindingScreenshotGallery(report, finding, title) {
-  const screenshots = Array.isArray(finding?.evidence?.screenshots) ? finding.evidence.screenshots : [];
+  const screenshots = getRelevantFindingScreenshotRefs(report, finding, { maxItems: 6 });
   if (!screenshots.length) {
     return '<p class="evidence-unavailable-note">No screenshots were captured for this finding.</p>';
   }
@@ -1348,7 +2309,14 @@ function renderFindingScreenshotGallery(report, finding, title) {
   for (let index = 0; index < imageItems.length; index += 1) {
     const resolvedUrl = imageItems[index].url;
     const caption =
-      truncateText(finding?.observed_behavior || finding?.title || "Captured during the tester walkthrough.", 110) ||
+      truncateText(
+        findingNeedsRelevantScreenshotTail(finding)
+          ? simplifyReportNarrative(
+              getFindingDiagnosticDetails(finding)?.failure_reason || finding?.observed_behavior || finding?.title
+            )
+          : simplifyReportNarrative(finding?.observed_behavior || finding?.title || "Captured during the tester walkthrough."),
+        110
+      ) ||
       "Captured during the tester walkthrough.";
     cards.push(`
       <a class="finding-detail-shot" href="${escapeHtml(resolvedUrl)}" target="_blank" rel="noreferrer">
@@ -1368,6 +2336,223 @@ function renderFindingScreenshotGallery(report, finding, title) {
   return `<div class="finding-detail-shot-grid">${cards.join("")}</div>`;
 }
 
+function getFindingDiagnosticDetails(finding) {
+  const raw = finding && typeof finding === "object" ? finding.diagnostic_details : null;
+  return raw && typeof raw === "object" ? raw : {};
+}
+
+function hasDiagnosticDetails(diagnostics) {
+  return Boolean(
+    diagnostics &&
+      typeof diagnostics === "object" &&
+      (diagnostics.current_url ||
+        diagnostics.current_state ||
+        diagnostics.failure_reason ||
+        diagnostics.last_successful_step ||
+        (Array.isArray(diagnostics.attempted_actions) && diagnostics.attempted_actions.length))
+  );
+}
+
+function renderDiagnosticDetailsMarkup(diagnostics, fallback = {}) {
+  const safeDiagnostics = diagnostics && typeof diagnostics === "object" ? diagnostics : {};
+  const attemptedActions = Array.isArray(diagnostics?.attempted_actions) ? diagnostics.attempted_actions : [];
+  const actionMarkup = attemptedActions.length
+    ? `<ol>${attemptedActions
+        .map((attempt, index) => {
+          const step = Number.isFinite(Number(attempt?.step)) ? `${Math.round(Number(attempt.step))}. ` : `${index + 1}. `;
+          const action = redactVendorText(String(attempt?.action || "").trim()) || "inspect";
+          const target = redactVendorText(String(attempt?.target || "").trim()) || "affected area";
+          const outcome = redactVendorText(String(attempt?.outcome || "").trim()) || "state observed";
+          const extras = [
+            redactVendorText(String(attempt?.ts || "").trim()) ? `At: ${redactVendorText(String(attempt.ts).trim())}` : "",
+            redactVendorText(String(attempt?.url || "").trim()) ? `URL: ${redactVendorText(String(attempt.url).trim())}` : "",
+            redactVendorText(String(attempt?.note || "").trim()) ? `Note: ${redactVendorText(String(attempt.note).trim())}` : ""
+          ].filter(Boolean);
+          return `<li>${escapeHtml(`${step}${action} -> ${target} -> ${outcome}${extras.length ? ` (${extras.join(" | ")})` : ""}`)}</li>`;
+        })
+        .join("")}</ol>`
+    : "<p>We did not save the exact action sequence for this finding.</p>";
+
+  const repeatedStateCount = Number(diagnostics?.repeated_state_count);
+
+  return `
+    <div class="finding-detail-copy">
+      <p><strong>Page loaded</strong> ${escapeHtml(safeDiagnostics?.page_loaded === true ? "Yes" : safeDiagnostics?.page_loaded === false ? "No" : "Unknown")}</p>
+      <p><strong>Current URL</strong> ${escapeHtml(redactVendorText(safeDiagnostics?.current_url || fallback.current_url || "We did not save this part."))}</p>
+      <p><strong>Current state</strong> ${escapeHtml(redactVendorText(safeDiagnostics?.current_state || fallback.current_state || "We did not save this part."))}</p>
+      <p><strong>Last good step</strong> ${escapeHtml(redactVendorText(safeDiagnostics?.last_successful_step || fallback.last_successful_step || "We did not save this part."))}</p>
+      <p><strong>Why this was reported</strong> ${escapeHtml(simplifyReportNarrative(safeDiagnostics?.failure_reason || fallback.failure_reason || "We did not save this part."))}</p>
+      ${
+        Number.isFinite(repeatedStateCount) && repeatedStateCount > 0
+          ? `<p><strong>Same-state repeats</strong> ${escapeHtml(String(Math.round(repeatedStateCount)))}</p>`
+          : ""
+      }
+    </div>
+    <div class="finding-detail-copy">
+      <p><strong>Actions tried</strong></p>
+      ${actionMarkup}
+    </div>
+  `;
+}
+
+function renderFindingDiagnosticDetails(finding) {
+  const diagnostics = getFindingDiagnosticDetails(finding);
+  return renderDiagnosticDetailsMarkup(diagnostics, {
+    current_url: finding?.page?.url || "",
+    failure_reason: finding?.observed_behavior || ""
+  });
+}
+
+function renderFindingTimelineSection(finding) {
+  const diagnostics = getFindingDiagnosticDetails(finding);
+  const attemptedActions = Array.isArray(diagnostics?.attempted_actions) ? diagnostics.attempted_actions.slice(0, 8) : [];
+  const blockerAction = attemptedActions.length ? attemptedActions[attemptedActions.length - 1] : null;
+  const repeatedStateCount = Number(diagnostics?.repeated_state_count);
+  const blockerStepLabel = blockerAction
+    ? `${redactVendorText(String(blockerAction.action || "inspect"))} -> ${redactVendorText(
+        String(blockerAction.target || "affected area")
+      )}`
+    : "We did not save this part.";
+  const timelineMarkup = attemptedActions.length
+    ? `<ol>${attemptedActions
+        .map((attempt, index) => {
+          const step = Number.isFinite(Number(attempt?.step)) ? `${Math.round(Number(attempt.step))}. ` : `${index + 1}. `;
+          const action = redactVendorText(String(attempt?.action || "").trim()) || "inspect";
+          const target = redactVendorText(String(attempt?.target || "").trim()) || "affected area";
+          const outcome = redactVendorText(String(attempt?.outcome || "").trim()) || "state observed";
+          const timing = redactVendorText(String(attempt?.ts || "").trim());
+          return `<li>${escapeHtml(`${step}${action} -> ${target} -> ${outcome}${timing ? ` (${timing})` : ""}`)}</li>`;
+        })
+        .join("")}</ol>`
+    : "<p>We did not save the step-by-step list for this finding.</p>";
+
+  return `
+    <section class="finding-detail-section">
+      <div class="finding-detail-section-head">
+        <h3>What happened in order</h3>
+      </div>
+      <div class="finding-detail-copy">
+        <p><strong>Last good step</strong> ${escapeHtml(redactVendorText(diagnostics?.last_successful_step || "We did not save this part."))}</p>
+        <p><strong>Blocker step</strong> ${escapeHtml(blockerStepLabel)}</p>
+        <p><strong>Current URL</strong> ${escapeHtml(redactVendorText(diagnostics?.current_url || finding?.page?.url || "We did not save this part."))}</p>
+        <p><strong>Exact blocker</strong> ${escapeHtml(simplifyReportNarrative(diagnostics?.failure_reason || finding?.observed_behavior || "We did not save this part."))}</p>
+        ${
+          Number.isFinite(repeatedStateCount) && repeatedStateCount > 0
+            ? `<p><strong>Repeated waits / retries</strong> ${escapeHtml(String(Math.round(repeatedStateCount)))}</p>`
+            : ""
+        }
+      </div>
+      <div class="finding-detail-copy">
+        ${timelineMarkup}
+      </div>
+    </section>
+  `;
+}
+
+function renderRelevantLogList(logs, emptyLabel) {
+  const items = Array.isArray(logs)
+    ? logs
+        .map((item) => redactVendorText(String(item || "").trim()))
+        .filter(Boolean)
+        .slice(0, 12)
+    : [];
+
+  if (!items.length) {
+    return `<p>${escapeHtml(emptyLabel)}</p>`;
+  }
+
+  return `<ol>${items.map((item) => `<li><code>${escapeHtml(item)}</code></li>`).join("")}</ol>`;
+}
+
+function renderFindingRelevantLogsSection(finding) {
+  const consoleLogs = Array.isArray(finding?.evidence?.console_logs) ? finding.evidence.console_logs : [];
+  const networkLogs = Array.isArray(finding?.evidence?.network_logs) ? finding.evidence.network_logs : [];
+
+  if (!consoleLogs.length && !networkLogs.length) {
+    return "";
+  }
+
+  return `
+    <section class="finding-detail-section">
+      <div class="finding-detail-section-head">
+        <h3>Relevant logs</h3>
+        <p>The closest saved console and network events around this blocker.</p>
+      </div>
+      <div class="finding-detail-copy">
+        <p><strong>Console</strong></p>
+        ${renderRelevantLogList(consoleLogs, "No nearby console events were saved for this finding.")}
+      </div>
+      <div class="finding-detail-copy">
+        <p><strong>Network</strong></p>
+        ${renderRelevantLogList(networkLogs, "No nearby network events were saved for this finding.")}
+      </div>
+    </section>
+  `;
+}
+
+function getReportFailureDiagnostics(report) {
+  const raw = report && typeof report === "object" ? report.failure_diagnostics : null;
+  return raw && typeof raw === "object" ? raw : {};
+}
+
+function renderReportFailureDiagnosticsSection(report) {
+  const diagnostics = getReportFailureDiagnostics(report);
+  if (!hasDiagnosticDetails(diagnostics)) {
+    return "";
+  }
+
+  const targetUrl = String(report?.metadata?.target_url || report?.target || "").trim();
+  const failureReason = String(
+    diagnostics.failure_reason || report?.metadata?.failure_message || report?.summary?.note || ""
+  ).trim();
+  const galleryConsoleLogs =
+    report && report.evidence_gallery && typeof report.evidence_gallery === "object" && Array.isArray(report.evidence_gallery.console_logs)
+      ? report.evidence_gallery.console_logs.slice(-8)
+      : [];
+  const galleryNetworkLogs =
+    report && report.evidence_gallery && typeof report.evidence_gallery === "object" && Array.isArray(report.evidence_gallery.network_logs)
+      ? report.evidence_gallery.network_logs.slice(-10)
+      : [];
+
+  return `
+    <section class="report-findings-ledger" id="section-failure-diagnostics">
+      <div class="report-section-head">
+        <h3>Failure diagnostics</h3>
+        <p>This run failed before normal blocker extraction finished. These are the concrete details we saved anyway.</p>
+      </div>
+      <article class="finding-ledger-item">
+        <div class="finding-ledger-body">
+          ${renderDiagnosticDetailsMarkup(diagnostics, {
+            current_url: targetUrl,
+            failure_reason: failureReason,
+            current_state: failureReason
+          })}
+          ${
+            galleryConsoleLogs.length || galleryNetworkLogs.length
+              ? `
+                <section class="finding-detail-section">
+                  <div class="finding-detail-section-head">
+                    <h3>Relevant logs</h3>
+                    <p>The closest saved browser events from the failed run.</p>
+                  </div>
+                  <div class="finding-detail-copy">
+                    <p><strong>Console</strong></p>
+                    ${renderRelevantLogList(galleryConsoleLogs, "No nearby console events were saved for this run.")}
+                  </div>
+                  <div class="finding-detail-copy">
+                    <p><strong>Network</strong></p>
+                    ${renderRelevantLogList(galleryNetworkLogs, "No nearby network events were saved for this run.")}
+                  </div>
+                </section>
+              `
+              : ""
+          }
+        </div>
+      </article>
+    </section>
+  `;
+}
+
 function renderFindingDetailModalContent(report, row, finding, findingIndex) {
   const safeReport = report && typeof report === "object" ? report : {};
   const safeRow = row && typeof row === "object" ? row : {};
@@ -1375,7 +2560,7 @@ function renderFindingDetailModalContent(report, row, finding, findingIndex) {
   const title = safeFinding.title || safeFinding.observed_behavior || safeFinding.id || `Finding ${findingIndex + 1}`;
   const typeVisual = getFindingTypeVisual(safeFinding.type);
   const severity = normalizeSeverity(safeFinding.severity);
-  const priorityScore = computeFindingPriorityScore(safeFinding);
+  const priorityScore = getDisplayProblemPriorityScore(safeFinding);
   const confidencePct = toConfidencePercent(safeFinding.confidence);
   const journeyLabel = getFindingJourneyLabel(safeFinding);
   const recommendation = deriveFindingRecommendation(safeReport, safeFinding, findingIndex);
@@ -1439,7 +2624,7 @@ function renderFindingDetailModalContent(report, row, finding, findingIndex) {
     <div class="finding-detail-grid">
       <section class="finding-detail-section finding-detail-section-proof">
         <div class="finding-detail-section-head">
-          <h3>Saved picture</h3>
+          <h3>Proof</h3>
         </div>
         ${renderFindingProofCard(safeReport, safeFinding, title, {
           maxItems: 1,
@@ -1448,7 +2633,7 @@ function renderFindingDetailModalContent(report, row, finding, findingIndex) {
         ${
           screenshotSummary.renderableCount > 1
             ? `<div class="finding-detail-supporting">
-                <p class="finding-detail-supporting-label">More pictures</p>
+                <p class="finding-detail-supporting-label">Relevant pictures around where it got stuck</p>
                 ${renderFindingScreenshotGallery(safeReport, safeFinding, title)}
               </div>`
             : ""
@@ -1458,13 +2643,19 @@ function renderFindingDetailModalContent(report, row, finding, findingIndex) {
           ${renderLinkRow(safeReport, safeFinding?.evidence?.videos || [], "Video")}
         </div>
       </section>
+      ${renderFindingTimelineSection(safeFinding)}
+      ${renderFindingRelevantLogsSection(safeFinding)}
       <section class="finding-detail-section finding-detail-section-emphasis">
         <h3>What happened</h3>
         ${renderTesterVoice(personaName, opinion, `${emotion.emoji} ${emotion.label}`)}
         <div class="finding-detail-copy">
           <p><strong>Should have happened</strong> ${escapeHtml(safeFinding.expected_behavior || "We did not save this part.")}</p>
-          <p><strong>What happened</strong> ${escapeHtml(redactVendorText(safeFinding.observed_behavior || "We did not save this part."))}</p>
+          <p><strong>What happened</strong> ${escapeHtml(simplifyReportNarrative(safeFinding.observed_behavior || "We did not save this part."))}</p>
         </div>
+      </section>
+      <section class="finding-detail-section">
+        <h3>Diagnostic details</h3>
+        ${renderFindingDiagnosticDetails(safeFinding)}
       </section>
       <section class="finding-detail-section">
         <div class="finding-detail-section-head">
@@ -1474,6 +2665,7 @@ function renderFindingDetailModalContent(report, row, finding, findingIndex) {
         <p>${escapeHtml(recommendation)}</p>
         ${fixHint ? `<p class="finding-detail-subnote"><strong>Helpful hint</strong> ${escapeHtml(fixHint)}</p>` : ""}
       </section>
+      ${renderFindingEngineeringTriageSection(safeReport, safeFinding)}
       <section class="finding-detail-section">
         <h3>More facts</h3>
         <div class="finding-detail-facts finding-detail-facts-compact">
@@ -1494,8 +2686,16 @@ function renderFindingDetailModalContent(report, row, finding, findingIndex) {
             <strong>${escapeHtml(safeReport?.run_id || safeRow?.run_id || "Unknown")}</strong>
           </div>
           <div class="finding-detail-fact">
-            <span>Saved picture</span>
-            <strong>${Number.isInteger(replayFrame) && replayFrame >= 0 ? `Picture ${escapeHtml(String(replayFrame + 1))}` : "No saved picture"}</strong>
+            <span>Saved proof</span>
+            <strong>${
+              proofModel.primaryAsset
+                ? proofModel.primaryAsset.kind === "video"
+                  ? "Video"
+                  : Number.isInteger(replayFrame) && replayFrame >= 0
+                    ? `Picture ${escapeHtml(String(replayFrame + 1))}`
+                    : "Picture"
+                : "No saved proof"
+            }</strong>
           </div>
         </div>
       </section>
@@ -1547,25 +2747,23 @@ function closeFindingDetailModal(options = {}) {
   }
 }
 
-function buildFindingLlmPrompt(report, row, finding, findingIndex, targetModel) {
-  const modelName = String(targetModel || "").trim().toLowerCase() === "claude" ? "Claude" : "GPT Codex";
+function buildFindingLlmPrompt(report, row, finding, findingIndex) {
   const safeReport = report && typeof report === "object" ? report : {};
   const safeRow = row && typeof row === "object" ? row : {};
   const safeFinding = finding && typeof finding === "object" ? finding : {};
   const recommendation = deriveFindingRecommendation(safeReport, safeFinding, findingIndex);
-  const screenshotSummary = getEvidenceAttachmentSummary(
-    safeReport,
-    "screenshot",
-    safeFinding?.evidence?.screenshots || []
-  );
-  const videoSummary = getEvidenceAttachmentSummary(safeReport, "video", safeFinding?.evidence?.videos || []);
+  const evidenceLines = buildFindingEvidencePromptLines(safeReport, safeFinding, {
+    maxMediaItems: 6,
+    maxLogs: 8,
+    maxAttempts: 12
+  });
   const shareUrl = buildReportShareUrl(safeReport?.run_id || safeRow?.run_id, safeRow);
   const findingType = formatFindingTypeLabel(safeFinding.type);
-  const priority = computeFindingPriorityScore(safeFinding);
+  const priority = getDisplayProblemPriorityScore(safeFinding);
   const title = String(safeFinding.title || safeFinding.id || `Finding ${findingIndex + 1}`).trim();
 
   return [
-    `You are ${modelName}. Generate an implementation-ready fix for the issue below.`,
+    "You are an LLM dev assistant. Generate an implementation-ready fix for the issue below.",
     "",
     "Context",
     `- Product: ${safeReport.target || safeRow.target || "Unknown target"}`,
@@ -1585,12 +2783,7 @@ function buildFindingLlmPrompt(report, row, finding, findingIndex, targetModel) 
     `- Recommendation: ${recommendation || "n/a"}`,
     `- Supporting fix hint: ${redactVendorText(safeFinding.fix_hint || "n/a")}`,
     "",
-    "Evidence",
-    `- Screenshot proof attached: ${screenshotSummary.renderableCount}`,
-    `- Screenshot refs without preview: ${screenshotSummary.referenceCount}`,
-    `- Videos attached: ${videoSummary.renderableCount}`,
-    `- Video refs without preview: ${videoSummary.referenceCount}`,
-    "",
+    ...evidenceLines,
     "Output requirements",
     "1. Root cause hypothesis tied to the observed behavior.",
     "2. Exact code-level patch plan with files/components to update.",
@@ -1600,16 +2793,15 @@ function buildFindingLlmPrompt(report, row, finding, findingIndex, targetModel) 
   ].join("\n");
 }
 
-function buildFinalFixLlmPrompt(report, row, targetModel) {
-  const modelName = String(targetModel || "").trim().toLowerCase() === "claude" ? "Claude" : "GPT Codex";
+function buildFinalFixLlmPrompt(report, row) {
   const safeReport = report && typeof report === "object" ? report : {};
   const safeRow = row && typeof row === "object" ? row : {};
-  const findings = sortFindingsByPriority(Array.isArray(safeReport.findings) ? safeReport.findings : []).slice(0, 6);
+  const findings = buildDisplayProblemEntries(safeReport).slice(0, 4);
   const recommendations = Array.isArray(safeReport.recommendations) ? safeReport.recommendations.map((item) => redactVendorText(item)) : [];
   const shareUrl = buildReportShareUrl(safeReport?.run_id || safeRow?.run_id, safeRow);
 
   return [
-    `You are ${modelName}. Produce a complete remediation plan for this QA report.`,
+    "You are an LLM dev assistant. Produce a complete remediation plan for this QA report.",
     "",
     "Context",
     `- Product: ${safeReport.target || safeRow.target || "Unknown target"}`,
@@ -1619,9 +2811,17 @@ function buildFinalFixLlmPrompt(report, row, targetModel) {
     "",
     "Top findings",
     ...(findings.length
-      ? findings.map((finding, index) => {
-          const priority = computeFindingPriorityScore(finding);
-          return `${index + 1}. ${finding.title || finding.id || "Untitled finding"} | ${String(finding.severity || "medium").toUpperCase()} | Priority ${priority}/100 | Confidence ${finding.confidence ?? "n/a"} | Fix hint: ${redactVendorText(finding.fix_hint || "n/a")}`;
+      ? findings.flatMap((finding, index) => {
+          const priority = getDisplayProblemPriorityScore(finding);
+          const evidenceLines = buildFindingEvidencePromptLines(safeReport, finding, {
+            maxMediaItems: 3,
+            maxLogs: 4,
+            maxAttempts: 6
+          });
+          return [
+            `${index + 1}. ${finding.title || finding.id || "Untitled finding"} | ${String(finding.severity || "medium").toUpperCase()} | Priority ${priority}/100 | Confidence ${finding.confidence ?? "n/a"} | Fix hint: ${redactVendorText(finding.fix_hint || "n/a")}`,
+            ...evidenceLines.map((line) => `   ${line}`)
+          ];
         })
       : ["1. No findings were captured."]),
     "",
@@ -1639,7 +2839,7 @@ function buildFinalFixLlmPrompt(report, row, targetModel) {
 
 function attachLlmCopyButtons(root = null) {
   const host = root || document;
-  const buttons = Array.from(host.querySelectorAll("[data-llm-target][data-llm-scope]"));
+  const buttons = Array.from(host.querySelectorAll("[data-llm-copy='1'][data-llm-scope]"));
   for (const button of buttons) {
     if (button.dataset.bound === "1") {
       continue;
@@ -1647,10 +2847,10 @@ function attachLlmCopyButtons(root = null) {
     button.dataset.bound = "1";
     button.addEventListener("click", async () => {
       const scope = String(button.getAttribute("data-llm-scope") || "").trim().toLowerCase();
-      const targetModel = String(button.getAttribute("data-llm-target") || "codex").trim().toLowerCase();
-      const baselineLabel = String(button.dataset.label || button.textContent || "Copy for LLM").trim();
-      if (!button.dataset.label) {
-        button.dataset.label = baselineLabel;
+      const findingToken = String(button.getAttribute("data-llm-finding-token") || "").trim();
+      const baselineHtml = String(button.dataset.labelHtml || button.innerHTML || "Copy Fix for AI Dev").trim();
+      if (!button.dataset.labelHtml) {
+        button.dataset.labelHtml = baselineHtml;
       }
 
       const context = resolveActiveReportContext();
@@ -1660,7 +2860,7 @@ function attachLlmCopyButtons(root = null) {
         button.textContent = "Unavailable";
         button.disabled = true;
         window.setTimeout(() => {
-          button.textContent = baselineLabel;
+          button.innerHTML = baselineHtml;
           button.disabled = false;
         }, 1200);
         return;
@@ -1669,28 +2869,35 @@ function attachLlmCopyButtons(root = null) {
       let promptText = "";
       if (scope === "finding") {
         const findingIndex = Number(button.getAttribute("data-llm-finding-index"));
-        const sortedFindings = sortFindingsByPriority(Array.isArray(report.findings) ? report.findings : []);
-        const finding = Number.isInteger(findingIndex) && findingIndex >= 0 ? sortedFindings[findingIndex] : null;
+        const displayProblems = buildDisplayProblemEntries(report);
+        let finding = findingToken
+          ? displayProblems.find((item, index) => buildFindingModalToken(item, index) === findingToken) || null
+          : null;
+        if (!finding && Number.isInteger(findingIndex) && findingIndex >= 0) {
+          finding = displayProblems[findingIndex] || null;
+        }
         if (!finding) {
           button.textContent = "Unavailable";
           button.disabled = true;
           window.setTimeout(() => {
-            button.textContent = baselineLabel;
+            button.innerHTML = baselineHtml;
             button.disabled = false;
           }, 1200);
           return;
         }
-        promptText = buildFindingLlmPrompt(report, row, finding, findingIndex, targetModel);
+        const resolvedIndex = displayProblems.indexOf(finding);
+        promptText = buildFindingLlmPrompt(report, row, finding, resolvedIndex >= 0 ? resolvedIndex : Math.max(0, findingIndex));
       } else {
-        promptText = buildFinalFixLlmPrompt(report, row, targetModel);
+        promptText = buildFinalFixLlmPrompt(report, row);
       }
 
       button.textContent = "Copying…";
       button.disabled = true;
       const copied = await copyTextToClipboard(promptText);
       button.textContent = copied ? "Copied" : "Copy failed";
+      showReportToast(copied ? "Copied fix plus evidence for your LLM dev." : "Copy failed.", copied ? "success" : "error");
       window.setTimeout(() => {
-        button.textContent = baselineLabel;
+        button.innerHTML = baselineHtml;
         button.disabled = false;
       }, 1200);
     });
@@ -1834,6 +3041,10 @@ function isDashboardAuthorized() {
   return Boolean(window.SwarmAuth.isAuthorized());
 }
 
+function hasSharedReportAccess() {
+  return Boolean(String(state.shareKey || "").trim() && String(state.selectedRunId || state.requestedRunId || "").trim());
+}
+
 function isDashboardAuthReady() {
   if (!requiresDashboardAuth) {
     return true;
@@ -1842,6 +3053,18 @@ function isDashboardAuthReady() {
     return false;
   }
   return Boolean(window.SwarmAuth.isSessionChecked());
+}
+
+function ensureRequestedRunFromUrl() {
+  const params = new URLSearchParams(window.location.search || "");
+  const runIdFromUrl = parseRunIdFromParams(params);
+  if (runIdFromUrl) {
+    state.requestedRunId = runIdFromUrl;
+    if (!state.selectedRunId) {
+      state.selectedRunId = runIdFromUrl;
+    }
+  }
+  return runIdFromUrl;
 }
 
 async function waitForDashboardAuthReady() {
@@ -1917,7 +3140,38 @@ function renderAuthRequiredState() {
     if (elements.healthHeroTitle) {
       elements.healthHeroTitle.textContent = `${getEnvironmentLabel(getActiveEnvironment())} Health`;
     }
+    resetQaAutomationState();
+    if (elements.qaScheduleMeta) {
+      elements.qaScheduleMeta.textContent = "Sign in to set up regular QA.";
+    }
+    if (elements.qaScheduleStateBadge) {
+      elements.qaScheduleStateBadge.className = "issue-severity severity-low";
+      elements.qaScheduleStateBadge.textContent = "Auth Required";
+    }
+    if (elements.qaScheduleSaveAction) {
+      elements.qaScheduleSaveAction.disabled = true;
+    }
+    if (elements.qaScheduleRunNowAction) {
+      elements.qaScheduleRunNowAction.disabled = true;
+    }
+    if (elements.qaScheduleToggleAction) {
+      elements.qaScheduleToggleAction.disabled = true;
+    }
+    if (elements.qaAlertsMeta) {
+      elements.qaAlertsMeta.textContent = "Sign in to load alerts.";
+    }
+    if (elements.qaAlertsItems) {
+      elements.qaAlertsItems.innerHTML = '<div class="app-empty"><p>Sign in to load alerts.</p></div>';
+    }
   }
+
+  renderDistributionPacksPanel({
+    error: "Sign in to load distribution packs.",
+    clearData: true
+  });
+  resetDistributionLauncher();
+  setDistributionLauncherMessage("Sign in to load submission brands and queue distribution packs.", "error");
+  renderDistributionLauncher();
 
   setOnboardingMessage("", "");
   renderWorkerHealthIndicator();
@@ -1963,6 +3217,7 @@ function getReportRuntimeContext(extra = {}) {
     activeRenderedReport: state.activeRenderedReport,
     activeRenderedRow: state.activeRenderedRow,
     selectedRunId: state.selectedRunId,
+    requestedRunId: state.requestedRunId,
     runs: state.runs,
     allRuns: state.allRuns,
     ...extra
@@ -1973,6 +3228,7 @@ function getReportRuntimeHelpers(extra = {}) {
   return {
     getPinnedRunRow,
     isQueueActiveStatus,
+    isRepoTriageActiveStatus,
     fetchRunStatus,
     fetchReport,
     buildLiveFallbackReport,
@@ -2249,11 +3505,14 @@ function prefillOnboardingFromConfig(config = {}) {
   if (elements.onboardingScenariosCustom) {
     elements.onboardingScenariosCustom.value = Array.from(remainingScenarioSet).join("\n");
   }
+  applyOnboardingRepoTriageConfig(safeConfig.repoTriage || safeConfig.repo_triage || {});
 
   updateOnboardingScopeUi();
   syncOnboardingPersonaField();
   syncOnboardingScenariosField();
   maybePopulateBrandKeyFromTarget();
+  renderOnboardingRepoConnectionUi();
+  void loadOnboardingRepoConnection(brandKey || getOnboardingBrandKey(), { force: true, includeRepositories: true });
   refreshOnboardingPreview();
   refreshOnboardingLaunchSummary();
 }
@@ -2268,6 +3527,7 @@ function buildDashboardRunPayload(config = {}, options = {}) {
   const persona = String(config.persona || DEFAULT_DASHBOARD_PERSONA).trim().slice(0, 500) || DEFAULT_DASHBOARD_PERSONA;
   const goal = buildDashboardRunGoal({ ...config, targetUrl, brandName, scenarios, persona });
   const runId = buildDashboardRunId(brandKey);
+  const repoTriage = normalizeRepoTriageConfigInput(config.repoTriage || config.repo_triage);
 
   return {
     runId,
@@ -2282,6 +3542,7 @@ function buildDashboardRunPayload(config = {}, options = {}) {
         brand_key: brandKey || null,
         brand_name: brandName,
         goal,
+        repo_triage: repoTriage,
         launched_from: String(options.launchedFrom || options.source || "dashboard_onboarding").trim() || "dashboard_onboarding",
         retry_of_run_id: String(options.retryOfRunId || "").trim() || null
       }
@@ -2838,10 +4099,536 @@ function normalizeScenarioListInput(value) {
   return parseScenarioText(value);
 }
 
+function parseLineListInput(value, maxItems = 8) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+      .slice(0, maxItems);
+  }
+
+  return String(value || "")
+    .split(/\r?\n|,/g)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function normalizeRepoConnectionRepository(value) {
+  const repo = value && typeof value === "object" ? value : {};
+  const owner = String(repo.owner || "").trim().slice(0, 200);
+  const name = String(repo.name || "").trim().slice(0, 200);
+  const fullName = String(repo.full_name || repo.fullName || "").trim().slice(0, 320) || (owner && name ? `${owner}/${name}` : "");
+  return {
+    id: Number.isFinite(Number(repo.id)) ? Number(repo.id) : null,
+    owner: owner || null,
+    name: name || null,
+    full_name: fullName || null,
+    default_branch: String(repo.default_branch || repo.defaultBranch || "").trim().slice(0, 128) || null,
+    html_url: String(repo.html_url || repo.htmlUrl || "").trim().slice(0, 4096) || null
+  };
+}
+
+function buildEmptyRepoConnection(brandKey = "") {
+  return {
+    brand_key: sanitizeBrandKey(brandKey),
+    provider: "github",
+    app_configured: true,
+    connection_status: "disconnected",
+    installation_id: null,
+    installation_account_login: null,
+    installation_account_type: null,
+    selected_repo_id: null,
+    selected_repo_owner: null,
+    selected_repo_name: null,
+    selected_repo_full_name: null,
+    default_branch: null,
+    path_allowlist: [],
+    repositories: [],
+    warning: "",
+    updated_at: null
+  };
+}
+
+function normalizeRepoConnectionPayload(payload, brandKey = "") {
+  const source = payload && typeof payload === "object" ? payload : {};
+  const connection = source.connection && typeof source.connection === "object" ? source.connection : {};
+  const base = buildEmptyRepoConnection(brandKey || connection.brand_key || connection.brandKey);
+  const repositoriesSource = Array.isArray(source.repositories)
+    ? source.repositories
+    : Array.isArray(connection.repositories)
+      ? connection.repositories
+      : [];
+  return {
+    ...base,
+    brand_key: sanitizeBrandKey(connection.brand_key || connection.brandKey || base.brand_key),
+    app_configured: source.app_configured !== false,
+    connection_status: String(connection.connection_status || connection.connectionStatus || base.connection_status).trim() || base.connection_status,
+    installation_id: Number.isFinite(Number(connection.installation_id || connection.installationId))
+      ? Number(connection.installation_id || connection.installationId)
+      : null,
+    installation_account_login:
+      String(connection.installation_account_login || connection.installationAccountLogin || "").trim().slice(0, 200) || null,
+    installation_account_type:
+      String(connection.installation_account_type || connection.installationAccountType || "").trim().slice(0, 64) || null,
+    selected_repo_id: Number.isFinite(Number(connection.selected_repo_id || connection.selectedRepoId))
+      ? Number(connection.selected_repo_id || connection.selectedRepoId)
+      : null,
+    selected_repo_owner:
+      String(connection.selected_repo_owner || connection.selectedRepoOwner || "").trim().slice(0, 200) || null,
+    selected_repo_name:
+      String(connection.selected_repo_name || connection.selectedRepoName || "").trim().slice(0, 200) || null,
+    selected_repo_full_name:
+      String(connection.selected_repo_full_name || connection.selectedRepoFullName || "").trim().slice(0, 320) || null,
+    default_branch:
+      String(connection.default_branch || connection.defaultBranch || "").trim().slice(0, 128) || null,
+    path_allowlist: parseLineListInput(connection.path_allowlist || connection.pathAllowlist || base.path_allowlist, 8),
+    repositories: repositoriesSource.map(normalizeRepoConnectionRepository).filter((repo) => repo.full_name),
+    warning: String(source.warning || "").trim().slice(0, 320),
+    updated_at: String(connection.updated_at || connection.updatedAt || "").trim().slice(0, 128) || null
+  };
+}
+
+function getCachedRepoConnection(brandKey = "") {
+  const safeBrandKey = sanitizeBrandKey(brandKey);
+  if (!safeBrandKey) {
+    return buildEmptyRepoConnection();
+  }
+  return state.repoConnections.get(safeBrandKey) || buildEmptyRepoConnection(safeBrandKey);
+}
+
+function setCachedRepoConnection(brandKey = "", payload = null) {
+  const safeBrandKey = sanitizeBrandKey(brandKey);
+  if (!safeBrandKey) {
+    return buildEmptyRepoConnection();
+  }
+  const normalized = normalizeRepoConnectionPayload(payload, safeBrandKey);
+  state.repoConnections.set(safeBrandKey, normalized);
+  return normalized;
+}
+
+function getOnboardingBrandKey() {
+  const explicit = sanitizeBrandKey(String(elements.onboardingBrandKey?.value || ""));
+  if (explicit) {
+    return explicit;
+  }
+  const targetUrl = normalizeOnboardingTargetUrlInput(String(elements.onboardingTargetUrl?.value || ""), { writeBack: false });
+  const inferred = sanitizeBrandKey(inferBrandKeyFromTargetUrl(targetUrl || ""));
+  return inferred || sanitizeBrandKey(state.filters.brand || "");
+}
+
+function normalizeRepoTriageConfigInput(value) {
+  const source = value && typeof value === "object" ? value : {};
+  const provider = String(source.provider || "").trim().toLowerCase() === "github" ? "github" : "workspace";
+  const refStrategy = String(source.ref_strategy || source.refStrategy || "").trim().toLowerCase();
+  return {
+    enabled: source.enabled === true,
+    provider,
+    repo: String(source.repo || "").trim().slice(0, 320) || null,
+    ref_strategy:
+      refStrategy === "deploy_sha" || refStrategy === "branch_fallback" || refStrategy === "workspace"
+        ? refStrategy
+        : provider === "github"
+          ? "branch_fallback"
+          : "workspace",
+    branch_fallback: String(source.branch_fallback || source.branchFallback || "").trim().slice(0, 128) || null,
+    path_allowlist: parseLineListInput(source.path_allowlist || source.pathAllowlist || source.paths || "", 8),
+    mode: "high_signal_only"
+  };
+}
+
+function getRepoTriageConfigFromProject(project) {
+  const metadata = project && typeof project.metadata === "object" ? project.metadata : {};
+  return normalizeRepoTriageConfigInput(metadata.repo_triage || metadata.repoTriage || {});
+}
+
+function readOnboardingRepoTriageConfig() {
+  const connection = getCachedRepoConnection(getOnboardingBrandKey());
+  const connectedRepo = connection.connection_status === "connected" ? connection.selected_repo_full_name : "";
+  return normalizeRepoTriageConfigInput({
+    enabled: elements.onboardingRepoTriageEnabled?.checked === true,
+    provider: connectedRepo ? "github" : "workspace",
+    repo: connectedRepo || elements.onboardingRepoTriageRepo?.value || "",
+    ref_strategy: connectedRepo ? "branch_fallback" : "workspace",
+    branch_fallback: connectedRepo ? connection.default_branch : "",
+    path_allowlist: elements.onboardingRepoTriagePaths?.value || connection.path_allowlist || ""
+  });
+}
+
+function applyOnboardingRepoTriageConfig(config = {}) {
+  const normalized = normalizeRepoTriageConfigInput(config);
+  if (elements.onboardingRepoTriageEnabled) {
+    elements.onboardingRepoTriageEnabled.checked = normalized.enabled;
+  }
+  if (elements.onboardingRepoTriageRepo) {
+    elements.onboardingRepoTriageRepo.value = normalized.repo || "";
+  }
+  if (elements.onboardingRepoTriagePaths) {
+    elements.onboardingRepoTriagePaths.value = normalized.path_allowlist.join("\n");
+  }
+}
+
+function buildRepoTriageReviewModel(config = {}) {
+  const normalized = normalizeRepoTriageConfigInput(config);
+  if (!normalized.enabled) {
+    return {
+      title: "Blind-only report",
+      meta: "Repo access is off, so this run stays purely blind."
+    };
+  }
+
+  const repoLabel = normalized.repo || "current workspace";
+  const pathLabel = normalized.path_allowlist.length
+    ? ` Scoped to ${normalized.path_allowlist.join(", ")}.`
+    : "";
+  if (normalized.provider === "github") {
+    const branchLabel = normalized.branch_fallback ? ` Default branch fallback: ${normalized.branch_fallback}.` : "";
+    return {
+      title: `GitHub triage on ${repoLabel}`,
+      meta: `After blind QA finds a real bug or dead end, inspect ${repoLabel} for likely files, causes, and tests.${branchLabel}${pathLabel}`
+    };
+  }
+  return {
+    title: `Enabled for ${repoLabel}`,
+    meta: `After blind QA finds a real bug or dead end, scan ${repoLabel} for likely files, causes, and tests.${pathLabel}`
+  };
+}
+
+async function requestBrandRepoConnection(brandKey, options = {}) {
+  const params = new URLSearchParams({
+    brand_key: sanitizeBrandKey(brandKey)
+  });
+  if (options.includeRepositories !== false) {
+    params.set("include_repositories", "1");
+  }
+  const response = await fetch(`/api/qa/github-app/connection?${params.toString()}`, {
+    credentials: "same-origin"
+  });
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    throw new Error("Sign in required to manage GitHub repo connections.");
+  }
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "Failed to load GitHub repo connection");
+  }
+  return data;
+}
+
+async function requestGitHubAppInstallUrl(brandKey) {
+  const response = await fetch("/api/qa/github-app/install-url", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      brand_key: sanitizeBrandKey(brandKey)
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    throw new Error("Sign in required to connect GitHub.");
+  }
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "Failed to start GitHub App install");
+  }
+  return data;
+}
+
+async function requestSaveBrandRepoConnectionSelection(payload = {}) {
+  const response = await fetch("/api/qa/github-app/connection", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    throw new Error("Sign in required to save the connected repository.");
+  }
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "Failed to save the connected repository");
+  }
+  return data;
+}
+
+async function requestDeleteBrandRepoConnection(brandKey) {
+  const params = new URLSearchParams({
+    brand_key: sanitizeBrandKey(brandKey)
+  });
+  const response = await fetch(`/api/qa/github-app/connection?${params.toString()}`, {
+    method: "DELETE",
+    credentials: "same-origin"
+  });
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    throw new Error("Sign in required to disconnect GitHub.");
+  }
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "Failed to disconnect GitHub");
+  }
+  return data;
+}
+
+function captureCurrentOnboardingConfig() {
+  syncOnboardingPersonaField();
+  syncOnboardingScenariosField();
+  return {
+    targetUrl: normalizeOnboardingTargetUrlInput(String(elements.onboardingTargetUrl?.value || ""), { writeBack: false }),
+    brandKey: getOnboardingBrandKey(),
+    persona: String(elements.onboardingPersona?.value || elements.onboardingPersonaCustom?.value || "").trim(),
+    scopeMode: normalizeScopeModeInput(elements.onboardingScopeMode?.value || "deep_45m"),
+    scenarios: normalizeScenarioListInput(elements.onboardingScenarios?.value || elements.onboardingScenariosCustom?.value || ""),
+    repoTriage: readOnboardingRepoTriageConfig()
+  };
+}
+
+function applyRepoConnectionToOnboardingFields(connection) {
+  const normalized = normalizeRepoConnectionPayload({ connection }, connection?.brand_key || "");
+  if (elements.onboardingRepoTriageRepo) {
+    if (normalized.connection_status === "connected" && normalized.selected_repo_full_name) {
+      elements.onboardingRepoTriageRepo.value = normalized.selected_repo_full_name;
+    }
+    elements.onboardingRepoTriageRepo.readOnly = normalized.connection_status === "connected";
+  }
+  if (
+    elements.onboardingRepoTriagePaths &&
+    normalized.path_allowlist.length &&
+    document.activeElement !== elements.onboardingRepoTriagePaths
+  ) {
+    elements.onboardingRepoTriagePaths.value = normalized.path_allowlist.join("\n");
+  }
+}
+
+function renderOnboardingRepoConnectionUi() {
+  const brandKey = getOnboardingBrandKey();
+  const connection = getCachedRepoConnection(brandKey);
+  const loading = Boolean(brandKey) && state.repoConnectionLoadingBrand === brandKey;
+  const repoSelect = elements.onboardingRepoConnectionSelect;
+
+  if (elements.onboardingRepoConnectionLabel) {
+    if (!brandKey) {
+      elements.onboardingRepoConnectionLabel.textContent = "Enter the product URL first so this brand has a repo connection target.";
+    } else if (loading) {
+      elements.onboardingRepoConnectionLabel.textContent = "Loading GitHub repo connection…";
+    } else if (connection.app_configured === false) {
+      elements.onboardingRepoConnectionLabel.textContent = "GitHub App is not configured on this deployment yet.";
+    } else if (connection.connection_status === "connected" && connection.selected_repo_full_name) {
+      elements.onboardingRepoConnectionLabel.textContent = `Connected to ${connection.selected_repo_full_name}.`;
+    } else if (connection.installation_id) {
+      elements.onboardingRepoConnectionLabel.textContent = `GitHub App installed on ${
+        connection.installation_account_login || "this account"
+      }. Choose the repo below.`;
+    } else {
+      elements.onboardingRepoConnectionLabel.textContent = "No GitHub repo connected for this brand yet.";
+    }
+  }
+
+  if (elements.onboardingRepoConnectionMeta) {
+    const warning = String(connection.warning || "").trim();
+    if (warning) {
+      elements.onboardingRepoConnectionMeta.textContent = warning;
+    } else if (connection.connection_status === "connected" && connection.default_branch) {
+      elements.onboardingRepoConnectionMeta.textContent = `Repo-aware diagnosis will snapshot ${connection.selected_repo_full_name} with ${connection.default_branch} as the branch fallback.`;
+    } else {
+      elements.onboardingRepoConnectionMeta.textContent =
+        "Connect a repo per brand. Blind QA stays blind until the run has already found something worth diagnosing.";
+    }
+  }
+
+  if (elements.onboardingRepoTriageConnect) {
+    elements.onboardingRepoTriageConnect.disabled = !brandKey || loading || !isDashboardAuthorized();
+    elements.onboardingRepoTriageConnect.textContent = loading
+      ? "Loading…"
+      : connection.installation_id
+        ? "Reconnect GitHub"
+        : "Connect GitHub";
+  }
+
+  if (elements.onboardingRepoTriageDisconnect) {
+    elements.onboardingRepoTriageDisconnect.hidden = !connection.installation_id;
+    elements.onboardingRepoTriageDisconnect.disabled = loading || !connection.installation_id;
+  }
+
+  if (elements.onboardingRepoConnectionSelectWrap) {
+    const shouldShowSelect = Boolean(connection.installation_id) && connection.repositories.length > 0;
+    elements.onboardingRepoConnectionSelectWrap.hidden = !shouldShowSelect;
+  }
+
+  if (repoSelect) {
+    const repositories = Array.isArray(connection.repositories) ? connection.repositories : [];
+    if (repositories.length) {
+      repoSelect.innerHTML = repositories
+        .map((repo) => {
+          const fullName = repo.full_name || "";
+          const defaultBranch = repo.default_branch ? ` · ${repo.default_branch}` : "";
+          return `<option value="${escapeHtml(fullName)}">${escapeHtml(fullName + defaultBranch)}</option>`;
+        })
+        .join("");
+      const selectedValue =
+        connection.selected_repo_full_name && repositories.some((repo) => repo.full_name === connection.selected_repo_full_name)
+          ? connection.selected_repo_full_name
+          : repositories[0].full_name || "";
+      repoSelect.value = selectedValue;
+      repoSelect.disabled = loading;
+    } else {
+      repoSelect.innerHTML = "";
+      repoSelect.disabled = true;
+    }
+  }
+
+  if (elements.onboardingRepoTriageRepo) {
+    elements.onboardingRepoTriageRepo.readOnly = connection.connection_status === "connected";
+    elements.onboardingRepoTriageRepo.placeholder =
+      connection.installation_id && !connection.selected_repo_full_name
+        ? "Choose the connected repository below"
+        : "org/repo or current workspace";
+  }
+}
+
+async function loadOnboardingRepoConnection(brandKey, options = {}) {
+  const safeBrandKey = sanitizeBrandKey(brandKey);
+  if (!safeBrandKey || !isDashboardAuthorized()) {
+    renderOnboardingRepoConnectionUi();
+    return buildEmptyRepoConnection(safeBrandKey);
+  }
+
+  const cached = getCachedRepoConnection(safeBrandKey);
+  if (options.force !== true && (cached.installation_id || cached.connection_status !== "disconnected")) {
+    renderOnboardingRepoConnectionUi();
+    return cached;
+  }
+
+  state.repoConnectionLoadingBrand = safeBrandKey;
+  renderOnboardingRepoConnectionUi();
+  try {
+    const payload = await requestBrandRepoConnection(safeBrandKey, {
+      includeRepositories: options.includeRepositories !== false
+    });
+    const normalized = setCachedRepoConnection(safeBrandKey, payload);
+    if (getOnboardingBrandKey() === safeBrandKey) {
+      applyRepoConnectionToOnboardingFields(normalized);
+    }
+    refreshOnboardingLaunchSummary();
+    return normalized;
+  } catch (error) {
+    const existing = getCachedRepoConnection(safeBrandKey);
+    state.repoConnections.set(safeBrandKey, {
+      ...existing,
+      brand_key: safeBrandKey,
+      warning: error.message || "Failed to load GitHub repo connection"
+    });
+    return state.repoConnections.get(safeBrandKey);
+  } finally {
+    if (state.repoConnectionLoadingBrand === safeBrandKey) {
+      state.repoConnectionLoadingBrand = "";
+    }
+    renderOnboardingRepoConnectionUi();
+  }
+}
+
+function loadOnboardingRepoConnectionForCurrentBrand(options = {}) {
+  return loadOnboardingRepoConnection(getOnboardingBrandKey(), options);
+}
+
+async function persistOnboardingRepoConnectionSelection(options = {}) {
+  const safeBrandKey = sanitizeBrandKey(options.brandKey || getOnboardingBrandKey());
+  const repoFullName =
+    String(options.repoFullName || elements.onboardingRepoConnectionSelect?.value || "").trim() ||
+    getCachedRepoConnection(safeBrandKey).selected_repo_full_name;
+  if (!safeBrandKey || !repoFullName) {
+    return null;
+  }
+
+  const saved = await requestSaveBrandRepoConnectionSelection({
+    brand_key: safeBrandKey,
+    repo_full_name: repoFullName,
+    path_allowlist: parseLineListInput(elements.onboardingRepoTriagePaths?.value || "", 8)
+  });
+  const normalized = setCachedRepoConnection(safeBrandKey, saved);
+  applyRepoConnectionToOnboardingFields(normalized);
+  renderOnboardingRepoConnectionUi();
+  refreshOnboardingLaunchSummary();
+  return normalized;
+}
+
+function consumeGitHubAppRedirectState() {
+  if (state.onboarding.githubRedirectHandled) {
+    return;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const status = sanitizeOptionalString(params.get("github_app_status"), 64);
+  const errorCode = sanitizeOptionalString(params.get("github_app_error"), 64);
+  const brandKey = sanitizeBrandKey(params.get("github_app_brand") || "");
+  if (!status && !errorCode) {
+    return;
+  }
+
+  state.onboarding.githubRedirectHandled = true;
+
+  const storedConfig = readGitHubAppReturnState();
+  clearGitHubAppReturnState();
+
+  if (brandKey) {
+    state.filters.brand = brandKey;
+    setStoredBrand(brandKey);
+  }
+
+  const restoreConfig =
+    storedConfig && typeof storedConfig === "object"
+      ? {
+          ...storedConfig,
+          brandKey: brandKey || storedConfig.brandKey || storedConfig.brand_key
+        }
+      : { brandKey };
+
+  prefillOnboardingFromConfig(restoreConfig);
+  state.onboarding.step = ONBOARDING_MAX_STEP;
+  openOnboardingModal({ resetStep: false, manual: true, trusted: true });
+  void loadOnboardingRepoConnectionForCurrentBrand({ force: true, includeRepositories: true });
+
+  let message = "";
+  let tone = "success";
+  if (errorCode) {
+    tone = "error";
+    if (errorCode === "auth_required") {
+      message = "Sign in again to finish connecting the GitHub App.";
+    } else if (errorCode === "expired_state") {
+      message = "The GitHub install session expired. Start the repo connection again.";
+    } else {
+      message = "GitHub repo connection did not finish cleanly.";
+    }
+  } else if (status === "repo_selection_required") {
+    tone = "success";
+    message = "GitHub App connected. Pick the repository for this brand.";
+  } else if (status === "connected") {
+    message = "GitHub App connected for this brand.";
+  }
+
+  if (message) {
+    window.setTimeout(() => {
+      showReportToast(message, tone);
+    }, 80);
+  }
+
+  ["github_app_status", "github_app_error", "github_app_brand"].forEach((key) => params.delete(key));
+  const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}${window.location.hash}`;
+  window.history.replaceState({}, document.title, nextUrl);
+}
+
 function buildRunLaunchConfig({ row = null, report = null } = {}) {
   const safeRow = row && typeof row === "object" ? row : {};
   const safeReport = report && typeof report === "object" ? report : {};
   const reportMetadata = safeReport.metadata && typeof safeReport.metadata === "object" ? safeReport.metadata : {};
+  const rowRepoTriage =
+    safeRow.repo_triage && typeof safeRow.repo_triage === "object"
+      ? safeRow.repo_triage
+      : safeRow.repo_triage_config && typeof safeRow.repo_triage_config === "object"
+        ? safeRow.repo_triage_config
+        : {};
 
   const targetUrl =
     normalizeOnboardingTargetUrlInput(
@@ -2894,7 +4681,8 @@ function buildRunLaunchConfig({ row = null, report = null } = {}) {
     goal,
     persona,
     brandKey,
-    brandName
+    brandName,
+    repoTriage: normalizeRepoTriageConfigInput(reportMetadata.repo_triage || rowRepoTriage)
   };
 }
 
@@ -2918,6 +4706,8 @@ function findLatestRunForBrand(brandKey = "") {
 function buildFreshRunSeedConfig(options = {}) {
   const preferredBrandKey = sanitizeBrandKey(String(options.brandKey || state.filters.brand || ""));
   const preferredRunId = String(options.runId || state.selectedRunId || state.requestedRunId || "").trim();
+  const savedProject =
+    state.savedProjects.find((project) => sanitizeBrandKey(project?.brand_key) === preferredBrandKey) || null;
   const preferredRow = preferredRunId
     ? state.runs.find((item) => item.run_id === preferredRunId) ||
       state.allRuns.find((item) => item.run_id === preferredRunId) ||
@@ -2944,8 +4734,558 @@ function buildFreshRunSeedConfig(options = {}) {
     goal: "",
     scenarios: [],
     scopeMode: "deep_45m",
+    repoTriage: normalizeRepoTriageConfigInput(
+      brandRow?.repo_triage || getRepoTriageConfigFromProject(savedProject)
+    ),
     prefillPersona: false
   };
+}
+
+function getCurrentQaScheduleBrandKey() {
+  return sanitizeBrandKey(String(state.filters.brand || state.brandOptions[0]?.key || ""));
+}
+
+function getQaScheduleForBrand(brandKey = "") {
+  const safeBrandKey = sanitizeBrandKey(String(brandKey || ""));
+  if (!safeBrandKey) {
+    return null;
+  }
+  return state.qaAutomation.schedules.find((schedule) => sanitizeBrandKey(schedule?.brand_key) === safeBrandKey) || null;
+}
+
+function getCurrentQaScheduleContext() {
+  const brandKey = getCurrentQaScheduleBrandKey();
+  const savedProject =
+    state.savedProjects.find((project) => sanitizeBrandKey(project?.brand_key) === brandKey) || null;
+  const latestRun = findLatestRunForBrand(brandKey);
+  const latestReport =
+    latestRun && latestRun.run_id === state.activeRenderedRow?.run_id ? state.activeRenderedReport : null;
+  const launchConfig =
+    latestRun || latestReport
+      ? buildRunLaunchConfig({ row: latestRun, report: latestReport })
+      : buildFreshRunSeedConfig({ brandKey });
+  const targetUrl =
+    sanitizeOptionalString(savedProject?.target_url, 4096) ||
+    sanitizeOptionalString(launchConfig.targetUrl, 4096) ||
+    "";
+  const brandName =
+    sanitizeOptionalString(savedProject?.brand_name, 256) ||
+    sanitizeOptionalString(launchConfig.brandName, 256) ||
+    sanitizeOptionalString(getBrandOptionLabel(brandKey), 256) ||
+    "";
+  const mission =
+    sanitizeOptionalString(launchConfig.goal, 1000) ||
+    sanitizeOptionalString(Array.isArray(launchConfig.scenarios) ? launchConfig.scenarios[0] : "", 1000) ||
+    DEFAULT_ONBOARDING_SCENARIO;
+
+  return {
+    brandKey,
+    brandName,
+    targetUrl,
+    persona: sanitizeOptionalString(launchConfig.persona, 500) || DEFAULT_DASHBOARD_PERSONA,
+    mission,
+    scopeMode: normalizeScopeModeInput(launchConfig.scopeMode || "deep_45m")
+  };
+}
+
+function resetQaAutomationState() {
+  state.qaAutomation.schedules = [];
+  state.qaAutomation.alerts = [];
+  state.qaAutomation.loading = false;
+  state.qaAutomation.saving = false;
+  state.qaAutomation.running = false;
+  state.qaAutomation.emailConfigured = null;
+  state.qaAutomation.defaultAlertEmail = "";
+  state.qaAutomation.message = "Save a schedule and Swarm Tester will keep checking this project for you.";
+  state.qaAutomation.tone = "";
+}
+
+function setQaAutomationMessage(message, tone = "") {
+  state.qaAutomation.message = String(message || "");
+  state.qaAutomation.tone = String(tone || "");
+  if (elements.qaScheduleMessage) {
+    elements.qaScheduleMessage.textContent = state.qaAutomation.message;
+    elements.qaScheduleMessage.dataset.state = state.qaAutomation.tone;
+  }
+}
+
+function formatQaScheduleCadence(frequencyHours) {
+  const hours = Math.max(1, Number(frequencyHours) || 24);
+  if (hours === 24) {
+    return "Daily";
+  }
+  if (hours === 168) {
+    return "Weekly";
+  }
+  if (hours % 24 === 0) {
+    const days = Math.round(hours / 24);
+    return `Every ${days} day${days === 1 ? "" : "s"}`;
+  }
+  return `Every ${hours} hour${hours === 1 ? "" : "s"}`;
+}
+
+async function requestQaSchedules() {
+  const response = await fetch("/api/qa/schedules");
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    throw new Error("Sign in to manage regular QA.");
+  }
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "Failed to load QA schedules");
+  }
+  return {
+    items: Array.isArray(data.items) ? data.items : [],
+    emailConfigured: data.email_alerts_configured === true,
+    defaultAlertEmail: sanitizeOptionalString(data.default_alert_email, 320) || ""
+  };
+}
+
+async function requestQaAlerts() {
+  const response = await fetch("/api/qa/alerts?status=open");
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    throw new Error("Sign in to load QA alerts.");
+  }
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "Failed to load QA alerts");
+  }
+  return Array.isArray(data.items) ? data.items : [];
+}
+
+async function saveQaScheduleRequest(schedule) {
+  const response = await fetch("/api/qa/schedules", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ schedule })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "Failed to save QA schedule");
+  }
+  return {
+    item: data.item || (Array.isArray(data.items) ? data.items[0] : null),
+    emailConfigured: data.email_alerts_configured === true,
+    defaultAlertEmail: sanitizeOptionalString(data.default_alert_email, 320) || ""
+  };
+}
+
+async function triggerQaScheduleNow(scheduleId) {
+  const response = await fetch("/api/qa/schedules/trigger", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ schedule_id: scheduleId })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "Failed to queue scheduled run");
+  }
+  return data;
+}
+
+async function acknowledgeQaAlertRequest(alertId) {
+  const response = await fetch("/api/qa/alerts", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ id: alertId, status: "acknowledged" })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || "Failed to acknowledge alert");
+  }
+  return data.item || null;
+}
+
+function getVisibleQaAlerts() {
+  const currentBrandKey = getCurrentQaScheduleBrandKey();
+  const alerts = Array.isArray(state.qaAutomation.alerts) ? state.qaAutomation.alerts : [];
+  if (!currentBrandKey) {
+    return alerts;
+  }
+  const matching = alerts.filter((alert) => sanitizeBrandKey(alert?.brand_key) === currentBrandKey);
+  return matching.length ? matching : alerts;
+}
+
+function renderQaSchedulePanel() {
+  if (!elements.qaScheduleMeta || !elements.qaScheduleStateBadge) {
+    return;
+  }
+  const context = getCurrentQaScheduleContext();
+  const schedule = getQaScheduleForBrand(context.brandKey);
+  const hasProject = Boolean(context.brandKey && context.targetUrl);
+  const frequencyValue = String(schedule?.frequency_hours || 24);
+  const scopeModeValue = normalizeScopeModeInput(schedule?.scope_mode || context.scopeMode || "deep_45m");
+  const personaValue = sanitizeOptionalString(schedule?.persona, 500) || context.persona || DEFAULT_DASHBOARD_PERSONA;
+  const missionValue = sanitizeOptionalString(schedule?.mission, 1000) || context.mission || DEFAULT_ONBOARDING_SCENARIO;
+  const alertEmailValue =
+    sanitizeOptionalString(schedule?.alert_email_to, 320) ||
+    state.qaAutomation.defaultAlertEmail ||
+    "";
+  const webhookValue = sanitizeOptionalString(schedule?.alert_webhook_url, 4096);
+
+  if (elements.qaScheduleFrequency) {
+    elements.qaScheduleFrequency.value = frequencyValue;
+  }
+  if (elements.qaScheduleScopeMode) {
+    elements.qaScheduleScopeMode.value = scopeModeValue;
+  }
+  if (elements.qaSchedulePersona) {
+    elements.qaSchedulePersona.value = personaValue;
+  }
+  if (elements.qaScheduleMission) {
+    elements.qaScheduleMission.value = missionValue;
+  }
+  if (elements.qaScheduleEmail) {
+    elements.qaScheduleEmail.value = alertEmailValue;
+  }
+  if (elements.qaScheduleEmailHint) {
+    elements.qaScheduleEmailHint.textContent = state.qaAutomation.emailConfigured === false
+      ? "Email alerts are saved here, but server email delivery is not configured yet."
+      : "Leave blank to send alerts to your signed-in owner email.";
+  }
+  if (elements.qaScheduleWebhook) {
+    elements.qaScheduleWebhook.value = webhookValue;
+  }
+
+  if (!hasProject) {
+    elements.qaScheduleMeta.textContent = "Pick a saved project to set up regular QA.";
+    elements.qaScheduleStateBadge.className = "issue-severity severity-low";
+    elements.qaScheduleStateBadge.textContent = "No Project";
+    if (elements.qaScheduleSaveAction) elements.qaScheduleSaveAction.disabled = true;
+    if (elements.qaScheduleRunNowAction) elements.qaScheduleRunNowAction.disabled = true;
+    if (elements.qaScheduleToggleAction) elements.qaScheduleToggleAction.disabled = true;
+    setQaAutomationMessage("Pick a project with a real target URL first.", "");
+    return;
+  }
+
+  const metaParts = [];
+  if (schedule) {
+    metaParts.push(formatQaScheduleCadence(schedule.frequency_hours));
+    if (schedule.next_run_at) {
+      metaParts.push(`Next run ${formatRelativeTime(schedule.next_run_at)}`);
+    }
+    if (schedule.last_alert_at) {
+      metaParts.push(`Last alert ${formatRelativeTime(schedule.last_alert_at)}`);
+    }
+    if (alertEmailValue) {
+      metaParts.push(`Emails to ${alertEmailValue}`);
+    }
+  } else {
+    metaParts.push(`No schedule yet for ${context.brandName || context.brandKey}`);
+    if (alertEmailValue) {
+      metaParts.push(`Will email ${alertEmailValue}`);
+    }
+  }
+
+  elements.qaScheduleMeta.textContent = metaParts.join(" · ");
+  elements.qaScheduleStateBadge.className = `issue-severity ${schedule?.active === false ? "severity-medium" : "severity-low"}`;
+  elements.qaScheduleStateBadge.textContent = schedule ? (schedule.active === false ? "Paused" : "Scheduled") : "Draft";
+  if (elements.qaScheduleSaveAction) {
+    elements.qaScheduleSaveAction.disabled = state.qaAutomation.saving || state.qaAutomation.loading;
+    elements.qaScheduleSaveAction.textContent = state.qaAutomation.saving ? "Saving..." : schedule ? "Save changes" : "Save schedule";
+  }
+  if (elements.qaScheduleRunNowAction) {
+    elements.qaScheduleRunNowAction.disabled = state.qaAutomation.running || state.qaAutomation.saving || state.qaAutomation.loading || !hasProject;
+    elements.qaScheduleRunNowAction.textContent = state.qaAutomation.running ? "Queueing..." : "Run now";
+  }
+  if (elements.qaScheduleToggleAction) {
+    elements.qaScheduleToggleAction.disabled = state.qaAutomation.saving || state.qaAutomation.loading || !schedule;
+    elements.qaScheduleToggleAction.textContent = schedule ? (schedule.active === false ? "Resume" : "Pause") : "Pause";
+  }
+  const defaultMessage =
+    alertEmailValue && state.qaAutomation.emailConfigured === false
+      ? "Email alerts will start sending as soon as SMTP is configured on the server. Webhook alerts still work now."
+      : "Save a schedule and Swarm Tester will keep checking this project for you.";
+  setQaAutomationMessage(
+    state.qaAutomation.message || defaultMessage,
+    state.qaAutomation.tone || ""
+  );
+}
+
+function renderQaAlertsPanel() {
+  if (!elements.qaAlertsItems || !elements.qaAlertsMeta) {
+    return;
+  }
+  const alerts = getVisibleQaAlerts();
+  const currentBrandKey = getCurrentQaScheduleBrandKey();
+  const scopedAlerts = currentBrandKey ? alerts.filter((alert) => sanitizeBrandKey(alert?.brand_key) === currentBrandKey) : alerts;
+  elements.qaAlertsMeta.textContent = scopedAlerts.length
+    ? `${scopedAlerts.length} open alert${scopedAlerts.length === 1 ? "" : "s"}`
+    : "No open alerts.";
+
+  if (!scopedAlerts.length) {
+    elements.qaAlertsItems.innerHTML = '<div class="app-empty"><p>No open alerts for this project.</p></div>';
+    return;
+  }
+
+  elements.qaAlertsItems.innerHTML = scopedAlerts
+    .slice(0, 8)
+    .map((alert) => {
+      const severity = normalizeRunStatus(alert?.severity) || "high";
+      const severityClass =
+        severity === "critical" ? "severity-critical" : severity === "high" ? "severity-high" : "severity-medium";
+      const openUrl = sanitizeOptionalString(alert?.ui_report_url, 4096) || sanitizeOptionalString(alert?.report_url, 4096);
+      return `
+        <article class="app-alert-item">
+          <header class="app-alert-head">
+            <div>
+              <strong>${escapeHtml(alert?.title || "Scheduled QA found a problem")}</strong>
+              <p>${escapeHtml(alert?.message || "A scheduled QA run needs attention.")}</p>
+            </div>
+            <span class="issue-severity ${escapeHtml(severityClass)}">${escapeHtml(severity.toUpperCase())}</span>
+          </header>
+          <div class="app-alert-meta">
+            <span>${escapeHtml(sanitizeOptionalString(alert?.brand_key, 120) || "project")}</span>
+            <span>${escapeHtml(formatRelativeTime(alert?.created_at))}</span>
+            ${alert?.run_id ? `<span>${escapeHtml(alert.run_id)}</span>` : ""}
+          </div>
+          <div class="app-alert-actions">
+            ${openUrl ? `<a class="btn btn-ghost" href="${escapeHtml(openUrl)}" target="_blank" rel="noreferrer">Open report</a>` : ""}
+            <button class="btn btn-ghost" type="button" data-qa-alert-ack="${escapeHtml(alert?.id || "")}">Acknowledge</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+async function loadQaAutomationPanels() {
+  if (!hasAppDashboardUi) {
+    return;
+  }
+  if (!isDashboardAuthorized()) {
+    resetQaAutomationState();
+    renderQaSchedulePanel();
+    renderQaAlertsPanel();
+    return;
+  }
+  state.qaAutomation.loading = true;
+  try {
+    const [schedulePayload, alerts] = await Promise.all([requestQaSchedules(), requestQaAlerts()]);
+    state.qaAutomation.schedules = Array.isArray(schedulePayload.items) ? schedulePayload.items : [];
+    state.qaAutomation.alerts = alerts;
+    state.qaAutomation.emailConfigured = schedulePayload.emailConfigured;
+    state.qaAutomation.defaultAlertEmail = schedulePayload.defaultAlertEmail || "";
+    if (!state.qaAutomation.message) {
+      state.qaAutomation.message = "Save a schedule and Swarm Tester will keep checking this project for you.";
+    }
+    if (!state.qaAutomation.tone) {
+      state.qaAutomation.tone = "";
+    }
+  } catch (error) {
+    setQaAutomationMessage(error?.message || "Could not load regular QA settings.", "error");
+  } finally {
+    state.qaAutomation.loading = false;
+    renderQaSchedulePanel();
+    renderQaAlertsPanel();
+  }
+}
+
+async function saveCurrentQaSchedule(overrides = {}) {
+  const context = getCurrentQaScheduleContext();
+  if (!context.brandKey || !context.targetUrl) {
+    throw new Error("Choose a project with a real target URL before saving a schedule.");
+  }
+  const existing = getQaScheduleForBrand(context.brandKey);
+  const alertEmailTo = sanitizeOptionalString(
+    overrides.alert_email_to !== undefined ? overrides.alert_email_to : elements.qaScheduleEmail?.value,
+    320
+  );
+  const metadata =
+    existing?.metadata && typeof existing.metadata === "object" ? { ...existing.metadata } : {};
+  if (alertEmailTo) {
+    metadata.alert_email_to = alertEmailTo;
+  } else {
+    delete metadata.alert_email_to;
+  }
+  const payload = {
+    ...(existing?.id ? { id: existing.id } : {}),
+    brand_key: context.brandKey,
+    brand_name: context.brandName || null,
+    target_url: context.targetUrl,
+    active: overrides.active !== undefined ? overrides.active : existing?.active !== false,
+    frequency_hours:
+      overrides.frequency_hours !== undefined
+        ? overrides.frequency_hours
+        : Number(elements.qaScheduleFrequency?.value || existing?.frequency_hours || 24),
+    scope_mode:
+      overrides.scope_mode !== undefined
+        ? overrides.scope_mode
+        : normalizeScopeModeInput(elements.qaScheduleScopeMode?.value || existing?.scope_mode || context.scopeMode),
+    persona:
+      overrides.persona !== undefined
+        ? overrides.persona
+        : sanitizeOptionalString(elements.qaSchedulePersona?.value, 500) || existing?.persona || context.persona,
+    mission:
+      overrides.mission !== undefined
+        ? overrides.mission
+        : sanitizeOptionalString(elements.qaScheduleMission?.value, 1000) || existing?.mission || context.mission,
+    metadata,
+    alert_webhook_url:
+      overrides.alert_webhook_url !== undefined
+        ? overrides.alert_webhook_url
+        : sanitizeOptionalString(elements.qaScheduleWebhook?.value, 4096) || existing?.alert_webhook_url || "",
+    next_run_at:
+      overrides.next_run_at !== undefined
+        ? overrides.next_run_at
+        : existing?.next_run_at || new Date().toISOString()
+  };
+
+  state.qaAutomation.saving = true;
+  renderQaSchedulePanel();
+  const saved = await saveQaScheduleRequest(payload);
+  state.qaAutomation.saving = false;
+  state.qaAutomation.emailConfigured = saved.emailConfigured;
+  state.qaAutomation.defaultAlertEmail = saved.defaultAlertEmail || state.qaAutomation.defaultAlertEmail;
+  if (saved?.item?.id) {
+    state.qaAutomation.schedules = state.qaAutomation.schedules.filter(
+      (item) => item.id !== saved.item.id && sanitizeBrandKey(item?.brand_key) !== sanitizeBrandKey(saved.item.brand_key)
+    );
+    state.qaAutomation.schedules.unshift(saved.item);
+  }
+  renderQaSchedulePanel();
+  renderQaAlertsPanel();
+  return saved.item || null;
+}
+
+async function handleQaScheduleSave() {
+  try {
+    const schedule = await saveCurrentQaSchedule();
+    setQaAutomationMessage(
+      `Saved ${formatQaScheduleCadence(schedule?.frequency_hours)} QA for ${schedule?.brand_name || schedule?.brand_key}.`,
+      "success"
+    );
+    renderQaSchedulePanel();
+    showReportToast("Regular QA saved", "success");
+  } catch (error) {
+    state.qaAutomation.saving = false;
+    setQaAutomationMessage(error?.message || "Could not save the schedule.", "error");
+    renderQaSchedulePanel();
+    showReportToast(error?.message || "Could not save the schedule.", "error");
+  }
+}
+
+async function handleQaScheduleToggle() {
+  const context = getCurrentQaScheduleContext();
+  const existing = getQaScheduleForBrand(context.brandKey);
+  if (!existing) {
+    setQaAutomationMessage("Save a schedule first.", "error");
+    renderQaSchedulePanel();
+    return;
+  }
+  try {
+    const nextActive = existing.active === false;
+    const schedule = await saveCurrentQaSchedule({
+      active: nextActive,
+      next_run_at: nextActive ? new Date().toISOString() : existing.next_run_at
+    });
+    setQaAutomationMessage(nextActive ? "Regular QA resumed." : "Regular QA paused.", "success");
+    renderQaSchedulePanel();
+    showReportToast(nextActive ? "Regular QA resumed" : "Regular QA paused", "success");
+    return schedule;
+  } catch (error) {
+    state.qaAutomation.saving = false;
+    setQaAutomationMessage(error?.message || "Could not update the schedule.", "error");
+    renderQaSchedulePanel();
+    showReportToast(error?.message || "Could not update the schedule.", "error");
+    return null;
+  }
+}
+
+async function handleQaScheduleRunNow() {
+  try {
+    let schedule = getQaScheduleForBrand(getCurrentQaScheduleBrandKey());
+    if (!schedule) {
+      schedule = await saveCurrentQaSchedule();
+    }
+    if (!schedule?.id) {
+      throw new Error("Save the schedule first.");
+    }
+    state.qaAutomation.running = true;
+    renderQaSchedulePanel();
+    const queued = await triggerQaScheduleNow(schedule.id);
+    state.qaAutomation.running = false;
+    state.selectedRunId = queued.run_id;
+    state.requestedRunId = queued.run_id;
+    syncUrlFromState();
+    setQaAutomationMessage("Queued a scheduled QA run right now.", "success");
+    showReportToast("Scheduled QA queued", "success");
+    await loadAndRenderReports();
+  } catch (error) {
+    state.qaAutomation.running = false;
+    setQaAutomationMessage(error?.message || "Could not queue the scheduled run.", "error");
+    renderQaSchedulePanel();
+    showReportToast(error?.message || "Could not queue the scheduled run.", "error");
+  }
+}
+
+async function handleQaAlertAcknowledge(alertId) {
+  try {
+    const updated = await acknowledgeQaAlertRequest(alertId);
+    if (updated?.id) {
+      state.qaAutomation.alerts = state.qaAutomation.alerts.filter((item) => item.id !== updated.id);
+    }
+    renderQaAlertsPanel();
+    showReportToast("Alert acknowledged", "success");
+  } catch (error) {
+    showReportToast(error?.message || "Could not acknowledge alert", "error");
+  }
+}
+
+function bindQaAutomationInteractions() {
+  if (!hasAppDashboardUi || !elements.qaScheduleForm) {
+    return;
+  }
+  if (elements.qaScheduleForm.dataset.bound === "1") {
+    return;
+  }
+
+  elements.qaScheduleForm.dataset.bound = "1";
+  elements.qaScheduleForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await handleQaScheduleSave();
+  });
+
+  if (elements.qaScheduleSaveAction) {
+    elements.qaScheduleSaveAction.addEventListener("click", async (event) => {
+      event.preventDefault();
+      await handleQaScheduleSave();
+    });
+  }
+
+  if (elements.qaScheduleRunNowAction) {
+    elements.qaScheduleRunNowAction.addEventListener("click", async (event) => {
+      event.preventDefault();
+      await handleQaScheduleRunNow();
+    });
+  }
+
+  if (elements.qaScheduleToggleAction) {
+    elements.qaScheduleToggleAction.addEventListener("click", async (event) => {
+      event.preventDefault();
+      await handleQaScheduleToggle();
+    });
+  }
+
+  if (elements.qaAlertsItems) {
+    elements.qaAlertsItems.addEventListener("click", async (event) => {
+      const trigger = event.target.closest("[data-qa-alert-ack]");
+      if (!trigger) {
+        return;
+      }
+      event.preventDefault();
+      const alertId = sanitizeOptionalString(trigger.getAttribute("data-qa-alert-ack"), 128);
+      if (!alertId) {
+        return;
+      }
+      await handleQaAlertAcknowledge(alertId);
+    });
+  }
 }
 
 function resolveRunMission(row, report) {
@@ -3249,6 +5589,7 @@ function refreshOnboardingLaunchSummary() {
   const personaState = syncOnboardingPersonaField();
   const scenarioState = syncOnboardingScenariosField();
   const scopeMeta = getOnboardingScopeMeta(elements.onboardingScopeMode?.value || "deep_45m");
+  const repoTriageReview = buildRepoTriageReviewModel(readOnboardingRepoTriageConfig());
   const personaReviewItems = personaState.labels.length
     ? personaState.labels
     : personaState.custom
@@ -3271,6 +5612,12 @@ function refreshOnboardingLaunchSummary() {
   }
   if (elements.onboardingReviewCoverageMeta) {
     elements.onboardingReviewCoverageMeta.textContent = scopeMeta.description;
+  }
+  if (elements.onboardingReviewRepoTriage) {
+    elements.onboardingReviewRepoTriage.textContent = repoTriageReview.title;
+  }
+  if (elements.onboardingReviewRepoTriageMeta) {
+    elements.onboardingReviewRepoTriageMeta.textContent = repoTriageReview.meta;
   }
 
   const goalCount = scenarioState.missions.length;
@@ -3525,6 +5872,7 @@ async function submitOnboardingRun(event) {
   const scenarios = scenarioState.combined;
   const missions = scenarioState.missions;
   const goal = buildOnboardingPrimaryGoal({ targetUrl, brandName, missions });
+  const repoTriage = readOnboardingRepoTriageConfig();
 
   if (!targetUrl) {
     setOnboardingMessage("Target URL must be a valid site domain or URL.", "error");
@@ -3558,7 +5906,8 @@ async function submitOnboardingRun(event) {
         persona,
         goal,
         scopeMode,
-        scenarios
+        scenarios,
+        repoTriage
       },
       {
         source: "dashboard_onboarding",
@@ -3673,6 +6022,9 @@ function deriveSavedProjectsFromRuns(items) {
       brand_key: brandKey,
       brand_name: String(row?.brand_name || "").trim() || null,
       target_url: String(row?.target_url || "").trim() || null,
+      metadata: {
+        repo_triage: normalizeRepoTriageConfigInput(row?.repo_triage)
+      },
       last_used_at: deliveredAt || null,
       latest_run_at: deliveredAt || null,
       run_count: 0
@@ -3684,6 +6036,12 @@ function deriveSavedProjectsFromRuns(items) {
       ...current,
       brand_name: current.brand_name || String(row?.brand_name || "").trim() || null,
       target_url: current.target_url || String(row?.target_url || "").trim() || null,
+      metadata:
+        current.metadata && Object.keys(current.metadata).length
+          ? current.metadata
+          : {
+              repo_triage: normalizeRepoTriageConfigInput(row?.repo_triage)
+            },
       run_count: Number(current.run_count || 0) + 1,
       last_used_at: candidateTimestamp > currentTimestamp ? deliveredAt || current.last_used_at : current.last_used_at,
       latest_run_at: candidateTimestamp > currentTimestamp ? deliveredAt || current.latest_run_at : current.latest_run_at
@@ -3737,14 +6095,19 @@ function applyRunCollection(fetchedItems) {
     state.runs = state.allRuns.slice();
   }
   ensureSelectedRunVisibleInRuns();
+  const requestedRunId = String(state.requestedRunId || "").trim();
 
   const nextSelection = dashboardRuns.ensureActiveRunSelection(getRunCollectionContext(), getRunCollectionHelpers());
   state.runs = nextSelection.runs;
   state.selectedRunId = nextSelection.selectedRunId || null;
   if (!nextSelection.selectedRunId) {
-    state.requestedRunId = "";
-    state.activeRenderedReport = null;
-    state.activeRenderedRow = null;
+    if (requestedRunId) {
+      state.selectedRunId = requestedRunId;
+    } else {
+      state.requestedRunId = "";
+      state.activeRenderedReport = null;
+      state.activeRenderedRow = null;
+    }
   }
 
   if (state.allRuns.length > 0) {
@@ -3796,6 +6159,1784 @@ async function fetchBrandOptions(options = {}) {
   return state.savedProjects;
 }
 
+function normalizeDistributionTrack(track) {
+  const value = String(track || "").trim().toLowerCase();
+  return value === "physical_local" ? "physical_local" : "startup";
+}
+
+function formatDistributionTrackLabel(track) {
+  return normalizeDistributionTrack(track) === "physical_local" ? "Local Presence" : "Startup";
+}
+
+function formatDistributionSupportTier(value) {
+  const safeValue = String(value || "").trim().toLowerCase();
+  if (safeValue === "manual_only") {
+    return "Manual only";
+  }
+  if (safeValue === "recon_needed") {
+    return "Needs recon";
+  }
+  if (safeValue === "supported") {
+    return "Supported";
+  }
+  return safeValue ? safeValue.replaceAll("_", " ") : "Custom";
+}
+
+function formatDistributionPolicy(value) {
+  const safeValue = String(value || "").trim().toLowerCase();
+  if (!safeValue) {
+    return "Assist";
+  }
+  return safeValue.replaceAll("_", " ");
+}
+
+function buildDistributionPolicySummary(policyInput = {}) {
+  const explicitSummary = Array.isArray(policyInput?.policy_summary)
+    ? policyInput.policy_summary.map((value) => sanitizeOptionalString(value, 160)).filter(Boolean)
+    : [];
+  if (explicitSummary.length) {
+    return explicitSummary.slice(0, 4);
+  }
+
+  const executionPolicy =
+    policyInput && policyInput.execution_policy && typeof policyInput.execution_policy === "object"
+      ? policyInput.execution_policy
+      : null;
+  const runtimePolicy =
+    policyInput && policyInput.runtime_policy && typeof policyInput.runtime_policy === "object"
+      ? policyInput.runtime_policy
+      : null;
+  const parts = [];
+
+  const sessionMode = String(executionPolicy?.session_mode || "").trim().toLowerCase();
+  if (sessionMode === "ephemeral_submitter") {
+    parts.push("Ephemeral session");
+  } else if (sessionMode === "persistent_owner") {
+    parts.push("Persistent owner session");
+  } else if (sessionMode === "founder_personal") {
+    parts.push("Founder identity");
+  }
+
+  const ownershipModel = String(executionPolicy?.ownership_model || "").trim().toLowerCase();
+  if (ownershipModel === "client_owned_mailbox") {
+    parts.push("Client mailbox");
+  } else if (ownershipModel === "founder_personal") {
+    parts.push("Founder-owned account");
+  }
+
+  const proxyPolicy = String(executionPolicy?.proxy_policy || "").trim().toLowerCase();
+  if (proxyPolicy === "geo_recommended") {
+    parts.push("Geo proxy recommended");
+  } else if (proxyPolicy === "same_country_required") {
+    parts.push("Same-country proxy");
+  } else if (proxyPolicy === "founder_geo_recommended") {
+    parts.push("Founder-geo proxy");
+  }
+
+  const captchaExpectation = String(executionPolicy?.captcha_expectation || "").trim().toLowerCase();
+  if (captchaExpectation === "expected") {
+    parts.push("Captcha expected");
+  } else if (captchaExpectation === "possible") {
+    parts.push("Captcha possible");
+  }
+
+  const captchaTimeoutMs = Number(runtimePolicy?.twocaptcha_timeout_ms || 0);
+  if (captchaTimeoutMs >= 240000) {
+    parts.push("Extended solve window");
+  }
+
+  return parts.slice(0, 4);
+}
+
+function getDistributionStatusClass(value) {
+  const safeValue = String(value || "").trim().toLowerCase();
+  if (safeValue === "green" || safeValue === "yellow" || safeValue === "red") {
+    return `is-${safeValue}`;
+  }
+  return "is-yellow";
+}
+
+function getDistributionOperationalClass(value) {
+  const safeValue = String(value || "").trim().toLowerCase();
+  if (safeValue === "healthy") {
+    return "is-green";
+  }
+  if (safeValue === "blocked") {
+    return "is-red";
+  }
+  if (safeValue === "watch") {
+    return "is-yellow";
+  }
+  return "is-neutral";
+}
+
+function getDistributionEligibilityClass(site = {}) {
+  return getDistributionStatusClass(site?.effective_product_status || site?.product_status || "yellow");
+}
+
+function formatDistributionEligibilityLabel(site = {}) {
+  const tier = String(site?.eligibility_tier || "").trim().toLowerCase();
+  if (tier === "starter") {
+    return "Starter Ready";
+  }
+  if (tier === "booster") {
+    return "Booster Only";
+  }
+  if (tier === "manual") {
+    return "Manual Only";
+  }
+  if (tier === "assisted") {
+    return "Assisted";
+  }
+
+  const track = String(site?.track || "").trim().toLowerCase();
+  if (track === "startup") {
+    return "Booster Only";
+  }
+  if (track === "physical_local") {
+    return "Assisted";
+  }
+  return "Eligible";
+}
+
+function formatDistributionOperationalStatus(value) {
+  const safeValue = String(value || "").trim().toLowerCase();
+  if (safeValue === "healthy") {
+    return "Live Healthy";
+  }
+  if (safeValue === "blocked") {
+    return "Live Blocked";
+  }
+  if (safeValue === "watch") {
+    return "Live Watch";
+  }
+  return "Untested";
+}
+
+function formatDistributionPercent(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return "0%";
+  }
+  return `${Math.max(0, Math.min(100, Math.round(numeric)))}%`;
+}
+
+function resetDistributionCatalog(options = {}) {
+  const clearData = options.clearData !== false;
+  state.submissionCatalog.loading = false;
+  state.submissionCatalog.error = "";
+  if (clearData) {
+    state.submissionCatalog.trackData = {
+      startup: null,
+      physical_local: null
+    };
+  }
+}
+
+function setDistributionCatalogLoading(isLoading) {
+  state.submissionCatalog.loading = Boolean(isLoading);
+}
+
+function buildDistributionSummaryMarkup(summary = {}) {
+  const greenCount = Number(summary.green_count || 0);
+  const yellowCount = Number(summary.yellow_count || 0);
+  const redCount = Number(summary.red_count || 0);
+  return `
+    <span class="distribution-summary-pill is-green">${greenCount} green</span>
+    <span class="distribution-summary-pill is-yellow">${yellowCount} yellow</span>
+    <span class="distribution-summary-pill is-red">${redCount} red</span>
+  `;
+}
+
+function renderDistributionPackCards(catalog) {
+  const packs = Array.isArray(catalog?.effective_product_packs) && catalog.effective_product_packs.length
+    ? catalog.effective_product_packs
+    : Array.isArray(catalog?.product_packs)
+      ? catalog.product_packs
+      : [];
+  const scorecardMap = new Map(
+    (Array.isArray(catalog?.scorecard) ? catalog.scorecard : [])
+      .map((site) => [String(site?.site_id || "").trim().toLowerCase(), site])
+      .filter((entry) => entry[0])
+  );
+  if (!packs.length) {
+    return `
+      <article class="distribution-pack-card distribution-pack-card-loading">
+        <strong>No product packs yet</strong>
+        <p>Add product-facing packs to the catalog to surface them here.</p>
+      </article>
+    `;
+  }
+
+  const recommendedPackId = String(catalog?.recommended_pack?.pack_id || "").trim().toLowerCase();
+  return packs
+    .map((pack) => {
+      const packId = String(pack?.pack_id || "").trim().toLowerCase();
+      const summary = pack?.product_summary || {};
+      const sites = Array.isArray(pack?.sites) ? pack.sites : [];
+      const siteMarkup = sites.length
+        ? sites
+            .map((site) => {
+              const scorecardSite = scorecardMap.get(String(site?.site_id || "").trim().toLowerCase()) || site;
+              const statusClass = getDistributionEligibilityClass(scorecardSite);
+              const statusLabel = formatDistributionEligibilityLabel(scorecardSite).toUpperCase();
+              const notes = Array.isArray(site?.product_notes) && site.product_notes.length
+                ? site.product_notes[0]
+                : Array.isArray(site?.notes) && site.notes.length
+                  ? site.notes[0]
+                  : "";
+              const eligibilityNote = String(scorecardSite?.eligibility_note || "").trim();
+              return `
+                <li>
+                  <span class="distribution-site-badge ${statusClass}">${escapeHtml(statusLabel)}</span>
+                  <div>
+                    <strong>${escapeHtml(site?.site_name || site?.site_id || "Connector")}</strong>
+                    <span>${escapeHtml(
+                      eligibilityNote ||
+                        notes ||
+                        `${formatDistributionSupportTier(site?.support_tier)} · ${formatDistributionPolicy(site?.default_policy)}`
+                    )}</span>
+                  </div>
+                </li>
+              `;
+            })
+            .join("")
+        : `<li><div><strong>No connectors</strong><span>This pack is still empty.</span></div></li>`;
+
+      return `
+        <article class="distribution-pack-card">
+          <div class="distribution-pack-card-head">
+            <div>
+              <div class="distribution-pack-title-row">
+                <h4>${escapeHtml(pack?.pack_name || packId || "Pack")}</h4>
+                ${packId === recommendedPackId ? '<span class="distribution-pack-recommended">Recommended</span>' : ""}
+              </div>
+              <p>${escapeHtml(pack?.description || "Product-facing distribution bundle.")}</p>
+            </div>
+            <div class="distribution-pack-status">
+              ${buildDistributionSummaryMarkup(summary)}
+            </div>
+          </div>
+          <ul class="distribution-pack-sites">
+            ${siteMarkup}
+          </ul>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderDistributionScorecardItems(catalog) {
+  const scorecard = Array.isArray(catalog?.scorecard) ? catalog.scorecard : [];
+  if (!scorecard.length) {
+    return `
+      <article class="distribution-scorecard-item distribution-scorecard-item-loading">
+        <strong>No scorecard data</strong>
+        <p>Connector viability appears here after the catalog loads.</p>
+      </article>
+    `;
+  }
+
+  return scorecard
+    .map((site) => {
+      const notes = Array.isArray(site?.product_notes) && site.product_notes.length
+        ? site.product_notes[0]
+        : Array.isArray(site?.notes) && site.notes.length
+          ? site.notes[0]
+          : "";
+      const telemetry = site?.telemetry && typeof site.telemetry === "object" ? site.telemetry : {};
+      const totalRuns = Number(telemetry.total_runs || 0);
+      const liveStatus = String(site?.live_status || telemetry.operational_status || "untested").trim().toLowerCase();
+      const liveNote = String(site?.live_note || telemetry.operational_note || "").trim();
+      const policySummary = buildDistributionPolicySummary(site);
+      const eligibilityLabel = formatDistributionEligibilityLabel(site);
+      const eligibilityNote = String(site?.eligibility_note || "").trim();
+      const catalogStatus = String(site?.product_status || "yellow").trim().toLowerCase();
+      const effectiveStatus = String(site?.effective_product_status || catalogStatus || "yellow").trim().toLowerCase();
+      const liveMetricsMarkup = totalRuns
+        ? `
+          <div class="distribution-scorecard-live">
+            <div class="distribution-scorecard-live-metrics">
+              <span><strong>${escapeHtml(String(totalRuns))}</strong><em>runs</em></span>
+              <span><strong>${escapeHtml(formatDistributionPercent(telemetry.success_rate_percent))}</strong><em>success</em></span>
+              <span><strong>${escapeHtml(String(Number(telemetry.captcha_count || 0)))}</strong><em>captcha</em></span>
+              <span><strong>${escapeHtml(String(Number(telemetry.auth_count || 0)))}</strong><em>auth</em></span>
+            </div>
+            <div class="distribution-scorecard-live-note">
+              <span>${escapeHtml(liveNote || "Recent live telemetry is available.")}</span>
+              <span>Last status: ${escapeHtml(String(telemetry.last_submission_status || "unknown").replaceAll("_", " "))}</span>
+              <span>Last run: ${escapeHtml(formatDate(telemetry.last_run_at))}</span>
+            </div>
+          </div>
+        `
+        : `
+          <div class="distribution-scorecard-live distribution-scorecard-live-empty">
+            <div class="distribution-scorecard-live-note">
+              <span>${escapeHtml(liveNote || "No recent live runs recorded yet.")}</span>
+            </div>
+          </div>
+        `;
+      const eligibilityMarkup = eligibilityNote
+        ? `
+          <div class="distribution-scorecard-eligibility-note">
+            <span>${escapeHtml(eligibilityNote)}</span>
+          </div>
+        `
+        : "";
+      const policyMarkup = policySummary.length
+        ? `
+          <div class="distribution-scorecard-policy">
+            ${policySummary.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+          </div>
+        `
+        : "";
+      return `
+        <article class="distribution-scorecard-item">
+          <div class="distribution-scorecard-top">
+            <div>
+              <strong>${escapeHtml(site?.site_name || site?.site_id || "Connector")}</strong>
+              <p>${escapeHtml(notes || "Connector metadata available.")}</p>
+            </div>
+            <div class="distribution-scorecard-badges">
+              <span class="distribution-scorecard-badge ${getDistributionStatusClass(effectiveStatus)}">${escapeHtml(
+                eligibilityLabel.toUpperCase()
+              )}</span>
+              <span class="distribution-scorecard-badge ${getDistributionOperationalClass(liveStatus)}">${escapeHtml(
+                formatDistributionOperationalStatus(liveStatus).toUpperCase()
+              )}</span>
+            </div>
+          </div>
+          <div class="distribution-scorecard-meta">
+            <span>${escapeHtml(`Catalog ${catalogStatus.toUpperCase()}`)}</span>
+            <span>${escapeHtml(formatDistributionSupportTier(site?.support_tier))}</span>
+            <span>${escapeHtml(formatDistributionPolicy(site?.default_policy))}</span>
+            <span>${escapeHtml(String(site?.category || "custom").replaceAll("_", " "))}</span>
+          </div>
+          ${policyMarkup}
+          ${eligibilityMarkup}
+          ${liveMetricsMarkup}
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderDistributionPacksPanel(options = {}) {
+  if (!hasAppDashboardUi || !elements.distributionPacksSection) {
+    return;
+  }
+
+  const clearData = options.clearData === true;
+  if (clearData) {
+    state.submissionCatalog.trackData = {
+      startup: null,
+      physical_local: null
+    };
+  }
+  const errorMessage = String(options.error || "").trim();
+  if (typeof options.loading === "boolean") {
+    state.submissionCatalog.loading = options.loading;
+  }
+  if (errorMessage || options.clearError === true) {
+    state.submissionCatalog.error = errorMessage;
+  }
+
+  const activeTrack = normalizeDistributionTrack(state.submissionCatalog.activeTrack);
+  const catalog = state.submissionCatalog.trackData[activeTrack];
+  const isLoading = state.submissionCatalog.loading && !catalog;
+  const error = !catalog ? String(state.submissionCatalog.error || "").trim() : "";
+
+  if (elements.distributionTrackSwitcher) {
+    const buttons = Array.from(elements.distributionTrackSwitcher.querySelectorAll("[data-distribution-track]"));
+    for (const button of buttons) {
+      const buttonTrack = normalizeDistributionTrack(button.getAttribute("data-distribution-track"));
+      const isActive = buttonTrack === activeTrack;
+      button.classList.toggle("active", isActive);
+      button.setAttribute("aria-selected", isActive ? "true" : "false");
+    }
+  }
+
+  if (elements.distributionPacksMeta) {
+    if (error) {
+      elements.distributionPacksMeta.textContent = error;
+    } else if (catalog) {
+      const packCount = Array.isArray(catalog.effective_product_packs) && catalog.effective_product_packs.length
+        ? catalog.effective_product_packs.length
+        : Array.isArray(catalog.product_packs)
+          ? catalog.product_packs.length
+          : 0;
+      const summary = catalog.scorecard_effective_summary || catalog.scorecard_summary || {};
+      const eligibilitySummary = catalog.scorecard_eligibility_summary || {};
+      const telemetrySummary = catalog.scorecard_telemetry_summary || {};
+      const liveSites = Number(telemetrySummary.sites_with_live_runs || 0);
+      const sampledJobs = Number(telemetrySummary.sampled_jobs || 0);
+      const captchaCount = Number(telemetrySummary.captcha_count || 0);
+      const starterCount = Number(eligibilitySummary.starter_count || 0);
+      const boosterCount = Number(eligibilitySummary.booster_count || 0);
+      const manualCount = Number(eligibilitySummary.manual_count || 0);
+      const telemetrySuffix = liveSites
+        ? ` · ${liveSites} live connector${liveSites === 1 ? "" : "s"} · ${sampledJobs} recent run${
+            sampledJobs === 1 ? "" : "s"
+          } · ${captchaCount} captcha pause${captchaCount === 1 ? "" : "s"}`
+        : "";
+      elements.distributionPacksMeta.textContent = `${formatDistributionTrackLabel(activeTrack)} packs: ${packCount} product bundle${
+        packCount === 1 ? "" : "s"
+      } · ${starterCount} starter · ${boosterCount} booster · ${manualCount} manual · ${Number(
+        summary.red_count || 0
+      )} red-risk connectors.${telemetrySuffix}`;
+    } else if (isLoading) {
+      elements.distributionPacksMeta.textContent = `Loading ${formatDistributionTrackLabel(activeTrack).toLowerCase()} packs…`;
+    } else {
+      elements.distributionPacksMeta.textContent = "Sellable launch and presence bundles, classified by real connector viability.";
+    }
+  }
+
+  if (elements.distributionPacksGrid) {
+    if (error) {
+      elements.distributionPacksGrid.innerHTML = `
+        <article class="distribution-pack-card distribution-pack-card-loading">
+          <strong>Could not load packs</strong>
+          <p>${escapeHtml(error)}</p>
+        </article>
+      `;
+    } else if (isLoading) {
+      elements.distributionPacksGrid.innerHTML = `
+        <article class="distribution-pack-card distribution-pack-card-loading">
+          <strong>Loading packs…</strong>
+          <p>Fetching product-facing distribution bundles.</p>
+        </article>
+      `;
+    } else {
+      elements.distributionPacksGrid.innerHTML = renderDistributionPackCards(catalog);
+    }
+  }
+
+  if (elements.distributionScorecardSummary) {
+    elements.distributionScorecardSummary.innerHTML = buildDistributionSummaryMarkup(
+      error ? {} : catalog?.scorecard_effective_summary || catalog?.scorecard_summary || {}
+    );
+  }
+
+  if (elements.distributionScorecardList) {
+    if (error) {
+      elements.distributionScorecardList.innerHTML = `
+        <article class="distribution-scorecard-item distribution-scorecard-item-loading">
+          <strong>Could not load scorecard</strong>
+          <p>${escapeHtml(error)}</p>
+        </article>
+      `;
+    } else if (isLoading) {
+      elements.distributionScorecardList.innerHTML = `
+        <article class="distribution-scorecard-item distribution-scorecard-item-loading">
+          <strong>Loading scorecard…</strong>
+          <p>Connector viability appears here.</p>
+        </article>
+      `;
+    } else {
+      elements.distributionScorecardList.innerHTML = renderDistributionScorecardItems(catalog);
+    }
+  }
+
+  renderDistributionLauncher();
+}
+
+async function requestDistributionCatalogOnce(track) {
+  const safeTrack = normalizeDistributionTrack(track);
+  const params = new URLSearchParams({ track: safeTrack });
+  const response = await fetch(`/api/submissions/packs?${params.toString()}`);
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    throw new Error("Sign in required to access distribution packs.");
+  }
+  if (!response.ok || !data.ok) {
+    const error = new Error(data.error || "Failed to load distribution packs");
+    error.status = response.status || 500;
+    throw error;
+  }
+  return data;
+}
+
+async function requestDistributionCatalog(track) {
+  let lastError = null;
+  for (let attempt = 0; attempt < DASHBOARD_BOOT_FETCH_RETRIES; attempt += 1) {
+    try {
+      return await requestDistributionCatalogOnce(track);
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableDashboardFetch({ status: error?.status }, error) || attempt === DASHBOARD_BOOT_FETCH_RETRIES - 1) {
+        throw error;
+      }
+      await waitForDashboardRetry(180 * (attempt + 1));
+    }
+  }
+  throw lastError || new Error("Failed to load distribution packs");
+}
+
+async function loadDistributionCatalog(track, options = {}) {
+  if (!hasAppDashboardUi || !elements.distributionPacksSection) {
+    return null;
+  }
+  const safeTrack = normalizeDistributionTrack(track || state.submissionCatalog.activeTrack);
+  const force = options.force === true;
+  if (!force && state.submissionCatalog.trackData[safeTrack]) {
+    renderDistributionPacksPanel({ clearError: true });
+    return state.submissionCatalog.trackData[safeTrack];
+  }
+
+  const shouldShowLoading = options.renderLoading !== false;
+  if (shouldShowLoading) {
+    setDistributionCatalogLoading(true);
+    renderDistributionPacksPanel({ loading: true, clearError: true });
+  }
+
+  try {
+    const catalog = await requestDistributionCatalog(safeTrack);
+    state.submissionCatalog.trackData[safeTrack] = catalog;
+    state.submissionCatalog.error = "";
+    return catalog;
+  } catch (error) {
+    state.submissionCatalog.error = error.message || "Failed to load distribution packs";
+    throw error;
+  } finally {
+    if (shouldShowLoading) {
+      setDistributionCatalogLoading(false);
+      renderDistributionPacksPanel({ loading: false });
+    }
+  }
+}
+
+function prefetchDistributionCatalog(track) {
+  const safeTrack = normalizeDistributionTrack(track);
+  if (state.submissionCatalog.trackData[safeTrack]) {
+    return;
+  }
+  loadDistributionCatalog(safeTrack, { renderLoading: false }).catch(() => {
+    // Prefetch failures should not interrupt the main dashboard.
+  });
+}
+
+function isDistributionActiveJobStatus(value) {
+  const safeValue = String(value || "").trim().toLowerCase();
+  return safeValue === "queued" || safeValue === "processing" || safeValue === "retryable";
+}
+
+function getDistributionDecisionClass(value) {
+  const safeValue = String(value || "").trim().toLowerCase();
+  if (safeValue === "ready_auto" || safeValue === "completed" || safeValue === "approved") {
+    return "is-green";
+  }
+  if (safeValue === "blocked" || safeValue === "failed" || safeValue === "cancelled" || safeValue === "rejected") {
+    return "is-red";
+  }
+  return "is-yellow";
+}
+
+function formatDistributionDecisionLabel(value) {
+  const safeValue = String(value || "").trim().toLowerCase();
+  if (!safeValue) {
+    return "unknown";
+  }
+  return safeValue.replaceAll("_", " ");
+}
+
+function stopDistributionPreparePolling() {
+  if (state.submissionLauncher.prepareJobTimer) {
+    window.clearTimeout(state.submissionLauncher.prepareJobTimer);
+    state.submissionLauncher.prepareJobTimer = null;
+  }
+}
+
+function stopDistributionQueuePolling() {
+  if (state.submissionLauncher.queuePollTimer) {
+    window.clearTimeout(state.submissionLauncher.queuePollTimer);
+    state.submissionLauncher.queuePollTimer = null;
+  }
+}
+
+function resetDistributionLauncher(options = {}) {
+  const preserveBrands = options.preserveBrands === true;
+  const preserveSelection = options.preserveSelection === true;
+  stopDistributionPreparePolling();
+  stopDistributionQueuePolling();
+  state.submissionLauncher.loadingBrands = false;
+  state.submissionLauncher.brandsError = "";
+  if (!preserveBrands) {
+    state.submissionLauncher.brands = [];
+  }
+  if (!preserveSelection) {
+    state.submissionLauncher.selectedBrandProfileId = "";
+    state.submissionLauncher.selectedPackId = "";
+  }
+  state.submissionLauncher.latestManifest = null;
+  state.submissionLauncher.loadingManifest = false;
+  state.submissionLauncher.manifestError = "";
+  state.submissionLauncher.prepareJob = null;
+  state.submissionLauncher.preparing = false;
+  state.submissionLauncher.preflight = null;
+  state.submissionLauncher.preflighting = false;
+  state.submissionLauncher.queueBatch = null;
+  state.submissionLauncher.queueStatuses = {};
+  state.submissionLauncher.queueing = false;
+  state.submissionLauncher.brandForm = {
+    sourceBrandProfileId: "",
+    identityMode: "client_owned",
+    mailboxEmail: "",
+    mailboxAuthMethod: "unknown",
+    mailboxHost: "",
+    mailboxPort: "993",
+    mailboxPassword: "",
+    mailboxReady: false
+  };
+  state.submissionLauncher.savingBrand = false;
+  state.submissionLauncher.brandSaveMessage = "Mailbox setup is stored on the submission brand and used for new-account verification flows.";
+  state.submissionLauncher.brandSaveTone = "";
+  state.submissionLauncher.message = "Choose a submission brand and a product pack to start.";
+  state.submissionLauncher.messageTone = "";
+  state.submissionLauncher.lastAction = "idle";
+}
+
+function getActiveDistributionCatalog() {
+  return state.submissionCatalog.trackData[normalizeDistributionTrack(state.submissionCatalog.activeTrack)] || null;
+}
+
+function getActiveDistributionPacks() {
+  const catalog = getActiveDistributionCatalog();
+  if (Array.isArray(catalog?.effective_product_packs) && catalog.effective_product_packs.length) {
+    return catalog.effective_product_packs;
+  }
+  return Array.isArray(catalog?.product_packs) ? catalog.product_packs : [];
+}
+
+function getActiveDistributionBrands() {
+  const activeTrack = normalizeDistributionTrack(state.submissionCatalog.activeTrack);
+  return state.submissionLauncher.brands.filter((brand) => normalizeDistributionTrack(brand.track) === activeTrack);
+}
+
+function getSelectedDistributionBrand() {
+  const brands = getActiveDistributionBrands();
+  return brands.find((brand) => brand.brand_profile_id === state.submissionLauncher.selectedBrandProfileId) || null;
+}
+
+function getSelectedDistributionPack() {
+  const packs = getActiveDistributionPacks();
+  return packs.find((pack) => String(pack?.pack_id || "").trim().toLowerCase() === state.submissionLauncher.selectedPackId) || null;
+}
+
+function getDistributionPackAvailableSiteCount(pack) {
+  const explicitCount = Number(pack?.effective_site_count);
+  if (Number.isFinite(explicitCount) && explicitCount >= 0) {
+    return explicitCount;
+  }
+  return Array.isArray(pack?.sites) ? pack.sites.length : 0;
+}
+
+function deriveDistributionWebsiteKey(value) {
+  return normalizeBrandFilterValue(value);
+}
+
+function pickDefaultDistributionBrand(brands) {
+  const candidates = Array.isArray(brands) ? brands : [];
+  if (!candidates.length) {
+    return "";
+  }
+  const currentBrandKey = normalizeBrandFilterValue(state.filters.brand);
+  if (currentBrandKey) {
+    const matchingBrand =
+      candidates.find((brand) => normalizeBrandFilterValue(brand.brand_key) === currentBrandKey) ||
+      candidates.find((brand) => deriveDistributionWebsiteKey(brand.website_url) === currentBrandKey);
+    if (matchingBrand?.brand_profile_id) {
+      return matchingBrand.brand_profile_id;
+    }
+  }
+  return sanitizeOptionalString(candidates[0]?.brand_profile_id, 128) || "";
+}
+
+function syncDistributionLauncherSelections() {
+  const brands = getActiveDistributionBrands();
+  const packs = getActiveDistributionPacks();
+  const activeTrack = normalizeDistributionTrack(state.submissionCatalog.activeTrack);
+  const catalog = getActiveDistributionCatalog();
+  let brandChanged = false;
+  let packChanged = false;
+
+  if (!brands.some((brand) => brand.brand_profile_id === state.submissionLauncher.selectedBrandProfileId)) {
+    state.submissionLauncher.selectedBrandProfileId = pickDefaultDistributionBrand(brands);
+    brandChanged = true;
+  }
+
+  const selectedPackStillAvailable = packs.some((pack) => {
+    const packId = String(pack?.pack_id || "").trim().toLowerCase();
+    return packId === state.submissionLauncher.selectedPackId && getDistributionPackAvailableSiteCount(pack) > 0;
+  });
+
+  if (!selectedPackStillAvailable) {
+    const recommendedPackId = String(catalog?.recommended_pack?.pack_id || "").trim().toLowerCase();
+    const selectablePacks = packs.filter((pack) => getDistributionPackAvailableSiteCount(pack) > 0);
+    state.submissionLauncher.selectedPackId =
+      (
+        selectablePacks.find((pack) => String(pack?.pack_id || "").trim().toLowerCase() === recommendedPackId)?.pack_id ||
+        selectablePacks[0]?.pack_id ||
+        packs[0]?.pack_id ||
+        ""
+      )
+        .toLowerCase();
+    packChanged = true;
+  }
+
+  const selectedBrand = getSelectedDistributionBrand();
+  if (selectedBrand && normalizeDistributionTrack(selectedBrand.track) !== activeTrack) {
+    state.submissionLauncher.selectedBrandProfileId = pickDefaultDistributionBrand(brands);
+    brandChanged = true;
+  }
+
+  return { brandChanged, packChanged };
+}
+
+function setDistributionLauncherMessage(message, tone = "") {
+  state.submissionLauncher.message = sanitizeOptionalString(message, 400) || "Choose a submission brand and a product pack to start.";
+  state.submissionLauncher.messageTone = sanitizeString(tone, 24).toLowerCase();
+}
+
+function setDistributionBrandSaveMessage(message, tone = "") {
+  state.submissionLauncher.brandSaveMessage =
+    sanitizeOptionalString(message, 400) ||
+    "Mailbox setup is stored on the submission brand and used for new-account verification flows.";
+  state.submissionLauncher.brandSaveTone = sanitizeString(tone, 24).toLowerCase();
+}
+
+function inferDistributionMailboxProvider(email) {
+  const safeEmail = sanitizeOptionalString(email, 320) || "";
+  const domain = safeEmail.includes("@") ? safeEmail.split("@").pop().toLowerCase() : "";
+  if (!domain) {
+    return "";
+  }
+  for (const [providerKey, preset] of Object.entries(DISTRIBUTION_MAILBOX_PROVIDER_PRESETS)) {
+    if (Array.isArray(preset.domains) && preset.domains.some((candidate) => domain === candidate || domain.endsWith(`.${candidate}`))) {
+      return providerKey;
+    }
+  }
+  return "";
+}
+
+function resolveDistributionMailboxPreset(provider, email) {
+  const explicitProvider = sanitizeOptionalString(provider, 120) || "";
+  const providerKey = explicitProvider || inferDistributionMailboxProvider(email);
+  if (!providerKey) {
+    return null;
+  }
+  return DISTRIBUTION_MAILBOX_PROVIDER_PRESETS[providerKey] || null;
+}
+
+function applyDistributionMailboxDefaults(options = {}) {
+  const force = options.force === true;
+  const form = state.submissionLauncher.brandForm;
+  if (!form || typeof form !== "object") {
+    return;
+  }
+  const inferredProvider = inferDistributionMailboxProvider(form.mailboxEmail);
+  if ((!form.mailboxProvider || form.mailboxProvider === "unknown") && inferredProvider) {
+    form.mailboxProvider = inferredProvider;
+  }
+  const preset = resolveDistributionMailboxPreset(form.mailboxProvider, form.mailboxEmail);
+  if (!preset) {
+    return;
+  }
+
+  if (!form.mailboxUsername) {
+    form.mailboxUsername = form.mailboxEmail || "";
+  }
+  if (force || !form.mailboxHost) {
+    form.mailboxHost = preset.imapHost || form.mailboxHost || "";
+  }
+  if (force || !form.mailboxPort || form.mailboxPort === "993") {
+    form.mailboxPort = preset.imapPort || form.mailboxPort || "993";
+  }
+  if (force || form.mailboxSecure === undefined || form.mailboxSecure === null) {
+    form.mailboxSecure = preset.imapSecure === true;
+  }
+  if (force || !form.mailboxSmtpHost) {
+    form.mailboxSmtpHost = preset.smtpHost || form.mailboxSmtpHost || "";
+  }
+  if (force || !form.mailboxSmtpPort || form.mailboxSmtpPort === "465" || form.mailboxSmtpPort === "587") {
+    form.mailboxSmtpPort = preset.smtpPort || form.mailboxSmtpPort || "587";
+  }
+  if (force || form.mailboxSmtpSecure === undefined || form.mailboxSmtpSecure === null) {
+    form.mailboxSmtpSecure = preset.smtpSecure === true;
+  }
+}
+
+function buildDistributionBrandFormState(brand) {
+  const identity =
+    brand?.profile && typeof brand.profile === "object" && brand.profile.identity && typeof brand.profile.identity === "object"
+      ? brand.profile.identity
+      : null;
+  const mailbox = identity && identity.mailbox && typeof identity.mailbox === "object" ? identity.mailbox : null;
+  const hasMailboxSecure = mailbox && mailbox.secure !== undefined && mailbox.secure !== null;
+  const hasMailboxSmtpSecure = mailbox && mailbox.smtp_secure !== undefined && mailbox.smtp_secure !== null;
+  const formState = {
+    sourceBrandProfileId: sanitizeOptionalString(brand?.brand_profile_id, 128) || "",
+    identityMode: sanitizeOptionalString(identity?.mode, 64) || "client_owned",
+    mailboxProvider: sanitizeOptionalString(mailbox?.provider, 120) || "",
+    mailboxEmail: sanitizeOptionalString(mailbox?.email, 320) || "",
+    mailboxUsername: sanitizeOptionalString(mailbox?.username, 320) || "",
+    mailboxAuthMethod: sanitizeOptionalString(mailbox?.auth_method, 64) || "unknown",
+    mailboxHost: sanitizeOptionalString(mailbox?.host, 320) || "",
+    mailboxPort: sanitizeOptionalString(mailbox?.port, 16) || "993",
+    mailboxSecure: hasMailboxSecure ? mailbox?.secure !== false : null,
+    mailboxSmtpHost: sanitizeOptionalString(mailbox?.smtp_host, 320) || "",
+    mailboxSmtpPort: sanitizeOptionalString(mailbox?.smtp_port, 16) || "465",
+    mailboxSmtpSecure: hasMailboxSmtpSecure ? mailbox?.smtp_secure === true : null,
+    mailboxPassword: "",
+    mailboxReady: mailbox?.inbox_ready === true
+  };
+  state.submissionLauncher.brandForm = formState;
+  applyDistributionMailboxDefaults();
+  return state.submissionLauncher.brandForm;
+}
+
+function syncDistributionBrandFormState(selectedBrand, force = false) {
+  const sourceBrandProfileId = sanitizeOptionalString(selectedBrand?.brand_profile_id, 128) || "";
+  if (!force && state.submissionLauncher.brandForm.sourceBrandProfileId === sourceBrandProfileId) {
+    return;
+  }
+  state.submissionLauncher.brandForm = buildDistributionBrandFormState(selectedBrand);
+  setDistributionBrandSaveMessage("", "");
+}
+
+function formatDistributionTrackShort(value) {
+  const safeValue = normalizeDistributionTrack(value);
+  return safeValue === "physical_local" ? "Local presence" : "Startup";
+}
+
+function buildDistributionLauncherStateLabel() {
+  if (state.submissionLauncher.preparing) {
+    return "Preparing";
+  }
+  if (state.submissionLauncher.preflighting) {
+    return "Preflight";
+  }
+  if (state.submissionLauncher.queueing) {
+    return "Queueing";
+  }
+  if (state.submissionLauncher.queueBatch) {
+    return "Queued";
+  }
+  if (state.submissionLauncher.preflight) {
+    return "Checked";
+  }
+  if (state.submissionLauncher.prepareJob) {
+    return "Prepared";
+  }
+  return "Idle";
+}
+
+function buildDistributionBrandSummaryMarkup(brand, manifestRow) {
+  if (!brand) {
+    return "<p>Select a submission brand to see website, track, and current manifest coverage.</p>";
+  }
+  const websiteUrl = toExternalUrl(brand.website_url);
+  const manifestStatus = sanitizeOptionalString(manifestRow?.status, 64) || "No manifest";
+  const identity =
+    brand?.profile && typeof brand.profile === "object" && brand.profile.identity && typeof brand.profile.identity === "object"
+      ? brand.profile.identity
+      : null;
+  const mailbox = identity && identity.mailbox && typeof identity.mailbox === "object" ? identity.mailbox : null;
+  const identityMode = sanitizeOptionalString(identity?.mode, 64) || "Not set";
+  const mailboxEmail = sanitizeOptionalString(mailbox?.email, 320) || "Not set";
+  const mailboxProvider =
+    sanitizeOptionalString(mailbox?.provider, 120) ||
+    inferDistributionMailboxProvider(mailboxEmail) ||
+    "Auto";
+  const preset = resolveDistributionMailboxPreset(mailboxProvider, mailboxEmail);
+  const mailboxAuth = sanitizeOptionalString(mailbox?.auth_method, 64) || "unknown";
+  const inboxReady = mailbox?.inbox_ready === true ? "Ready" : "Needs setup";
+  const imapHost = sanitizeOptionalString(mailbox?.host, 320) || preset?.imapHost || "";
+  const imapPort = sanitizeOptionalString(mailbox?.port, 16) || preset?.imapPort || "993";
+  const imapSecure =
+    mailbox?.secure === undefined || mailbox?.secure === null
+      ? preset?.imapSecure !== false
+      : mailbox?.secure !== false;
+  const smtpHost = sanitizeOptionalString(mailbox?.smtp_host, 320) || preset?.smtpHost || "";
+  const smtpPort = sanitizeOptionalString(mailbox?.smtp_port, 16) || preset?.smtpPort || "587";
+  const smtpSecure =
+    mailbox?.smtp_secure === undefined || mailbox?.smtp_secure === null
+      ? preset?.smtpSecure === true
+      : mailbox?.smtp_secure === true;
+  const imapRoute = imapHost
+    ? `${imapHost}:${imapPort} · ${imapSecure ? "SSL" : "plain"}`
+    : "Not set";
+  const smtpRoute = smtpHost
+    ? `${smtpHost}:${smtpPort} · ${smtpSecure ? "SSL" : "STARTTLS/plain"}`
+    : "Not set";
+  return `
+    <dl class="distribution-result-facts">
+      <div><dt>Name</dt><dd>${escapeHtml(brand.display_name || brand.brand_profile_id)}</dd></div>
+      <div><dt>Track</dt><dd>${escapeHtml(formatDistributionTrackShort(brand.track))}</dd></div>
+      <div><dt>Brand key</dt><dd>${escapeHtml(brand.brand_key || "Not set")}</dd></div>
+      <div><dt>Manifest</dt><dd>${escapeHtml(manifestStatus.replaceAll("_", " "))}</dd></div>
+      <div><dt>Identity</dt><dd>${escapeHtml(identityMode.replaceAll("_", " "))}</dd></div>
+      <div><dt>Provider</dt><dd>${escapeHtml(mailboxProvider.replaceAll("_", " "))}</dd></div>
+      <div><dt>Mailbox</dt><dd>${escapeHtml(mailboxEmail)}</dd></div>
+      <div><dt>Inbox auth</dt><dd>${escapeHtml(`${mailboxAuth.replaceAll("_", " ")} · ${inboxReady}`)}</dd></div>
+      <div><dt>IMAP</dt><dd>${escapeHtml(imapRoute)}</dd></div>
+      <div><dt>SMTP</dt><dd>${escapeHtml(smtpRoute)}</dd></div>
+    </dl>
+    ${
+      websiteUrl
+        ? `<p><a href="${escapeHtml(websiteUrl)}" target="_blank" rel="noreferrer">${escapeHtml(websiteUrl)}</a></p>`
+        : "<p>No website URL stored on this brand profile.</p>"
+    }
+  `;
+}
+
+function buildDistributionManifestSummaryMarkup(manifestRow, options = {}) {
+  if (options.loading) {
+    return "<p>Loading the latest asset manifest…</p>";
+  }
+  if (options.error) {
+    return `<p>${escapeHtml(options.error)}</p>`;
+  }
+  if (!manifestRow) {
+    return "<p>No asset manifest exists for this brand yet. Run asset preparation to generate one.</p>";
+  }
+
+  const manifest = manifestRow?.manifest && typeof manifestRow.manifest === "object" ? manifestRow.manifest : {};
+  const missingItems = Array.isArray(manifest.missing_items) ? manifest.missing_items : [];
+  const approvalItems = Array.isArray(manifest.approval_items) ? manifest.approval_items : [];
+  const siteManifests = Array.isArray(manifest.site_manifests) ? manifest.site_manifests : [];
+
+  const topMissing = missingItems.slice(0, 3).map((item) => sanitizeOptionalString(item?.message || item?.label || item, 240)).filter(Boolean);
+  return `
+    <div class="distribution-result-summary-row">
+      <span class="distribution-summary-pill ${getDistributionDecisionClass(manifestRow.status)}">${escapeHtml(
+        String(manifestRow.status || "pending").replaceAll("_", " ")
+      )}</span>
+      <span class="distribution-inline-meta">v${escapeHtml(String(manifestRow.version || 1))}</span>
+      <span class="distribution-inline-meta">${escapeHtml(String(siteManifests.length))} sites</span>
+      <span class="distribution-inline-meta">${escapeHtml(String(missingItems.length))} missing</span>
+      <span class="distribution-inline-meta">${escapeHtml(String(approvalItems.length))} approvals</span>
+    </div>
+    ${
+      topMissing.length
+        ? `<ul class="distribution-inline-list">${topMissing.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+        : "<p>No manifest gaps are currently flagged.</p>"
+    }
+  `;
+}
+
+function buildDistributionPreflightSummaryMarkup(preflight) {
+  if (!preflight) {
+    return "<p>Run preflight to see which connectors are ready, assisted, or blocked.</p>";
+  }
+
+  const items = Array.isArray(preflight.items) ? preflight.items : [];
+  const nextSteps = Array.isArray(preflight.next_steps) ? preflight.next_steps.slice(0, 3) : [];
+  const livePackSelection =
+    preflight && preflight.live_pack_selection && typeof preflight.live_pack_selection === "object"
+      ? preflight.live_pack_selection
+      : null;
+  const degradedCount = Number(livePackSelection?.degraded_count || 0);
+  const telemetryError = sanitizeOptionalString(preflight?.telemetry_error || livePackSelection?.telemetry_error, 220) || "";
+  return `
+    <div class="distribution-result-summary-row">
+      <span class="distribution-summary-pill ${getDistributionDecisionClass(preflight.overall_decision)}">${escapeHtml(
+        formatDistributionDecisionLabel(preflight.overall_decision)
+      )}</span>
+      <span class="distribution-inline-meta">${escapeHtml(String(preflight.summary?.ready_auto_count || 0))} auto</span>
+      <span class="distribution-inline-meta">${escapeHtml(String(preflight.summary?.ready_assist_count || 0))} assist</span>
+      <span class="distribution-inline-meta">${escapeHtml(String(preflight.summary?.blocked_count || 0))} blocked</span>
+      ${degradedCount ? `<span class="distribution-inline-meta">${escapeHtml(String(degradedCount))} downgraded</span>` : ""}
+    </div>
+    ${
+      items.length
+        ? `<ul class="distribution-inline-list">${items
+            .slice(0, 5)
+            .map((item) => {
+              const reason = Array.isArray(item.reasons) && item.reasons[0] ? item.reasons[0].message : "No reason logged.";
+              const policySummary = buildDistributionPolicySummary(item);
+              return `<li><strong>${escapeHtml(item.site_name || item.site_id)}</strong> · ${escapeHtml(
+                formatDistributionDecisionLabel(item.decision)
+              )}${policySummary.length ? ` · ${escapeHtml(policySummary.join(" / "))}` : ""} · ${escapeHtml(reason)}</li>`;
+            })
+            .join("")}</ul>`
+        : "<p>No site decisions returned.</p>"
+    }
+    ${
+      telemetryError
+        ? `<p>${escapeHtml(`Live telemetry fallback: ${telemetryError}`)}</p>`
+        : ""
+    }
+    ${
+      nextSteps.length
+        ? `<p>${escapeHtml(nextSteps.join(" "))}</p>`
+        : ""
+    }
+  `;
+}
+
+function buildDistributionQueueSummaryMarkup(batch, statusMap = {}) {
+  if (!batch) {
+    return "<p>Queued submit jobs and their current state will appear here.</p>";
+  }
+
+  const queuedJobs = Array.isArray(batch.queued_jobs) ? batch.queued_jobs : [];
+  const skippedSites = Array.isArray(batch.skipped_sites) ? batch.skipped_sites : [];
+  const failedSites = Array.isArray(batch.failed_sites) ? batch.failed_sites : [];
+  return `
+    <div class="distribution-result-summary-row">
+      <span class="distribution-inline-meta">${escapeHtml(String(batch.summary?.queued_count || queuedJobs.length))} queued</span>
+      <span class="distribution-inline-meta">${escapeHtml(String(batch.summary?.skipped_count || skippedSites.length))} skipped</span>
+      <span class="distribution-inline-meta">${escapeHtml(String(batch.summary?.failed_count || failedSites.length))} failed</span>
+      ${
+        Number(batch.summary?.static_requested_site_count || 0) > Number(batch.summary?.requested_site_count || 0)
+          ? `<span class="distribution-inline-meta">${escapeHtml(
+              `${Number(batch.summary?.static_requested_site_count || 0) - Number(batch.summary?.requested_site_count || 0)} excluded`
+            )}</span>`
+          : ""
+      }
+      <span class="distribution-inline-meta">${escapeHtml(batch.dry_run ? "Dry run" : "Worker queue")}</span>
+    </div>
+    ${
+      queuedJobs.length
+        ? `<ul class="distribution-inline-list">${queuedJobs
+            .map((job) => {
+              const latest = statusMap[job.job_id] || null;
+              const jobStatus = sanitizeOptionalString(latest?.job?.status, 64) || sanitizeOptionalString(job.status, 64) || "queued";
+              const liveStatus = sanitizeOptionalString(latest?.live_report?.status, 64) || sanitizeOptionalString(latest?.live_report?.summary?.note, 220) || "";
+              return `<li><strong>${escapeHtml(job.site_name || job.site_id)}</strong> · <span class="distribution-site-badge ${getDistributionDecisionClass(
+                jobStatus
+              )}">${escapeHtml(jobStatus.replaceAll("_", " "))}</span>${liveStatus ? ` <span>${escapeHtml(liveStatus)}</span>` : ""}</li>`;
+            })
+            .join("")}</ul>`
+        : "<p>No submit jobs were queued for this run.</p>"
+    }
+  `;
+}
+
+function renderDistributionLauncher() {
+  if (!hasAppDashboardUi || !elements.distributionLauncherForm) {
+    return;
+  }
+
+  const { brandChanged, packChanged } = syncDistributionLauncherSelections();
+  const brands = getActiveDistributionBrands();
+  const selectedBrand = getSelectedDistributionBrand();
+  const packs = getActiveDistributionPacks();
+  const selectedPack = getSelectedDistributionPack();
+  syncDistributionBrandFormState(selectedBrand, brandChanged);
+
+  if (brandChanged) {
+    state.submissionLauncher.latestManifest = null;
+    state.submissionLauncher.manifestError = "";
+    state.submissionLauncher.preflight = null;
+    state.submissionLauncher.queueBatch = null;
+    state.submissionLauncher.queueStatuses = {};
+  }
+  if (packChanged) {
+    state.submissionLauncher.preflight = null;
+    state.submissionLauncher.queueBatch = null;
+    state.submissionLauncher.queueStatuses = {};
+  }
+
+  if (elements.distributionBrandSelect) {
+    if (state.submissionLauncher.loadingBrands && !brands.length) {
+      elements.distributionBrandSelect.innerHTML = '<option value="">Loading brands…</option>';
+    } else if (!brands.length) {
+      elements.distributionBrandSelect.innerHTML = `<option value="">${escapeHtml(
+        state.submissionLauncher.brandsError || `No ${formatDistributionTrackShort(state.submissionCatalog.activeTrack).toLowerCase()} submission brands yet`
+      )}</option>`;
+    } else {
+      elements.distributionBrandSelect.innerHTML = brands
+        .map((brand) => {
+          const value = sanitizeOptionalString(brand.brand_profile_id, 128) || "";
+          const label = [brand.display_name || value, brand.brand_key || "", brand.website_url ? deriveDistributionWebsiteKey(brand.website_url) : ""]
+            .filter(Boolean)
+            .slice(0, 2)
+            .join(" · ");
+          return `<option value="${escapeHtml(value)}">${escapeHtml(label || value)}</option>`;
+        })
+        .join("");
+      elements.distributionBrandSelect.value = state.submissionLauncher.selectedBrandProfileId || brands[0]?.brand_profile_id || "";
+    }
+    elements.distributionBrandSelect.disabled = state.submissionLauncher.loadingBrands || !brands.length;
+  }
+
+  if (elements.distributionPackSelect) {
+    if (!packs.length) {
+      elements.distributionPackSelect.innerHTML = '<option value="">No product packs on this track</option>';
+    } else {
+      const selectablePacks = packs.filter((pack) => getDistributionPackAvailableSiteCount(pack) > 0);
+      elements.distributionPackSelect.innerHTML = packs
+        .map((pack) => {
+          const availableCount = getDistributionPackAvailableSiteCount(pack);
+          const label = availableCount > 0
+            ? `${pack.pack_name || pack.pack_id} (${availableCount})`
+            : `${pack.pack_name || pack.pack_id} (unavailable)`;
+          return `<option value="${escapeHtml(pack.pack_id)}"${availableCount > 0 ? "" : " disabled"}>${escapeHtml(label)}</option>`;
+        })
+        .join("");
+      elements.distributionPackSelect.value =
+        state.submissionLauncher.selectedPackId || selectablePacks[0]?.pack_id || packs[0]?.pack_id || "";
+    }
+    elements.distributionPackSelect.disabled = !packs.length || !packs.some((pack) => getDistributionPackAvailableSiteCount(pack) > 0);
+  }
+
+  const liveEnabled = Boolean(elements.distributionSubmitLive?.checked);
+  if (elements.distributionNoHumanActions) {
+    elements.distributionNoHumanActions.disabled = !liveEnabled;
+    if (!liveEnabled) {
+      elements.distributionNoHumanActions.checked = false;
+    }
+  }
+
+  const disabled = !selectedBrand || !selectedPack || state.submissionLauncher.loadingBrands;
+  const actionsBusy = state.submissionLauncher.preparing || state.submissionLauncher.preflighting || state.submissionLauncher.queueing;
+  elements.distributionPrepareAction && (elements.distributionPrepareAction.disabled = disabled || actionsBusy);
+  elements.distributionPreflightAction && (elements.distributionPreflightAction.disabled = disabled || actionsBusy);
+  elements.distributionQueueAction && (elements.distributionQueueAction.disabled = disabled || actionsBusy);
+
+  if (elements.distributionLauncherState) {
+    elements.distributionLauncherState.textContent = buildDistributionLauncherStateLabel();
+    elements.distributionLauncherState.className = `distribution-launcher-state ${getDistributionDecisionClass(
+      state.submissionLauncher.queueBatch
+        ? "ready_assist"
+        : state.submissionLauncher.preflight?.overall_decision || (state.submissionLauncher.preparing ? "ready_assist" : "yellow")
+    )}`;
+  }
+
+  if (elements.distributionLauncherMessage) {
+    elements.distributionLauncherMessage.textContent = state.submissionLauncher.message;
+    elements.distributionLauncherMessage.dataset.state = state.submissionLauncher.messageTone || "";
+  }
+
+  if (elements.distributionBrandMeta) {
+    elements.distributionBrandMeta.textContent = selectedBrand
+      ? `${formatDistributionTrackShort(selectedBrand.track)} · ${selectedBrand.brand_key || "submission brand"}`
+      : "No brand selected";
+  }
+  if (elements.distributionBrandSummary) {
+    elements.distributionBrandSummary.innerHTML = buildDistributionBrandSummaryMarkup(
+      selectedBrand,
+      state.submissionLauncher.latestManifest
+    );
+  }
+  if (elements.distributionBrandSaveMeta) {
+    elements.distributionBrandSaveMeta.textContent = selectedBrand
+      ? `${state.submissionLauncher.brandForm.mailboxProvider || inferDistributionMailboxProvider(state.submissionLauncher.brandForm.mailboxEmail) || "custom"} · ${
+          state.submissionLauncher.brandForm.mailboxEmail || "No mailbox"
+        } · ${
+          state.submissionLauncher.brandForm.mailboxReady ? "ready" : "setup needed"
+        }`
+      : "Client-owned inbox";
+  }
+  if (elements.distributionIdentityMode) {
+    elements.distributionIdentityMode.value = state.submissionLauncher.brandForm.identityMode || "client_owned";
+    elements.distributionIdentityMode.disabled = !selectedBrand || state.submissionLauncher.savingBrand;
+  }
+  if (elements.distributionMailboxProvider) {
+    const providerValue = sanitizeOptionalString(state.submissionLauncher.brandForm.mailboxProvider, 120) || "";
+    const hasProviderOption = Array.from(elements.distributionMailboxProvider.options || []).some(
+      (option) => String(option?.value || "") === providerValue
+    );
+    elements.distributionMailboxProvider.value =
+      providerValue && hasProviderOption
+        ? providerValue
+        : providerValue
+          ? "custom"
+          : "";
+    elements.distributionMailboxProvider.disabled = !selectedBrand || state.submissionLauncher.savingBrand;
+  }
+  if (elements.distributionMailboxEmail) {
+    elements.distributionMailboxEmail.value = state.submissionLauncher.brandForm.mailboxEmail || "";
+    elements.distributionMailboxEmail.disabled = !selectedBrand || state.submissionLauncher.savingBrand;
+  }
+  if (elements.distributionMailboxUsername) {
+    elements.distributionMailboxUsername.value = state.submissionLauncher.brandForm.mailboxUsername || "";
+    elements.distributionMailboxUsername.disabled = !selectedBrand || state.submissionLauncher.savingBrand;
+  }
+  if (elements.distributionMailboxAuthMethod) {
+    elements.distributionMailboxAuthMethod.value = state.submissionLauncher.brandForm.mailboxAuthMethod || "unknown";
+    elements.distributionMailboxAuthMethod.disabled = !selectedBrand || state.submissionLauncher.savingBrand;
+  }
+  if (elements.distributionMailboxHost) {
+    elements.distributionMailboxHost.value = state.submissionLauncher.brandForm.mailboxHost || "";
+    elements.distributionMailboxHost.disabled = !selectedBrand || state.submissionLauncher.savingBrand;
+  }
+  if (elements.distributionMailboxPort) {
+    elements.distributionMailboxPort.value = state.submissionLauncher.brandForm.mailboxPort || "993";
+    elements.distributionMailboxPort.disabled = !selectedBrand || state.submissionLauncher.savingBrand;
+  }
+  if (elements.distributionMailboxSecure) {
+    elements.distributionMailboxSecure.checked = state.submissionLauncher.brandForm.mailboxSecure !== false;
+    elements.distributionMailboxSecure.disabled = !selectedBrand || state.submissionLauncher.savingBrand;
+  }
+  if (elements.distributionMailboxSmtpHost) {
+    elements.distributionMailboxSmtpHost.value = state.submissionLauncher.brandForm.mailboxSmtpHost || "";
+    elements.distributionMailboxSmtpHost.disabled = !selectedBrand || state.submissionLauncher.savingBrand;
+  }
+  if (elements.distributionMailboxSmtpPort) {
+    elements.distributionMailboxSmtpPort.value = state.submissionLauncher.brandForm.mailboxSmtpPort || "587";
+    elements.distributionMailboxSmtpPort.disabled = !selectedBrand || state.submissionLauncher.savingBrand;
+  }
+  if (elements.distributionMailboxSmtpSecure) {
+    elements.distributionMailboxSmtpSecure.checked = state.submissionLauncher.brandForm.mailboxSmtpSecure === true;
+    elements.distributionMailboxSmtpSecure.disabled = !selectedBrand || state.submissionLauncher.savingBrand;
+  }
+  if (elements.distributionMailboxPassword) {
+    elements.distributionMailboxPassword.value = state.submissionLauncher.brandForm.mailboxPassword || "";
+    elements.distributionMailboxPassword.disabled = !selectedBrand || state.submissionLauncher.savingBrand;
+  }
+  if (elements.distributionMailboxReady) {
+    elements.distributionMailboxReady.checked = state.submissionLauncher.brandForm.mailboxReady === true;
+    elements.distributionMailboxReady.disabled = !selectedBrand || state.submissionLauncher.savingBrand;
+  }
+  if (elements.distributionSaveBrandAction) {
+    elements.distributionSaveBrandAction.disabled = !selectedBrand || state.submissionLauncher.savingBrand;
+    elements.distributionSaveBrandAction.textContent = state.submissionLauncher.savingBrand ? "Saving…" : "Save Mailbox";
+  }
+  if (elements.distributionBrandSaveMessage) {
+    elements.distributionBrandSaveMessage.textContent = state.submissionLauncher.brandSaveMessage;
+    elements.distributionBrandSaveMessage.dataset.state = state.submissionLauncher.brandSaveTone || "";
+  }
+
+  if (elements.distributionManifestMeta) {
+    if (state.submissionLauncher.loadingManifest) {
+      elements.distributionManifestMeta.textContent = "Loading manifest";
+    } else if (state.submissionLauncher.latestManifest) {
+      elements.distributionManifestMeta.textContent = `${String(state.submissionLauncher.latestManifest.status || "pending").replaceAll(
+        "_",
+        " "
+      )} · v${state.submissionLauncher.latestManifest.version || 1}`;
+    } else if (state.submissionLauncher.manifestError) {
+      elements.distributionManifestMeta.textContent = "Manifest unavailable";
+    } else {
+      elements.distributionManifestMeta.textContent = "No manifest loaded";
+    }
+  }
+  if (elements.distributionManifestSummary) {
+    elements.distributionManifestSummary.innerHTML = buildDistributionManifestSummaryMarkup(state.submissionLauncher.latestManifest, {
+      loading: state.submissionLauncher.loadingManifest,
+      error: state.submissionLauncher.manifestError
+    });
+  }
+
+  if (elements.distributionPreflightMeta) {
+    if (state.submissionLauncher.preflighting) {
+      elements.distributionPreflightMeta.textContent = "Running preflight";
+    } else if (state.submissionLauncher.preflight) {
+      elements.distributionPreflightMeta.textContent = `${formatDistributionDecisionLabel(
+        state.submissionLauncher.preflight.overall_decision
+      )} · ${state.submissionLauncher.preflight.summary?.site_count || 0} sites`;
+    } else {
+      elements.distributionPreflightMeta.textContent = "Not run";
+    }
+  }
+  if (elements.distributionPreflightSummary) {
+    elements.distributionPreflightSummary.innerHTML = buildDistributionPreflightSummaryMarkup(
+      state.submissionLauncher.preflight
+    );
+  }
+
+  if (elements.distributionQueueMeta) {
+    if (state.submissionLauncher.queueing) {
+      elements.distributionQueueMeta.textContent = "Queueing jobs";
+    } else if (state.submissionLauncher.queueBatch) {
+      const summary = state.submissionLauncher.queueBatch.summary || {};
+      elements.distributionQueueMeta.textContent = `${summary.queued_count || 0} queued · ${summary.skipped_count || 0} skipped`;
+    } else {
+      elements.distributionQueueMeta.textContent = "Nothing queued";
+    }
+  }
+  if (elements.distributionQueueSummary) {
+    elements.distributionQueueSummary.innerHTML = buildDistributionQueueSummaryMarkup(
+      state.submissionLauncher.queueBatch,
+      state.submissionLauncher.queueStatuses
+    );
+  }
+}
+
+async function requestSubmissionBrandsOnce() {
+  const response = await fetch("/api/submissions/brands?limit=100");
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    throw new Error("Sign in required to access submission brands.");
+  }
+  if (!response.ok || !data.ok) {
+    const error = new Error(data.error || "Failed to load submission brands");
+    error.status = response.status || 500;
+    throw error;
+  }
+  return Array.isArray(data.brand_profiles) ? data.brand_profiles : [];
+}
+
+async function requestSaveSubmissionBrand(payload) {
+  const response = await fetch("/api/submissions/brands", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    throw new Error("Sign in required to update submission brands.");
+  }
+  if (!response.ok || !data.ok) {
+    const error = new Error(data.error || "Failed to update submission brand");
+    error.status = response.status || 500;
+    throw error;
+  }
+  return data.brand_profile || null;
+}
+
+async function loadSubmissionBrands(options = {}) {
+  if (!hasAppDashboardUi || !elements.distributionLauncherForm) {
+    return [];
+  }
+  if (state.submissionLauncher.brands.length && options.force !== true) {
+    renderDistributionLauncher();
+    return state.submissionLauncher.brands;
+  }
+
+  state.submissionLauncher.loadingBrands = true;
+  state.submissionLauncher.brandsError = "";
+  renderDistributionLauncher();
+  try {
+    const rows = await requestSubmissionBrandsOnce();
+    state.submissionLauncher.brands = rows;
+    state.submissionLauncher.brandsError = "";
+    renderDistributionLauncher();
+    const selectedBrandProfileId = getSelectedDistributionBrand()?.brand_profile_id || pickDefaultDistributionBrand(getActiveDistributionBrands());
+    if (selectedBrandProfileId) {
+      state.submissionLauncher.selectedBrandProfileId = selectedBrandProfileId;
+      void loadDistributionManifest(selectedBrandProfileId, { force: true });
+    }
+    return rows;
+  } catch (error) {
+    state.submissionLauncher.brandsError = error.message || "Failed to load submission brands";
+    renderDistributionLauncher();
+    throw error;
+  } finally {
+    state.submissionLauncher.loadingBrands = false;
+    renderDistributionLauncher();
+  }
+}
+
+async function requestDistributionManifest(brandProfileId) {
+  const params = new URLSearchParams({
+    brand_profile_id: sanitizeString(brandProfileId, 128),
+    latest: "true"
+  });
+  const response = await fetch(`/api/submissions/assets/manifest?${params.toString()}`);
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 404) {
+    return null;
+  }
+  if (response.status === 401) {
+    throw new Error("Sign in required to access asset manifests.");
+  }
+  if (!response.ok || !data.ok) {
+    const error = new Error(data.error || "Failed to load asset manifest");
+    error.status = response.status || 500;
+    throw error;
+  }
+  return data.asset_manifest || null;
+}
+
+async function loadDistributionManifest(brandProfileId, options = {}) {
+  const safeBrandProfileId = sanitizeString(brandProfileId, 128);
+  if (!safeBrandProfileId) {
+    state.submissionLauncher.latestManifest = null;
+    state.submissionLauncher.manifestError = "";
+    state.submissionLauncher.loadingManifest = false;
+    renderDistributionLauncher();
+    return null;
+  }
+  if (
+    options.force !== true &&
+    state.submissionLauncher.latestManifest &&
+    state.submissionLauncher.latestManifest.brand_profile_id === safeBrandProfileId
+  ) {
+    renderDistributionLauncher();
+    return state.submissionLauncher.latestManifest;
+  }
+
+  state.submissionLauncher.loadingManifest = true;
+  state.submissionLauncher.manifestError = "";
+  if (options.clearExisting === true) {
+    state.submissionLauncher.latestManifest = null;
+  }
+  renderDistributionLauncher();
+  try {
+    const manifest = await requestDistributionManifest(safeBrandProfileId);
+    if (
+      options.allowStale !== true &&
+      state.submissionLauncher.selectedBrandProfileId &&
+      state.submissionLauncher.selectedBrandProfileId !== safeBrandProfileId
+    ) {
+      return manifest;
+    }
+    state.submissionLauncher.latestManifest = manifest;
+    state.submissionLauncher.manifestError = "";
+    return manifest;
+  } catch (error) {
+    state.submissionLauncher.latestManifest = null;
+    state.submissionLauncher.manifestError = error.message || "Failed to load asset manifest";
+    throw error;
+  } finally {
+    state.submissionLauncher.loadingManifest = false;
+    renderDistributionLauncher();
+  }
+}
+
+async function requestDistributionJobStatus(jobId) {
+  const params = new URLSearchParams({
+    job_id: sanitizeString(jobId, 128)
+  });
+  const response = await fetch(`/api/submissions/status?${params.toString()}`);
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    throw new Error("Sign in required to inspect submission jobs.");
+  }
+  if (!response.ok || !data.ok) {
+    const error = new Error(data.error || "Failed to load submission job status");
+    error.status = response.status || 500;
+    throw error;
+  }
+  return data;
+}
+
+async function pollDistributionPrepareJob(jobId) {
+  const safeJobId = sanitizeString(jobId, 128);
+  if (!safeJobId || state.submissionLauncher.prepareJob?.job_id !== safeJobId) {
+    return;
+  }
+  stopDistributionPreparePolling();
+  try {
+    const status = await requestDistributionJobStatus(safeJobId);
+    if (state.submissionLauncher.prepareJob?.job_id !== safeJobId) {
+      return;
+    }
+    state.submissionLauncher.prepareJob = {
+      job_id: safeJobId,
+      status: sanitizeOptionalString(status?.job?.status, 64) || "queued",
+      payload: status
+    };
+    renderDistributionLauncher();
+    if (isDistributionActiveJobStatus(status?.job?.status)) {
+      state.submissionLauncher.prepareJobTimer = window.setTimeout(() => {
+        void pollDistributionPrepareJob(safeJobId);
+      }, 2500);
+      return;
+    }
+
+    state.submissionLauncher.preparing = false;
+    const finalStatus = sanitizeOptionalString(status?.job?.status, 64) || "completed";
+    if (finalStatus === "completed") {
+      await loadDistributionManifest(state.submissionLauncher.selectedBrandProfileId, { force: true, clearExisting: true }).catch(() => null);
+      setDistributionLauncherMessage("Asset manifest updated. Run preflight to check the selected pack.", "ok");
+      state.submissionLauncher.lastAction = "prepared";
+      return;
+    }
+
+    setDistributionLauncherMessage(
+      sanitizeOptionalString(status?.live_report?.summary?.note, 320) ||
+        `Asset preparation ended with status ${finalStatus.replaceAll("_", " ")}.`,
+      finalStatus === "failed" ? "error" : "warn"
+    );
+    state.submissionLauncher.lastAction = "prepare_failed";
+  } catch (error) {
+    state.submissionLauncher.preparing = false;
+    setDistributionLauncherMessage(error.message || "Could not track asset preparation.", "error");
+  } finally {
+    renderDistributionLauncher();
+  }
+}
+
+async function pollDistributionQueueJobs() {
+  stopDistributionQueuePolling();
+  const batch = state.submissionLauncher.queueBatch;
+  const queuedJobs = Array.isArray(batch?.queued_jobs) ? batch.queued_jobs : [];
+  if (!queuedJobs.length) {
+    state.submissionLauncher.queueing = false;
+    renderDistributionLauncher();
+    return;
+  }
+
+  let hasActive = false;
+  await Promise.all(
+    queuedJobs.map(async (job) => {
+      const safeJobId = sanitizeString(job?.job_id, 128);
+      if (!safeJobId) {
+        return;
+      }
+      try {
+        const status = await requestDistributionJobStatus(safeJobId);
+        state.submissionLauncher.queueStatuses[safeJobId] = status;
+        if (isDistributionActiveJobStatus(status?.job?.status)) {
+          hasActive = true;
+        }
+      } catch {
+        state.submissionLauncher.queueStatuses[safeJobId] = {
+          job: {
+            job_id: safeJobId,
+            status: "unavailable"
+          }
+        };
+      }
+    })
+  );
+
+  state.submissionLauncher.queueing = hasActive;
+  if (hasActive) {
+    state.submissionLauncher.queuePollTimer = window.setTimeout(() => {
+      void pollDistributionQueueJobs();
+    }, 3000);
+    setDistributionLauncherMessage("Submission jobs are moving through the worker queue.", "");
+  } else if (queuedJobs.length) {
+    setDistributionLauncherMessage("Queued jobs settled. Review the per-site status below.", "ok");
+  }
+  renderDistributionLauncher();
+}
+
+function buildDistributionJobId(prefix, brandProfileId, packId) {
+  const safePrefix = sanitizeString(prefix, 24).toLowerCase() || "submission";
+  const safeBrand = toAnchorToken(brandProfileId || "brand", "brand");
+  const safePack = toAnchorToken(packId || "pack", "pack");
+  return `${safePrefix}-${safeBrand}-${safePack}-${Date.now()}`;
+}
+
+async function runDistributionAssetPrepare() {
+  const brand = getSelectedDistributionBrand();
+  const pack = getSelectedDistributionPack();
+  if (!brand || !pack) {
+    setDistributionLauncherMessage("Choose a submission brand and product pack first.", "error");
+    renderDistributionLauncher();
+    return;
+  }
+
+  stopDistributionPreparePolling();
+  state.submissionLauncher.preparing = true;
+  state.submissionLauncher.prepareJob = {
+    job_id: buildDistributionJobId("asset-prepare", brand.brand_profile_id, pack.pack_id),
+    status: "queued",
+    payload: null
+  };
+  state.submissionLauncher.preflight = null;
+  state.submissionLauncher.queueBatch = null;
+  state.submissionLauncher.queueStatuses = {};
+  setDistributionLauncherMessage(`Preparing assets for ${brand.display_name} across ${pack.pack_name}.`, "");
+  renderDistributionLauncher();
+
+  try {
+    const response = await fetch("/api/submissions/assets/prepare", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        job_id: state.submissionLauncher.prepareJob.job_id,
+        brand_profile_id: brand.brand_profile_id,
+        brand_key: brand.brand_key || null,
+        track: normalizeDistributionTrack(state.submissionCatalog.activeTrack),
+        site_ids: (Array.isArray(pack.sites) ? pack.sites : []).map((site) => site.site_id).filter(Boolean),
+        metadata: {
+          pack_id: pack.pack_id,
+          pack_name: pack.pack_name,
+          launched_from: "dashboard_distribution_launcher"
+        }
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Failed to queue asset preparation");
+    }
+    state.submissionLauncher.prepareJob.payload = data;
+    void pollDistributionPrepareJob(state.submissionLauncher.prepareJob.job_id);
+  } catch (error) {
+    state.submissionLauncher.preparing = false;
+    setDistributionLauncherMessage(error.message || "Could not prepare assets.", "error");
+    renderDistributionLauncher();
+  }
+}
+
+async function runDistributionPreflight() {
+  const brand = getSelectedDistributionBrand();
+  const pack = getSelectedDistributionPack();
+  if (!brand || !pack) {
+    setDistributionLauncherMessage("Choose a submission brand and product pack first.", "error");
+    renderDistributionLauncher();
+    return;
+  }
+
+  state.submissionLauncher.preflighting = true;
+  setDistributionLauncherMessage(`Running preflight for ${pack.pack_name}.`, "");
+  renderDistributionLauncher();
+  try {
+    const response = await fetch("/api/submissions/pack-preflight", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        brand_profile_id: brand.brand_profile_id,
+        pack_id: pack.pack_id,
+        track: normalizeDistributionTrack(state.submissionCatalog.activeTrack)
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Failed to run pack preflight");
+    }
+    state.submissionLauncher.preflight = data;
+    state.submissionLauncher.lastAction = "preflight";
+    setDistributionLauncherMessage(
+      `Preflight returned ${data.summary?.ready_auto_count || 0} auto, ${data.summary?.ready_assist_count || 0} assist, ${data.summary?.blocked_count || 0} blocked.`,
+      data.overall_decision === "blocked" ? "warn" : "ok"
+    );
+  } catch (error) {
+    setDistributionLauncherMessage(error.message || "Could not run preflight.", "error");
+  } finally {
+    state.submissionLauncher.preflighting = false;
+    renderDistributionLauncher();
+  }
+}
+
+async function queueDistributionPack() {
+  const brand = getSelectedDistributionBrand();
+  const pack = getSelectedDistributionPack();
+  if (!brand || !pack) {
+    setDistributionLauncherMessage("Choose a submission brand and product pack first.", "error");
+    renderDistributionLauncher();
+    return;
+  }
+
+  stopDistributionQueuePolling();
+  state.submissionLauncher.queueing = true;
+  state.submissionLauncher.queueBatch = null;
+  state.submissionLauncher.queueStatuses = {};
+  const submitLive = Boolean(elements.distributionSubmitLive?.checked);
+  const noHumanActions = submitLive && Boolean(elements.distributionNoHumanActions?.checked);
+  setDistributionLauncherMessage(
+    submitLive
+      ? `Queueing live ${pack.pack_name} jobs for ${brand.display_name}.`
+      : `Running a dry-run queue preview for ${pack.pack_name}.`,
+    ""
+  );
+  renderDistributionLauncher();
+
+  try {
+    const response = await fetch("/api/submissions/pack-submit", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        brand_profile_id: brand.brand_profile_id,
+        pack_id: pack.pack_id,
+        track: normalizeDistributionTrack(state.submissionCatalog.activeTrack),
+        dry_run: !submitLive,
+        stop_before_submit: !submitLive,
+        no_human_actions: noHumanActions,
+        include_auto: true,
+        include_assist: true,
+        include_manual: false,
+        metadata: {
+          pack_id: pack.pack_id,
+          pack_name: pack.pack_name,
+          launched_from: "dashboard_distribution_launcher"
+        }
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Failed to queue pack submit");
+    }
+    state.submissionLauncher.queueBatch = data;
+    state.submissionLauncher.lastAction = "queue";
+    setDistributionLauncherMessage(
+      data.dry_run
+        ? `Dry run produced ${data.summary?.queued_count || 0} queueable jobs.`
+        : `Queued ${data.summary?.queued_count || 0} submission jobs for ${pack.pack_name}.`,
+      "ok"
+    );
+    if (!data.dry_run && Array.isArray(data.queued_jobs) && data.queued_jobs.length) {
+      void pollDistributionQueueJobs();
+    } else {
+      state.submissionLauncher.queueing = false;
+    }
+  } catch (error) {
+    state.submissionLauncher.queueing = false;
+    setDistributionLauncherMessage(error.message || "Could not queue the selected pack.", "error");
+  } finally {
+    renderDistributionLauncher();
+  }
+}
+
+async function saveDistributionBrandMailbox() {
+  const brand = getSelectedDistributionBrand();
+  if (!brand) {
+    setDistributionBrandSaveMessage("Choose a submission brand first.", "error");
+    renderDistributionLauncher();
+    return;
+  }
+
+  const form = state.submissionLauncher.brandForm;
+  const mailboxEmail = sanitizeOptionalString(form.mailboxEmail, 320) || "";
+  if (!mailboxEmail) {
+    setDistributionBrandSaveMessage("Mailbox email is required for client-owned inbox setup.", "error");
+    renderDistributionLauncher();
+    return;
+  }
+
+  state.submissionLauncher.savingBrand = true;
+  applyDistributionMailboxDefaults();
+  setDistributionBrandSaveMessage(`Saving mailbox setup for ${brand.display_name || brand.brand_profile_id}.`, "");
+  renderDistributionLauncher();
+
+  try {
+    const savedBrand = await requestSaveSubmissionBrand({
+      brand_profile_id: brand.brand_profile_id,
+      brand_key: brand.brand_key,
+      track: brand.track,
+      display_name: brand.display_name,
+      legal_name: brand.legal_name || null,
+      website_url: brand.website_url || null,
+      profile: brand.profile && typeof brand.profile === "object" ? brand.profile : {},
+      identity_mode: sanitizeOptionalString(form.identityMode, 64) || "client_owned",
+      mailbox_provider: sanitizeOptionalString(form.mailboxProvider, 120) || null,
+      mailbox_email: mailboxEmail,
+      mailbox_username: sanitizeOptionalString(form.mailboxUsername, 320) || null,
+      mailbox_auth_method: sanitizeOptionalString(form.mailboxAuthMethod, 64) || "unknown",
+      mailbox_host: sanitizeOptionalString(form.mailboxHost, 320) || null,
+      mailbox_port: sanitizeOptionalString(form.mailboxPort, 16) || null,
+      mailbox_secure: form.mailboxSecure !== false,
+      mailbox_smtp_host: sanitizeOptionalString(form.mailboxSmtpHost, 320) || null,
+      mailbox_smtp_port: sanitizeOptionalString(form.mailboxSmtpPort, 16) || null,
+      mailbox_smtp_secure: form.mailboxSmtpSecure === true,
+      mailbox_password: sanitizeOptionalString(form.mailboxPassword, 1024) || undefined,
+      inbox_ready: form.mailboxReady === true,
+      app_password_configured:
+        sanitizeOptionalString(form.mailboxAuthMethod, 64) === "app_password"
+          ? form.mailboxReady === true || Boolean(sanitizeOptionalString(form.mailboxPassword, 1024))
+          : undefined
+    });
+    if (savedBrand && savedBrand.brand_profile_id) {
+      state.submissionLauncher.brands = state.submissionLauncher.brands.map((item) =>
+        item.brand_profile_id === savedBrand.brand_profile_id ? savedBrand : item
+      );
+      syncDistributionBrandFormState(savedBrand, true);
+    }
+    setDistributionBrandSaveMessage("Mailbox setup saved on the submission brand.", "ok");
+  } catch (error) {
+    setDistributionBrandSaveMessage(error.message || "Could not save mailbox setup.", "error");
+  } finally {
+    state.submissionLauncher.savingBrand = false;
+    state.submissionLauncher.brandForm.mailboxPassword = "";
+    renderDistributionLauncher();
+  }
+}
+
 function mergeSavedProjects(projects) {
   state.savedProjects = dashboardProjects.mergeSavedProjects(state.savedProjects, projects, {
     normalizeProject: normalizeSavedProject
@@ -3804,7 +7945,11 @@ function mergeSavedProjects(projects) {
 }
 
 function buildSavedProjectPayload(config = {}, metadata = {}) {
-  return dashboardProjects.buildSavedProjectPayload(config, metadata, {
+  const projectMetadata = {
+    ...(metadata && typeof metadata === "object" ? metadata : {}),
+    repo_triage: normalizeRepoTriageConfigInput(config.repoTriage || config.repo_triage || metadata.repo_triage || {})
+  };
+  return dashboardProjects.buildSavedProjectPayload(config, projectMetadata, {
     normalizeTargetUrl: (value) => normalizeOnboardingTargetUrlInput(String(value || ""), { writeBack: false }),
     sanitizeBrandKey,
     inferBrandKeyFromTargetUrl,
@@ -4000,6 +8145,9 @@ function resetDashboardCollections() {
   state.activeRenderedReport = null;
   state.activeRenderedRow = null;
   setProjectCatalogStatus(PROJECT_CATALOG_STATES.IDLE);
+  resetDistributionCatalog();
+  resetDistributionLauncher();
+  resetQaAutomationState();
 }
 
 function renderBrandSummary() {
@@ -4221,10 +8369,13 @@ function renderRunsList() {
   elements.reportsCount.textContent = String(state.runs.length);
 
   if (!state.runs.length) {
-    state.selectedRunId = null;
-    state.requestedRunId = "";
-    state.activeRenderedReport = null;
-    state.activeRenderedRow = null;
+    const requestedRunId = String(state.requestedRunId || state.selectedRunId || "").trim();
+    if (!requestedRunId) {
+      state.selectedRunId = null;
+      state.requestedRunId = "";
+      state.activeRenderedReport = null;
+      state.activeRenderedRow = null;
+    }
     elements.reportsItems.innerHTML = '<div class="empty-state">No reports found for these filters.</div>';
     elements.reportDetail.innerHTML = `
       <div class="empty-detail">
@@ -4297,6 +8448,11 @@ function attachRunClickHandlers() {
 function isQueueActiveStatus(value) {
   const status = normalizeRunStatus(value);
   return status === "queued" || status === "processing" || status === "retryable";
+}
+
+function isRepoTriageActiveStatus(value) {
+  const status = normalizeRunStatus(value);
+  return status === "queued" || status === "processing";
 }
 
 function getLiveStatus(runId) {
@@ -4383,7 +8539,8 @@ function buildLiveFallbackReport(runId, row, statusPayload) {
 }
 
 async function fetchRunStatus(runId) {
-  const response = await fetch(`/api/qa/status?run_id=${encodeURIComponent(runId)}`);
+  const params = appendActiveShareKey(new URLSearchParams({ run_id: String(runId || "") }));
+  const response = await fetch(`/api/qa/status?${params.toString()}`);
   const data = await response.json().catch(() => ({}));
   if (response.status === 401) {
     throw new Error("Sign in required to view run status.");
@@ -4406,7 +8563,13 @@ async function fetchReport(runId) {
     return cached;
   }
 
-  const response = await fetch(`/api/qa/report?run_id=${encodeURIComponent(runId)}&skip_markdown=1`);
+  const params = appendActiveShareKey(
+    new URLSearchParams({
+      run_id: String(runId || ""),
+      skip_markdown: "1"
+    })
+  );
+  const response = await fetch(`/api/qa/report?${params.toString()}`);
   const data = await response.json().catch(() => ({}));
   if (response.status === 401) {
     throw new Error("Sign in required to view report details.");
@@ -4553,11 +8716,11 @@ function renderLinkRow(report, links, label) {
 }
 
 function buildEvidenceAssetUrl(runId, kind, index) {
-  const params = new URLSearchParams({
+  const params = appendActiveShareKey(new URLSearchParams({
     run_id: String(runId || ""),
     kind: String(kind || ""),
     index: String(index)
-  });
+  }));
 
   return `/api/qa/evidence?${params.toString()}`;
 }
@@ -4582,6 +8745,26 @@ function collectEvidenceValues(report, kind) {
     const evidence = journey && typeof journey.evidence === "object" ? journey.evidence : {};
     if (Array.isArray(evidence[field])) {
       values.push(...evidence[field]);
+    }
+  }
+
+  return values;
+}
+
+function collectEvidenceLookupValues(report, kind) {
+  const values = collectEvidenceValues(report, kind);
+  if (kind !== "video") {
+    return values;
+  }
+
+  const journeys = Array.isArray(report?.tested_journeys) ? report.tested_journeys : [];
+  for (const journey of journeys) {
+    const clips = Array.isArray(journey?.step_video_clips) ? journey.step_video_clips : [];
+    for (const clip of clips) {
+      const ref = String(clip?.video || clip?.video_url || clip?.videoUrl || clip?.source || clip?.url || clip?.path || "").trim();
+      if (ref) {
+        values.push(ref);
+      }
     }
   }
 
@@ -4769,6 +8952,18 @@ function simplifyJourneyText(value) {
 
   const exactMatches = new Map([
     [
+      "The run failed before the requested flow completed",
+      "The tester got stuck before finishing the thing they were trying to do."
+    ],
+    [
+      "The requested flow stopped before it finished",
+      "The tester got stuck before finishing the thing they were trying to do."
+    ],
+    [
+      "The auth flow stalled before product access",
+      "The tester got stuck during account setup and never got into the product."
+    ],
+    [
       "Primary public navigation and conversion surfaces were exercised to validate the core public user journey.",
       "The tester looked at the main public pages and tried the main button a new visitor would click."
     ],
@@ -4779,6 +8974,18 @@ function simplifyJourneyText(value) {
     [
       "The worker checked the visible auth boundary but did not cross into authenticated flows because no credentials were supplied.",
       "The tester reached the login wall but could not go farther because no login was provided."
+    ],
+    [
+      "Auth flow did not resolve to an authenticated surface",
+      "The tester submitted the login or sign-up form, but the site kept showing the same login screen."
+    ],
+    [
+      "Authenticated flows were not tested because no credentials were provided.",
+      "The tester never got into the logged-in part of the product."
+    ],
+    [
+      "Milestone screenshot captured.",
+      "The tester reached the last visible screen before the blocker."
     ],
     ["Open the target entry page.", "Open the first page."],
     ["Traverse the main navigation and primary CTA path.", "Click through the main menu and the main button."],
@@ -4813,6 +9020,8 @@ function simplifyJourneyText(value) {
     .replace(/\bauth boundary\b/gi, "login wall")
     .replace(/\bcredentials were supplied\b/gi, "a login was provided")
     .replace(/\bcredentials\b/gi, "login details")
+    .replace(/\bdid not resolve to an authenticated surface\b/gi, "kept showing the same login screen instead of getting into the product")
+    .replace(/\bauth flow stalled before product access\b/gi, "got stuck during account setup and never got into the product")
     .replace(/\bpublic navigation and conversion surfaces\b/gi, "main public pages and buttons")
     .replace(/\bwere exercised to validate\b/gi, "were checked to see")
     .replace(/\bcore public user journey\b/gi, "if a new visitor could use them")
@@ -4825,8 +9034,17 @@ function simplifyJourneyText(value) {
     .replace(/\bprimary sign-in or account gate\b/gi, "main login step")
     .replace(/\badditional authenticated-only areas\b/gi, "more pages after login")
     .replace(/\brecord the auth boundary as untested rather than forcing invalid coverage\b/gi, "mark the logged-in part as not tested instead of guessing")
+    .replace(/\bmilestone screenshot captured\b/gi, "the tester reached the last visible screen before the blocker")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function simplifyReportNarrative(value) {
+  const raw = redactVendorText(String(value || "").trim());
+  if (!raw) {
+    return "";
+  }
+  return simplifyJourneyText(raw);
 }
 
 function simplifyJourneySummary(value, title = "") {
@@ -4849,7 +9067,7 @@ function simplifyJourneySummary(value, title = "") {
 }
 
 function buildEvidenceIndexMap(report, kind) {
-  const values = buildEvidenceSequence(report, kind).map((item) => item.raw);
+  const values = collectEvidenceLookupValues(report, kind);
   const map = new Map();
   for (let index = 0; index < values.length; index += 1) {
     const key = String(values[index] || "").trim();
@@ -4884,6 +9102,30 @@ function resolveEvidenceDisplayUrl(report, kind, rawValue, evidenceIndexMap = nu
   return "";
 }
 
+function buildVideoClipUrl(rawUrl, clipStartMs, clipEndMs) {
+  const source = String(rawUrl || "").trim();
+  if (!source || DATA_VIDEO_PATTERN.test(source)) {
+    return source;
+  }
+
+  const startSeconds = Math.max(0, Number(clipStartMs) || 0) / 1000;
+  const endSeconds = Math.max(startSeconds + 0.35, Number(clipEndMs) || 0) / 1000;
+  const toFragmentSeconds = (value) => {
+    const rounded = Math.round(Math.max(0, Number(value) || 0) * 1000) / 1000;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(3).replace(/0+$/g, "").replace(/\.$/g, "");
+  };
+  const fragment = `t=${toFragmentSeconds(startSeconds)},${toFragmentSeconds(endSeconds)}`;
+
+  try {
+    const parsed = new URL(source, window.location.origin);
+    parsed.hash = fragment;
+    return parsed.toString();
+  } catch {
+    const [base] = source.split("#");
+    return `${base}#${fragment}`;
+  }
+}
+
 function renderEvidenceThumbnails(report, links, contextLabel, explanationText = "", options = {}) {
   const values = Array.isArray(links) ? links : [];
   if (!values.length) {
@@ -4901,7 +9143,7 @@ function renderEvidenceThumbnails(report, links, contextLabel, explanationText =
     const caption = truncateText(explanationText, 110) || "Captured during tester walkthrough.";
     cards.push(`
       <figure class="evidence-thumb-card ${compact ? "compact" : ""}">
-        <img src="${escapeHtml(url)}" alt="${escapeHtml(contextLabel)} screenshot ${index + 1}" loading="lazy" onerror="this.closest('.evidence-thumb-card').style.display='none'" />
+        <img src="${escapeHtml(url)}" alt="${escapeHtml(contextLabel)} screenshot ${index + 1}" loading="lazy" onerror="const card=this.closest('.evidence-thumb-card'); if(!card){return;} card.innerHTML='<p class=&quot;evidence-unavailable-note&quot;>Picture preview unavailable for this step.</p>';" />
         ${showCaption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ""}
       </figure>
     `);
@@ -4927,10 +9169,30 @@ function renderEvidenceThumbnails(report, links, contextLabel, explanationText =
 function renderEvidencePreview(report, evidence = {}, contextLabel, explanationText = "", options = {}) {
   const screenshots = Array.isArray(evidence?.screenshots) ? evidence.screenshots : [];
   const videos = Array.isArray(evidence?.videos) ? evidence.videos : [];
+  const fallbackReportVideos =
+    report && report.evidence_gallery && typeof report.evidence_gallery === "object" && Array.isArray(report.evidence_gallery.videos)
+      ? report.evidence_gallery.videos
+      : [];
   const maxItems = Math.max(1, Math.min(6, Number(options?.maxItems) || 3));
   const showCaption = options?.showCaption !== false;
   const compact = options?.compact === true;
-  const videoItems = resolveEvidenceVideoItems(report, videos, { maxItems });
+  const preferVideo = options?.preferVideo !== false;
+  const imageItems = resolveEvidenceImageItems(report, screenshots, { maxItems });
+  const videoSources = videos.length ? videos : fallbackReportVideos;
+  const videoItems = resolveEvidenceVideoItems(report, videoSources, { maxItems });
+
+  if (preferVideo && videoItems.length) {
+    const primaryVideo = videoItems[0];
+    const caption = truncateText(explanationText, 110) || "Short clip from this test.";
+    return `
+      <div class="evidence-thumb-grid evidence-thumb-grid--video">
+        <figure class="evidence-thumb-card evidence-thumb-card--video ${compact ? "compact" : ""}">
+          <video src="${escapeHtml(primaryVideo.url)}" controls playsinline preload="metadata" onerror="const card=this.closest('.evidence-thumb-card'); if(!card){return;} card.innerHTML='<p class=&quot;evidence-unavailable-note&quot;>Video preview unavailable for this step.</p>';"></video>
+          ${showCaption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ""}
+        </figure>
+      </div>
+    `;
+  }
 
   if (videoItems.length) {
     const primaryVideo = videoItems[0];
@@ -4938,14 +9200,557 @@ function renderEvidencePreview(report, evidence = {}, contextLabel, explanationT
     return `
       <div class="evidence-thumb-grid evidence-thumb-grid--video">
         <figure class="evidence-thumb-card evidence-thumb-card--video ${compact ? "compact" : ""}">
-          <video src="${escapeHtml(primaryVideo.url)}" controls playsinline preload="metadata"></video>
+          <video src="${escapeHtml(primaryVideo.url)}" controls playsinline preload="metadata" onerror="const card=this.closest('.evidence-thumb-card'); if(!card){return;} card.innerHTML='<p class=&quot;evidence-unavailable-note&quot;>Video preview unavailable for this step.</p>';"></video>
           ${showCaption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ""}
         </figure>
       </div>
     `;
   }
 
-  return renderEvidenceThumbnails(report, screenshots, contextLabel, explanationText, options);
+  if (Object.prototype.hasOwnProperty.call(options, "emptyMarkup")) {
+    return String(options.emptyMarkup || "");
+  }
+
+  return `
+    <p class="evidence-unavailable-note">
+      No playable video was attached to this step.
+    </p>
+  `;
+}
+
+function formatExperienceTimelineClock(value) {
+  const totalMs = Math.max(0, Math.round(Number(value) || 0));
+  const totalSeconds = Math.floor(totalMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatExperienceTimelineDuration(value) {
+  const totalMs = Math.max(0, Math.round(Number(value) || 0));
+  const totalSeconds = Math.floor(totalMs / 1000);
+  if (!totalSeconds) {
+    return "0s";
+  }
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
+}
+
+function getExperienceTimeline(report) {
+  const raw = report && typeof report === "object" ? report.experience_timeline : null;
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const spans = Array.isArray(raw.spans)
+    ? raw.spans.filter((span) => span && typeof span === "object" && Number.isFinite(Number(span.start_ms)) && Number.isFinite(Number(span.end_ms)))
+    : [];
+  if (!spans.length) {
+    return null;
+  }
+  return {
+    ...raw,
+    spans
+  };
+}
+
+function getExperienceTimelineDurationMs(timeline) {
+  const explicit = Math.max(0, Math.round(Number(timeline?.video_duration_ms) || 0));
+  if (explicit > 0) {
+    return explicit;
+  }
+  const spans = Array.isArray(timeline?.spans) ? timeline.spans : [];
+  return spans.reduce((maxValue, span) => Math.max(maxValue, Math.round(Number(span?.end_ms) || 0)), 0);
+}
+
+function resolveExperienceTimelineVideoItem(report) {
+  const galleryVideos =
+    report && report.evidence_gallery && typeof report.evidence_gallery === "object" && Array.isArray(report.evidence_gallery.videos)
+      ? report.evidence_gallery.videos
+      : [];
+  const findingVideos = Array.isArray(report?.findings)
+    ? report.findings.flatMap((finding) => (Array.isArray(finding?.evidence?.videos) ? finding.evidence.videos : []))
+    : [];
+  const journeyVideos = Array.isArray(report?.tested_journeys)
+    ? report.tested_journeys.flatMap((journey) => (Array.isArray(journey?.evidence?.videos) ? journey.evidence.videos : []))
+    : [];
+  const videoItems = resolveEvidenceVideoItems(report, [...galleryVideos, ...findingVideos, ...journeyVideos], { maxItems: 1 });
+  return videoItems[0] || null;
+}
+
+function resolveExperienceTimelineFindingAnchor(report, span) {
+  const linkedIds = Array.isArray(span?.linked_finding_ids) ? span.linked_finding_ids : [];
+  if (!linkedIds.length) {
+    return "";
+  }
+  const findings = Array.isArray(report?.findings) ? report.findings : [];
+  for (const linkedId of linkedIds) {
+    const normalizedId = String(linkedId || "").trim();
+    if (!normalizedId) {
+      continue;
+    }
+    const finding = findings.find((item) => String(item?.id || "").trim() === normalizedId);
+    if (finding) {
+      return `finding-${toAnchorToken(finding?.id || finding?.title || normalizedId)}`;
+    }
+    return `finding-${toAnchorToken(normalizedId)}`;
+  }
+  return "";
+}
+
+function resolveExperienceTimelineLinkedFinding(report, span) {
+  const linkedIds = Array.isArray(span?.linked_finding_ids) ? span.linked_finding_ids : [];
+  const findings = Array.isArray(report?.findings) ? report.findings : [];
+  for (const linkedId of linkedIds) {
+    const normalizedId = String(linkedId || "").trim();
+    if (!normalizedId) {
+      continue;
+    }
+    const finding = findings.find((item) => String(item?.id || "").trim() === normalizedId);
+    if (finding) {
+      return finding;
+    }
+  }
+  return null;
+}
+
+function cleanExperienceTimelineTarget(value, fallback = "this step") {
+  let safeValue = redactVendorText(String(value || "").trim());
+  if (!safeValue) {
+    return fallback;
+  }
+  safeValue = safeValue
+    .replace(/^"(.*)"$/, "$1")
+    .replace(/^(click(?:ed)?|tap(?:ped)?|type(?:d)?|enter(?:ed)?|submit(?:ted)?|open(?:ed)?|wait(?:ed)?)\s*:?\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!safeValue) {
+    return fallback;
+  }
+  if (/(verification code|otp)/i.test(safeValue)) {
+    return "the verification code step";
+  }
+  if (/email input|email field|email step/i.test(safeValue)) {
+    return "the email step";
+  }
+  if (/send code/i.test(safeValue)) {
+    return "Send code";
+  }
+  if (/generate presenter/i.test(safeValue)) {
+    return "Generate presenter";
+  }
+  const normalized = safeValue.toLowerCase();
+  if (normalized === "current screen" || normalized === "affected area") {
+    return fallback;
+  }
+  return safeValue;
+}
+
+function formatExperienceTimelineAttemptLine(attempt) {
+  const safeAttempt = attempt && typeof attempt === "object" ? attempt : {};
+  const action = String(safeAttempt?.action || "inspect").trim().toLowerCase();
+  const target = cleanExperienceTimelineTarget(safeAttempt?.target, "this step");
+  const outcome = redactVendorText(String(safeAttempt?.outcome || "").trim())
+    .replace(/\s+at\s+\(\d+\s*,\s*\d+\)\s*$/i, "")
+    .trim();
+  let line = "";
+  if (action === "click" || action === "clicked" || action === "tap" || action === "tapped") {
+    line = `Clicked ${target}`;
+  } else if (action === "type" || action === "typed" || action === "enter" || action === "entered") {
+    line = `Entered ${target}`;
+  } else if (action === "wait" || action === "waited") {
+    line = `Waited on ${target}`;
+  } else if (action === "submit" || action === "submitted") {
+    line = `Submitted ${target}`;
+  } else if (action === "open" || action === "opened") {
+    line = `Opened ${target}`;
+  } else {
+    line = `${action.charAt(0).toUpperCase()}${action.slice(1)} ${target}`.trim();
+  }
+  if (outcome && !/^(state observed|done|completed|clicked|typed|entered)$/i.test(outcome)) {
+    line = `${line} — ${outcome}`;
+  }
+  return line;
+}
+
+function resolveExperienceTimelineAttempts(report, span) {
+  const evidence = span?.evidence && typeof span.evidence === "object" ? span.evidence : {};
+  const rawSteps = Array.isArray(evidence.action_steps) ? evidence.action_steps : [];
+  const linkedFinding = resolveExperienceTimelineLinkedFinding(report, span);
+  const diagnosticAttempts = Array.isArray(linkedFinding?.diagnostic_details?.attempted_actions)
+    ? linkedFinding.diagnostic_details.attempted_actions
+    : [];
+  const attemptsByStep = new Map();
+  diagnosticAttempts.forEach((attempt, index) => {
+    const stepNumber = Number.isFinite(Number(attempt?.step)) ? Math.round(Number(attempt.step)) : index + 1;
+    attemptsByStep.set(stepNumber, attempt);
+  });
+
+  const resolved = [];
+  rawSteps.forEach((stepValue, index) => {
+    const numericStep = Number(stepValue);
+    if (Number.isFinite(numericStep) && attemptsByStep.has(Math.round(numericStep))) {
+      resolved.push(attemptsByStep.get(Math.round(numericStep)));
+      return;
+    }
+    const rawText = redactVendorText(String(stepValue || "").trim());
+    if (!rawText || /^\d+$/.test(rawText)) {
+      return;
+    }
+    resolved.push({
+      step: index + 1,
+      action: "inspect",
+      target: rawText,
+      outcome: redactVendorText(String(span?.summary || span?.label || "").trim())
+    });
+  });
+
+  if (resolved.length) {
+    return resolved;
+  }
+
+  return diagnosticAttempts.slice(0, 4);
+}
+
+function buildExperienceTimelineSpecificCopy(report, span, fallbackLabel = "", fallbackSummary = "") {
+  const level = String(span?.level || "good").trim().toLowerCase();
+  const attempts = resolveExperienceTimelineAttempts(report, span);
+  const metrics = span?.metrics && typeof span.metrics === "object" ? span.metrics : {};
+  const durationText = formatExperienceTimelineDuration(
+    Math.max(0, Math.round(Number(span?.end_ms || 0) - Number(span?.start_ms || 0)))
+  );
+  const lastAttempt = attempts[attempts.length - 1] || null;
+  const focusAttempt =
+    attempts.find((attempt) => !/^(wait|waited|inspect)$/i.test(String(attempt?.action || "").trim())) ||
+    lastAttempt;
+  const focusTarget = cleanExperienceTimelineTarget(
+    focusAttempt?.target || lastAttempt?.target || fallbackLabel || "this step",
+    "this step"
+  );
+  const sameStateCount = Math.max(0, Math.round(Number(metrics.same_state_count) || 0));
+  const waitCount = Math.max(0, Math.round(Number(metrics.wait_count) || 0));
+  const retryCount = Math.max(0, Math.round(Number(metrics.retry_count) || 0));
+  const actionLines = attempts.map((attempt) => formatExperienceTimelineAttemptLine(attempt)).filter(Boolean);
+
+  if ((sameStateCount > 1 || waitCount > 1) && level !== "good") {
+    const repeatCount = Math.max(sameStateCount, waitCount);
+    actionLines.push(`Stayed on the same ${focusTarget} state ${repeatCount} times before ${level === "blocker" ? "the run stopped" : "the flow recovered"}`);
+  } else if (retryCount > 1 && level !== "good") {
+    actionLines.push(`Needed ${retryCount} tries on ${focusTarget} before the flow changed`);
+  }
+
+  let label =
+    simplifyReportNarrative(redactVendorText(String(fallbackLabel || span?.label || "").trim())) || `Span ${focusTarget}`;
+  let summary =
+    simplifyReportNarrative(redactVendorText(String(fallbackSummary || span?.summary || "").trim())) ||
+    "We did not save a summary for this part.";
+
+  if (level === "friction") {
+    if (/(verification code|otp)/i.test(focusTarget) && (sameStateCount > 0 || waitCount > 0)) {
+      label = "Waiting for the verification code slowed the flow";
+      summary = `After sending the code, the run stayed on the verification code step for ${durationText} and repeated the same state ${Math.max(1, sameStateCount || waitCount)} times before it recovered.`;
+    } else if (sameStateCount > 0 || waitCount > 0) {
+      label = `${focusTarget.charAt(0).toUpperCase()}${focusTarget.slice(1)} slowed the flow`;
+      summary = `The run paused on ${focusTarget} for ${durationText} and repeated the same state ${Math.max(1, sameStateCount || waitCount)} times before it recovered.`;
+    } else if (retryCount > 1) {
+      label = `${focusTarget.charAt(0).toUpperCase()}${focusTarget.slice(1)} needed extra tries`;
+      summary = `The tester needed ${retryCount} tries on ${focusTarget} before the flow moved forward again.`;
+    }
+  } else if (level === "blocker") {
+    if (sameStateCount > 0 || waitCount > 0) {
+      label = `${focusTarget.charAt(0).toUpperCase()}${focusTarget.slice(1)} stalled`;
+      summary = `The run stayed on ${focusTarget} for ${durationText} and repeated the same state ${Math.max(1, sameStateCount || waitCount)} times without recovering.`;
+    }
+  }
+
+  return {
+    label,
+    summary,
+    actionLines: dedupeProblemRefs(actionLines, 5),
+    focusTarget
+  };
+}
+
+function renderExperienceTimelineLogGroup(title, logs) {
+  const items = Array.isArray(logs)
+    ? logs
+        .map((item) => redactVendorText(String(item || "").trim()))
+        .filter(Boolean)
+        .slice(0, 3)
+    : [];
+  if (!items.length) {
+    return "";
+  }
+  return `
+    <div class="experience-timeline-log-group">
+      <span>${escapeHtml(title)}</span>
+      <ul>
+        ${items.map((item) => `<li><code>${escapeHtml(item)}</code></li>`).join("")}
+      </ul>
+    </div>
+  `;
+}
+
+function getExperienceTimelineReactionVisual(level) {
+  const normalized = String(level || "good").trim().toLowerCase();
+  if (normalized === "blocker") {
+    return {
+      emoji: "😤",
+      mood: "blocked",
+      whyLabel: "Why this was red",
+      explainer: "This stretch stopped making meaningful progress, so the run ended here."
+    };
+  }
+  if (normalized === "friction") {
+    return {
+      emoji: "😕",
+      mood: "a bit frustrated",
+      whyLabel: "Why this was yellow",
+      explainer: "This stretch slowed the tester down or made the flow rough, but the run still recovered."
+    };
+  }
+  return {
+    emoji: "🙂",
+    mood: "comfortable",
+    whyLabel: "Why this was green",
+    explainer: "This stretch kept moving without obvious friction or confusion."
+  };
+}
+
+function buildExperienceTimelineReactionReason(summaryText, label) {
+  const fallback = simplifyReportNarrative(redactVendorText(String(label || "").trim()));
+  let reason = simplifyReportNarrative(redactVendorText(String(summaryText || "").trim())) || fallback;
+  if (!reason || /^we did not save/i.test(reason)) {
+    return "";
+  }
+
+  reason = reason
+    .replace(/^The tester\b/i, "I")
+    .replace(/^Tester\b/i, "I")
+    .replace(/^The run\b/i, "the product")
+    .replace(/^The app\b/i, "the app")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[.?!]+$/, "");
+
+  return reason;
+}
+
+function buildExperienceTimelineReactionQuote(span) {
+  const level = String(span?.level || "good").trim().toLowerCase();
+  const label = redactVendorText(String(span?.label || "").trim());
+  const summaryText = redactVendorText(String(span?.summary || "").trim());
+  const reason = buildExperienceTimelineReactionReason(summaryText, label);
+
+  if (level === "blocker") {
+    return reason
+      ? `I got blocked here because ${reason}.`
+      : "I got blocked here because the product stopped moving me forward.";
+  }
+
+  if (level === "friction") {
+    return reason
+      ? `I got a bit frustrated here because ${reason}.`
+      : "I got a bit frustrated here because this stretch slowed me down before the flow recovered.";
+  }
+
+  return reason
+    ? `I felt good here because ${reason}.`
+    : "I felt good here because the flow kept moving without obvious issues.";
+}
+
+function renderExperienceTimelineReaction(span, personaName) {
+  const level = String(span?.level || "good").trim().toLowerCase();
+  const safePersona = String(personaName || "QA tester").trim() || "QA tester";
+  const visual = getExperienceTimelineReactionVisual(level);
+  const quote = buildExperienceTimelineReactionQuote(span);
+
+  return `
+    <div class="experience-timeline-reaction experience-timeline-reaction--${escapeHtml(level)}">
+      <span class="experience-timeline-reaction-emoji" aria-hidden="true">${escapeHtml(visual.emoji)}</span>
+      <div class="experience-timeline-reaction-copy">
+        <p class="experience-timeline-reaction-meta">${escapeHtml(`${visual.whyLabel} · ${safePersona} felt ${visual.mood}`)}</p>
+        <blockquote>${escapeHtml(quote)}</blockquote>
+        <p class="experience-timeline-reaction-note">${escapeHtml(visual.explainer)}</p>
+      </div>
+    </div>
+  `;
+}
+
+function renderExperienceTimelineSection(report, row = {}) {
+  const timeline = getExperienceTimeline(report);
+  if (!timeline) {
+    return "";
+  }
+
+  const videoItem = resolveExperienceTimelineVideoItem(report);
+  if (!videoItem?.url) {
+    return "";
+  }
+
+  const durationMs = Math.max(1, getExperienceTimelineDurationMs(timeline));
+  const summary = timeline.summary && typeof timeline.summary === "object" ? timeline.summary : {};
+  const playerId = `experience-video-${toAnchorToken(report?.run_id || row?.run_id || "run")}`;
+  const spans = timeline.spans.slice(0, 24);
+  const personaName = resolvePersonaName(row);
+  const trackButtons = spans
+    .map((span, index) => {
+      const startMs = Math.max(0, Math.round(Number(span?.start_ms) || 0));
+      const endMs = Math.max(startMs + 1, Math.round(Number(span?.end_ms) || startMs + 1));
+      const jumpMs = Math.max(0, Math.round(Number(span?.jump_ts_ms) || startMs));
+      const startPct = Math.max(0, Math.min(100, (startMs / durationMs) * 100));
+      const widthPct = Math.max(1.2, Math.min(100 - startPct, ((endMs - startMs) / durationMs) * 100));
+      const label = redactVendorText(String(span?.label || `Span ${index + 1}`));
+      const level = String(span?.level || "good").trim().toLowerCase();
+      const timeLabel = `${formatExperienceTimelineClock(startMs)}-${formatExperienceTimelineClock(endMs)}`;
+      return `
+        <button
+          type="button"
+          class="experience-timeline-span experience-timeline-span--${escapeHtml(level)}"
+          style="--experience-span-start:${startPct}%; --experience-span-width:${widthPct}%;"
+          data-experience-target="${escapeHtml(playerId)}"
+          data-experience-span-id="${escapeHtml(String(span?.id || `span-${index + 1}`))}"
+          data-experience-jump-ms="${escapeHtml(String(jumpMs))}"
+          data-experience-start-ms="${escapeHtml(String(startMs))}"
+          data-experience-end-ms="${escapeHtml(String(endMs))}"
+          aria-label="${escapeHtml(`${label} at ${timeLabel}`)}"
+          title="${escapeHtml(`${timeLabel} · ${label}`)}"
+        ></button>
+      `;
+    })
+    .join("");
+
+  const listMarkup = spans
+    .map((span, index) => {
+      const startMs = Math.max(0, Math.round(Number(span?.start_ms) || 0));
+      const endMs = Math.max(startMs, Math.round(Number(span?.end_ms) || startMs));
+      const jumpMs = Math.max(0, Math.round(Number(span?.jump_ts_ms) || startMs));
+      const specificCopy = buildExperienceTimelineSpecificCopy(
+        report,
+        span,
+        redactVendorText(String(span?.label || `Span ${index + 1}`)),
+        redactVendorText(String(span?.summary || "").trim()) || "We did not save a summary for this part."
+      );
+      const label = specificCopy.label;
+      const summaryText = specificCopy.summary;
+      const level = String(span?.level || "good").trim().toLowerCase();
+      const anchorId = resolveExperienceTimelineFindingAnchor(report, span);
+      const actionSteps = specificCopy.actionLines;
+      const consoleLogs = Array.isArray(span?.evidence?.console_logs) ? span.evidence.console_logs : [];
+      const networkLogs = Array.isArray(span?.evidence?.network_logs) ? span.evidence.network_logs : [];
+      const tags = Array.isArray(span?.tags)
+        ? span.tags.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 5)
+        : [];
+      const pageUrl = redactVendorText(String(span?.page?.url || "").trim());
+      const metrics = span?.metrics && typeof span.metrics === "object" ? span.metrics : {};
+      const metricsBits = [
+        Number(metrics.wait_count) > 0 ? `${Math.round(Number(metrics.wait_count))} waits` : "",
+        Number(metrics.retry_count) > 0 ? `${Math.round(Number(metrics.retry_count))} retries` : "",
+        Number(metrics.same_state_count) > 0 ? `${Math.round(Number(metrics.same_state_count))} same-state repeats` : "",
+        Number(metrics.console_error_count) > 0 ? `${Math.round(Number(metrics.console_error_count))} console errors` : "",
+        Number(metrics.failed_request_count) > 0 ? `${Math.round(Number(metrics.failed_request_count))} failed requests` : ""
+      ].filter(Boolean);
+      return `
+        <article
+          class="experience-timeline-list-item experience-timeline-list-item--${escapeHtml(level)}"
+          data-experience-span-panel="${escapeHtml(String(span?.id || `span-${index + 1}`))}"
+        >
+          <div class="experience-timeline-list-head">
+            <button
+              type="button"
+              class="experience-timeline-jump-button"
+              data-experience-target="${escapeHtml(playerId)}"
+              data-experience-span-id="${escapeHtml(String(span?.id || `span-${index + 1}`))}"
+              data-experience-jump-ms="${escapeHtml(String(jumpMs))}"
+              data-experience-start-ms="${escapeHtml(String(startMs))}"
+              data-experience-end-ms="${escapeHtml(String(endMs))}"
+            >
+              ${escapeHtml(`${formatExperienceTimelineClock(startMs)}-${formatExperienceTimelineClock(endMs)}`)}
+            </button>
+            <span class="experience-timeline-level-pill experience-timeline-level-pill--${escapeHtml(level)}">${escapeHtml(level)}</span>
+          </div>
+          <h4>${escapeHtml(label)}</h4>
+          <p>${escapeHtml(summaryText)}</p>
+          ${renderExperienceTimelineReaction(span, personaName)}
+          <div class="experience-timeline-meta">
+            <span>${escapeHtml(formatExperienceTimelineDuration(Math.max(0, endMs - startMs)))}</span>
+            ${pageUrl ? `<span>${escapeHtml(pageUrl)}</span>` : ""}
+            ${tags.length ? `<span>${escapeHtml(tags.join(" · "))}</span>` : ""}
+          </div>
+          ${
+            metricsBits.length
+              ? `<p class="experience-timeline-metrics">${escapeHtml(metricsBits.join(" · "))}</p>`
+              : ""
+          }
+          ${
+            actionSteps.length
+              ? `<ol class="experience-timeline-action-list">
+                  ${actionSteps.map((item) => `<li>${escapeHtml(redactVendorText(String(item || "")))}</li>`).join("")}
+                </ol>`
+              : ""
+          }
+          ${
+            consoleLogs.length || networkLogs.length
+              ? `<div class="experience-timeline-log-grid">
+                  ${renderExperienceTimelineLogGroup("Console", consoleLogs)}
+                  ${renderExperienceTimelineLogGroup("Network", networkLogs)}
+                </div>`
+              : ""
+          }
+          ${
+            anchorId
+              ? `<a class="experience-timeline-problem-link" href="#${escapeHtml(anchorId)}">Open related problem</a>`
+              : ""
+          }
+        </article>
+      `;
+    })
+    .join("");
+
+  return `
+    <section class="experience-timeline-section" id="section-experience-timeline">
+      <div class="report-section-head experience-timeline-head">
+        <div>
+          <h3>Whole run video</h3>
+          <p>Watch the full tester experience, jump to any moment, and read why each stretch was green, yellow, or red.</p>
+        </div>
+        <div class="experience-timeline-summary">
+          <span class="experience-summary-pill experience-summary-pill--good">Good ${escapeHtml(formatExperienceTimelineDuration(summary.good_ms || 0))}</span>
+          <span class="experience-summary-pill experience-summary-pill--friction">Friction ${escapeHtml(formatExperienceTimelineDuration(summary.friction_ms || 0))}</span>
+          <span class="experience-summary-pill experience-summary-pill--blocker">Blocker ${escapeHtml(formatExperienceTimelineDuration(summary.blocker_ms || 0))}</span>
+        </div>
+      </div>
+      <div
+        class="experience-timeline-player"
+        data-experience-timeline-player="${escapeHtml(playerId)}"
+        data-experience-duration-ms="${escapeHtml(String(durationMs))}"
+      >
+        <div class="experience-timeline-video-shell">
+          <video
+            id="${escapeHtml(playerId)}"
+            class="experience-timeline-video"
+            data-experience-video="1"
+            src="${escapeHtml(videoItem.url)}"
+            controls
+            preload="metadata"
+            playsinline
+          ></video>
+        </div>
+        <div class="experience-timeline-track-shell">
+          <div class="experience-timeline-track" data-experience-track>
+            ${trackButtons}
+            <div class="experience-timeline-playhead" data-experience-playhead></div>
+          </div>
+        </div>
+        <div class="experience-timeline-list">
+          ${listMarkup}
+        </div>
+      </div>
+    </section>
+  `;
 }
 
 function toAnchorToken(value, fallback = "item") {
@@ -5058,6 +9863,35 @@ function renderHistoricalRunBanner(newerRun) {
   `;
 }
 
+function getTopReportFinding(report) {
+  const findings = sortFindingsByPriority(Array.isArray(report?.findings) ? report.findings : []);
+  return findings[0] || null;
+}
+
+function buildTopFindingHeroSummary(finding, options = {}) {
+  const diagnostics = finding?.diagnostic_details && typeof finding.diagnostic_details === "object" ? finding.diagnostic_details : {};
+  const reason = redactVendorText(
+    String(diagnostics.failure_reason || finding?.observed_behavior || diagnostics.current_state || "").trim()
+  );
+  const lastSuccessfulStep = redactVendorText(String(diagnostics.last_successful_step || "").trim());
+  const fragments = [];
+
+  if (reason) {
+    fragments.push(truncateText(reason, 220));
+  }
+  if (
+    lastSuccessfulStep &&
+    !String(reason || "").toLowerCase().includes(String(lastSuccessfulStep || "").toLowerCase())
+  ) {
+    fragments.push(`Last good step: ${truncateText(lastSuccessfulStep, 110)}`);
+  }
+  if (options.includeStoppedThere) {
+    fragments.push("The test stopped there.");
+  }
+
+  return truncateText(fragments.filter(Boolean).join(" "), 340);
+}
+
 function getReportStatusPillClass(statusValue) {
   const status = normalizeRunStatus(statusValue);
   if (status === "failed") {
@@ -5082,6 +9916,7 @@ function buildReportHeroNarrative(mode, verdict, report, row, liveStatus, summar
   const snapshot = computeRiskSnapshot(report);
   const environment = getActiveEnvironment();
   const safeSummaryNote = String(summaryNote || "").trim();
+  const topFinding = getTopReportFinding(report);
 
   if (mode === "running") {
     return {
@@ -5093,6 +9928,16 @@ function buildReportHeroNarrative(mode, verdict, report, row, liveStatus, summar
 
   if (mode === "failed") {
     const failure = extractRunFailureContext(report, liveStatus);
+    if (topFinding) {
+      return {
+        kicker: "Top blocker",
+        headline: redactVendorText(String(topFinding.title || "Run failed").trim()) || "Run failed",
+        summary:
+          buildTopFindingHeroSummary(topFinding) ||
+          failure.detail ||
+          buildRiskSummaryMessage(mode, verdict, snapshot, environment)
+      };
+    }
     return {
       kicker: "Test failed",
       headline: failure.headline || "Run failed before coverage completed.",
@@ -5101,6 +9946,15 @@ function buildReportHeroNarrative(mode, verdict, report, row, liveStatus, summar
   }
 
   if (mode === "partial") {
+    if (topFinding) {
+      return {
+        kicker: "Top blocker",
+        headline: redactVendorText(String(topFinding.title || "The test stopped early").trim()) || "The test stopped early",
+        summary:
+          buildTopFindingHeroSummary(topFinding, { includeStoppedThere: true }) ||
+          buildRiskSummaryMessage(mode, verdict, snapshot, environment)
+      };
+    }
     return {
       kicker: "Test stopped early",
       headline: "The test stopped before it could finish.",
@@ -5137,6 +9991,16 @@ function buildReportNextAction(mode, verdict, report) {
   const topFinding = findings[0] || null;
 
   if (mode === "failed") {
+    if (topFinding) {
+      return {
+        eyebrow: "Do this next",
+        title: `Fix “${String(topFinding.title || topFinding.id || "top finding").trim()}” first.`,
+        copy:
+          buildTopFindingHeroSummary(topFinding) ||
+          deriveFindingRecommendation(report, topFinding, 0),
+        meta: ["The run ended on this blocker.", "Re-run the same goal after it is fixed."]
+      };
+    }
     return {
       eyebrow: "Do this next",
       title: "Fix the start of the test, then run it again.",
@@ -5147,6 +10011,16 @@ function buildReportNextAction(mode, verdict, report) {
   }
 
   if (mode === "partial") {
+    if (topFinding) {
+      return {
+        eyebrow: "Do this next",
+        title: `Fix “${String(topFinding.title || topFinding.id || "top finding").trim()}” first.`,
+        copy:
+          buildTopFindingHeroSummary(topFinding) ||
+          deriveFindingRecommendation(report, topFinding, 0),
+        meta: ["This was the blocker that stopped the run.", "Run the same goal again after it is fixed."]
+      };
+    }
     return {
       eyebrow: "Do this next",
       title: "Run the full test before you trust this result.",
@@ -5177,6 +10051,137 @@ function buildReportNextAction(mode, verdict, report) {
       "This test did not show any big problems in the part it checked.",
     meta: ["Open the proof if you want to double-check it.", "Run a wider test if you want to be more sure."]
   };
+}
+
+function renderReportInfoBarIcon(kind) {
+  const iconType = String(kind || "").trim().toLowerCase();
+  if (iconType === "goal") {
+    return `
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <circle cx="10" cy="10" r="6.5"></circle>
+        <circle cx="10" cy="10" r="2.5"></circle>
+      </svg>
+    `;
+  }
+  if (iconType === "persona") {
+    return `
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <circle cx="10" cy="7" r="3.2"></circle>
+        <path d="M4.5 16.2c1.3-2.6 3-3.8 5.5-3.8s4.2 1.2 5.5 3.8"></path>
+      </svg>
+    `;
+  }
+  if (iconType === "status") {
+    return `
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <circle cx="10" cy="10" r="7"></circle>
+        <path d="M10 5.7v4.5l3.2 1.8"></path>
+      </svg>
+    `;
+  }
+  if (iconType === "coverage") {
+    return `
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <rect x="4" y="4" width="5" height="5" rx="1.2"></rect>
+        <rect x="11" y="4" width="5" height="5" rx="1.2"></rect>
+        <rect x="4" y="11" width="5" height="5" rx="1.2"></rect>
+        <rect x="11" y="11" width="5" height="5" rx="1.2"></rect>
+      </svg>
+    `;
+  }
+  if (iconType === "problems") {
+    return `
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M10 3.5 17 16.5H3Z"></path>
+        <path d="M10 7.4v3.8"></path>
+        <circle cx="10" cy="13.7" r="0.9" fill="currentColor" stroke="none"></circle>
+      </svg>
+    `;
+  }
+  if (iconType === "next") {
+    return `
+      <svg viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M4 10h10.5"></path>
+        <path d="m10.8 5.9 4.2 4.1-4.2 4.1"></path>
+      </svg>
+    `;
+  }
+  return `
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <circle cx="10" cy="10" r="6.5"></circle>
+    </svg>
+  `;
+}
+
+function renderReportInfoBar(report, row, liveStatus, missionModel, nextAction, mode = "completed") {
+  const snapshot = computeRiskSnapshot(report);
+  const coverage = buildCoverageSnapshot(report);
+  const canonicalStatus = formatStatusLabel(getCanonicalRunStatus(report, row, liveStatus) || mode || "unknown");
+  const completedCoverage = coverage.attemptedJourneys
+    ? `${coverage.completedJourneys + coverage.partialJourneys}/${coverage.attemptedJourneys} flows`
+    : `${coverage.pagesVisited} pages`;
+  const blockerLabel = snapshot.criticalCount
+    ? `${snapshot.criticalCount} blocker${snapshot.criticalCount === 1 ? "" : "s"}`
+    : snapshot.majorCount
+      ? `${snapshot.majorCount} friction point${snapshot.majorCount === 1 ? "" : "s"}`
+      : "No major blockers";
+  const items = [
+    {
+      kind: "goal",
+      label: "Goal",
+      value: missionModel.steps[0] || missionModel.headline || "Finish the core task",
+      meta: missionModel.steps.length > 1 ? `${missionModel.steps.length} saved steps` : "Primary mission"
+    },
+    {
+      kind: "persona",
+      label: missionModel.personaLabel || "Persona",
+      value: missionModel.personaDetail || "General business user",
+      meta: "First-time tester lens"
+    },
+    {
+      kind: "status",
+      label: "Run",
+      value: canonicalStatus,
+      meta: report?.run_id || row?.run_id || "Unknown run"
+    },
+    {
+      kind: "coverage",
+      label: "Coverage",
+      value: completedCoverage,
+      meta: `${coverage.pagesVisited} pages opened`
+    },
+    {
+      kind: "problems",
+      label: "Problems",
+      value: blockerLabel,
+      meta: `${snapshot.avgSatisfaction}/100 test score`
+    },
+    {
+      kind: "next",
+      label: "Next move",
+      value: nextAction.title || "Review the top finding",
+      meta: truncateText(redactVendorText(nextAction.copy || ""), 104) || "Use the top finding as the next fix."
+    }
+  ];
+
+  return `
+    <div class="report-info-bar" aria-label="Test summary">
+      ${items
+        .map(
+          (item) => `
+            <article class="report-info-item report-info-item--${escapeHtml(item.kind)}">
+              <span class="report-info-icon" aria-hidden="true">${renderReportInfoBarIcon(item.kind)}</span>
+              <div class="report-info-copy">
+                <span class="report-info-label">${escapeHtml(item.label)}</span>
+                <strong>${escapeHtml(item.value)}</strong>
+                <small>${escapeHtml(item.meta)}</small>
+              </div>
+            </article>
+          `
+        )
+        .join("")}
+    </div>
+  `;
 }
 
 function renderReportMissionPanel(missionModel, missionGoal) {
@@ -5227,9 +10232,222 @@ function renderReportMissionPanel(missionModel, missionGoal) {
   `;
 }
 
+function formatRepoTriageStatusLabel(value) {
+  const status = String(value || "").trim().toLowerCase();
+  if (status === "queued") {
+    return "Queued";
+  }
+  if (status === "processing") {
+    return "Analyzing repo";
+  }
+  if (status === "completed") {
+    return "Ready";
+  }
+  if (status === "failed") {
+    return "Failed";
+  }
+  if (status === "skipped") {
+    return "Skipped";
+  }
+  if (status === "pending_blind_report") {
+    return "Waiting for blind report";
+  }
+  return "Disabled";
+}
+
+function getRepoTriageState(report, row = {}, liveStatus = null) {
+  const liveRepoTriage = liveStatus?.repo_triage && typeof liveStatus.repo_triage === "object" ? liveStatus.repo_triage : null;
+  const rowRepoTriage = row?.repo_triage && typeof row.repo_triage === "object" ? row.repo_triage : null;
+  const reportRepoTriage =
+    report?.metadata?.repo_triage && typeof report.metadata.repo_triage === "object"
+      ? report.metadata.repo_triage
+      : null;
+  const engineeringTriage =
+    report?.engineering_triage && typeof report.engineering_triage === "object" ? report.engineering_triage : null;
+  const enabled =
+    liveRepoTriage?.enabled === true ||
+    rowRepoTriage?.enabled === true ||
+    reportRepoTriage?.enabled === true ||
+    Boolean(engineeringTriage);
+  const status = normalizeRunStatus(
+    liveRepoTriage?.status ||
+      rowRepoTriage?.status ||
+      (engineeringTriage ? "completed" : reportRepoTriage?.status || (enabled ? "skipped" : "disabled"))
+  );
+
+  return {
+    enabled,
+    status: status || (enabled ? "skipped" : "disabled"),
+    summary:
+      String(
+        liveRepoTriage?.summary ||
+          rowRepoTriage?.summary ||
+          engineeringTriage?.summary ||
+          reportRepoTriage?.summary ||
+          ""
+      ).trim() || "",
+    repo:
+      String(
+        liveRepoTriage?.repo ||
+          rowRepoTriage?.repo ||
+          reportRepoTriage?.repo ||
+          engineeringTriage?.repo_label ||
+          ""
+      ).trim() || ""
+  };
+}
+
+function findEngineeringTriageForFinding(report, finding) {
+  const perFinding = Array.isArray(report?.engineering_triage?.per_finding)
+    ? report.engineering_triage.per_finding
+    : [];
+  const findingId = String(finding?.id || "").trim();
+  const findingTitle = String(finding?.title || "").trim().toLowerCase();
+
+  return (
+    perFinding.find((item) => findingId && String(item?.finding_id || "").trim() === findingId) ||
+    perFinding.find((item) => findingTitle && String(item?.finding_title || "").trim().toLowerCase() === findingTitle) ||
+    null
+  );
+}
+
+function renderEngineeringTriageSection(report, row = {}, liveStatus = null) {
+  const repoTriage = getRepoTriageState(report, row, liveStatus);
+  const engineeringTriage =
+    report?.engineering_triage && typeof report.engineering_triage === "object" ? report.engineering_triage : null;
+
+  if (!repoTriage.enabled && !engineeringTriage) {
+    return "";
+  }
+
+  if (!engineeringTriage) {
+    const toneClass =
+      repoTriage.status === "failed"
+        ? "report-empty-card--warning"
+        : repoTriage.status === "queued" || repoTriage.status === "processing"
+          ? "report-empty-card--success"
+          : "";
+    return `
+      <section class="section-priority" id="section-engineering-triage">
+        <div class="report-section-head">
+          <h3>Engineering Triage</h3>
+          <p>Blind evidence stays untouched. This is a separate code-aware layer for owner-only diagnosis.</p>
+        </div>
+        <div class="report-empty-card ${escapeHtml(toneClass)}">
+          <strong>${escapeHtml(formatRepoTriageStatusLabel(repoTriage.status))}</strong>
+          <p>${escapeHtml(repoTriage.summary || "No code-aware diagnosis is attached to this run yet.")}</p>
+        </div>
+      </section>
+    `;
+  }
+
+  const cards = Array.isArray(engineeringTriage.per_finding) ? engineeringTriage.per_finding : [];
+  if (!cards.length) {
+    return `
+      <section class="section-priority" id="section-engineering-triage">
+        <div class="report-section-head">
+          <h3>Engineering Triage</h3>
+          <p>${escapeHtml(engineeringTriage.summary || "Repo scan completed.")}</p>
+        </div>
+        <div class="report-empty-card report-empty-card--success">
+          <strong>Repo scan finished</strong>
+          <p>${escapeHtml(engineeringTriage.summary || "No finding-level diagnosis was attached.")}</p>
+        </div>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="section-priority" id="section-engineering-triage">
+      <div class="report-section-head">
+        <h3>Engineering Triage</h3>
+        <p>${escapeHtml(engineeringTriage.summary || "Likely file ownership, root-cause hypotheses, and test follow-ups from the repo scan.")}</p>
+      </div>
+      <div class="finding-ledger-list">
+        ${cards
+          .map(
+            (item) => `
+              <article class="finding-ledger-item">
+                <div class="finding-ledger-head">
+                  <div class="finding-ledger-heading">
+                    <h4>${escapeHtml(item.finding_title || item.finding_id || "Finding")}</h4>
+                    <p class="finding-ledger-meta">Confidence ${escapeHtml(
+                      `${Math.round((Number(item.confidence) || 0) * 100)}%`
+                    )}</p>
+                  </div>
+                </div>
+                <div class="finding-detail-copy">
+                  ${
+                    Array.isArray(item.suspected_files) && item.suspected_files.length
+                      ? `<p><strong>Suspected files</strong> ${escapeHtml(item.suspected_files.join(" · "))}</p>`
+                      : ""
+                  }
+                  ${
+                    Array.isArray(item.probable_causes) && item.probable_causes.length
+                      ? `<p><strong>Probable causes</strong> ${escapeHtml(item.probable_causes.join(" · "))}</p>`
+                      : ""
+                  }
+                  ${
+                    Array.isArray(item.suggested_checks) && item.suggested_checks.length
+                      ? `<p><strong>Suggested checks</strong> ${escapeHtml(item.suggested_checks.join(" · "))}</p>`
+                      : ""
+                  }
+                  ${
+                    Array.isArray(item.suggested_tests) && item.suggested_tests.length
+                      ? `<p><strong>Suggested tests</strong> ${escapeHtml(item.suggested_tests.join(" · "))}</p>`
+                      : ""
+                  }
+                </div>
+              </article>
+            `
+          )
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderFindingEngineeringTriageSection(report, finding) {
+  const triage = findEngineeringTriageForFinding(report, finding);
+  if (!triage) {
+    return "";
+  }
+
+  return `
+    <section class="finding-detail-section">
+      <div class="finding-detail-section-head">
+        <h3>Code-aware diagnosis</h3>
+        <p>Generated after the blind run finished, using the configured repo/workspace as secondary context.</p>
+      </div>
+      <div class="finding-detail-copy">
+        ${
+          Array.isArray(triage.suspected_files) && triage.suspected_files.length
+            ? `<p><strong>Suspected files</strong> ${escapeHtml(triage.suspected_files.join(" · "))}</p>`
+            : ""
+        }
+        ${
+          Array.isArray(triage.probable_causes) && triage.probable_causes.length
+            ? `<p><strong>Probable causes</strong> ${escapeHtml(triage.probable_causes.join(" · "))}</p>`
+            : ""
+        }
+        ${
+          Array.isArray(triage.suggested_checks) && triage.suggested_checks.length
+            ? `<p><strong>Suggested checks</strong> ${escapeHtml(triage.suggested_checks.join(" · "))}</p>`
+            : ""
+        }
+        ${
+          Array.isArray(triage.suggested_tests) && triage.suggested_tests.length
+            ? `<p><strong>Suggested tests</strong> ${escapeHtml(triage.suggested_tests.join(" · "))}</p>`
+            : ""
+        }
+      </div>
+    </section>
+  `;
+}
+
 function renderSelectedHeader(report, row, liveStatus = null) {
+  const repoTriage = getRepoTriageState(report, row, liveStatus);
   const sessionUrl = toExternalUrl(row.session_url);
-  const shareUrl = buildReportShareUrl(report?.run_id || row?.run_id, row);
   const mission = resolveRunMission(row, report);
   const missionModel = buildDashboardMissionModel(mission, row);
   const newerRun = findNewerRunForSelection(row, report);
@@ -5253,22 +10471,16 @@ function renderSelectedHeader(report, row, liveStatus = null) {
   const quickLinks = [
     `<span class="report-status-pill ${escapeHtml(verdictMeta.severityClass)}">${escapeHtml(verdictMeta.label)}</span>`,
     sessionUrl ? `<a class="report-action-button" href="${escapeHtml(sessionUrl)}" target="_blank" rel="noreferrer">Watch test</a>` : "",
-    shareUrl ? `<a class="report-action-button report-action-button-primary" href="${escapeHtml(shareUrl)}" target="_blank" rel="noreferrer">Share</a>` : "",
-    shareUrl
+    canManageReportSharing() && (report?.run_id || row?.run_id)
       ? `
         <button
           type="button"
-          class="share-link-button app-icon-button report-share-copy"
-          data-share-url="${escapeHtml(shareUrl)}"
-          data-icon-button="1"
-          data-show-toast="1"
-          aria-label="Copy share link"
-          title="Copy share link"
+          class="report-action-button report-action-button-primary"
+          data-team-share-run="${escapeHtml(report?.run_id || row?.run_id || "")}"
+          aria-label="Share with team"
+          title="Share with team"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M9 9.75A2.75 2.75 0 0 1 11.75 7h6.5A2.75 2.75 0 0 1 21 9.75v6.5A2.75 2.75 0 0 1 18.25 19h-6.5A2.75 2.75 0 0 1 9 16.25z"></path>
-            <path d="M15 7V6.75A2.75 2.75 0 0 0 12.25 4h-6.5A2.75 2.75 0 0 0 3 6.75v6.5A2.75 2.75 0 0 0 5.75 16H6"></path>
-          </svg>
+          Share with team
         </button>
       `
       : ""
@@ -5276,7 +10488,10 @@ function renderSelectedHeader(report, row, liveStatus = null) {
     .filter(Boolean)
     .join("");
   const metaPills = [
-    `<span class="report-hero-meta-pill">Test ${escapeHtml(report?.run_id || row?.run_id || "unknown")}</span>`
+    `<span class="report-hero-meta-pill">Test ${escapeHtml(report?.run_id || row?.run_id || "unknown")}</span>`,
+    repoTriage.enabled
+      ? `<span class="report-hero-meta-pill">Engineering triage: ${escapeHtml(formatRepoTriageStatusLabel(repoTriage.status))}</span>`
+      : ""
   ]
     .filter(Boolean)
     .join("");
@@ -5288,24 +10503,11 @@ function renderSelectedHeader(report, row, liveStatus = null) {
           ${quickLinks ? `<div class="report-summary-actions report-summary-actions-hero">${quickLinks}</div>` : ""}
         </div>
         <div class="report-hero-copy">
-          <h2>${escapeHtml(projectLabel)}</h2>
+          <p class="report-hero-project">${escapeHtml(projectLabel)}</p>
           <p class="report-hero-headline">${escapeHtml(heroNarrative.headline)}</p>
           <p class="report-hero-summary">${escapeHtml(heroNarrative.summary)}</p>
           <div class="report-hero-meta">${metaPills}</div>
         </div>
-      </div>
-      <div class="report-hero-panels">
-        ${renderReportMissionPanel(missionModel, mission.goal)}
-        ${renderCounts(report, row, liveStatus)}
-        <article class="report-hero-panel report-hero-panel--next">
-          <div class="report-panel-head">
-            <div>
-              <p class="report-panel-kicker">${escapeHtml(nextAction.eyebrow)}</p>
-              <h3 class="report-panel-title">${escapeHtml(nextAction.title)}</h3>
-            </div>
-          </div>
-          <p class="report-panel-copy report-next-step-copy">${escapeHtml(redactVendorText(nextAction.copy))}</p>
-        </article>
       </div>
     </section>
   `;
@@ -5583,7 +10785,6 @@ function renderJourneys(report, row = {}) {
     return `<div class="section-block" id="section-journeys"><h3>What the tester tried</h3><p>We did not save this part for this test.</p></div>`;
   }
 
-  const personaName = resolvePersonaName(row);
   const findings = Array.isArray(report.findings) ? report.findings : [];
   const getRelatedFindings = (journey) => {
     const journeyTokens = [
@@ -5624,193 +10825,298 @@ function renderJourneys(report, row = {}) {
       return hasTokenMatch || hasPageMatch;
     });
   };
-  const getTone = (status, satisfaction, issueCount) => {
-    const normalized = normalizeRunStatus(status) || String(status || "").toLowerCase();
-    if (normalized === "blocked" || normalized === "failed" || satisfaction < 45) {
+  const timeline = getExperienceTimeline(report);
+  const timelineDurationMs = Math.max(1, getExperienceTimelineDurationMs(timeline));
+  const reportVideoItem = resolveExperienceTimelineVideoItem(report);
+  const getNodeTone = (level, status) => {
+    const normalizedLevel = String(level || "").trim().toLowerCase();
+    const normalizedStatus = normalizeRunStatus(status) || String(status || "").toLowerCase();
+    if (normalizedLevel === "blocker" || normalizedStatus === "blocked" || normalizedStatus === "failed") {
       return "critical";
     }
-    if (normalized === "partial" || issueCount > 1 || satisfaction < 76) {
+    if (normalizedLevel === "friction" || normalizedStatus === "partial") {
       return "caution";
     }
     return "clear";
   };
-  const getCardPosition = (index) => {
-    const waveOffsets = [112, 338, 188, 414];
+  const getStepStatusLabel = (level) => {
+    const normalized = String(level || "good").trim().toLowerCase();
+    if (normalized === "blocker") return "blocked";
+    if (normalized === "friction") return "friction";
+    return "clear";
+  };
+  const normalizeActionRecord = (attempt, index) => {
+    const stepNumber = Number.isFinite(Number(attempt?.step)) ? Math.max(1, Math.round(Number(attempt.step))) : index + 1;
+    const tsMs = Date.parse(String(attempt?.ts || ""));
     return {
-      x: 132 + index * 418,
-      y: waveOffsets[index % waveOffsets.length] + Math.floor(index / waveOffsets.length) * 52
+      ...attempt,
+      stepNumber,
+      tsMs: Number.isFinite(tsMs) ? tsMs : null,
+      actionLabel: redactVendorText(String(attempt?.action || "").trim()) || "inspect",
+      targetLabel: redactVendorText(String(attempt?.target || "").trim()) || "current screen",
+      outcomeLabel: redactVendorText(String(attempt?.outcome || "").trim()) || "state observed"
     };
   };
-  const renderConnectors = (layouts) => {
-    if (!Array.isArray(layouts) || layouts.length < 2) {
-      return "";
+  const buildStepTimelineMap = (finding, attemptedActions) => {
+    const spans = Array.isArray(timeline?.spans) ? timeline.spans : [];
+    if (!finding || !spans.length || !attemptedActions.length) {
+      return new Map();
     }
-    return layouts
-      .slice(0, -1)
-      .map((layout, index) => {
-        const next = layouts[index + 1];
-        const startX = layout.x + 356;
-        const startY = layout.y + 152;
-        const endX = next.x + 8;
-        const endY = next.y + 152;
-        const deltaX = endX - startX;
-        const deltaY = endY - startY;
-        const length = Math.max(48, Math.round(Math.hypot(deltaX, deltaY)));
-        const angle = (Math.atan2(deltaY, deltaX) * 180) / Math.PI;
-        return `
-          <div
-            class="journey-canvas-link"
-            aria-hidden="true"
-            style="left:${Math.round(startX)}px; top:${Math.round(startY)}px; width:${length}px; transform:rotate(${angle.toFixed(2)}deg);"
-          ></div>
-        `;
-      })
-      .join("");
+    const normalizedFindingId = String(finding?.id || "").trim();
+    const matchingSpans = spans.filter((span) => {
+      const linkedIds = Array.isArray(span?.linked_finding_ids) ? span.linked_finding_ids : [];
+      return linkedIds.some((item) => String(item || "").trim() === normalizedFindingId);
+    });
+    const sourceSpans = matchingSpans.length ? matchingSpans : spans;
+    const attemptedByStep = new Map(attemptedActions.map((item) => [item.stepNumber, item]));
+    const map = new Map();
+
+    for (let spanIndex = 0; spanIndex < sourceSpans.length; spanIndex += 1) {
+      const span = sourceSpans[spanIndex];
+      const spanStartMs = Math.max(0, Math.round(Number(span?.start_ms) || 0));
+      const spanEndMs = Math.max(spanStartMs + 1, Math.round(Number(span?.end_ms) || spanStartMs + 1));
+      const nextSpan = sourceSpans[spanIndex + 1];
+      const segmentEndMs = Math.max(spanStartMs + 1, Math.round(Number(nextSpan?.start_ms) || spanEndMs));
+      const actionSteps = Array.isArray(span?.evidence?.action_steps)
+        ? span.evidence.action_steps
+            .map((value) => Math.round(Number(value)))
+            .filter((value) => Number.isInteger(value) && attemptedByStep.has(value))
+            .sort((left, right) => left - right)
+        : [];
+      if (!actionSteps.length) {
+        continue;
+      }
+
+      const actionsInSpan = actionSteps.map((stepNumber) => attemptedByStep.get(stepNumber)).filter(Boolean);
+      const actionsWithTs = actionsInSpan.filter((item) => Number.isFinite(item?.tsMs));
+      const availableWindowMs = Math.max(1200, segmentEndMs - spanStartMs);
+      const firstTsMs = actionsWithTs.length >= 2 ? Math.min(...actionsWithTs.map((item) => Number(item.tsMs))) : Number.NaN;
+      const lastTsMs = actionsWithTs.length >= 2 ? Math.max(...actionsWithTs.map((item) => Number(item.tsMs))) : Number.NaN;
+
+      const stepEntries = [];
+      actionsInSpan.forEach((attempt, actionIndex) => {
+        let relativeProgress = 0;
+        if (Number.isFinite(attempt?.tsMs) && Number.isFinite(firstTsMs) && Number.isFinite(lastTsMs) && lastTsMs > firstTsMs) {
+          relativeProgress = Math.max(0, Math.min(1, (Number(attempt.tsMs) - firstTsMs) / (lastTsMs - firstTsMs)));
+        } else if (actionsInSpan.length > 1) {
+          relativeProgress = actionIndex / Math.max(1, actionsInSpan.length - 1);
+        }
+
+        const jumpMs =
+          actionsInSpan.length === 1
+            ? spanStartMs
+            : Math.max(spanStartMs, Math.min(segmentEndMs - 320, spanStartMs + Math.round(relativeProgress * (availableWindowMs - 320))));
+        stepEntries.push({
+          stepNumber: attempt.stepNumber,
+          level: String(span?.level || "good").trim().toLowerCase(),
+          label: redactVendorText(String(span?.label || "").trim()),
+          summary: redactVendorText(String(span?.summary || "").trim()),
+          jumpMs
+        });
+      });
+
+      stepEntries.forEach((entry, actionIndex) => {
+        const nextEntry = stepEntries[actionIndex + 1] || null;
+        const clipStartMs = Math.max(spanStartMs, entry.jumpMs);
+        const rawClipEndMs = nextEntry ? Math.max(clipStartMs + 320, nextEntry.jumpMs) : Math.max(clipStartMs + 320, segmentEndMs);
+        const clipEndMs = Math.max(
+          clipStartMs + 1800,
+          Math.min(
+            timelineDurationMs,
+            Math.max(clipStartMs + 1800, rawClipEndMs)
+          )
+        );
+        map.set(entry.stepNumber, {
+          ...entry,
+          clipStartMs,
+          clipEndMs
+        });
+      });
+    }
+
+    return map;
+  };
+  const toStepTitle = (rawStep, attempt, fallback) => {
+    const simplified = simplifyJourneyText(rawStep || "");
+    if (simplified) {
+      return simplified;
+    }
+    const actionPrefix = attempt?.actionLabel ? `${attempt.actionLabel}: ` : "";
+    const targetText = attempt?.targetLabel || "";
+    const combined = `${actionPrefix}${targetText}`.trim();
+    return combined || fallback;
+  };
+  const toStepOutcome = (attempt, spanMeta, fallback) => {
+    const outcome = redactVendorText(String(attempt?.outcomeLabel || "").trim());
+    if (outcome) {
+      return truncateText(outcome.replace(/\s+at\s+\(\d+\s*,\s*\d+\)\s*$/i, "").trim(), 140);
+    }
+    if (spanMeta?.summary) {
+      return truncateText(String(spanMeta.summary), 140);
+    }
+    return truncateText(fallback, 140);
   };
 
-  const cardData = journeys.map((journey, index) => {
-    const satisfaction = computeJourneySatisfactionScore(report, journey);
-    const journeyStatus = String(journey?.status || "completed").toLowerCase();
-    const journeyId = String(journey?.id || journey?.journey_id || journey?.journeyId || "").toLowerCase();
-    const relatedFindings = getRelatedFindings(journey);
-    const voice = buildJourneyOpinion(journey, relatedFindings);
-    const shouldShowVoice = journeyStatus !== "completed" || relatedFindings.length > 0;
-    const anchorId = `journey-${toAnchorToken(journey.name || journey.id || journeyId || `journey-${index + 1}`)}`;
-    const displayTitle = simplifyJourneyTitle(journey?.name || journey?.id || "Thing the tester tried");
-    const screenshots = Array.isArray(journey?.evidence?.screenshots) ? journey.evidence.screenshots : [];
-    const videos = Array.isArray(journey?.evidence?.videos) ? journey.evidence.videos : [];
-    const screenshotSummary = getEvidenceAttachmentSummary(report, "screenshot", screenshots);
-    const videoSummary = getEvidenceAttachmentSummary(report, "video", videos);
-    const compactPreviewMarkup = renderEvidencePreview(
-      report,
-      { screenshots, videos },
-      displayTitle,
-      simplifyJourneySummary(journey?.summary || "", displayTitle),
-      { maxItems: 1, compact: true, showCaption: false, emptyMarkup: "" }
-    );
-    const stepCount = Array.isArray(journey?.steps) ? journey.steps.length : 0;
-    const steps = Array.isArray(journey?.steps)
-      ? journey.steps
-          .slice(0, 5)
-          .map((step) => simplifyJourneyText(step))
-          .filter(Boolean)
+  const stepCards = [];
+  let globalStepIndex = 0;
+  journeys.forEach((journey, journeyIndex) => {
+    const journeyStatus = normalizeRunStatus(journey?.status) || String(journey?.status || "completed").toLowerCase();
+    const relatedFindings = sortFindingsByPriority(getRelatedFindings(journey));
+    const primaryFinding = relatedFindings[0] || null;
+    const attemptedActions = Array.isArray(primaryFinding?.diagnostic_details?.attempted_actions)
+      ? primaryFinding.diagnostic_details.attempted_actions.map(normalizeActionRecord).sort((left, right) => left.stepNumber - right.stepNumber)
       : [];
-    const observationProof = Array.isArray(journey?.observations)
-      ? journey.observations.map((item) => String(item || "").trim()).find(Boolean) || ""
-      : "";
-    const proofCount =
-      screenshotSummary.renderableCount +
-      screenshotSummary.referenceCount +
-      videoSummary.renderableCount +
-      videoSummary.referenceCount +
-      (observationProof ? 1 : 0);
-    const linksMarkup = [
-      screenshots.length ? renderLinkRow(report, screenshots, "Screenshot") : "",
-      videos.length ? renderLinkRow(report, videos, "Video") : ""
-    ]
-      .filter(Boolean)
-      .join("");
-    const proofMarkup = compactPreviewMarkup
-      ? `
-          <div class="journey-flow-proof">
-            <div class="journey-flow-proof-head">
-              <span>Proof</span>
-              <small>${escapeHtml(proofCount === 1 ? "1 proof item" : `${proofCount} proof items`)}</small>
+    const attemptedByStep = new Map(attemptedActions.map((item) => [item.stepNumber, item]));
+    const stepTimelineMap = buildStepTimelineMap(primaryFinding, attemptedActions);
+    const proofBaselineMs = Array.from(stepTimelineMap.values()).reduce((lowest, item) => {
+      const candidate = Math.max(0, Math.round(Number(item?.jumpMs) || 0));
+      if (!candidate) {
+        return lowest;
+      }
+      if (!Number.isFinite(lowest)) {
+        return candidate;
+      }
+      return Math.min(lowest, candidate);
+    }, Number.POSITIVE_INFINITY);
+    const displayTitle = simplifyJourneyTitle(journey?.name || journey?.id || `Try ${journeyIndex + 1}`);
+    const summaryText = simplifyJourneySummary(journey?.summary || "", displayTitle);
+    const stepList = Array.isArray(journey?.steps) ? journey.steps : [];
+    const stepTotal = Math.max(stepList.length, attemptedActions.length, 1);
+    const journeyVideos = Array.isArray(journey?.evidence?.videos) ? journey.evidence.videos : [];
+    const findingVideos = Array.isArray(primaryFinding?.evidence?.videos) ? primaryFinding.evidence.videos : [];
+    const videoItem = resolveEvidenceVideoItems(report, [...journeyVideos, ...findingVideos], { maxItems: 1 })[0] || reportVideoItem || null;
+    const stepClipByStep = new Map(
+      (Array.isArray(journey?.step_video_clips) ? journey.step_video_clips : [])
+        .map((clip) => {
+          const stepNumber = Math.max(1, Math.round(Number(clip?.step) || 0));
+          return stepNumber ? [stepNumber, clip] : null;
+        })
+        .filter(Boolean)
+    );
+
+    for (let localStepIndex = 0; localStepIndex < stepTotal; localStepIndex += 1) {
+      const stepNumber = localStepIndex + 1;
+      const attempt = attemptedByStep.get(stepNumber) || attemptedActions[localStepIndex] || null;
+      const spanMeta = stepTimelineMap.get(stepNumber) || null;
+      const stepClip = stepClipByStep.get(stepNumber) || null;
+      const level =
+        spanMeta?.level || (journeyStatus === "blocked" && stepNumber === stepTotal ? "blocker" : journeyStatus === "partial" && stepNumber === stepTotal ? "friction" : "good");
+      const tone = getNodeTone(level, journeyStatus);
+      const jumpMs = Math.max(
+        0,
+        Math.round(
+          Number(stepClip?.clip_start_ms || stepClip?.clipStartMs || spanMeta?.jumpMs) || 0
+        )
+      );
+      const clipStartMs = Math.max(
+        0,
+        Math.round(
+          Number(stepClip?.clip_start_ms || stepClip?.clipStartMs || spanMeta?.clipStartMs || jumpMs) || jumpMs
+        )
+      );
+      const clipEndMs = Math.max(
+        clipStartMs + 1800,
+        Math.round(
+          Number(stepClip?.clip_end_ms || stepClip?.clipEndMs || spanMeta?.clipEndMs || clipStartMs + 4000) ||
+            clipStartMs + 4000
+        )
+      );
+      const timeLabel =
+        clipEndMs > clipStartMs
+          ? `${formatExperienceTimelineClock(clipStartMs)}-${formatExperienceTimelineClock(clipEndMs)}`
+          : jumpMs > 0
+            ? formatExperienceTimelineClock(jumpMs)
+            : "Start";
+      const stepProofRaw =
+        String(stepClip?.video || stepClip?.video_url || stepClip?.videoUrl || stepClip?.source || stepClip?.url || stepClip?.path || "").trim();
+      const explicitStepProofUrl = stepProofRaw ? resolveEvidenceDisplayUrl(report, "video", stepProofRaw) : "";
+      const stepProofUrl =
+        explicitStepProofUrl || (videoItem?.url ? buildVideoClipUrl(videoItem.url, clipStartMs, clipEndMs) : "");
+      const stepTitle = truncateText(
+        toStepTitle(stepList[localStepIndex], attempt, localStepIndex === 0 ? `Start ${displayTitle}` : `Step ${stepNumber}`),
+        84
+      );
+      const stepOutcome = toStepOutcome(
+        attempt,
+        spanMeta,
+        stepNumber === stepTotal && journeyStatus !== "completed" ? summaryText : "The tester moved through this step."
+      );
+      const blockerNote =
+        level === "blocker"
+          ? truncateText(
+              redactVendorText(
+                String(primaryFinding?.diagnostic_details?.failure_reason || primaryFinding?.observed_behavior || "").trim()
+              ),
+              140
+            )
+          : "";
+      stepCards.push(`
+        <article class="journey-step-card journey-step-card--${tone}" id="${escapeHtml(`journey-step-${toAnchorToken(`${displayTitle}-${stepNumber}-${globalStepIndex + 1}`)}`)}">
+          <div class="journey-step-head">
+            <div class="journey-step-title">
+              <span class="journey-step-kicker">Step ${stepNumber} · Try ${journeyIndex + 1}</span>
+              <h4>${escapeHtml(stepTitle)}</h4>
             </div>
-            ${compactPreviewMarkup}
+            <span class="journey-step-status journey-step-status--${escapeHtml(level)}">${escapeHtml(getStepStatusLabel(level))}</span>
           </div>
-        `
-      : observationProof
-        ? `
-            <div class="journey-flow-proof journey-flow-proof--text">
-              <div class="journey-flow-proof-head">
-                <span>Proof</span>
-                <small>${escapeHtml(proofCount === 1 ? "1 proof item" : `${proofCount} proof items`)}</small>
-              </div>
-              <p class="journey-flow-proof-copy">${escapeHtml(truncateText(observationProof, 220))}</p>
-            </div>
-          `
-        : linksMarkup
-          ? `
-              <div class="journey-flow-proof journey-flow-proof--links">
-                <div class="journey-flow-proof-head">
-                  <span>Proof</span>
-                  <small>${escapeHtml(proofCount === 1 ? "1 proof item" : `${proofCount} proof items`)}</small>
-                </div>
-                <div class="journey-flow-links">${linksMarkup}</div>
-              </div>
-            `
-          : `
-              <div class="journey-flow-proof journey-flow-proof--empty">
-                <div class="journey-flow-proof-head">
-                  <span>Proof</span>
-                  <small>No proof saved</small>
-                </div>
-                <p class="journey-flow-proof-copy">No screenshot, video, or saved error text was attached to this try.</p>
-              </div>
-            `;
-    const position = getCardPosition(index);
-    const tone = getTone(journeyStatus, satisfaction, relatedFindings.length);
-    const summaryText = truncateText(simplifyJourneySummary(journey?.summary || "", displayTitle), 220);
-    return {
-      position,
-      markup: `
-        <article class="journey-flow-card journey-flow-card--${tone}" id="${escapeHtml(anchorId)}" style="left:${position.x}px; top:${position.y}px;">
-          <div class="journey-flow-card-head">
-            <div class="journey-flow-card-title">
-              <span class="journey-flow-kicker">Try ${index + 1}</span>
-              <h4>${escapeHtml(displayTitle)}</h4>
-            </div>
-            <div class="journey-flow-score">
-              <span class="journey-flow-status">${escapeHtml(journey.status || "completed")}</span>
-              <strong>${escapeHtml(String(satisfaction))}</strong>
-              <span>score</span>
-            </div>
-          </div>
-          <p class="journey-flow-summary">${escapeHtml(summaryText)}</p>
-          <div class="journey-flow-step-strip">
-            ${
-              steps.length
-                ? steps
-                    .map(
-                      (step, stepIndex) => `
-                        <div class="journey-flow-step">
-                          <span>${stepIndex + 1}</span>
-                          <p>${escapeHtml(truncateText(String(step || ""), 72))}</p>
-                        </div>
-                      `
-                    )
-                    .join("")
-                : `
-                    <div class="journey-flow-step journey-flow-step--empty">
-                      <p>We did not save the step-by-step list for this one.</p>
-                    </div>
-                  `
-            }
-          </div>
+          <p class="journey-step-outcome">${escapeHtml(stepOutcome)}</p>
+          ${blockerNote ? `<p class="journey-step-problem">${escapeHtml(blockerNote)}</p>` : ""}
           ${
-            shouldShowVoice
+            stepProofUrl
               ? `
-                  <div class="journey-flow-note">
-                    <span>${escapeHtml(personaName)}</span>
-                    <p>${escapeHtml(voice)}</p>
+                  <div class="journey-step-proof">
+                    <div class="journey-step-proof-head">
+                      <span>Step proof</span>
+                      <small>${escapeHtml(timeLabel)}</small>
+                    </div>
+                    <video
+                      class="journey-step-proof-video"
+                      ${explicitStepProofUrl ? "" : `data-step-proof-video="1"
+                      data-step-proof-fragmented="1"
+                      data-step-jump-ms="${escapeHtml(String(jumpMs))}"
+                      data-step-clip-start-ms="${escapeHtml(String(clipStartMs))}"
+                      data-step-clip-end-ms="${escapeHtml(String(clipEndMs))}"
+                      data-step-proof-baseline-ms="${escapeHtml(String(Number.isFinite(proofBaselineMs) ? proofBaselineMs : 0))}"
+                      data-step-timeline-duration-ms="${escapeHtml(String(timelineDurationMs))}"`}
+                      src="${escapeHtml(stepProofUrl)}"
+                      controls
+                      muted
+                      preload="${explicitStepProofUrl ? "metadata" : "auto"}"
+                      playsinline
+                    ></video>
                   </div>
                 `
-              : ""
+              : `
+                  <div class="journey-step-proof journey-step-proof--empty">
+                    <div class="journey-step-proof-head">
+                      <span>Step proof</span>
+                      <small>No video</small>
+                    </div>
+                    <p>No video proof was attached to this step.</p>
+                  </div>
+                `
           }
-          ${proofMarkup}
-          <div class="journey-flow-meta">
-            <span>${escapeHtml(String(stepCount))} step${stepCount === 1 ? "" : "s"} saved</span>
-            <span>${escapeHtml(String(relatedFindings.length))} problem${relatedFindings.length === 1 ? "" : "s"} linked</span>
-            <span>${escapeHtml(String(proofCount))} proof item${proofCount === 1 ? "" : "s"}</span>
+          <div class="journey-step-meta">
+            <span>${escapeHtml(displayTitle)}</span>
+            <span>${escapeHtml(timeLabel)}</span>
+            ${attempt?.targetLabel ? `<span>${escapeHtml(truncateText(String(attempt.targetLabel || ""), 60))}</span>` : ""}
           </div>
         </article>
-      `
-    };
+      `);
+      globalStepIndex += 1;
+    }
   });
-  const layouts = cardData.map((item) => item.position);
-  const stageWidth = Math.max(1760, ...layouts.map((layout) => layout.x + 520));
-  const stageHeight = Math.max(980, ...layouts.map((layout) => layout.y + 620));
+
+  const filmstripMarkup = stepCards
+    .map((markup, index) => {
+      const connector =
+        index < stepCards.length - 1
+          ? `<div class="journey-filmstrip-link" aria-hidden="true"><span></span></div>`
+          : "";
+      return `${markup}${connector}`;
+    })
+    .join("");
+
   return `
     <section class="report-journey-section" id="section-journeys">
       <div class="report-journey-head">
@@ -5818,23 +11124,11 @@ function renderJourneys(report, row = {}) {
           <p class="report-panel-kicker">This test</p>
           <h3>What the tester tried</h3>
         </div>
-        <p>This is a map of the test. Each card is one thing the tester tried to do, like sign up or make a video. It helps you see what they tried first, what they tried next, and where something went wrong.</p>
+        <p>This is the tester flow as a horizontal filmstrip. Each card is one step, and the mini video is clipped to the time window for that step.</p>
       </div>
-      <div class="journey-canvas-shell journey-canvas-shell--wide">
-        <div
-          class="journey-canvas-viewport"
-          data-journey-canvas="${escapeHtml(`journey-canvas-${toAnchorToken(report?.run_id || row?.run_id || "journeys")}`)}"
-          data-initial-left="88"
-          data-initial-top="72"
-          tabindex="0"
-          aria-label="Map of what the tester tried in this run. Drag to look around."
-        >
-          <div class="journey-canvas-stage" style="--journey-stage-width:${stageWidth}px; --journey-stage-height:${stageHeight}px;">
-            <div class="journey-canvas-label journey-canvas-label--origin" aria-hidden="true">Start</div>
-            <div class="journey-canvas-label journey-canvas-label--outcome" aria-hidden="true">What happened</div>
-            ${renderConnectors(layouts)}
-            ${cardData.map((item) => item.markup).join("")}
-          </div>
+      <div class="journey-filmstrip-shell">
+        <div class="journey-filmstrip" aria-label="Step-by-step filmstrip of what the tester tried">
+          ${filmstripMarkup}
         </div>
       </div>
     </section>
@@ -5842,43 +11136,13 @@ function renderJourneys(report, row = {}) {
 }
 
 function renderSecondaryReportSections(report, row, replayPlayerId) {
-  const hasReplay = buildEvidenceView(report).screenshots.length > 0;
-  const hasCoverage = Boolean(report && typeof report.feature_inventory === "object");
-  const replayMarkup = hasReplay ? renderReplayReview(report, replayPlayerId) : "";
-  const coverageMarkup = hasCoverage ? renderFeatureInventory(report) : "";
-  const sections = [
-    replayMarkup ? { title: "Saved pictures", body: replayMarkup } : null,
-    coverageMarkup ? { title: "Parts checked", body: coverageMarkup } : null
-  ].filter(Boolean);
-
-  if (!sections.length) {
-    return "";
-  }
-
-  return `
-    <section class="report-secondary-sections" id="section-evidence">
-      <div class="report-section-head">
-        <h3>Proof</h3>
-        <p>This section shows the saved pictures and which parts of the site the tester reached.</p>
-      </div>
-      ${sections
-        .map(
-          (section, index) => `
-            <details class="report-secondary-panel" ${index === 0 ? "open" : ""}>
-              <summary>${escapeHtml(section.title)}</summary>
-              <div class="report-secondary-panel-body">${section.body}</div>
-            </details>
-          `
-        )
-        .join("")}
-    </section>
-  `;
+  return "";
 }
 
 function renderFindings(report, row = {}, replayPlayerId = "") {
-  const findings = sortFindingsByPriority(Array.isArray(report.findings) ? report.findings : []);
+  const findings = buildDisplayProblemEntries(report);
   if (!findings.length) {
-    return "";
+    return renderReportFailureDiagnosticsSection(report);
   }
 
   const screenshotIndexMap = buildEvidenceIndexMap(report, "screenshot");
@@ -5896,14 +11160,19 @@ function renderFindings(report, row = {}, replayPlayerId = "") {
             const emotionIntensity = Math.max(0, Number(finding?.emotional_reaction?.intensity) || 0);
             const typeLabel = formatFindingTypeLabel(finding?.type);
             const severity = normalizeSeverity(finding?.severity);
-            const priorityScore = computeFindingPriorityScore(finding);
+            const priorityScore = getDisplayProblemPriorityScore(finding);
             const recommendation = deriveFindingRecommendation(report, finding, findingIndex);
             const proofModel = buildFindingProofModel(report, finding, { maxItems: 1 });
+            const proofToneClass = getFindingIssueToneClass(finding);
             const journeyLabel = getFindingJourneyLabel(finding);
             const confidencePct = toConfidencePercent(finding?.confidence);
             const findingAnchorId = `finding-${toAnchorToken(finding?.id || finding?.title || `finding-${findingIndex + 1}`)}`;
             const findingFrameIndex = findFirstEvidenceIndex(finding?.evidence?.screenshots || [], screenshotIndexMap);
             const modalDataAttributes = buildFindingModalDataAttributes(finding, findingIndex);
+            const llmCopyMarkup = renderLlmCopyButtons("finding", {
+              findingIndex,
+              findingToken: buildFindingModalToken(finding, findingIndex)
+            });
             return `
               <article class="finding-ledger-item" id="${escapeHtml(findingAnchorId)}">
                 <div class="finding-ledger-head">
@@ -5915,12 +11184,13 @@ function renderFindings(report, row = {}, replayPlayerId = "") {
                   </div>
                   <div class="finding-ledger-badges">
                     <span class="issue-severity ${escapeHtml(`severity-${severity}`)}">${escapeHtml(severity.toUpperCase())}</span>
-                    <span class="app-inline-pill">${escapeHtml(proofModel.label)}</span>
+                    <span class="app-inline-pill ${escapeHtml(`tone-${proofToneClass}`)}">${escapeHtml(proofModel.label)}</span>
                   </div>
                 </div>
                 <div class="finding-ledger-body">
                   ${renderFindingProofCard(report, finding, finding?.title || finding?.id || "Finding", {
                     maxItems: 1,
+                    toneClass: proofToneClass,
                     replayFrame: findingFrameIndex,
                     replayTarget: replayPlayerId
                   })}
@@ -5933,7 +11203,17 @@ function renderFindings(report, row = {}, replayPlayerId = "") {
                     <div class="finding-ledger-stat">
                       <span>How sure we are</span>
                       <strong>${escapeHtml(`${confidencePct}%`)}</strong>
-                      <small>${escapeHtml(proofModel.state === "verified" ? "Picture saved" : proofModel.state === "fallback" ? "Using a test picture" : "No picture saved")}</small>
+                      <small>${escapeHtml(
+                        proofModel.state === "verified"
+                          ? proofModel.primaryAsset?.kind === "video"
+                            ? "Video saved"
+                            : "Picture saved"
+                          : proofModel.state === "fallback"
+                            ? proofModel.primaryAsset?.kind === "video"
+                              ? "Using a test video"
+                              : "Using a test picture"
+                            : "No proof saved"
+                      )}</small>
                     </div>
                     <div class="finding-ledger-stat">
                       <span>Part of the test</span>
@@ -5948,7 +11228,7 @@ function renderFindings(report, row = {}, replayPlayerId = "") {
                     </section>
                     <section class="finding-ledger-copy finding-ledger-copy-observed">
                       <span class="finding-section-label">What happened</span>
-                      <p>${escapeHtml(redactVendorText(finding.observed_behavior || "We did not save this part."))}</p>
+                      <p>${escapeHtml(simplifyReportNarrative(finding.observed_behavior || "We did not save this part."))}</p>
                     </section>
                   </div>
                   <div class="finding-ledger-copy">
@@ -5956,6 +11236,7 @@ function renderFindings(report, row = {}, replayPlayerId = "") {
                     <p>${escapeHtml(recommendation)}</p>
                   </div>
                   <div class="finding-ledger-actions">
+                    ${llmCopyMarkup}
                     <button type="button" ${modalDataAttributes}>More</button>
                   </div>
                 </div>
@@ -6206,6 +11487,10 @@ function humanizeFailureClassification(classification) {
 function extractRunFailureContext(report, liveStatus) {
   const safeReport = report && typeof report === "object" ? report : {};
   const metadata = safeReport.metadata && typeof safeReport.metadata === "object" ? safeReport.metadata : {};
+  const diagnostics =
+    safeReport.failure_diagnostics && typeof safeReport.failure_diagnostics === "object"
+      ? safeReport.failure_diagnostics
+      : {};
   const failureEvent = getLatestRunLogEvent(liveStatus, "run_failed");
   const errorCode = String(failureEvent?.data?.error || metadata.failure_code || "").trim();
   const classification = String(failureEvent?.data?.classification || metadata.classification || "").trim();
@@ -6236,6 +11521,7 @@ function extractRunFailureContext(report, liveStatus) {
   }
   if (!detail) {
     detail =
+      String(diagnostics.failure_reason || diagnostics.current_state || "").trim() ||
       excerpt ||
       humanizeFailureExcerpt(summaryNote) ||
       "The worker stopped before it could validate the target flow end to end.";
@@ -6387,6 +11673,34 @@ function normalizeSeverity(value) {
     return severity;
   }
   return "low";
+}
+
+function getFindingIssueToneClass(finding) {
+  const safeFinding = finding && typeof finding === "object" ? finding : {};
+  const severity = normalizeSeverity(safeFinding?.severity);
+  const type = String(safeFinding?.type || "").trim().toLowerCase();
+  const problemSource = String(safeFinding?._problemSource || "").trim().toLowerCase();
+  const timelineLevel = String(safeFinding?._timelineLevel || "").trim().toLowerCase();
+
+  if (type === "dead_end" || timelineLevel === "blocker") {
+    return "severity-critical";
+  }
+  if (severity === "critical") {
+    return "severity-critical";
+  }
+  if (type === "bug" && (severity === "high" || severity === "critical")) {
+    return "severity-critical";
+  }
+  if (type === "frustration_point" || timelineLevel === "friction" || problemSource === "experience_timeline") {
+    return "severity-high";
+  }
+  if (severity === "high") {
+    return "severity-high";
+  }
+  if (type === "confusion_point" || severity === "medium") {
+    return "severity-medium";
+  }
+  return "severity-low";
 }
 
 function toConfidencePercent(value, fallback = 68) {
@@ -6752,6 +12066,7 @@ function renderTopFixes(report, row, mode = "completed") {
       const journeyLabel = getFindingJourneyLabel(finding);
       const opinion = buildFindingOpinion(finding);
       const proofModel = buildFindingProofModel(report, finding, { maxItems: 1 });
+      const proofToneClass = getFindingIssueToneClass(finding);
       const screenshotMarkup = renderEvidenceThumbnails(
         report,
         finding?.evidence?.screenshots || [],
@@ -6760,9 +12075,21 @@ function renderTopFixes(report, row, mode = "completed") {
         { maxItems: 1, showCaption: false, compact: true }
       );
       const replayFrame = findFirstEvidenceIndex(finding?.evidence?.screenshots || [], screenshotIndexMap);
-      const hasScreenshot = proofModel.images.length > 0;
+      const hasProof = Boolean(proofModel.primaryAsset);
+      const compactProofMarkup =
+        proofModel.primaryAsset?.kind === "video"
+          ? `<div class="finding-proof-media"><video src="${escapeHtml(
+              proofModel.primaryAsset.url
+            )}" controls preload="metadata" playsinline></video></div>`
+          : hasProof
+            ? screenshotMarkup
+            : "";
       const priorityScore = computeFindingPriorityScore(finding);
       const modalDataAttributes = buildFindingModalDataAttributes(finding, index);
+      const llmCopyMarkup = renderLlmCopyButtons("finding", {
+        findingIndex: index,
+        findingToken: buildFindingModalToken(finding, index)
+      });
 
       return `
         <article class="app-top-fix-item">
@@ -6780,16 +12107,17 @@ function renderTopFixes(report, row, mode = "completed") {
           <p class="app-top-fix-quote">${escapeHtml(opinion)}</p>
           <div class="app-top-fix-actions">
             ${
-              hasScreenshot
-                ? `<span class="app-inline-pill">${escapeHtml(proofModel.label)}</span>`
-                : `<span class="app-inline-pill">Proof Missing</span>`
+              hasProof
+                ? `<span class="app-inline-pill ${escapeHtml(`tone-${proofToneClass}`)}">${escapeHtml(proofModel.label)}</span>`
+                : `<span class="app-inline-pill ${escapeHtml(`tone-${proofToneClass}`)}">Proof Missing</span>`
             }
             ${Number.isInteger(replayFrame) && replayFrame >= 0 ? `<span class="app-inline-pill">Replay ${escapeHtml(String(replayFrame + 1))}</span>` : ""}
+            ${llmCopyMarkup}
             <button type="button" ${modalDataAttributes}>Details</button>
             ${findingUrl ? `<a href="${escapeHtml(findingUrl)}" target="_blank" rel="noreferrer">Open Finding</a>` : ""}
             ${findingUrl ? `<button type="button" class="share-link-button" data-share-url="${escapeHtml(findingUrl)}">Copy Link</button>` : ""}
           </div>
-          ${hasScreenshot ? screenshotMarkup : ""}
+          ${compactProofMarkup}
         </article>
       `;
     })
@@ -7061,18 +12389,17 @@ function applyDashboardShareAction(report, row) {
     return;
   }
 
-  const shareUrl = buildReportShareUrl(report?.run_id || row?.run_id, row);
-  if (!shareUrl) {
+  const runId = String(report?.run_id || row?.run_id || "").trim();
+  if (!runId || !canManageReportSharing()) {
     elements.dashboardShareAction.hidden = true;
-    elements.dashboardShareAction.removeAttribute("data-share-url");
+    elements.dashboardShareAction.removeAttribute("data-team-share-run");
     return;
   }
 
   elements.dashboardShareAction.hidden = false;
-  elements.dashboardShareAction.setAttribute("data-share-url", shareUrl);
-  elements.dashboardShareAction.setAttribute("data-label", "Copy report link");
-  elements.dashboardShareAction.setAttribute("aria-label", "Copy report link");
-  elements.dashboardShareAction.setAttribute("title", "Copy report link");
+  elements.dashboardShareAction.setAttribute("data-team-share-run", runId);
+  elements.dashboardShareAction.setAttribute("aria-label", "Share with team");
+  elements.dashboardShareAction.setAttribute("title", "Share with team");
 }
 
 function renderAppEvidencePanel(report, row) {
@@ -7743,6 +13070,32 @@ function attachShareButtons(root = null) {
     return;
   }
 
+  const genericCopyButtons = Array.from(host.querySelectorAll("[data-copy-text]"));
+  for (const button of genericCopyButtons) {
+    if (button.getAttribute("data-copy-bound") === "1") {
+      continue;
+    }
+    button.setAttribute("data-copy-bound", "1");
+
+    button.addEventListener("click", async () => {
+      const text = String(button.getAttribute("data-copy-text") || "").trim();
+      if (!text) {
+        return;
+      }
+
+      const baselineLabel = String(button.getAttribute("data-label") || button.textContent || "Copy").trim() || "Copy";
+      button.disabled = true;
+      button.textContent = "Copying...";
+      const ok = await copyTextToClipboard(text);
+      button.textContent = ok ? "Copied" : "Copy failed";
+      showReportToast(ok ? "Copied" : "Copy failed", ok ? "success" : "error");
+      window.setTimeout(() => {
+        button.disabled = false;
+        button.textContent = baselineLabel;
+      }, 1500);
+    });
+  }
+
   const buttons = Array.from(host.querySelectorAll("[data-share-url]"));
   for (const button of buttons) {
     if (button.getAttribute("data-bound") === "1") {
@@ -7787,6 +13140,117 @@ function attachShareButtons(root = null) {
           button.textContent = baselineLabel;
         }
       }, 1500);
+    });
+  }
+
+  const teamShareButtons = Array.from(host.querySelectorAll("[data-team-share-run]"));
+  for (const button of teamShareButtons) {
+    if (button.getAttribute("data-team-share-bound") === "1") {
+      continue;
+    }
+    button.setAttribute("data-team-share-bound", "1");
+
+    button.addEventListener("click", async () => {
+      const runId = String(button.getAttribute("data-team-share-run") || "").trim();
+      if (!runId) {
+        return;
+      }
+
+      const baselineLabel = String(button.textContent || button.getAttribute("aria-label") || "Share with team").trim() || "Share with team";
+      const isIconButton = button.classList.contains("app-icon-button");
+      const previousText = button.textContent;
+      button.disabled = true;
+      if (!isIconButton) {
+        button.textContent = "Creating link...";
+      }
+
+      try {
+        const payload = await requestSharedReportLink(runId);
+        const shareUrl = String(payload.share_url || "").trim();
+        if (!shareUrl) {
+          throw new Error("Shared link was not returned.");
+        }
+        const ok = await copyTextToClipboard(shareUrl);
+        if (!ok) {
+          throw new Error("Copy failed");
+        }
+        if (isIconButton) {
+          button.classList.add("is-copied");
+          button.setAttribute("aria-label", "Shared link copied");
+          button.setAttribute("title", "Shared link copied");
+        } else {
+          button.textContent = "Shared link copied";
+        }
+        showReportToast("Shared link copied", "success");
+      } catch (error) {
+        if (isIconButton) {
+          button.classList.add("is-error");
+          button.setAttribute("aria-label", "Share failed");
+          button.setAttribute("title", "Share failed");
+        } else {
+          button.textContent = "Share failed";
+        }
+        showReportToast(error?.message || "Share failed", "error");
+      }
+
+      window.setTimeout(() => {
+        button.disabled = false;
+        button.classList.remove("is-copied", "is-error");
+        button.setAttribute("aria-label", baselineLabel);
+        button.setAttribute("title", baselineLabel);
+        if (!isIconButton) {
+          button.textContent = previousText || baselineLabel;
+        }
+      }, 1600);
+    });
+  }
+
+  const redeemButtons = Array.from(host.querySelectorAll("[data-redeem-promo-code]"));
+  for (const button of redeemButtons) {
+    if (button.getAttribute("data-redeem-bound") === "1") {
+      continue;
+    }
+    button.setAttribute("data-redeem-bound", "1");
+
+    button.addEventListener("click", async () => {
+      const code = String(button.getAttribute("data-redeem-promo-code") || "").trim();
+      const redeemUrl = String(button.getAttribute("data-redeem-url") || "").trim();
+      const shareRunId = String(button.getAttribute("data-redeem-share-run") || "").trim();
+      const baselineLabel = String(button.getAttribute("data-label") || button.textContent || "Redeem team offer").trim() || "Redeem team offer";
+      if (!code) {
+        return;
+      }
+
+      if (!isDashboardAuthorized()) {
+        window.location.href = redeemUrl || buildPromoRedeemUrl(code, { shareRunId });
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = "Opening offer...";
+      try {
+        const checkout = await requestShareOfferCheckout(code, shareRunId);
+        if (checkout.ok && checkout.checkoutUrl) {
+          window.location.href = checkout.checkoutUrl;
+          return;
+        }
+
+        button.textContent = "Redeeming...";
+        const payload = await requestPromoRedemption(code, shareRunId);
+        if (window.SwarmAuth && typeof window.SwarmAuth.setUser === "function" && payload.user) {
+          window.SwarmAuth.setUser(payload.user);
+        }
+        button.textContent = "Offer redeemed";
+        button.setAttribute("data-label", "Offer redeemed");
+        showReportToast(
+          payload.already_redeemed ? "This team code is already on your account." : "Team offer redeemed",
+          "success"
+        );
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = baselineLabel;
+        showReportToast(error?.message || "Could not redeem team code", "error");
+      }
     });
   }
 }
@@ -8015,6 +13479,388 @@ function attachReplayPlayers(root = null) {
   }
 }
 
+function attachExperienceTimelinePlayers(root = null) {
+  const host = root || elements.reportDetail;
+  if (!host) {
+    return;
+  }
+
+  const players = Array.from(host.querySelectorAll("[data-experience-timeline-player]"));
+  for (const player of players) {
+    if (player.getAttribute("data-bound") === "1") {
+      continue;
+    }
+
+    const video = player.querySelector("[data-experience-video]");
+    const playhead = player.querySelector("[data-experience-playhead]");
+    const panelDeck = player.querySelector(".experience-timeline-list");
+    const jumpTargets = Array.from(player.querySelectorAll("[data-experience-jump-ms]"));
+    const trackSpans = Array.from(player.querySelectorAll("[data-experience-span-id]"));
+    const panels = Array.from(player.querySelectorAll("[data-experience-span-panel]"));
+    if (!(video instanceof HTMLVideoElement)) {
+      continue;
+    }
+
+    const timelineDurationMs = Math.max(1, Math.round(Number(player.getAttribute("data-experience-duration-ms")) || 0));
+    let currentActiveId = "";
+    let promotedId = "";
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    const getVideoDurationMs = () => {
+      if (Number.isFinite(video.duration) && video.duration > 0) {
+        return Math.round(video.duration * 1000);
+      }
+      return timelineDurationMs;
+    };
+
+    const videoMsToTimelineMs = (value) => {
+      const videoDurationMs = Math.max(1, getVideoDurationMs());
+      const currentVideoMs = Math.max(0, Math.round(Number(value) || 0));
+      if (!timelineDurationMs || timelineDurationMs === videoDurationMs) {
+        return currentVideoMs;
+      }
+      return Math.max(0, Math.round((currentVideoMs / videoDurationMs) * timelineDurationMs));
+    };
+
+    const timelineMsToVideoMs = (value) => {
+      const safeTimelineMs = Math.max(0, Math.round(Number(value) || 0));
+      const videoDurationMs = Math.max(1, getVideoDurationMs());
+      if (!timelineDurationMs || timelineDurationMs === videoDurationMs) {
+        return safeTimelineMs;
+      }
+      return Math.max(0, Math.round((safeTimelineMs / timelineDurationMs) * videoDurationMs));
+    };
+
+    const promoteActivePanel = (activeId, options = {}) => {
+      const normalizedId = String(activeId || "").trim();
+      const shouldAnimate = options.animate !== false && !reduceMotion.matches;
+      if (!normalizedId || !(panelDeck instanceof HTMLElement) || promotedId === normalizedId) {
+        return;
+      }
+
+      const activePanel = panels.find(
+        (element) => String(element.getAttribute("data-experience-span-panel") || "").trim() === normalizedId
+      );
+      if (!(activePanel instanceof HTMLElement)) {
+        return;
+      }
+
+      if (panelDeck.firstElementChild === activePanel) {
+        promotedId = normalizedId;
+        return;
+      }
+
+      const beforeRects = shouldAnimate
+        ? new Map(panels.map((element) => [element, element.getBoundingClientRect()]))
+        : null;
+
+      panelDeck.prepend(activePanel);
+      promotedId = normalizedId;
+
+      if (!shouldAnimate || !(beforeRects instanceof Map)) {
+        return;
+      }
+
+      for (const element of panels) {
+        if (!(element instanceof HTMLElement)) {
+          continue;
+        }
+        const before = beforeRects.get(element);
+        const after = element.getBoundingClientRect();
+        if (!before || !after) {
+          continue;
+        }
+        const deltaY = before.top - after.top;
+        if (Math.abs(deltaY) < 1) {
+          continue;
+        }
+        element.animate(
+          [
+            {
+              transform: `${element === activePanel ? "scale(0.985) " : ""}translateY(${deltaY}px)`,
+              opacity: element === activePanel ? 0.92 : 0.82
+            },
+            {
+              transform: "translateY(0)",
+              opacity: 1
+            }
+          ],
+          {
+            duration: element === activePanel ? 440 : 380,
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+            fill: "both"
+          }
+        );
+      }
+    };
+
+    const resolveActiveSpanId = (currentTimelineMs) => {
+      const safeTimelineMs = Math.max(0, Math.round(Number(currentTimelineMs) || 0));
+      for (let index = 0; index < trackSpans.length; index += 1) {
+        const element = trackSpans[index];
+        const startMs = Math.max(0, Math.round(Number(element.getAttribute("data-experience-start-ms")) || 0));
+        const endMs = Math.max(startMs, Math.round(Number(element.getAttribute("data-experience-end-ms")) || startMs));
+        const isLast = index === trackSpans.length - 1;
+        const isWithinSpan =
+          safeTimelineMs >= startMs && (isLast ? safeTimelineMs <= endMs : safeTimelineMs < endMs);
+        if (isWithinSpan) {
+          return String(element.getAttribute("data-experience-span-id") || "").trim();
+        }
+      }
+
+      let bestElement = null;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (const element of trackSpans) {
+        const startMs = Math.max(0, Math.round(Number(element.getAttribute("data-experience-start-ms")) || 0));
+        const distance = Math.abs(startMs - safeTimelineMs);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestElement = element;
+        }
+      }
+      return String(bestElement?.getAttribute("data-experience-span-id") || "").trim();
+    };
+
+    const setActiveSpan = (activeId) => {
+      const normalizedId = String(activeId || "").trim();
+      for (const element of trackSpans) {
+        const spanId = String(element.getAttribute("data-experience-span-id") || "").trim();
+        element.classList.toggle("is-active", Boolean(normalizedId) && spanId === normalizedId);
+      }
+      for (const element of panels) {
+        const spanId = String(element.getAttribute("data-experience-span-panel") || "").trim();
+        element.classList.toggle("is-active", Boolean(normalizedId) && spanId === normalizedId);
+      }
+      if (normalizedId && normalizedId !== currentActiveId) {
+        promoteActivePanel(normalizedId, { animate: currentActiveId !== "" });
+      }
+      currentActiveId = normalizedId;
+    };
+
+    const syncPlayhead = () => {
+      const currentVideoMs = Math.max(0, Math.round((Number(video.currentTime) || 0) * 1000));
+      const currentTimelineMs = videoMsToTimelineMs(currentVideoMs);
+      if (playhead && timelineDurationMs > 0) {
+        const progress = Math.max(0, Math.min(100, (currentTimelineMs / timelineDurationMs) * 100));
+        playhead.style.left = `${progress}%`;
+      }
+
+      const activeId = resolveActiveSpanId(currentTimelineMs);
+      setActiveSpan(activeId);
+    };
+
+    for (const trigger of jumpTargets) {
+      if (trigger.getAttribute("data-bound") === "1") {
+        continue;
+      }
+      trigger.setAttribute("data-bound", "1");
+      trigger.addEventListener("click", () => {
+        const jumpTimelineMs = Math.max(0, Math.round(Number(trigger.getAttribute("data-experience-jump-ms")) || 0));
+        const clickedSpanId = String(trigger.getAttribute("data-experience-span-id") || "").trim();
+        const jumpVideoMs = timelineMsToVideoMs(jumpTimelineMs);
+        if (clickedSpanId) {
+          setActiveSpan(clickedSpanId);
+        } else {
+          setActiveSpan(resolveActiveSpanId(jumpTimelineMs));
+        }
+        video.currentTime = jumpVideoMs / 1000;
+        video.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        window.requestAnimationFrame(syncPlayhead);
+      });
+    }
+
+    video.addEventListener("loadedmetadata", syncPlayhead);
+    video.addEventListener("loadeddata", syncPlayhead);
+    video.addEventListener("seeking", syncPlayhead);
+    video.addEventListener("timeupdate", syncPlayhead);
+    video.addEventListener("seeked", syncPlayhead);
+    video.addEventListener("pause", syncPlayhead);
+    video.addEventListener("play", syncPlayhead);
+
+    player.setAttribute("data-bound", "1");
+    window.requestAnimationFrame(syncPlayhead);
+  }
+}
+
+function attachJourneyStepProofVideos(root = null) {
+  const host = root || elements.reportDetail;
+  if (!host) {
+    return;
+  }
+
+  const videos = Array.from(host.querySelectorAll("[data-step-proof-video]"));
+  for (const video of videos) {
+    if (!(video instanceof HTMLVideoElement) || video.getAttribute("data-bound") === "1") {
+      continue;
+    }
+
+    const useFragmentedClipSource = video.getAttribute("data-step-proof-fragmented") === "1";
+    const jumpTimelineMs = Math.max(0, Math.round(Number(video.getAttribute("data-step-jump-ms")) || 0));
+    const clipStartTimelineMs = Math.max(
+      0,
+      Math.round(Number(video.getAttribute("data-step-clip-start-ms")) || jumpTimelineMs)
+    );
+    const clipEndTimelineMs = Math.max(
+      clipStartTimelineMs + 1800,
+      Math.round(Number(video.getAttribute("data-step-clip-end-ms")) || clipStartTimelineMs + 4000)
+    );
+    const proofBaselineMs = Math.max(0, Math.round(Number(video.getAttribute("data-step-proof-baseline-ms")) || 0));
+    const timelineDurationMs = Math.max(1, Math.round(Number(video.getAttribute("data-step-timeline-duration-ms")) || 0));
+    let settleRafId = 0;
+    let seekAttempts = 0;
+    let seekSettled = false;
+
+    const mapTimelineMsToVideoSeconds = (timelineMs) => {
+      if (useFragmentedClipSource) {
+        const relativeMs = Math.max(0, Math.round(Number(timelineMs) || 0) - clipStartTimelineMs);
+        const rawTargetSeconds = Math.max(0, relativeMs / 1000);
+        const maxSeekableSeconds =
+          Number.isFinite(video.duration) && video.duration > 0 ? Math.max(0, video.duration - 0.05) : rawTargetSeconds;
+        return Math.max(0, Math.min(rawTargetSeconds, maxSeekableSeconds));
+      }
+
+      const videoDurationMs =
+        Number.isFinite(video.duration) && video.duration > 0 ? Math.round(video.duration * 1000) : timelineDurationMs;
+      const treatAsTrimmedClip =
+        proofBaselineMs > 0 && timelineDurationMs > 0 && videoDurationMs > 0 && videoDurationMs + 1500 < timelineDurationMs;
+      const mappedVideoMs = treatAsTrimmedClip
+        ? Math.max(0, timelineMs - proofBaselineMs)
+        : timelineDurationMs && Math.abs(videoDurationMs - timelineDurationMs) > 1500
+          ? Math.max(0, Math.round((timelineMs / timelineDurationMs) * videoDurationMs))
+          : timelineMs;
+      const rawTargetSeconds = Math.max(0, mappedVideoMs / 1000);
+      const maxSeekableSeconds =
+        Number.isFinite(video.duration) && video.duration > 0 ? Math.max(0, video.duration - 0.15) : rawTargetSeconds;
+      return Math.max(0, Math.min(rawTargetSeconds, maxSeekableSeconds));
+    };
+
+    const getClipWindowSeconds = () => {
+      if (useFragmentedClipSource) {
+        const localClipDurationSeconds = Math.max(0.35, (clipEndTimelineMs - clipStartTimelineMs) / 1000);
+        const maxDuration =
+          Number.isFinite(video.duration) && video.duration > 0 ? Math.max(0.35, video.duration) : localClipDurationSeconds;
+        return {
+          startSeconds: 0,
+          endSeconds: Math.max(0.35, Math.min(localClipDurationSeconds, maxDuration))
+        };
+      }
+
+      const startSeconds = mapTimelineMsToVideoSeconds(clipStartTimelineMs);
+      const rawEndSeconds = mapTimelineMsToVideoSeconds(clipEndTimelineMs);
+      const endSeconds = Math.max(startSeconds + 0.35, rawEndSeconds);
+      return {
+        startSeconds,
+        endSeconds
+      };
+    };
+
+    const seekToSeconds = (targetSeconds) => {
+      if (typeof video.fastSeek === "function") {
+        video.fastSeek(targetSeconds);
+      } else {
+        video.currentTime = targetSeconds;
+      }
+    };
+
+    const clampPlaybackToWindow = (options = {}) => {
+      const { startSeconds, endSeconds } = getClipWindowSeconds();
+      const currentSeconds = Number(video.currentTime) || 0;
+      const tolerance = 0.08;
+
+      if (currentSeconds < startSeconds - tolerance) {
+        try {
+          seekToSeconds(startSeconds);
+        } catch {}
+        return;
+      }
+
+      if (currentSeconds > endSeconds + tolerance) {
+        try {
+          seekToSeconds(endSeconds);
+        } catch {}
+        if (options.pause !== false) {
+          try {
+            video.pause();
+          } catch {}
+        }
+        return;
+      }
+
+      if (currentSeconds >= endSeconds - tolerance) {
+        try {
+          if (Math.abs(currentSeconds - endSeconds) > tolerance) {
+            seekToSeconds(endSeconds);
+          }
+          video.pause();
+        } catch {}
+      }
+    };
+
+    const attemptSeek = () => {
+      settleRafId = 0;
+      if (seekSettled) {
+        return;
+      }
+
+      const { startSeconds } = getClipWindowSeconds();
+      try {
+        if (Math.abs((Number(video.currentTime) || 0) - startSeconds) > 0.2) {
+          seekToSeconds(startSeconds);
+        }
+        video.pause();
+      } catch {}
+
+      seekAttempts += 1;
+      if (Math.abs((Number(video.currentTime) || 0) - startSeconds) <= 0.35) {
+        seekSettled = true;
+        return;
+      }
+
+      if (seekAttempts < 6) {
+        settleRafId = window.requestAnimationFrame(attemptSeek);
+      }
+    };
+
+    const scheduleSeek = () => {
+      if (seekSettled || settleRafId) {
+        return;
+      }
+      settleRafId = window.requestAnimationFrame(attemptSeek);
+    };
+
+    video.addEventListener("loadedmetadata", scheduleSeek);
+    video.addEventListener("loadeddata", scheduleSeek);
+    video.addEventListener("canplay", scheduleSeek);
+    video.addEventListener("durationchange", scheduleSeek);
+    video.addEventListener("play", () => {
+      const { startSeconds, endSeconds } = getClipWindowSeconds();
+      const currentSeconds = Number(video.currentTime) || 0;
+      if (currentSeconds < startSeconds - 0.08 || currentSeconds > endSeconds - 0.08) {
+        try {
+          seekToSeconds(startSeconds);
+        } catch {}
+      }
+    });
+    video.addEventListener("timeupdate", () => clampPlaybackToWindow({ pause: true }));
+    video.addEventListener("seeking", () => clampPlaybackToWindow({ pause: false }));
+    video.addEventListener("seeked", () => {
+      const { startSeconds } = getClipWindowSeconds();
+      if (Math.abs((Number(video.currentTime) || 0) - startSeconds) <= 0.35) {
+        seekSettled = true;
+      }
+      try {
+        video.pause();
+      } catch {}
+    });
+
+    if (video.readyState >= 1) {
+      scheduleSeek();
+    }
+
+    video.setAttribute("data-bound", "1");
+  }
+}
+
 function attachJourneyCanvases(root = null) {
   const host = root || elements.reportDetail;
   if (!host) {
@@ -8028,6 +13874,7 @@ function attachJourneyCanvases(root = null) {
     }
 
     const shell = viewport.closest(".journey-canvas-shell");
+    const stage = viewport.querySelector(".journey-canvas-stage");
     const canvasId = String(viewport.getAttribute("data-journey-canvas") || "").trim();
     const resetButton = shell ? shell.querySelector(`[data-journey-reset="${canvasId}"]`) : null;
     const initialLeft = Math.max(0, Number(viewport.getAttribute("data-initial-left")) || 0);
@@ -8037,9 +13884,127 @@ function attachJourneyCanvases(root = null) {
     let startY = 0;
     let startLeft = 0;
     let startTop = 0;
+    let saveRafId = 0;
+    let layoutRafId = 0;
 
-    const resetView = (behavior = "smooth", shouldFocus = true) => {
-      viewport.scrollTo({ left: initialLeft, top: initialTop, behavior });
+    const applyMeasuredLayout = () => {
+      if (!stage) {
+        return;
+      }
+
+      const cards = Array.from(stage.querySelectorAll(".journey-step-card"));
+      if (!cards.length) {
+        return;
+      }
+
+      const connectors = Array.from(stage.querySelectorAll(".journey-canvas-link"));
+      const columnCount = 3;
+      const cardWidth = 332;
+      const columnStep = 392;
+      const baseX = 112;
+      const baseY = 120;
+      const rowGap = 52;
+      const bottomPadding = 108;
+      const layouts = [];
+      let nextRowY = baseY;
+
+      for (let rowIndex = 0; rowIndex < Math.ceil(cards.length / columnCount); rowIndex += 1) {
+        const rowCards = cards.slice(rowIndex * columnCount, rowIndex * columnCount + columnCount);
+        const rowHeights = rowCards.map((card) => Math.max(286, Math.ceil(card.getBoundingClientRect().height || card.offsetHeight || 0)));
+        const rowHeight = Math.max(...rowHeights);
+
+        rowCards.forEach((card, columnIndex) => {
+          const visualColumn = rowIndex % 2 === 0 ? columnIndex : columnCount - 1 - columnIndex;
+          const x = baseX + visualColumn * columnStep;
+          const y = nextRowY;
+          card.style.left = `${x}px`;
+          card.style.top = `${y}px`;
+          layouts[rowIndex * columnCount + columnIndex] = {
+            x,
+            y,
+            width: cardWidth,
+            height: rowHeights[columnIndex]
+          };
+        });
+
+        nextRowY += rowHeight + rowGap;
+      }
+
+      const stageWidth = Math.max(1480, baseX + (columnCount - 1) * columnStep + cardWidth + 120);
+      const stageHeight = Math.max(1120, nextRowY + bottomPadding);
+      stage.style.setProperty("--journey-stage-width", `${stageWidth}px`);
+      stage.style.setProperty("--journey-stage-height", `${stageHeight}px`);
+
+      connectors.forEach((connector, index) => {
+        const current = layouts[index];
+        const next = layouts[index + 1];
+        if (!current || !next) {
+          return;
+        }
+        const startX = current.x + current.width - 12;
+        const startY = current.y + Math.round(current.height / 2);
+        const endX = next.x + 12;
+        const endY = next.y + Math.round(next.height / 2);
+        const deltaX = endX - startX;
+        const deltaY = endY - startY;
+        const length = Math.max(48, Math.round(Math.hypot(deltaX, deltaY)));
+        const angle = (Math.atan2(deltaY, deltaX) * 180) / Math.PI;
+        connector.style.left = `${Math.round(startX)}px`;
+        connector.style.top = `${Math.round(startY)}px`;
+        connector.style.width = `${length}px`;
+        connector.style.transform = `rotate(${angle.toFixed(2)}deg)`;
+      });
+    };
+
+    const scheduleMeasuredLayout = () => {
+      if (layoutRafId) {
+        return;
+      }
+      layoutRafId = window.requestAnimationFrame(() => {
+        layoutRafId = 0;
+        applyMeasuredLayout();
+      });
+    };
+
+    const readSavedPosition = () => {
+      if (!canvasId || !(state.journeyCanvasPositions instanceof Map)) {
+        return null;
+      }
+      const saved = state.journeyCanvasPositions.get(canvasId);
+      if (!saved || typeof saved !== "object") {
+        return null;
+      }
+
+      return {
+        left: Math.max(0, Number(saved.left) || 0),
+        top: Math.max(0, Number(saved.top) || 0)
+      };
+    };
+    const savePosition = (left = viewport.scrollLeft, top = viewport.scrollTop) => {
+      if (!canvasId || !(state.journeyCanvasPositions instanceof Map)) {
+        return;
+      }
+      state.journeyCanvasPositions.set(canvasId, {
+        left: Math.max(0, Number(left) || 0),
+        top: Math.max(0, Number(top) || 0)
+      });
+    };
+    const queuePositionSave = () => {
+      if (saveRafId) {
+        return;
+      }
+      saveRafId = window.requestAnimationFrame(() => {
+        saveRafId = 0;
+        savePosition();
+      });
+    };
+
+    const resetView = (behavior = "smooth", shouldFocus = true, forceInitial = false) => {
+      const saved = forceInitial ? null : readSavedPosition();
+      const targetLeft = saved?.left ?? initialLeft;
+      const targetTop = saved?.top ?? initialTop;
+      viewport.scrollTo({ left: targetLeft, top: targetTop, behavior });
+      savePosition(targetLeft, targetTop);
       if (shouldFocus) {
         viewport.focus({ preventScroll: true });
       }
@@ -8053,13 +14018,14 @@ function attachJourneyCanvases(root = null) {
       } catch {}
       activePointerId = null;
       viewport.classList.remove("is-dragging");
+      savePosition();
     };
 
     viewport.addEventListener("pointerdown", (event) => {
       if (event.pointerType !== "touch" && event.button !== 0) {
         return;
       }
-      if (event.target && typeof event.target.closest === "function" && event.target.closest("a, button, input, textarea, select, summary")) {
+      if (event.target && typeof event.target.closest === "function" && event.target.closest("a, button, input, textarea, select, summary, video")) {
         return;
       }
       activePointerId = event.pointerId;
@@ -8082,6 +14048,7 @@ function attachJourneyCanvases(root = null) {
       viewport.scrollTop = startTop - (event.clientY - startY);
     });
 
+    viewport.addEventListener("scroll", queuePositionSave, { passive: true });
     viewport.addEventListener("pointerup", finishDrag);
     viewport.addEventListener("pointercancel", finishDrag);
     viewport.addEventListener("lostpointercapture", finishDrag);
@@ -8089,7 +14056,7 @@ function attachJourneyCanvases(root = null) {
       const step = 84;
       if (event.key === "Home") {
         event.preventDefault();
-        resetView("smooth", false);
+        resetView("smooth", false, true);
         return;
       }
       if (event.key === "ArrowLeft") {
@@ -8108,16 +14075,29 @@ function attachJourneyCanvases(root = null) {
     });
 
     if (resetButton) {
-      resetButton.addEventListener("click", () => resetView());
+      resetButton.addEventListener("click", () => resetView("smooth", true, true));
     }
 
+    if ("ResizeObserver" in window && stage) {
+      const resizeObserver = new ResizeObserver(() => scheduleMeasuredLayout());
+      stage.querySelectorAll(".journey-step-card, .journey-step-proof-video").forEach((node) => resizeObserver.observe(node));
+    }
+
+    viewport.querySelectorAll(".journey-step-proof-video").forEach((video) => {
+      video.addEventListener("loadedmetadata", scheduleMeasuredLayout);
+      video.addEventListener("loadeddata", scheduleMeasuredLayout);
+    });
+
     viewport.setAttribute("data-bound", "1");
-    window.requestAnimationFrame(() => resetView("auto", false));
+    window.requestAnimationFrame(() => {
+      applyMeasuredLayout();
+      resetView("auto", false);
+    });
   }
 }
 
 async function renderSelectedReport() {
-  const runId = state.selectedRunId;
+  const runId = String(state.selectedRunId || state.requestedRunId || "").trim();
   if (!runId) {
     state.activeRenderedReport = null;
     state.activeRenderedRow = null;
@@ -8145,29 +14125,25 @@ async function renderSelectedReport() {
   const replayPlayerId = `replay-main-${toAnchorToken(report?.run_id || runId || "run")}`;
   const mode = deriveDashboardMode(report, row, statusPayload);
   const liveWatchMarkup = renderLiveWatch(runId, row);
+  const sharedPromoMarkup = renderSharedReportPromotionBanner(report, row);
+  const experienceTimelineMarkup = renderExperienceTimelineSection(report, row);
   const journeysMarkup = renderJourneys(report, row);
   const priorityMarkup = renderPrioritySummary(report, mode);
+  const engineeringTriageMarkup = renderEngineeringTriageSection(report, row, statusPayload);
   const findingsMarkup = renderFindings(report, row, replayPlayerId);
-  const secondaryMarkup = renderSecondaryReportSections(report, row, replayPlayerId);
   const detailMarkup = `
     <div class="report-detail-shell">
       ${renderSelectedHeader(report, row, statusPayload)}
+      ${sharedPromoMarkup}
+      ${experienceTimelineMarkup}
       ${journeysMarkup}
-      <div class="report-detail-columns ${secondaryMarkup ? "report-detail-columns--split" : ""}">
+      <div class="report-detail-columns">
         <div class="report-main-column">
           ${liveWatchMarkup}
           ${priorityMarkup}
+          ${engineeringTriageMarkup}
           ${findingsMarkup}
         </div>
-        ${
-          secondaryMarkup
-            ? `
-              <aside class="report-side-column">
-                ${secondaryMarkup}
-              </aside>
-            `
-            : ""
-        }
       </div>
     </div>
   `;
@@ -8177,7 +14153,9 @@ async function renderSelectedReport() {
     detailMarkup,
     isReportViewMode: isReportViewMode(),
     attachReplayPlayers,
+    attachExperienceTimelinePlayers,
     attachReplayJumpButtons,
+    attachJourneyStepProofVideos,
     attachJourneyCanvases,
     attachShareButtons,
     attachLlmCopyButtons
@@ -8200,19 +14178,40 @@ async function loadAndRenderReports() {
   beginDashboardLoad();
   let shouldMarkShellReady = false;
   try {
-    if (requiresDashboardAuth && !isDashboardAuthReady()) {
+    if (requiresDashboardAuth && !isDashboardAuthReady() && !hasSharedReportAccess()) {
       await waitForDashboardAuthReady();
     }
     if (!isDashboardLoadRequestCurrent(loadRequestId)) {
       return;
     }
-    if (!isDashboardAuthorized()) {
+    if (!isDashboardAuthorized() && !hasSharedReportAccess()) {
       stopLivePolling();
       resetDashboardCollections();
       updateOnboardingVisibility();
       renderBrandSuggestions();
       renderAuthRequiredState();
       syncProjectSwitcherVisibility();
+      return;
+    }
+
+    if (!isDashboardAuthorized() && hasSharedReportAccess()) {
+      stopWorkerHealthPolling();
+      state.workerHealth = null;
+      resetDashboardCollections();
+      renderDistributionPacksPanel({
+        error: "Sign in to load distribution packs.",
+        clearData: true
+      });
+      updateOnboardingVisibility();
+      renderBrandSuggestions();
+      syncProjectSwitcherVisibility();
+      syncUrlFromState();
+      await renderSelectedReport();
+      if (!isDashboardLoadRequestCurrent(loadRequestId)) {
+        return;
+      }
+      shouldMarkShellReady = true;
+      ensureLivePolling();
       return;
     }
 
@@ -8224,6 +14223,12 @@ async function loadAndRenderReports() {
       hasAppDashboardUi
     });
     markDashboardShellReady({ force: true });
+    renderDistributionPacksPanel({ clearError: true });
+
+    const activeDistributionTrack = normalizeDistributionTrack(state.submissionCatalog.activeTrack);
+    const secondaryDistributionTrack = activeDistributionTrack === "startup" ? "physical_local" : "startup";
+    void loadDistributionCatalog(activeDistributionTrack, { renderLoading: true }).catch(() => null);
+    void loadSubmissionBrands().catch(() => null);
 
     let fetchedRuns = await requestRunCollection();
     if (!isDashboardLoadRequestCurrent(loadRequestId)) {
@@ -8286,9 +14291,16 @@ async function loadAndRenderReports() {
     updateOnboardingVisibility();
     syncUrlFromState();
     void hydrateProjectCatalogInBackground(loadRequestId);
+    prefetchDistributionCatalog(secondaryDistributionTrack);
     await renderSelectedReport();
     if (!isDashboardLoadRequestCurrent(loadRequestId)) {
       return;
+    }
+    if (hasAppDashboardUi) {
+      await loadQaAutomationPanels();
+      if (!isDashboardLoadRequestCurrent(loadRequestId)) {
+        return;
+      }
     }
     shouldMarkShellReady = true;
     ensureWorkerHealthPolling();
@@ -8387,7 +14399,7 @@ async function pollSelectedRunLiveStatus() {
 
 function ensureLivePolling() {
   stopLivePolling();
-  if (!isDashboardAuthorized()) {
+  if (!isDashboardAuthorized() && !hasSharedReportAccess()) {
     return;
   }
   pollSelectedRunLiveStatus();
@@ -8460,12 +14472,15 @@ function installOnboardingInteractions() {
   elements.onboardingTargetUrl?.addEventListener("input", () => {
     refreshOnboardingPreview();
     maybePopulateBrandKeyFromTarget();
+    renderOnboardingRepoConnectionUi();
     refreshOnboardingLaunchSummary();
   });
   elements.onboardingTargetUrl?.addEventListener("blur", () => {
     normalizeOnboardingTargetUrlInput(String(elements.onboardingTargetUrl?.value || ""), { writeBack: true });
     maybePopulateBrandKeyFromTarget();
     refreshOnboardingPreview();
+    renderOnboardingRepoConnectionUi();
+    void loadOnboardingRepoConnectionForCurrentBrand({ force: true, includeRepositories: true });
     refreshOnboardingLaunchSummary();
   });
   elements.onboardingPersonaCustom?.addEventListener("input", () => {
@@ -8475,6 +14490,74 @@ function installOnboardingInteractions() {
   elements.onboardingScenariosCustom?.addEventListener("input", () => {
     syncOnboardingScenariosField();
     refreshOnboardingLaunchSummary();
+  });
+  elements.onboardingRepoTriageEnabled?.addEventListener("change", () => {
+    refreshOnboardingLaunchSummary();
+  });
+  elements.onboardingRepoTriageRepo?.addEventListener("input", () => {
+    refreshOnboardingLaunchSummary();
+  });
+  elements.onboardingRepoTriagePaths?.addEventListener("input", () => {
+    refreshOnboardingLaunchSummary();
+  });
+  elements.onboardingRepoTriagePaths?.addEventListener("change", async () => {
+    const connection = getCachedRepoConnection(getOnboardingBrandKey());
+    if (connection.connection_status !== "connected" || !connection.selected_repo_full_name) {
+      return;
+    }
+    try {
+      await persistOnboardingRepoConnectionSelection();
+    } catch (error) {
+      showReportToast(error?.message || "Could not save repo path allowlist.", "error");
+    }
+  });
+
+  elements.onboardingRepoTriageConnect?.addEventListener("click", async () => {
+    const brandKey = getOnboardingBrandKey();
+    if (!brandKey) {
+      setOnboardingMessage("Enter the product URL first so the repo connection is scoped to the right brand.", "error");
+      elements.onboardingTargetUrl?.focus();
+      return;
+    }
+
+    try {
+      storeGitHubAppReturnState(captureCurrentOnboardingConfig());
+      const install = await requestGitHubAppInstallUrl(brandKey);
+      window.location.assign(String(install.install_url || "").trim());
+    } catch (error) {
+      showReportToast(error?.message || "Could not start GitHub App install.", "error");
+    }
+  });
+
+  elements.onboardingRepoTriageDisconnect?.addEventListener("click", async () => {
+    const brandKey = getOnboardingBrandKey();
+    if (!brandKey || !window.confirm("Disconnect the GitHub repo for this brand?")) {
+      return;
+    }
+    try {
+      await requestDeleteBrandRepoConnection(brandKey);
+      state.repoConnections.set(brandKey, buildEmptyRepoConnection(brandKey));
+      if (elements.onboardingRepoTriageRepo) {
+        elements.onboardingRepoTriageRepo.readOnly = false;
+        elements.onboardingRepoTriageRepo.value = "";
+      }
+      renderOnboardingRepoConnectionUi();
+      refreshOnboardingLaunchSummary();
+      showReportToast("GitHub repo disconnected for this brand.", "success");
+    } catch (error) {
+      showReportToast(error?.message || "Could not disconnect GitHub.", "error");
+    }
+  });
+
+  elements.onboardingRepoConnectionSelect?.addEventListener("change", async () => {
+    try {
+      await persistOnboardingRepoConnectionSelection({
+        repoFullName: elements.onboardingRepoConnectionSelect?.value || ""
+      });
+      showReportToast("Connected repo saved for this brand.", "success");
+    } catch (error) {
+      showReportToast(error?.message || "Could not save the selected repo.", "error");
+    }
   });
 
   elements.onboardingPrevButton?.addEventListener("click", () => {
@@ -8494,6 +14577,7 @@ function installOnboardingInteractions() {
   syncOnboardingPersonaField();
   syncOnboardingScenariosField();
   refreshOnboardingPreview();
+  renderOnboardingRepoConnectionUi();
   refreshOnboardingLaunchSummary();
   setOnboardingStep(state.onboarding.step || 1);
 }
@@ -8517,6 +14601,8 @@ function openOnboardingModal({ resetStep = true, manual = false, trusted = false
     state.onboarding.step = 1;
   }
   setOnboardingMessage("", "");
+  renderOnboardingRepoConnectionUi();
+  void loadOnboardingRepoConnectionForCurrentBrand({ includeRepositories: true });
   updateOnboardingVisibility();
   focusOnboardingActiveControl();
 }
@@ -8549,6 +14635,8 @@ function openAddProjectFlow(event) {
   if (elements.onboardingBrandKey) {
     elements.onboardingBrandKey.value = "";
   }
+  applyOnboardingRepoTriageConfig({ enabled: false, repo: "", path_allowlist: [] });
+  renderOnboardingRepoConnectionUi();
   syncUrlFromState();
   refreshOnboardingPreview();
   refreshOnboardingLaunchSummary();
@@ -8600,6 +14688,223 @@ function openDashboardLiveView(runId, options = {}) {
 function installDashboardActionHandlers() {
   if (!hasAppDashboardUi) {
     return;
+  }
+
+  if (elements.distributionTrackSwitcher && elements.distributionTrackSwitcher.dataset.bound !== "1") {
+    elements.distributionTrackSwitcher.dataset.bound = "1";
+    elements.distributionTrackSwitcher.addEventListener("click", (event) => {
+      const button =
+        event.target instanceof HTMLElement
+          ? event.target.closest("[data-distribution-track]")
+          : null;
+      if (!button) {
+        return;
+      }
+      const nextTrack = normalizeDistributionTrack(button.getAttribute("data-distribution-track"));
+      if (nextTrack === state.submissionCatalog.activeTrack) {
+        return;
+      }
+      stopDistributionPreparePolling();
+      stopDistributionQueuePolling();
+      state.submissionCatalog.activeTrack = nextTrack;
+      state.submissionLauncher.prepareJob = null;
+      state.submissionLauncher.preparing = false;
+      state.submissionLauncher.preflight = null;
+      state.submissionLauncher.queueBatch = null;
+      state.submissionLauncher.queueStatuses = {};
+      renderDistributionPacksPanel({ clearError: true });
+      void loadDistributionCatalog(nextTrack, { renderLoading: true }).catch(() => null);
+    });
+  }
+
+  if (elements.distributionBrandSelect && elements.distributionBrandSelect.dataset.bound !== "1") {
+    elements.distributionBrandSelect.dataset.bound = "1";
+    elements.distributionBrandSelect.addEventListener("change", () => {
+      stopDistributionPreparePolling();
+      stopDistributionQueuePolling();
+      state.submissionLauncher.selectedBrandProfileId = sanitizeString(elements.distributionBrandSelect.value, 128);
+      state.submissionLauncher.prepareJob = null;
+      state.submissionLauncher.preparing = false;
+      state.submissionLauncher.latestManifest = null;
+      state.submissionLauncher.manifestError = "";
+      state.submissionLauncher.preflight = null;
+      state.submissionLauncher.queueBatch = null;
+      state.submissionLauncher.queueStatuses = {};
+      syncDistributionBrandFormState(getSelectedDistributionBrand(), true);
+      renderDistributionLauncher();
+      void loadDistributionManifest(state.submissionLauncher.selectedBrandProfileId, {
+        force: true,
+        clearExisting: true
+      }).catch(() => null);
+    });
+  }
+
+  if (elements.distributionPackSelect && elements.distributionPackSelect.dataset.bound !== "1") {
+    elements.distributionPackSelect.dataset.bound = "1";
+    elements.distributionPackSelect.addEventListener("change", () => {
+      stopDistributionPreparePolling();
+      stopDistributionQueuePolling();
+      state.submissionLauncher.selectedPackId = sanitizeString(elements.distributionPackSelect.value, 128).toLowerCase();
+      state.submissionLauncher.prepareJob = null;
+      state.submissionLauncher.preparing = false;
+      state.submissionLauncher.preflight = null;
+      state.submissionLauncher.queueBatch = null;
+      state.submissionLauncher.queueStatuses = {};
+      setDistributionLauncherMessage("Pack updated. Prepare assets or rerun preflight for the new selection.", "");
+      renderDistributionLauncher();
+    });
+  }
+
+  if (elements.distributionSubmitLive && elements.distributionSubmitLive.dataset.bound !== "1") {
+    elements.distributionSubmitLive.dataset.bound = "1";
+    elements.distributionSubmitLive.addEventListener("change", () => {
+      renderDistributionLauncher();
+    });
+  }
+
+  if (elements.distributionPrepareAction && elements.distributionPrepareAction.dataset.bound !== "1") {
+    elements.distributionPrepareAction.dataset.bound = "1";
+    elements.distributionPrepareAction.addEventListener("click", () => {
+      void runDistributionAssetPrepare();
+    });
+  }
+
+  if (elements.distributionPreflightAction && elements.distributionPreflightAction.dataset.bound !== "1") {
+    elements.distributionPreflightAction.dataset.bound = "1";
+    elements.distributionPreflightAction.addEventListener("click", () => {
+      void runDistributionPreflight();
+    });
+  }
+
+  if (elements.distributionQueueAction && elements.distributionQueueAction.dataset.bound !== "1") {
+    elements.distributionQueueAction.dataset.bound = "1";
+    elements.distributionQueueAction.addEventListener("click", () => {
+      void queueDistributionPack();
+    });
+  }
+
+  if (elements.distributionIdentityMode && elements.distributionIdentityMode.dataset.bound !== "1") {
+    elements.distributionIdentityMode.dataset.bound = "1";
+    elements.distributionIdentityMode.addEventListener("change", () => {
+      state.submissionLauncher.brandForm.identityMode = sanitizeOptionalString(elements.distributionIdentityMode.value, 64) || "client_owned";
+      setDistributionBrandSaveMessage("Mailbox form updated. Save to persist these changes.", "");
+      renderDistributionLauncher();
+    });
+  }
+
+  if (elements.distributionMailboxProvider && elements.distributionMailboxProvider.dataset.bound !== "1") {
+    elements.distributionMailboxProvider.dataset.bound = "1";
+    elements.distributionMailboxProvider.addEventListener("change", () => {
+      state.submissionLauncher.brandForm.mailboxProvider =
+        sanitizeOptionalString(elements.distributionMailboxProvider.value, 120) || "";
+      applyDistributionMailboxDefaults({ force: true });
+      setDistributionBrandSaveMessage("Provider defaults applied. Save to persist these changes.", "");
+      renderDistributionLauncher();
+    });
+  }
+
+  if (elements.distributionMailboxEmail && elements.distributionMailboxEmail.dataset.bound !== "1") {
+    elements.distributionMailboxEmail.dataset.bound = "1";
+    elements.distributionMailboxEmail.addEventListener("input", () => {
+      state.submissionLauncher.brandForm.mailboxEmail = sanitizeOptionalString(elements.distributionMailboxEmail.value, 320) || "";
+      applyDistributionMailboxDefaults();
+      setDistributionBrandSaveMessage("Mailbox form updated. Save to persist these changes.", "");
+      renderDistributionLauncher();
+    });
+  }
+
+  if (elements.distributionMailboxUsername && elements.distributionMailboxUsername.dataset.bound !== "1") {
+    elements.distributionMailboxUsername.dataset.bound = "1";
+    elements.distributionMailboxUsername.addEventListener("input", () => {
+      state.submissionLauncher.brandForm.mailboxUsername =
+        sanitizeOptionalString(elements.distributionMailboxUsername.value, 320) || "";
+      setDistributionBrandSaveMessage("Mailbox form updated. Save to persist these changes.", "");
+    });
+  }
+
+  if (elements.distributionMailboxAuthMethod && elements.distributionMailboxAuthMethod.dataset.bound !== "1") {
+    elements.distributionMailboxAuthMethod.dataset.bound = "1";
+    elements.distributionMailboxAuthMethod.addEventListener("change", () => {
+      state.submissionLauncher.brandForm.mailboxAuthMethod =
+        sanitizeOptionalString(elements.distributionMailboxAuthMethod.value, 64) || "unknown";
+      setDistributionBrandSaveMessage("Mailbox form updated. Save to persist these changes.", "");
+      renderDistributionLauncher();
+    });
+  }
+
+  if (elements.distributionMailboxHost && elements.distributionMailboxHost.dataset.bound !== "1") {
+    elements.distributionMailboxHost.dataset.bound = "1";
+    elements.distributionMailboxHost.addEventListener("input", () => {
+      state.submissionLauncher.brandForm.mailboxHost = sanitizeOptionalString(elements.distributionMailboxHost.value, 320) || "";
+      setDistributionBrandSaveMessage("Mailbox form updated. Save to persist these changes.", "");
+    });
+  }
+
+  if (elements.distributionMailboxPort && elements.distributionMailboxPort.dataset.bound !== "1") {
+    elements.distributionMailboxPort.dataset.bound = "1";
+    elements.distributionMailboxPort.addEventListener("input", () => {
+      state.submissionLauncher.brandForm.mailboxPort = sanitizeOptionalString(elements.distributionMailboxPort.value, 16) || "993";
+      setDistributionBrandSaveMessage("Mailbox form updated. Save to persist these changes.", "");
+    });
+  }
+
+  if (elements.distributionMailboxSecure && elements.distributionMailboxSecure.dataset.bound !== "1") {
+    elements.distributionMailboxSecure.dataset.bound = "1";
+    elements.distributionMailboxSecure.addEventListener("change", () => {
+      state.submissionLauncher.brandForm.mailboxSecure = elements.distributionMailboxSecure.checked === true;
+      setDistributionBrandSaveMessage("Mailbox form updated. Save to persist these changes.", "");
+    });
+  }
+
+  if (elements.distributionMailboxSmtpHost && elements.distributionMailboxSmtpHost.dataset.bound !== "1") {
+    elements.distributionMailboxSmtpHost.dataset.bound = "1";
+    elements.distributionMailboxSmtpHost.addEventListener("input", () => {
+      state.submissionLauncher.brandForm.mailboxSmtpHost =
+        sanitizeOptionalString(elements.distributionMailboxSmtpHost.value, 320) || "";
+      setDistributionBrandSaveMessage("Mailbox form updated. Save to persist these changes.", "");
+    });
+  }
+
+  if (elements.distributionMailboxSmtpPort && elements.distributionMailboxSmtpPort.dataset.bound !== "1") {
+    elements.distributionMailboxSmtpPort.dataset.bound = "1";
+    elements.distributionMailboxSmtpPort.addEventListener("input", () => {
+      state.submissionLauncher.brandForm.mailboxSmtpPort =
+        sanitizeOptionalString(elements.distributionMailboxSmtpPort.value, 16) || "587";
+      setDistributionBrandSaveMessage("Mailbox form updated. Save to persist these changes.", "");
+    });
+  }
+
+  if (elements.distributionMailboxSmtpSecure && elements.distributionMailboxSmtpSecure.dataset.bound !== "1") {
+    elements.distributionMailboxSmtpSecure.dataset.bound = "1";
+    elements.distributionMailboxSmtpSecure.addEventListener("change", () => {
+      state.submissionLauncher.brandForm.mailboxSmtpSecure =
+        elements.distributionMailboxSmtpSecure.checked === true;
+      setDistributionBrandSaveMessage("Mailbox form updated. Save to persist these changes.", "");
+    });
+  }
+
+  if (elements.distributionMailboxPassword && elements.distributionMailboxPassword.dataset.bound !== "1") {
+    elements.distributionMailboxPassword.dataset.bound = "1";
+    elements.distributionMailboxPassword.addEventListener("input", () => {
+      state.submissionLauncher.brandForm.mailboxPassword = sanitizeOptionalString(elements.distributionMailboxPassword.value, 1024) || "";
+      setDistributionBrandSaveMessage("Mailbox secret ready to save. Leave blank to keep the current one.", "");
+    });
+  }
+
+  if (elements.distributionMailboxReady && elements.distributionMailboxReady.dataset.bound !== "1") {
+    elements.distributionMailboxReady.dataset.bound = "1";
+    elements.distributionMailboxReady.addEventListener("change", () => {
+      state.submissionLauncher.brandForm.mailboxReady = elements.distributionMailboxReady.checked === true;
+      setDistributionBrandSaveMessage("Mailbox form updated. Save to persist these changes.", "");
+      renderDistributionLauncher();
+    });
+  }
+
+  if (elements.distributionSaveBrandAction && elements.distributionSaveBrandAction.dataset.bound !== "1") {
+    elements.distributionSaveBrandAction.dataset.bound = "1";
+    elements.distributionSaveBrandAction.addEventListener("click", () => {
+      void saveDistributionBrandMailbox();
+    });
   }
 
   if (elements.dashboardPrimaryAction && elements.dashboardPrimaryAction.dataset.bound !== "1") {
@@ -8733,14 +15038,15 @@ function installDashboardActionHandlers() {
 async function bootstrapDashboardContent() {
   state.dashboardBootstrapComplete = false;
   resetDashboardShellReady();
+  ensureRequestedRunFromUrl();
   renderWorkerHealthIndicator();
-  if (requiresDashboardAuth && !isDashboardAuthReady()) {
+  if (requiresDashboardAuth && !isDashboardAuthReady() && !hasSharedReportAccess()) {
     setDashboardLoading(true);
     await waitForDashboardAuthReady();
   }
 
   try {
-    if (isDashboardAuthorized()) {
+    if (isDashboardAuthorized() || hasSharedReportAccess()) {
       ensureWorkerHealthPolling();
       await loadAndRenderReports();
       return;
@@ -8760,6 +15066,7 @@ async function bootstrapDashboardContent() {
 
 if (hasReportsUi) {
   initializeThemeModeSwitcher();
+  bindQaAutomationInteractions();
 
   if (elements.launchSwarmButton && hasAppDashboardUi) {
     elements.launchSwarmButton.addEventListener("click", async (event) => {
@@ -8857,8 +15164,10 @@ if (hasReportsUi) {
   syncInputsFromState();
   applyAppViewMode();
   renderWorkerHealthIndicator();
+  renderDistributionPacksPanel();
   ensureOnboardingStateInitialized();
   updateOnboardingVisibility();
+  consumeGitHubAppRedirectState();
   void bootstrapDashboardContent();
 
   if (requiresDashboardAuth) {
@@ -8872,6 +15181,12 @@ if (hasReportsUi) {
       }
       const authorized = Boolean(event?.detail?.authorized);
       if (!authorized) {
+        if (hasSharedReportAccess()) {
+          stopWorkerHealthPolling();
+          state.workerHealth = null;
+          await loadAndRenderReports();
+          return;
+        }
         stopLivePolling();
         stopWorkerHealthPolling();
         state.workerHealth = null;

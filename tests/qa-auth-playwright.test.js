@@ -51,7 +51,12 @@ test("private helpers detect google auth and OTP inbox metadata", () => {
       provider: "mailtm",
       email: "qa@example.com",
       token: "secret-token",
+      host: null,
+      port: null,
+      username: "qa@example.com",
       password: null,
+      accessToken: null,
+      mailbox: null,
       createdAt: null
     }
   );
@@ -82,6 +87,91 @@ test("private helpers detect google auth and OTP inbox metadata", () => {
     }),
     false
   );
+});
+
+test("describeAuthFailureForRun recognizes signup submit bounce-backs", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<!doctype html>
+      <html>
+        <body>
+          <div>
+            <h2>Welcome back</h2>
+            <p>Please continue to log in.</p>
+            <a href="/login">Go to login</a>
+          </div>
+        </body>
+      </html>`, { url: "https://www.clusterseo.com/login" });
+
+    const runLog = [
+      { event: "auth_surface_ready", data: { url: "https://www.clusterseo.com/signup", mode: "signup" } },
+      { event: "auth_form_filled", data: { url: "https://www.clusterseo.com/signup", mode: "signup" } },
+      { event: "auth_submit_attempted", data: { url: "https://www.clusterseo.com/login", mode: "signup" } }
+    ];
+
+    const message = await __private.describeAuthFailureForRun(
+      page,
+      {
+        scope_mode: "feature_targeted",
+        metadata: {
+          auth_policy: "signup_if_needed",
+          auto_create_account: true
+        }
+      },
+      runLog
+    );
+
+    assert.equal(
+      message,
+      "The site sent the tester back to the login screen right after the sign-up form was submitted"
+    );
+  } finally {
+    await browser.close();
+  }
+});
+
+test("describeAuthFailureForRun recognizes signup surfaces served from login URLs", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<!doctype html>
+      <html>
+        <body>
+          <div>
+            <h2>Join BetaList</h2>
+            <label>Name <input name="name" /></label>
+            <label>Email <input type="email" name="email" /></label>
+            <label>Password <input type="password" name="password" /></label>
+            <label>Password confirmation <input type="password" name="password_confirmation" /></label>
+            <button type="submit">Create my account</button>
+          </div>
+        </body>
+      </html>`, { url: "https://betalist.com/sign_in" });
+
+    const message = await __private.describeAuthFailureForRun(
+      page,
+      {
+        scope_mode: "feature_targeted",
+        metadata: {
+          auth_policy: "signup_if_needed",
+          auto_create_account: true
+        }
+      },
+      [
+        { event: "auth_surface_ready", data: { url: "https://betalist.com/sign_in", mode: "signup" } },
+        { event: "auth_form_filled", data: { url: "https://betalist.com/sign_in", mode: "signup" } },
+        { event: "auth_submit_attempted", data: { url: "https://betalist.com/sign_in", mode: "signup" } }
+      ]
+    );
+
+    assert.equal(
+      message,
+      "The site kept the tester on the sign-up form after submit instead of creating the account"
+    );
+  } finally {
+    await browser.close();
+  }
 });
 
 test("detectOtpRequiredUi ignores explanatory copy until a code field is present", async () => {
@@ -119,6 +209,135 @@ test("detectOtpRequiredUi ignores explanatory copy until a code field is present
       </html>`);
 
     assert.equal(await __private.detectOtpRequiredUi(page), true);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("collectAuthFailureSignals captures SaaSHub-style notification banners", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<!doctype html>
+      <html>
+        <body>
+          <div class="notification is-warning">
+            There was something wrong. Please contact us if you think this is our fault. (Error 4.22.1)
+          </div>
+          <form>
+            <label>Email <input type="email" name="email" value="team@enrichanything.com" /></label>
+          </form>
+        </body>
+      </html>`);
+
+    const signals = await __private.collectAuthFailureSignals(page);
+
+    assert.deepEqual(signals.invalidFields, []);
+    assert.match(JSON.stringify(signals.errorTexts), /Error 4\.22\.1/);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("restoreAuthFormValuesAfterCaptcha refills cleared signup inputs before retry", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<!doctype html>
+      <html>
+        <body>
+          <form>
+            <label>Name <input name="name" pattern="[A-Za-z0-9_]+" /></label>
+            <label>Email <input type="email" name="email" /></label>
+            <label>Password <input type="password" name="password" /></label>
+            <label>Password confirmation <input type="password" name="password_confirmation" /></label>
+            <button type="submit">Create my account</button>
+          </form>
+        </body>
+      </html>`);
+
+    const locators = __private.buildAuthLocators(page);
+    const restored = await __private.restoreAuthFormValuesAfterCaptcha(page, locators, {
+      autoCreateAccount: true,
+      fullName: "Swarm Tester",
+      accountHandle: "swarmtester_17748",
+      username: "qa@example.com",
+      password: "Secret123!"
+    });
+
+    assert.deepEqual(
+      restored.restored,
+      ["full_name", "email", "password", "confirm_password"]
+    );
+    assert.equal(await page.locator('input[name="name"]').inputValue(), "swarmtester_17748");
+    assert.equal(await page.locator('input[name="email"]').inputValue(), "qa@example.com");
+    assert.equal(await page.locator('input[name="password"]').inputValue(), "Secret123!");
+    assert.equal(await page.locator('input[name="password_confirmation"]').inputValue(), "Secret123!");
+  } finally {
+    await browser.close();
+  }
+});
+
+test("retryInvalidAuthFields refills required signup fields reported by the page and resubmits", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<!doctype html>
+      <html>
+        <body>
+          <form id="signup-form">
+            <label>Name <input name="user[name]" /></label>
+            <label>Email <input type="email" name="subscriber[email]" /></label>
+            <label>Username <input name="user[username]" /></label>
+            <label>Password <input type="password" name="user[password]" /></label>
+            <label>Password confirmation <input type="password" name="user[password_confirmation]" /></label>
+            <button type="submit">Create my account</button>
+          </form>
+          <script>
+            window.__submitCount = 0;
+            document.getElementById("signup-form").addEventListener("submit", (event) => {
+              event.preventDefault();
+              window.__submitCount += 1;
+            });
+          </script>
+        </body>
+      </html>`);
+
+    const locators = __private.buildAuthLocators(page);
+    const result = await __private.retryInvalidAuthFields(
+      page,
+      {
+        invalidFields: [
+          {
+            label: "",
+            name: "subscriber[email]",
+            type: "email",
+            validationMessage: "Please fill out this field."
+          },
+          {
+            label: "",
+            name: "user[name]",
+            type: "text",
+            validationMessage: "Please fill out this field."
+          }
+        ],
+        errorTexts: []
+      },
+      locators,
+      {
+        autoCreateAccount: true,
+        fullName: "EnrichAnything",
+        accountHandle: "team_enrichanything",
+        username: "team+betalist@enrichanything.com",
+        password: "Secret123!"
+      }
+    );
+
+    assert.equal(result.retried, true);
+    assert.deepEqual(result.restored, ["email", "full_name"]);
+    assert.equal(await page.locator('input[name="subscriber[email]"]').inputValue(), "team+betalist@enrichanything.com");
+    assert.equal(await page.locator('input[name="user[name]"]').inputValue(), "EnrichAnything");
+    assert.equal(await page.evaluate(() => window.__submitCount), 1);
   } finally {
     await browser.close();
   }
@@ -805,6 +1024,92 @@ test("performCredentialedLogin auto-creates an account when no credentials are p
   );
 });
 
+test("performCredentialedLogin fills separate email, username, and confirmation fields on signup forms", async () => {
+  await withServer(
+    {
+      "/": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <a href="/register">Register</a>
+            </body>
+          </html>`);
+      },
+      "/register": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <form id="signup-form">
+                <label>Email <input type="email" name="email" autocomplete="email" /></label>
+                <label>Username <input type="text" name="username" autocomplete="username" /></label>
+                <label>Password <input type="password" name="password" autocomplete="new-password" /></label>
+                <div>
+                  <span>Confirmation</span>
+                  <input type="password" name="confirmation" autocomplete="new-password" />
+                </div>
+                <button type="submit">Register</button>
+              </form>
+              <script>
+                document.getElementById("signup-form").addEventListener("submit", (event) => {
+                  event.preventDefault();
+                  const email = document.querySelector('input[name="email"]').value;
+                  const username = document.querySelector('input[name="username"]').value;
+                  const password = document.querySelector('input[name="password"]').value;
+                  const confirmation = document.querySelector('input[name="confirmation"]').value;
+                  if (email && username && password && confirmation && password === confirmation && username !== email) {
+                    window.location.href = "/app";
+                  }
+                });
+              </script>
+            </body>
+          </html>`);
+      },
+      "/app": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html><html><body><main><h1>Registered</h1></main></body></html>`);
+      }
+    },
+    async (baseUrl) => {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage();
+        const runLog = [];
+        const result = await performCredentialedLogin(
+          page,
+          {
+            run_id: "saashub_register_shape_test",
+            target_url: `${baseUrl}/`,
+            scope_mode: "feature_targeted",
+            metadata: {
+              otp_provider: "none",
+              auto_create_account: true,
+              otp_inbox: {
+                provider: "imap",
+                email: "team@enrichanything.com",
+                host: "imap.forwardemail.net",
+                port: 993,
+                username: "team@enrichanything.com",
+                password: "secret"
+              }
+            }
+          },
+          { runLog }
+        );
+
+        assert.equal(result.attempted, true);
+        assert.equal(result.success, true);
+        assert.equal(result.autoCreatedAccount, true);
+        assert.equal(page.url().startsWith(`${baseUrl}/app`), true);
+        assert.match(JSON.stringify(runLog), /auth_flow_completed/);
+      } finally {
+        await browser.close();
+      }
+    }
+  );
+});
+
 test("performCredentialedLogin prefers explicit auth nav before hero CTA during auto-create flows", async () => {
   await withServer(
     {
@@ -896,6 +1201,282 @@ test("performCredentialedLogin prefers explicit auth nav before hero CTA during 
         assert.equal(await page.evaluate(() => localStorage.getItem("auth-entry-clicked")), "nav-signin");
         assert.equal(await page.evaluate(() => localStorage.getItem("auth-mode-selected")), "signup");
         assert.match(JSON.stringify(runLog), /auth_flow_completed/);
+      } finally {
+        await browser.close();
+      }
+    }
+  );
+});
+
+test("performCredentialedLogin switches from login to signup when auto-create is requested on continue-style auth forms", async () => {
+  await withServer(
+    {
+      "/": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <button type="button" id="open-auth">Log in</button>
+              <div id="auth-root" hidden data-mode="signin">
+                <form id="signin-form">
+                  <h1>Log in</h1>
+                  <label>Email <input type="email" name="signin_email" autocomplete="email" /></label>
+                  <label>Password <input type="password" name="signin_password" autocomplete="current-password" /></label>
+                  <p>Need an account? <a href="#" id="signup-link">Sign up</a></p>
+                  <button type="submit">Continue</button>
+                </form>
+                <form id="signup-form" action="/app" method="get" hidden>
+                  <h1>Sign up</h1>
+                  <label>Email <input type="email" name="email" autocomplete="email" /></label>
+                  <label>Password <input type="password" name="password" autocomplete="new-password" /></label>
+                  <label>Confirm password <input type="password" name="confirm_password" /></label>
+                  <button type="submit">Continue</button>
+                </form>
+              </div>
+              <script>
+                const authRoot = document.getElementById("auth-root");
+                const signInForm = document.getElementById("signin-form");
+                const signUpForm = document.getElementById("signup-form");
+                const setMode = (mode) => {
+                  authRoot.dataset.mode = mode;
+                  signInForm.hidden = mode !== "signin";
+                  signUpForm.hidden = mode !== "signup";
+                  localStorage.setItem("auth-mode-selected", mode);
+                };
+                document.getElementById("open-auth").addEventListener("click", () => {
+                  authRoot.hidden = false;
+                  setMode("signin");
+                });
+                document.getElementById("signup-link").addEventListener("click", (event) => {
+                  event.preventDefault();
+                  setMode("signup");
+                });
+              </script>
+            </body>
+          </html>`);
+      },
+      "/app": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html><html><body><main><h1>Signed up</h1></main></body></html>`);
+      }
+    },
+    async (baseUrl) => {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage();
+        const runLog = [];
+        const result = await performCredentialedLogin(
+          page,
+          {
+            run_id: "signup_switch_continue_form",
+            target_url: `${baseUrl}/`,
+            scope_mode: "feature_targeted",
+            metadata: {
+              otp_provider: "none",
+              auto_create_account: true
+            }
+          },
+          { runLog }
+        );
+
+        assert.equal(result.attempted, true);
+        assert.equal(result.success, true);
+        assert.equal(result.autoCreatedAccount, true);
+        assert.equal(page.url().startsWith(`${baseUrl}/app`), true);
+        assert.equal(await page.evaluate(() => localStorage.getItem("auth-mode-selected")), "signup");
+      } finally {
+        await browser.close();
+      }
+    }
+  );
+});
+
+test("performCredentialedLogin stops instead of submitting login when auto-create is requested but signup never opens", async () => {
+  await withServer(
+    {
+      "/": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <button type="button" id="open-auth">Log in</button>
+              <div id="auth-root" hidden data-mode="signin">
+                <form id="signin-form">
+                  <h1>Log in</h1>
+                  <label>Email <input type="email" name="signin_email" autocomplete="email" /></label>
+                  <label>Password <input type="password" name="signin_password" autocomplete="current-password" /></label>
+                  <p>Need an account? <a href="#" id="signup-link">Sign up</a></p>
+                  <button type="submit">Continue</button>
+                </form>
+              </div>
+              <script>
+                document.getElementById("open-auth").addEventListener("click", () => {
+                  document.getElementById("auth-root").hidden = false;
+                });
+                document.getElementById("signup-link").addEventListener("click", (event) => {
+                  event.preventDefault();
+                });
+                document.getElementById("signin-form").addEventListener("submit", (event) => {
+                  event.preventDefault();
+                  window.__loginSubmitted = true;
+                });
+              </script>
+            </body>
+          </html>`);
+      }
+    },
+    async (baseUrl) => {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage();
+        await assert.rejects(
+          performCredentialedLogin(
+            page,
+            {
+              run_id: "signup_switch_must_work",
+              target_url: `${baseUrl}/`,
+              scope_mode: "feature_targeted",
+              metadata: {
+                otp_provider: "none",
+                auto_create_account: true
+              }
+            },
+            {}
+          ),
+          /sign-up form never opened/i
+        );
+
+        assert.equal(await page.evaluate(() => window.__loginSubmitted === true), false);
+      } finally {
+        await browser.close();
+      }
+    }
+  );
+});
+
+test("performCredentialedLogin follows a signup link route before submitting when auto-create is requested", async () => {
+  await withServer(
+    {
+      "/": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <form id="signin-form">
+                <h1>Log in</h1>
+                <label>Email <input type="email" name="signin_email" autocomplete="email" /></label>
+                <label>Password <input type="password" name="signin_password" autocomplete="current-password" /></label>
+                <p>Need an account? <a href="/signup">Sign up</a></p>
+                <button type="submit">Continue</button>
+              </form>
+            </body>
+          </html>`);
+      },
+      "/signup": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <form id="signup-form" action="/app" method="get">
+                <h1>Sign up</h1>
+                <label>Email <input type="email" name="email" autocomplete="email" /></label>
+                <label>Password <input type="password" name="password" autocomplete="new-password" /></label>
+                <button type="submit">Continue</button>
+              </form>
+            </body>
+          </html>`);
+      },
+      "/app": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html><html><body><main><h1>Signed up</h1></main></body></html>`);
+      }
+    },
+    async (baseUrl) => {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage();
+        const result = await performCredentialedLogin(
+          page,
+          {
+            run_id: "signup_route_switch",
+            target_url: `${baseUrl}/`,
+            scope_mode: "feature_targeted",
+            metadata: {
+              otp_provider: "none",
+              auto_create_account: true
+            }
+          },
+          {}
+        );
+
+        assert.equal(result.attempted, true);
+        assert.equal(result.success, true);
+        assert.equal(page.url().startsWith(`${baseUrl}/app`), true);
+      } finally {
+        await browser.close();
+      }
+    }
+  );
+});
+
+test("performCredentialedLogin treats a generic continue form as sign-up when the page exposes a login switch instead", async () => {
+  await withServer(
+    {
+      "/": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <form id="signin-form">
+                <h1>Log in</h1>
+                <label>Email <input type="email" name="signin_email" autocomplete="email" /></label>
+                <label>Password <input type="password" name="signin_password" autocomplete="current-password" /></label>
+                <p>Need an account? <a href="/signup">Sign up</a></p>
+                <button type="submit">Continue</button>
+              </form>
+            </body>
+          </html>`);
+      },
+      "/signup": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <form id="signup-form" action="/app" method="get">
+                <p>Already have an account? <a href="/">Log in</a></p>
+                <label>Email <input type="email" name="email" autocomplete="email" /></label>
+                <label>Password <input type="password" name="password" autocomplete="new-password" /></label>
+                <button type="submit">Continue</button>
+              </form>
+            </body>
+          </html>`);
+      },
+      "/app": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html><html><body><main><h1>Signed up</h1></main></body></html>`);
+      }
+    },
+    async (baseUrl) => {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage();
+        const result = await performCredentialedLogin(
+          page,
+          {
+            run_id: "signup_generic_continue_switch",
+            target_url: `${baseUrl}/`,
+            scope_mode: "feature_targeted",
+            metadata: {
+              otp_provider: "none",
+              auto_create_account: true
+            }
+          },
+          {}
+        );
+
+        assert.equal(result.attempted, true);
+        assert.equal(result.success, true);
+        assert.equal(page.url().startsWith(`${baseUrl}/app`), true);
       } finally {
         await browser.close();
       }

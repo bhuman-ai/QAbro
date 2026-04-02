@@ -3,7 +3,8 @@ const assert = require("node:assert/strict");
 
 const {
   claimNextQaRun,
-  enqueueQaRun
+  enqueueQaRun,
+  getQaRunStatus
 } = require("../lib/qa-queue");
 
 test("enqueueQaRun stores a queued job row", async () => {
@@ -113,4 +114,37 @@ test("claimNextQaRun claims the oldest fresh queued row", async () => {
   assert.equal(result.row.status, "processing");
   assert.equal(result.queue.queue_status, "processing");
   assert.equal(callIndex, 2);
+});
+
+test("getQaRunStatus treats terminal rows without payload.queue as report-ready", async () => {
+  const row = {
+    run_id: "run_terminal_no_queue",
+    target: "example.com",
+    owner_user_id: "user_owner",
+    status: "partial",
+    delivered_at: "2026-03-24T16:41:53.966Z",
+    payload: {
+      report_json: {
+        status: "partial",
+        findings: [{ id: "f1" }]
+      }
+    }
+  };
+
+  const result = await getQaRunStatus("run_terminal_no_queue", {
+    owner_user_id: "user_owner",
+    supabaseUrl: "https://supabase.example",
+    serviceKey: "service-key",
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      async json() {
+        return [row];
+      }
+    })
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.queue.status, "partial");
+  assert.equal(result.queue.queue_status, "partial");
 });

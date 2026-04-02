@@ -22,6 +22,7 @@ const authState = {
   mode: AUTH_MODE_SIGN_IN,
   sessionChecked: false
 };
+let mcpBootstrapSent = false;
 let resolveAuthReady = null;
 const authReadyPromise = new Promise((resolve) => {
   resolveAuthReady = resolve;
@@ -101,8 +102,13 @@ function lockDashboard() {
   authState.user = null;
   setCurrentUserHint(null);
   setSignOutVisible(false);
-  setProtectedAreasVisible(false);
-  setAuthShellVisible(true);
+  if (isSharedReportRoute()) {
+    setProtectedAreasVisible(true);
+    setAuthShellVisible(false);
+  } else {
+    setProtectedAreasVisible(false);
+    setAuthShellVisible(true);
+  }
   dispatchAuthState();
 }
 
@@ -139,6 +145,7 @@ function setMode(mode) {
 function getRequestedAuthMode() {
   const params = new URLSearchParams(window.location.search || "");
   const modeRaw = String(params.get("mode") || params.get("auth_mode") || "").trim().toLowerCase();
+  const promoCode = getRequestedPromoCode();
 
   if (modeRaw === "signup" || modeRaw === "sign-up" || modeRaw === "register") {
     return AUTH_MODE_SIGN_UP;
@@ -146,7 +153,65 @@ function getRequestedAuthMode() {
   if (modeRaw === "signin" || modeRaw === "sign-in" || modeRaw === "login") {
     return AUTH_MODE_SIGN_IN;
   }
+  if (promoCode) {
+    return AUTH_MODE_SIGN_UP;
+  }
   return AUTH_MODE_SIGN_IN;
+}
+
+function getRequestedPromoCode() {
+  const params = new URLSearchParams(window.location.search || "");
+  return String(params.get("promo") || params.get("coupon") || params.get("code") || "").trim().toUpperCase();
+}
+
+function getRequestedPrefillEmail() {
+  const params = new URLSearchParams(window.location.search || "");
+  return String(params.get("email") || params.get("prefill_email") || "").trim().toLowerCase();
+}
+
+function getRequestedInviteCode() {
+  const params = new URLSearchParams(window.location.search || "");
+  return String(params.get("invite_code") || params.get("inviteCode") || "").trim();
+}
+
+function getRequestedShareRunId() {
+  const params = new URLSearchParams(window.location.search || "");
+  return String(params.get("share_run_id") || params.get("shareRunId") || "").trim();
+}
+
+function isSharedReportRoute() {
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const runId = String(params.get("run_id") || params.get("runId") || "").trim();
+    const shareKey = String(params.get("share_key") || params.get("shareKey") || "").trim();
+    const rawView = String(params.get("view") || params.get("mode") || "").trim().toLowerCase();
+    const isReportView = rawView === "report" || rawView === "report_only" || rawView === "share" || (!rawView && runId);
+    return Boolean(runId && shareKey && isReportView);
+  } catch {
+    return false;
+  }
+}
+
+function isLocalCallbackOrigin(origin) {
+  try {
+    const parsed = new URL(String(origin || ""));
+    const hostname = String(parsed.hostname || "").trim().toLowerCase();
+    return (
+      parsed.protocol === "http:" &&
+      (hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1" || hostname.endsWith(".localhost"))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function getRequestedMcpCallbackUrl() {
+  const params = new URLSearchParams(window.location.search || "");
+  const raw = String(params.get("mcp_callback") || params.get("mcpCallback") || "").trim();
+  if (!raw || !isLocalCallbackOrigin(raw)) {
+    return "";
+  }
+  return raw;
 }
 
 function getDashboardTargetUrl() {
@@ -190,6 +255,27 @@ function buildMagicLinkRedirectUrl() {
   const currentPath = getDashboardTargetUrl();
   const url = new URL(currentPath, resolveMagicLinkRedirectOrigin());
   url.searchParams.set("auth_callback", "1");
+  const promoCode = getRequestedPromoCode();
+  const shareRunId = getRequestedShareRunId();
+  const mcpCallback = getRequestedMcpCallbackUrl();
+  const email = getRequestedPrefillEmail();
+  const inviteCode = getRequestedInviteCode();
+  if (promoCode) {
+    url.searchParams.set("promo", promoCode);
+    url.searchParams.set("mode", "signup");
+  }
+  if (shareRunId) {
+    url.searchParams.set("share_run_id", shareRunId);
+  }
+  if (mcpCallback) {
+    url.searchParams.set("mcp_callback", mcpCallback);
+  }
+  if (email) {
+    url.searchParams.set("email", email);
+  }
+  if (inviteCode) {
+    url.searchParams.set("invite_code", inviteCode);
+  }
   return url.toString();
 }
 
@@ -242,6 +328,7 @@ async function refreshSession() {
     }
 
     unlockDashboard(data.user || null);
+    await maybeSendMcpBootstrapTokens();
     settleAuthReady();
     return { ok: true, user: data.user || null };
   } catch {
@@ -250,6 +337,60 @@ async function refreshSession() {
     settleAuthReady();
     return { ok: false };
   }
+}
+
+async function postTokensToMcpCallback(accessToken, refreshToken) {
+  const mcpCallback = getRequestedMcpCallbackUrl();
+  if (!mcpCallback || !accessToken || !refreshToken) {
+    return false;
+  }
+
+  try {
+    const response = await fetch(mcpCallback, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        access_token: accessToken,
+        refresh_token: refreshToken
+      })
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function maybeSendMcpBootstrapTokens() {
+  if (mcpBootstrapSent || !getRequestedMcpCallbackUrl() || !authState.authorized) {
+    return false;
+  }
+
+  let response;
+  let data;
+  try {
+    const result = await fetchJson("/api/auth/mcp-bootstrap");
+    response = result.response;
+    data = result.data;
+  } catch {
+    return false;
+  }
+  if (!response.ok || !data.ok) {
+    return false;
+  }
+
+  const delivered = await postTokensToMcpCallback(
+    String(data.access_token || "").trim(),
+    String(data.refresh_token || "").trim()
+  );
+
+  if (delivered) {
+    mcpBootstrapSent = true;
+    setAuthMessage("SwarmTester MCP is connected. You can close this tab.", "ok");
+  }
+
+  return delivered;
 }
 
 async function consumeMagicLinkTokensFromHash() {
@@ -281,13 +422,17 @@ async function consumeMagicLinkTokensFromHash() {
     }
   });
 
-  resetUrlAfterAuthCallback();
   if (!response.ok || !data.ok) {
+    resetUrlAfterAuthCallback();
     setAuthMessage(data.error || "Sign-in link expired. Request a new one.", "error");
     return { handled: true, ok: false };
   }
 
-  setAuthMessage("Sign-in complete.", "ok");
+  await maybeSendMcpBootstrapTokens();
+  resetUrlAfterAuthCallback();
+  if (!mcpBootstrapSent) {
+    setAuthMessage("Sign-in complete.", "ok");
+  }
   return { handled: true, ok: true };
 }
 
@@ -311,7 +456,8 @@ async function requestSignUpMagicLink(email, inviteCode) {
     body: {
       email,
       invite_code: inviteCode,
-      redirect_to: buildMagicLinkRedirectUrl()
+      redirect_to: buildMagicLinkRedirectUrl(),
+      share_run_id: getRequestedShareRunId()
     }
   });
 
@@ -405,6 +551,48 @@ function installAuthHandlers() {
   }
 }
 
+function applyAuthRoutePrefill() {
+  const promoCode = getRequestedPromoCode();
+  const email = getRequestedPrefillEmail();
+  const inviteCode = getRequestedInviteCode();
+  const mcpCallback = getRequestedMcpCallbackUrl();
+  const note = authElements.authShell?.querySelector(".dashboard-auth-note");
+
+  if (email) {
+    const signInEmail = authElements.signInForm?.querySelector("input[name='email']");
+    const signUpEmail = authElements.signUpForm?.querySelector("input[name='email']");
+    if (signInEmail && !String(signInEmail.value || "").trim()) {
+      signInEmail.value = email;
+    }
+    if (signUpEmail && !String(signUpEmail.value || "").trim()) {
+      signUpEmail.value = email;
+    }
+  }
+
+  if (inviteCode && authElements.signUpForm) {
+    const inviteInput = authElements.signUpForm.querySelector("input[name='invite_code']");
+    if (inviteInput && !String(inviteInput.value || "").trim()) {
+      inviteInput.value = inviteCode;
+    }
+  }
+
+  if (mcpCallback && note instanceof HTMLElement) {
+    note.textContent = "Sign in to connect SwarmTester MCP to this machine.";
+  }
+
+  if (!promoCode || !authElements.signUpForm) {
+    return;
+  }
+
+  const inviteInput = authElements.signUpForm.querySelector("input[name='invite_code']");
+  if (inviteInput && !String(inviteInput.value || "").trim()) {
+    inviteInput.value = promoCode;
+  }
+  if (note instanceof HTMLElement) {
+    note.textContent = `Team code ${promoCode} will be used for sign-up.`;
+  }
+}
+
 function hasAuthUi() {
   return Boolean(
     authElements.authShell &&
@@ -440,6 +628,7 @@ window.SwarmAuth = {
 
 if (hasAuthUi()) {
   setMode(getRequestedAuthMode());
+  applyAuthRoutePrefill();
   lockDashboard();
   installAuthHandlers();
   (async () => {
