@@ -1,171 +1,69 @@
 (function initSwarmDashboardRenderState(globalScope) {
   function renderLoadingState(config = {}) {
-    const elements = config.elements || {};
-    const hasAppDashboardUi = Boolean(config.hasAppDashboardUi);
+    const { elements = {}, hasAppDashboardUi = false } = config;
 
-    if (elements.reportsItems) {
-      elements.reportsItems.innerHTML = '<div class="empty-state">Loading reports...</div>';
-    }
-    if (!hasAppDashboardUi) {
-      return;
-    }
-    if (elements.recentIssuesItems) {
-      elements.recentIssuesItems.innerHTML = '<div class="app-empty"><p>Loading reports...</p></div>';
-    }
-    if (elements.topFixesItems) {
-      elements.topFixesItems.innerHTML = '<div class="app-empty"><p>Loading findings...</p></div>';
-    }
-    if (elements.personaSignalsItems) {
-      elements.personaSignalsItems.innerHTML = '<div class="app-empty"><p>Loading persona signals...</p></div>';
-    }
-    if (elements.recentRunsRows) {
-      elements.recentRunsRows.innerHTML = '<tr><td colspan="7"><div class="app-empty"><p>Loading runs...</p></div></td></tr>';
+    const updatePanel = (panel, message) => {
+      if (panel) {
+        panel.innerHTML = `<div class="app-empty"><p>${message}</p></div>`;
+      }
+    };
+
+    updatePanel(elements.runsPanelContent, 'Loading runs...');
+    if (hasAppDashboardUi) {
+      updatePanel(elements.reportDetailPanel, 'Loading reports...');
+      updatePanel(elements.topFixesItems, 'Loading findings...');
+      updatePanel(elements.personaSignalsItems, 'Loading persona signals...');
     }
   }
 
   function renderErrorState(config = {}) {
-    const elements = config.elements || {};
-    const hasAppDashboardUi = Boolean(config.hasAppDashboardUi);
-    const escapeHtml = typeof config.escapeHtml === "function" ? config.escapeHtml : (value) => String(value || "");
-    const message = String(config.message || "Failed to load reports");
+    const { elements = {}, hasAppDashboardUi = false, escapeHtml = (val) => val, message = 'Failed to load data' } = config;
 
-    if (elements.reportsItems) {
-      elements.reportsItems.innerHTML = `<div class="empty-state">${escapeHtml(message || "Failed to load reports")}</div>`;
-    }
-    if (elements.reportDetail) {
-      elements.reportDetail.innerHTML = `<div class="empty-detail"><h2>Error</h2><p>${escapeHtml(
-        message || "Failed to load report detail"
-      )}</p></div>`;
-    }
-    if (!hasAppDashboardUi) {
-      return;
-    }
-    if (elements.recentIssuesItems) {
-      elements.recentIssuesItems.innerHTML = `<div class="app-empty"><p>${escapeHtml(message || "Failed to load dashboard data")}</p></div>`;
-    }
-    if (elements.topFixesItems) {
-      elements.topFixesItems.innerHTML = `<div class="app-empty"><p>${escapeHtml(message || "Failed to load findings")}</p></div>`;
-    }
-    if (elements.personaSignalsItems) {
-      elements.personaSignalsItems.innerHTML = `<div class="app-empty"><p>${escapeHtml(message || "Failed to load persona signals")}</p></div>`;
+    const updatePanelWithError = (panel, defaultMessage) => {
+      if (panel) {
+        panel.innerHTML = `<div class="app-empty"><p>${escapeHtml(message || defaultMessage)}</p></div>`;
+      }
+    };
+
+    updatePanelWithError(elements.runsPanelContent, 'Failed to load runs');
+    if (hasAppDashboardUi) {
+      updatePanelWithError(elements.reportDetailPanel, 'Failed to load report details');
+      updatePanelWithError(elements.topFixesItems, 'Failed to load findings');
+      updatePanelWithError(elements.personaSignalsItems, 'Failed to load persona signals');
     }
   }
 
   function renderNoSelectionState(config = {}) {
-    const elements = config.elements || {};
-    const hasAppDashboardUi = Boolean(config.hasAppDashboardUi);
-    const renderRecentRunsTable = typeof config.renderRecentRunsTable === "function" ? config.renderRecentRunsTable : null;
-    const environmentLabel = String(config.environmentLabel || "Production").trim();
-    const releaseLens = Boolean(config.releaseLens);
+    const { elements = {}, hasAppDashboardUi = false, renderRecentRunsTable = () => {} } = config;
 
-    if (elements.reportDetail) {
-      elements.reportDetail.innerHTML = '<div class="empty-detail"><h2>Select a run</h2></div>';
-    }
-    if (elements.appReportOnlyPanel) {
-      elements.appReportOnlyPanel.innerHTML = '<div class="empty-detail"><h2>Select a run</h2><p>Report details will appear here.</p></div>';
-    }
-    if (!hasAppDashboardUi) {
-      return;
+    const updatePanelWithPlaceholder = (panel, content) => {
+      if (panel) {
+        panel.innerHTML = `<div class="app-empty">${content}</div>`;
+      }
+    };
+    
+    if (elements.reportDetailPanel) {
+        elements.reportDetailPanel.innerHTML = '<div class="empty-detail"><h2>Select a run</h2><p>Report details will appear here.</p></div>';
     }
 
-    if (elements.recentIssuesItems) {
-      elements.recentIssuesItems.innerHTML = '<div class="app-empty"><p>Select a run to view issues.</p></div>';
-    }
-    if (elements.testProgressItems) {
-      elements.testProgressItems.innerHTML = '<div class="app-empty"><p>Progress will appear after selecting a run.</p></div>';
-    }
-    if (elements.appEvidencePanel) {
-      elements.appEvidencePanel.innerHTML = '<div class="app-empty"><p>Select a run to view evidence.</p></div>';
-    }
-    if (elements.topFixesItems) {
-      elements.topFixesItems.innerHTML = '<div class="app-empty"><p>Select a run to view prioritized blockers.</p></div>';
-    }
-    if (elements.personaSignalsItems) {
-      elements.personaSignalsItems.innerHTML = '<div class="app-empty"><p>Persona reactions appear after findings are captured.</p></div>';
-    }
-    if (elements.personaSignalsMeta) {
-      elements.personaSignalsMeta.textContent = "No signals yet";
-    }
-    if (elements.regressionSignalsItems) {
-      elements.regressionSignalsItems.innerHTML = '<div class="app-empty"><p>Select a run to view regression signals.</p></div>';
-    }
-    if (renderRecentRunsTable && elements.recentRunsRows) {
-      renderRecentRunsTable();
-    }
-    if (elements.dashboardStateBadge) {
-      elements.dashboardStateBadge.className = "issue-severity severity-low";
-      elements.dashboardStateBadge.textContent = "No Run";
-    }
-    if (elements.dashboardStateMessage) {
-      elements.dashboardStateMessage.textContent = "Run your first swarm test to see environment health and prioritized issues.";
-    }
-    if (elements.healthHeroTitle) {
-      elements.healthHeroTitle.textContent = releaseLens ? `${environmentLabel} Release Readiness` : `${environmentLabel} Health`;
-    }
-    if (elements.dashboardPrimaryGoal) {
-      elements.dashboardPrimaryGoal.hidden = false;
-    }
-    if (elements.dashboardPrimaryGoalText) {
-      elements.dashboardPrimaryGoalText.innerHTML = '<p class="primary-goal-headline">Start a run to see the mission here.</p>';
-    }
-    if (elements.dashboardPrimaryGoalMeta) {
-      elements.dashboardPrimaryGoalMeta.innerHTML =
-        '<span class="primary-goal-meta-note">Target, run mode, and task count appear here.</span>';
-    }
-    if (elements.dashboardPrimaryGoalPersona) {
-      elements.dashboardPrimaryGoalPersona.textContent = "Audience";
-      elements.dashboardPrimaryGoalPersona.removeAttribute("title");
-    }
-    if (elements.riskCriticalCount) elements.riskCriticalCount.textContent = "0";
-    if (elements.riskMajorCount) elements.riskMajorCount.textContent = "0";
-    if (elements.riskBrokenJourneys) elements.riskBrokenJourneys.textContent = "0";
-    if (elements.riskAvgSatisfaction) elements.riskAvgSatisfaction.textContent = "0/100";
-    if (elements.dashboardPrimaryMeta) elements.dashboardPrimaryMeta.textContent = "Waiting for first run";
-    if (elements.dashboardPrimaryAction) {
-      elements.dashboardPrimaryAction.textContent = "Start First Test";
-      elements.dashboardPrimaryAction.setAttribute("data-action-mode", "start");
-      elements.dashboardPrimaryAction.setAttribute("data-run-id", "");
-    }
-    if (elements.dashboardSecondaryActions) {
-      elements.dashboardSecondaryActions.hidden = true;
-    }
-    if (elements.liveMissionSection) {
-      elements.liveMissionSection.hidden = true;
-      elements.liveMissionSection.setAttribute("aria-hidden", "true");
+    if (hasAppDashboardUi) {
+      updatePanelWithPlaceholder(elements.runsPanelContent, '<h3>No runs yet</h3><p>Your recent test runs will appear here.</p>');
+      updatePanelWithPlaceholder(elements.topFixesItems, '<h3>Prioritized Blockers</h3><p>Select a run to see the most critical issues.</p>');
+      updatePanelWithPlaceholder(elements.personaSignalsItems, '<h3>Persona Signals</h3><p>See how different user personas reacted to your app.</p>');
+      
+      if (renderRecentRunsTable && elements.runsPanelContent) {
+        renderRecentRunsTable();
+      }
     }
   }
 
   function mountReportDetail(config = {}) {
-    const elements = config.elements || {};
-    const detailMarkup = String(config.detailMarkup || "");
-    const isReportViewMode = Boolean(config.isReportViewMode);
-    const attachReplayPlayers = typeof config.attachReplayPlayers === "function" ? config.attachReplayPlayers : null;
-    const attachExperienceTimelinePlayers =
-      typeof config.attachExperienceTimelinePlayers === "function" ? config.attachExperienceTimelinePlayers : null;
-    const attachReplayJumpButtons =
-      typeof config.attachReplayJumpButtons === "function" ? config.attachReplayJumpButtons : null;
-    const attachJourneyCanvases = typeof config.attachJourneyCanvases === "function" ? config.attachJourneyCanvases : null;
-    const attachShareButtons = typeof config.attachShareButtons === "function" ? config.attachShareButtons : null;
-    const attachLlmCopyButtons = typeof config.attachLlmCopyButtons === "function" ? config.attachLlmCopyButtons : null;
+    const { elements = {}, detailMarkup = "", attachReplayPlayers = () => {}, attachShareButtons = () => {} } = config;
 
-    if (elements.reportDetail) {
-      elements.reportDetail.innerHTML = detailMarkup;
-      if (attachReplayPlayers) attachReplayPlayers(elements.reportDetail);
-      if (attachExperienceTimelinePlayers) attachExperienceTimelinePlayers(elements.reportDetail);
-      if (attachReplayJumpButtons) attachReplayJumpButtons(elements.reportDetail);
-      if (attachJourneyCanvases) attachJourneyCanvases(elements.reportDetail);
-      if (attachShareButtons) attachShareButtons(elements.reportDetail);
-      if (attachLlmCopyButtons) attachLlmCopyButtons(elements.reportDetail);
-    }
-
-    if (isReportViewMode && elements.appReportOnlyPanel) {
-      elements.appReportOnlyPanel.innerHTML = detailMarkup;
-      if (attachReplayPlayers) attachReplayPlayers(elements.appReportOnlyPanel);
-      if (attachExperienceTimelinePlayers) attachExperienceTimelinePlayers(elements.appReportOnlyPanel);
-      if (attachReplayJumpButtons) attachReplayJumpButtons(elements.appReportOnlyPanel);
-      if (attachJourneyCanvases) attachJourneyCanvases(elements.appReportOnlyPanel);
-      if (attachShareButtons) attachShareButtons(elements.appReportOnlyPanel);
-      if (attachLlmCopyButtons) attachLlmCopyButtons(elements.appReportOnlyPanel);
+    if (elements.reportDetailPanel) {
+      elements.reportDetailPanel.innerHTML = detailMarkup;
+      attachReplayPlayers(elements.reportDetailPanel);
+      attachShareButtons(elements.reportDetailPanel);
     }
   }
 

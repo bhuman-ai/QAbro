@@ -12,6 +12,7 @@
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
+    <link rel="stylesheet" href="reports.css?v=20260330a" />
   </head>
   <body>
 <div class="dashboard-grid">
