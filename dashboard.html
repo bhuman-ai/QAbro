@@ -13,11 +13,11 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css?v=20260326y" />
-    <link rel="stylesheet" href="reports.css?v=20260330a" />
-    <link rel="stylesheet" href="dashboard.css?v=20260403a" />
+    <link rel="stylesheet" href="reports.css?v=20260403b" />
+    <link rel="stylesheet" href="dashboard.css?v=20260403b" />
   </head>
-  <body>
-    <div class="dashboard-grid">
+  <body data-auth-state="checking">
+    <div class="dashboard-grid triage-dashboard">
       <header class="dashboard-header">
         <div class="dashboard-header-left">
           <a class="brand" href="/dashboard" aria-label="Swarm Tester dashboard">
@@ -41,28 +41,13 @@
               </div>
             </label>
           </div>
+          <div class="topbar-app-actions" data-dashboard-protected="true" hidden aria-hidden="true">
+            <button class="btn btn-ghost" id="refreshReports" type="button">Run Again</button>
+            <button class="btn btn-primary btn-new-run" id="launchSwarmButton" type="button">
+              <span>Start Test</span>
+            </button>
+          </div>
           <div class="topbar-actions">
-            <div class="theme-mode-control" aria-label="Theme mode" role="group">
-              <div class="theme-mode-pills" id="themeModeSwitcher">
-                <button type="button" class="theme-mode-btn" data-theme-mode="light" aria-label="Light mode" title="Light mode">
-                  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                    <circle cx="10" cy="10" r="3.5"></circle>
-                    <path d="M10 2.5v2.1M10 15.4v2.1M2.5 10h2.1M15.4 10h2.1M4.8 4.8l1.5 1.5M13.7 13.7l1.5 1.5M4.8 15.2l1.5-1.5M13.7 6.3l1.5-1.5"></path>
-                  </svg>
-                </button>
-                <button type="button" class="theme-mode-btn" data-theme-mode="dark" aria-label="Dark mode" title="Dark mode">
-                  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                    <path d="M12.8 2.9a7 7 0 1 0 4.3 10.3A6 6 0 1 1 12.8 2.9Z"></path>
-                  </svg>
-                </button>
-                <button type="button" class="theme-mode-btn" data-theme-mode="system" aria-label="System theme mode" title="System mode">
-                  <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                    <rect x="2.5" y="3.5" width="15" height="10.5" rx="1.5"></rect>
-                    <path d="M7.5 16.5h5M10 14v2.5"></path>
-                  </svg>
-                </button>
-              </div>
-            </div>
             <div class="worker-health-chip" id="workerHealthChip" hidden aria-hidden="true" aria-live="polite">
               <span class="worker-health-dot" aria-hidden="true"></span>
               <span class="worker-health-text" id="workerHealthText">Checking workers…</span>
@@ -73,10 +58,10 @@
         </div>
       </header>
 
-      <nav class="dashboard-nav" id="dashboardNav" aria-label="Main navigation">
+      <nav class="dashboard-nav" id="dashboardNav" aria-label="View switcher" data-dashboard-protected="true" hidden aria-hidden="true">
         <ul>
           <li><a href="#" class="active" data-panel="runs">Tests</a></li>
-          <li><a href="#" data-panel="reports">Details</a></li>
+          <li><a href="#" data-panel="reports">Reader</a></li>
           <li><a href="#" data-panel="settings">Live</a></li>
         </ul>
       </nav>
@@ -111,15 +96,52 @@
               </article>
             </div>
 
-            <section id="appQaDashboard" class="app-shell" data-dashboard-protected="true" hidden aria-hidden="true">
-              <div class="app-shell-main">
-                <div class="app-loading-overlay dashboard-shell-overlay" id="dashboardLoadingOverlay" hidden aria-live="polite" aria-busy="true">
-                  <span class="app-loading-spinner" aria-hidden="true"></span>
-                  <p>Loading dashboard...</p>
-                </div>
+            <section id="appQaDashboard" class="app-shell triage-shell" data-dashboard-protected="true" hidden aria-hidden="true">
+              <div class="app-loading-overlay dashboard-shell-overlay" id="dashboardLoadingOverlay" hidden aria-live="polite" aria-busy="true">
+                <span class="app-loading-spinner" aria-hidden="true"></span>
+                <p>Loading tests...</p>
+              </div>
 
-                <section class="card-surface app-panel-toolbar" id="appAuthHeader" data-shell-panel="runs" hidden>
+              <aside class="triage-list-column">
+                <section class="card-surface app-panel-header triage-project-panel" id="projectPanelHeader" data-shell-panel="runs">
+                  <div class="app-panel-header-main">
+                    <p class="app-panel-eyebrow">Project</p>
+                    <h2 id="activeBrandLabel">No project selected</h2>
+                    <p id="activeBrandMeta" class="app-panel-header-meta">Choose a project to open the latest test and the next fix.</p>
+                  </div>
+                  <div class="triage-project-hidden" aria-hidden="true">
+                    <div class="app-panel-header-metrics">
+                      <article class="app-summary-metric">
+                        <span>Tests</span>
+                        <strong id="metricRuns">0</strong>
+                      </article>
+                      <article class="app-summary-metric">
+                        <span>Done</span>
+                        <strong id="metricCompleted">0</strong>
+                      </article>
+                      <article class="app-summary-metric">
+                        <span>Problems</span>
+                        <strong id="metricFindings">0</strong>
+                      </article>
+                      <article class="app-summary-metric">
+                        <span>Score</span>
+                        <strong id="metricRisk">0</strong>
+                      </article>
+                    </div>
+                    <div class="app-panel-chip-row">
+                      <span class="app-panel-chip-row-label" id="brandChipsCount">0 quick picks</span>
+                      <div id="brandChips" class="app-panel-chip-list">
+                        <div class="app-empty compact"><p>No brands loaded yet.</p></div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="card-surface app-panel-toolbar triage-reader-toolbar" id="appAuthHeader" data-shell-panel="runs" hidden>
                   <div class="app-panel-toolbar-left">
+                    <span class="app-toolbar-meta" id="dashboardRunMeta">No test yet</span>
+                  </div>
+                  <div class="app-panel-toolbar-actions">
                     <label class="app-switcher environment">
                       <span>View</span>
                       <select id="environmentSwitcher" aria-label="Environment switcher">
@@ -129,123 +151,77 @@
                         <option value="local">Local</option>
                       </select>
                     </label>
+                    <label class="app-run-picker-shell triage-run-picker">
+                      <span>Current test</span>
+                      <select id="appRunPicker" class="app-run-picker" aria-label="Select run"></select>
+                    </label>
                     <input id="searchFilter" type="hidden" value="" />
                   </div>
-                  <div class="app-panel-toolbar-actions">
-                    <span class="app-toolbar-meta" id="dashboardRunMeta">No test yet</span>
-                    <button class="btn btn-ghost" id="refreshReports" type="button">Run Again</button>
-                    <button class="btn btn-primary btn-new-run" id="launchSwarmButton" type="button">
-                      <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                        <path d="M10 4.2v11.6m-5.8-5.8h11.6"></path>
+                </section>
+
+                <section class="card-surface app-panel app-panel-runs triage-runs-panel" id="runsPanel" data-shell-panel="runs">
+                  <header class="app-panel-head">
+                    <div>
+                      <p class="app-panel-kicker">Tests</p>
+                      <h3>Pick a test</h3>
+                    </div>
+                    <div class="app-panel-head-actions">
+                      <span class="app-panel-count" id="reportsCount">0</span>
+                    </div>
+                  </header>
+                  <div class="app-panel-content runs-panel-content" id="runsPanelContent">
+                    <div class="app-empty">
+                      <h3>No tests yet</h3>
+                      <p>Your finished tests will appear here.</p>
+                    </div>
+                  </div>
+                </section>
+              </aside>
+
+              <section class="triage-reader-column">
+                <section class="card-surface triage-brief" data-shell-panel="reports">
+                  <div class="triage-brief-top">
+                    <div>
+                      <h3 id="healthHeroTitle">Next step</h3>
+                      <p class="triage-brief-meta" id="dashboardPrimaryMeta">No test yet</p>
+                    </div>
+                    <div class="triage-brief-actions">
+                      <span class="issue-severity severity-low" id="dashboardStateBadge">No test</span>
+                      <button id="dashboardPrimaryAction" class="btn btn-primary" type="button">Start Test</button>
+                    </div>
+                  </div>
+                  <p class="triage-brief-copy" id="dashboardStateMessage">Start a test to see what broke and what to do next.</p>
+                  <article class="primary-goal-card app-primary-goal-card" id="dashboardPrimaryGoal">
+                    <div class="primary-goal-card-header">
+                      <span class="primary-goal-kicker">Goal</span>
+                      <span class="inline-pill primary-goal-persona-pill" id="dashboardPrimaryGoalPersona">User</span>
+                    </div>
+                    <div id="dashboardPrimaryGoalText" class="primary-goal-copy">
+                      <p class="primary-goal-headline">Start a test to see the main goal here.</p>
+                    </div>
+                    <div id="dashboardPrimaryGoalMeta" class="primary-goal-meta">
+                      <span class="primary-goal-meta-note">Site and timing show here.</span>
+                    </div>
+                  </article>
+                  <div class="app-secondary-actions triage-secondary-actions" id="dashboardSecondaryActions">
+                    <button id="dashboardOpenReport" class="btn btn-ghost" type="button">Open Report</button>
+                    <button id="dashboardCompareRuns" class="btn btn-ghost" type="button">Older Test</button>
+                    <button
+                      id="dashboardShareAction"
+                      class="app-icon-button"
+                      type="button"
+                      hidden
+                      aria-label="Copy report link"
+                      title="Copy report link"
+                      data-icon-button="1"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M9 9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2z" />
+                        <path d="M5 15V7a2 2 0 0 1 2-2h8" />
                       </svg>
-                      <span>Start Test</span>
                     </button>
                   </div>
-                </section>
-
-                <section class="card-surface app-panel-header" id="projectPanelHeader" data-shell-panel="runs">
-                  <div class="app-panel-header-main">
-                    <p class="app-panel-eyebrow">Project</p>
-                    <h2 id="activeBrandLabel">No project selected</h2>
-                    <p id="activeBrandMeta" class="app-panel-header-meta">Choose a project to see the latest test and what to do next.</p>
-                  </div>
-                  <div class="app-panel-header-metrics">
-                    <article class="app-summary-metric">
-                      <span>Tests</span>
-                      <strong id="metricRuns">0</strong>
-                    </article>
-                    <article class="app-summary-metric">
-                      <span>Done</span>
-                      <strong id="metricCompleted">0</strong>
-                    </article>
-                    <article class="app-summary-metric">
-                      <span>Problems</span>
-                      <strong id="metricFindings">0</strong>
-                    </article>
-                    <article class="app-summary-metric">
-                      <span>Score</span>
-                      <strong id="metricRisk">0</strong>
-                    </article>
-                  </div>
-                  <div class="app-panel-chip-row">
-                    <span class="app-panel-chip-row-label" id="brandChipsCount">0 users</span>
-                    <div id="brandChips" class="app-panel-chip-list">
-                      <div class="app-empty compact"><p>No brands loaded yet.</p></div>
-                    </div>
-                  </div>
-                </section>
-
-                <div class="app-shell-columns">
-                  <section class="card-surface app-panel app-panel-runs" id="runsPanel" data-shell-panel="runs">
-                    <header class="app-panel-head">
-                      <div>
-                        <p class="app-panel-kicker">Tests</p>
-                        <h3>Pick a test</h3>
-                      </div>
-                      <div class="app-panel-head-actions">
-                        <span class="app-panel-count" id="reportsCount">0</span>
-                        <label class="app-run-picker-shell">
-                          <span>Current test</span>
-                          <select id="appRunPicker" class="app-run-picker" aria-label="Select run"></select>
-                        </label>
-                      </div>
-                    </header>
-                    <div class="app-panel-content runs-panel-content" id="runsPanelContent">
-                      <div class="app-empty">
-                    <h3>No tests yet</h3>
-                    <p>Your finished tests will appear here.</p>
-                      </div>
-                    </div>
-                  </section>
-
-                  <section class="card-surface app-panel app-panel-report-detail" id="reportDetailPanel" data-shell-panel="reports">
-                    <div class="empty-detail">
-                      <h2>Pick a test</h2>
-                      <p>The report will open here.</p>
-                    </div>
-                  </section>
-                </div>
-              </div>
-
-              <aside class="app-shell-sidebar" id="appShellSidebar" data-shell-panel="settings">
-                <div class="app-shell-sidebar-content" id="appShellSidebarContent">
-                  <section class="card-surface app-sidecard">
-                    <div class="app-card-head">
-                      <div>
-                        <h3 id="healthHeroTitle">Next step</h3>
-                        <span id="dashboardPrimaryMeta">No test yet</span>
-                      </div>
-                      <div class="app-health-head-actions">
-                        <button
-                          id="dashboardShareAction"
-                          class="app-icon-button"
-                          type="button"
-                          hidden
-                          aria-label="Copy report link"
-                          title="Copy report link"
-                          data-icon-button="1"
-                        >
-                          <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M9 9a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2z" />
-                            <path d="M5 15V7a2 2 0 0 1 2-2h8" />
-                          </svg>
-                        </button>
-                        <span class="issue-severity severity-low" id="dashboardStateBadge">No test</span>
-                      </div>
-                    </div>
-                    <p class="app-sidecard-copy" id="dashboardStateMessage">Start a test to see what broke and what to do next.</p>
-                    <article class="primary-goal-card app-primary-goal-card" id="dashboardPrimaryGoal">
-                      <div class="primary-goal-card-header">
-                        <span class="primary-goal-kicker">Goal</span>
-                        <span class="inline-pill primary-goal-persona-pill" id="dashboardPrimaryGoalPersona">User</span>
-                      </div>
-                      <div id="dashboardPrimaryGoalText" class="primary-goal-copy">
-                        <p class="primary-goal-headline">Start a test to see the main goal here.</p>
-                      </div>
-                      <div id="dashboardPrimaryGoalMeta" class="primary-goal-meta">
-                        <span class="primary-goal-meta-note">Site and timing show here.</span>
-                      </div>
-                    </article>
+                  <div class="triage-hidden-panels" aria-hidden="true">
                     <div class="app-risk-metrics">
                       <article class="app-risk-metric">
                         <span id="riskCriticalLabel">Critical</span>
@@ -264,67 +240,75 @@
                         <strong id="riskAvgSatisfaction">0</strong>
                       </article>
                     </div>
-                    <div class="app-hero-actions">
-                      <button id="dashboardPrimaryAction" class="btn btn-primary" type="button">Start Test</button>
-                      <div class="app-secondary-actions" id="dashboardSecondaryActions">
-                        <button id="dashboardOpenReport" class="btn btn-ghost" type="button">Open Report</button>
-                        <button id="dashboardCompareRuns" class="btn btn-ghost" type="button">Older Test</button>
-                      </div>
-                    </div>
                     <div class="app-evidence-panel" id="appEvidencePanel"></div>
-                  </section>
+                  </div>
+                </section>
 
-                  <section class="card-surface app-sidecard">
-                    <div class="app-card-head">
-                      <h3 id="personaSignalsTitle">What felt hard</h3>
-                      <span id="personaSignalsMeta">Waiting for signal</span>
-                    </div>
-                    <div id="personaSignalsItems" class="persona-signals-list"></div>
-                  </section>
+                <section class="card-surface app-panel app-panel-report-detail triage-report-panel" id="reportDetailPanel" data-shell-panel="reports">
+                  <div class="empty-detail">
+                    <h2>Pick a test</h2>
+                    <p>The report will open here.</p>
+                  </div>
+                </section>
 
-                  <section class="card-surface app-sidecard">
-                    <div class="app-card-head">
-                      <h3 id="topFixesTitle">Fix first</h3>
-                      <span id="topFixesMeta">Biggest problems first.</span>
-                    </div>
-                    <div id="topFixesItems" class="app-top-fixes"></div>
-                  </section>
+                <details class="card-surface triage-utilities" id="appShellSidebar" data-shell-panel="settings">
+                  <summary>
+                    <span>More tools</span>
+                    <small>Live watch, fix list, user notes, progress, and engineering help</small>
+                  </summary>
+                  <div class="app-shell-sidebar-content" id="appShellSidebarContent">
+                    <section class="card-surface app-sidecard">
+                      <div class="app-card-head">
+                        <h3 id="topFixesTitle">Fix first</h3>
+                        <span id="topFixesMeta">Biggest problems first.</span>
+                      </div>
+                      <div id="topFixesItems" class="app-top-fixes"></div>
+                    </section>
 
-                  <section class="card-surface app-sidecard">
-                    <div class="app-card-head">
-                      <h3 id="appProgressTitle">Path health</h3>
-                      <span id="appProgressMeta">No test selected</span>
-                    </div>
-                    <div id="testProgressItems" class="app-progress-list"></div>
-                  </section>
+                    <section class="card-surface app-sidecard">
+                      <div class="app-card-head">
+                        <h3 id="personaSignalsTitle">What felt hard</h3>
+                        <span id="personaSignalsMeta">Waiting for signal</span>
+                      </div>
+                      <div id="personaSignalsItems" class="persona-signals-list"></div>
+                    </section>
 
-                  <section class="card-surface app-sidecard">
-                    <div class="app-card-head">
-                      <h3>Changed since last test</h3>
-                      <span id="regressionMeta">No baseline</span>
-                    </div>
-                    <div id="regressionSignalsItems" class="app-regression-list"></div>
-                  </section>
+                    <section class="card-surface app-sidecard">
+                      <div class="app-card-head">
+                        <h3 id="appProgressTitle">Path health</h3>
+                        <span id="appProgressMeta">No test selected</span>
+                      </div>
+                      <div id="testProgressItems" class="app-progress-list"></div>
+                    </section>
 
-                  <section class="card-surface app-sidecard app-live-mission" id="liveMissionSection" hidden aria-hidden="true">
-                    <div class="app-card-head compact">
-                      <h3>Live test</h3>
-                      <span id="liveMissionMeta">Awaiting live run</span>
-                    </div>
-                    <div class="app-live-grid">
-                      <article class="app-live-stream" id="liveStreamPanel"></article>
-                      <article class="app-live-column">
-                        <h4>Problems now</h4>
-                        <div id="recentIssuesItems" class="app-issues-list"></div>
-                      </article>
-                      <article class="app-live-column">
-                        <h4>Steps now</h4>
-                        <div id="liveActivityItems" class="app-activity-list"></div>
-                      </article>
-                    </div>
-                  </section>
-                </div>
-              </aside>
+                    <section class="card-surface app-sidecard">
+                      <div class="app-card-head">
+                        <h3>Changed since last test</h3>
+                        <span id="regressionMeta">No baseline</span>
+                      </div>
+                      <div id="regressionSignalsItems" class="app-regression-list"></div>
+                    </section>
+
+                    <section class="card-surface app-sidecard app-live-mission" id="liveMissionSection" hidden aria-hidden="true">
+                      <div class="app-card-head compact">
+                        <h3>Live test</h3>
+                        <span id="liveMissionMeta">Awaiting live run</span>
+                      </div>
+                      <div class="app-live-grid">
+                        <article class="app-live-stream" id="liveStreamPanel"></article>
+                        <article class="app-live-column">
+                          <h4>Problems now</h4>
+                          <div id="recentIssuesItems" class="app-issues-list"></div>
+                        </article>
+                        <article class="app-live-column">
+                          <h4>Steps now</h4>
+                          <div id="liveActivityItems" class="app-activity-list"></div>
+                        </article>
+                      </div>
+                    </section>
+                  </div>
+                </details>
+              </section>
             </section>
 
             <section class="finding-detail-modal" id="findingDetailModal" hidden aria-hidden="true">
@@ -546,8 +530,8 @@
       <script src="dashboard-report-runtime.js?v=20260327b"></script>
       <script src="dashboard-render-state.js?v=20260403a"></script>
       <script src="dashboard-panels.js?v=20260318c"></script>
-      <script src="reports.js?v=20260403a"></script>
-      <script src="dashboard.js?v=20260402a"></script>
+      <script src="reports.js?v=20260403b"></script>
+      <script src="dashboard.js?v=20260403b"></script>
     </div>
   </body>
 </html>

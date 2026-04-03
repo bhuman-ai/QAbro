@@ -1,6 +1,8 @@
 document.addEventListener("DOMContentLoaded", () => {
   const appRoot = document.getElementById("appQaDashboard");
   const navLinks = Array.from(document.querySelectorAll("#dashboardNav [data-panel]"));
+  const params = new URLSearchParams(window.location.search || "");
+  const rawView = String(params.get("view") || params.get("mode") || "").trim().toLowerCase();
   const panelMap = {
     runs: ["appAuthHeader", "projectPanelHeader", "runsPanel", "reportDetailPanel"],
     reports: ["appAuthHeader", "projectPanelHeader", "reportDetailPanel"],
@@ -19,6 +21,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const nextPanel = Object.prototype.hasOwnProperty.call(panelMap, panelId) ? panelId : "runs";
     if (appRoot) {
       appRoot.setAttribute("data-active-panel", nextPanel);
+    }
+    const sidebar = document.getElementById("appShellSidebar");
+    if (sidebar && sidebar.tagName === "DETAILS" && nextPanel === "settings") {
+      sidebar.open = true;
     }
     applyActiveNav(nextPanel);
 
@@ -47,5 +53,12 @@ document.addEventListener("DOMContentLoaded", () => {
     revealPanel
   };
 
-  revealPanel("runs", { scroll: false });
+  const initialPanel =
+    rawView === "live" || rawView === "watch" || rawView === "mission"
+      ? "settings"
+      : rawView === "report" || rawView === "report_only" || rawView === "share"
+        ? "reports"
+        : "runs";
+
+  revealPanel(initialPanel, { scroll: false });
 });

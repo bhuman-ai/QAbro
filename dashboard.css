@@ -155,6 +155,7 @@ a {
   font-size: 30px;
   font-weight: 700;
   letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
 .main-nav {
@@ -1529,7 +1530,6 @@ body {
 }
 
 .dashboard-header-right {
-  flex: 1;
   justify-content: flex-end;
   min-width: 0;
 }
@@ -2166,5 +2166,388 @@ body {
   .app-toolbar-meta,
   .app-panel-count {
     justify-content: center;
+  }
+}
+
+/* Concept A dashboard */
+.triage-dashboard {
+  max-width: 1520px;
+  margin: 0 auto;
+  padding: 18px;
+  gap: 14px;
+}
+
+.dashboard-header {
+  top: 12px;
+  border-radius: 20px;
+  padding: 14px 18px;
+}
+
+.dashboard-header-right {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.topbar-app-actions[hidden] {
+  display: none;
+}
+
+body[data-auth-state="checking"] .dashboard-header,
+body[data-auth-state="locked"] .dashboard-header {
+  top: 0;
+  padding: 8px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+body[data-auth-state="checking"] .dashboard-header-right,
+body[data-auth-state="locked"] .dashboard-header-right {
+  display: none;
+}
+
+.topbar-app-actions {
+  display: none;
+  align-items: center;
+  gap: 10px;
+}
+
+.worker-health-chip {
+  display: none !important;
+}
+
+#appQaDashboard.triage-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.triage-list-column,
+.triage-reader-column {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.triage-project-panel,
+.triage-reader-toolbar,
+.triage-runs-panel,
+.triage-brief,
+.triage-report-panel,
+.triage-utilities {
+  border-radius: 20px;
+  border: 1px solid hsl(var(--border) / 0.64);
+  background:
+    linear-gradient(180deg, hsl(var(--card) / 0.98), hsl(var(--card) / 0.86));
+  box-shadow:
+    0 18px 40px hsl(225 42% 4% / 0.14),
+    inset 0 1px 0 hsl(0 0% 100% / 0.04);
+}
+
+.triage-project-panel {
+  padding: 18px 20px;
+  gap: 10px;
+}
+
+.triage-project-panel .app-panel-header-main h2 {
+  font-size: 28px;
+  margin-bottom: 6px;
+}
+
+.triage-project-panel .app-panel-header-meta {
+  max-width: none;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.triage-project-hidden {
+  display: none;
+}
+
+.triage-reader-toolbar {
+  padding: 12px 14px;
+}
+
+.triage-reader-toolbar[hidden] {
+  display: none;
+}
+
+.triage-reader-toolbar .app-panel-toolbar-left {
+  flex: 1;
+}
+
+.triage-reader-toolbar .app-panel-toolbar-actions {
+  justify-content: flex-end;
+}
+
+.triage-run-picker {
+  display: none;
+}
+
+.triage-runs-panel {
+  padding: 0;
+  overflow: hidden;
+  min-height: 620px;
+}
+
+.triage-runs-panel .app-panel-head {
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid hsl(var(--border) / 0.72);
+  align-items: center;
+}
+
+.triage-runs-panel .app-panel-head-actions {
+  justify-content: flex-end;
+}
+
+.triage-runs-panel .runs-panel-content {
+  padding: 12px;
+  gap: 10px;
+  max-height: calc(100vh - 290px);
+  overflow: auto;
+}
+
+.triage-runs-panel .report-item {
+  border-radius: 16px;
+  border: 1px solid hsl(var(--border) / 0.62);
+  background: hsl(var(--background) / 0.18);
+  padding: 15px 16px;
+}
+
+.triage-runs-panel .report-item.active {
+  background: hsl(var(--primary) / 0.12);
+  border-color: hsl(var(--primary) / 0.5);
+  border-left: 1px solid hsl(var(--primary) / 0.5);
+  padding-left: 16px;
+}
+
+.triage-brief {
+  padding: 18px 20px;
+  display: grid;
+  gap: 14px;
+}
+
+.triage-brief-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.triage-brief h3 {
+  font-size: 21px;
+  line-height: 1.15;
+}
+
+.triage-brief-meta {
+  margin: 6px 0 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.triage-brief-copy {
+  margin: 0;
+  color: hsl(var(--foreground));
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.triage-brief-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.triage-secondary-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.triage-secondary-actions[hidden] {
+  display: none;
+}
+
+.triage-hidden-panels {
+  display: none;
+}
+
+.triage-report-panel {
+  min-width: 0;
+  min-height: 620px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.triage-report-panel.is-empty {
+  min-height: 240px;
+}
+
+.triage-utilities {
+  padding: 0;
+  overflow: hidden;
+}
+
+.triage-utilities > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.triage-utilities > summary::-webkit-details-marker {
+  display: none;
+}
+
+.triage-utilities > summary small {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.triage-utilities[open] > summary {
+  border-bottom: 1px solid hsl(var(--border) / 0.72);
+}
+
+.triage-utilities .app-shell-sidebar-content {
+  padding: 14px;
+  gap: 12px;
+}
+
+.triage-utilities .app-sidecard {
+  padding: 16px;
+  border-radius: 18px;
+}
+
+.triage-utilities .app-live-grid {
+  grid-template-columns: 1fr;
+}
+
+.triage-utilities .app-live-column h4 {
+  font-size: 14px;
+}
+
+@media (max-width: 1100px) {
+  .triage-dashboard {
+    padding: 12px;
+  }
+
+  .dashboard-header {
+    flex-direction: column;
+    align-items: stretch;
+    top: 8px;
+  }
+
+  .dashboard-header-right {
+    justify-content: stretch;
+  }
+
+  .topbar-project-shell,
+  .topbar-app-actions,
+  .topbar-actions {
+    width: 100%;
+  }
+
+  .topbar-project-shell .topbar-project-switcher,
+  .topbar-project-shell .topbar-project-control,
+  .topbar-project-shell select {
+    width: 100%;
+  }
+
+  .topbar-app-actions {
+    display: flex;
+    justify-content: stretch;
+  }
+
+  .topbar-app-actions .btn,
+  .topbar-actions .btn {
+    flex: 1;
+  }
+
+  .dashboard-nav {
+    display: block;
+    top: 114px;
+    padding: 8px;
+  }
+
+  #appQaDashboard.triage-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .triage-run-picker {
+    display: grid;
+  }
+
+  #appQaDashboard[data-active-panel="runs"] .triage-reader-column {
+    display: none;
+  }
+
+  #appQaDashboard[data-active-panel="reports"] .triage-list-column {
+    display: none;
+  }
+
+  #appQaDashboard[data-active-panel="settings"] .triage-list-column,
+  #appQaDashboard[data-active-panel="settings"] .triage-brief,
+  #appQaDashboard[data-active-panel="settings"] #reportDetailPanel {
+    display: none;
+  }
+}
+
+@media (min-width: 1101px) {
+  .dashboard-nav {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .triage-brief-top,
+  .triage-secondary-actions,
+  .triage-reader-toolbar .app-panel-toolbar-actions,
+  .topbar-app-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .triage-brief-actions {
+    justify-content: stretch;
+  }
+}
+
+.topbar-app-actions #refreshReports {
+  display: none !important;
+}
+
+.triage-reader-toolbar .app-panel-toolbar-left {
+  display: flex !important;
+}
+
+.triage-runs-panel .app-panel-count {
+  display: inline-flex !important;
+}
+
+.triage-secondary-actions {
+  display: flex !important;
+}
+
+@media (max-width: 1100px) {
+  #appQaDashboard[data-active-panel="settings"] #appShellSidebar {
+    display: block;
+  }
+
+  #appQaDashboard .triage-run-picker {
+    display: grid !important;
   }
 }

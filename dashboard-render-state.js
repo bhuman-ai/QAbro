@@ -1,4 +1,11 @@
 (function initSwarmDashboardRenderState(globalScope) {
+  function setDetailEmptyState(panel, isEmpty) {
+    if (!panel) {
+      return;
+    }
+    panel.classList.toggle("is-empty", Boolean(isEmpty));
+  }
+
   function renderLoadingState(config = {}) {
     const { elements = {}, hasAppDashboardUi = false } = config;
 
@@ -10,6 +17,7 @@
 
     updatePanel(elements.runsPanelContent, 'Loading tests...');
     if (hasAppDashboardUi) {
+      setDetailEmptyState(elements.reportDetailPanel, true);
       updatePanel(elements.reportDetailPanel, 'Loading details...');
       updatePanel(elements.topFixesItems, 'Loading problems...');
       updatePanel(elements.personaSignalsItems, 'Loading user notes...');
@@ -27,6 +35,7 @@
 
     updatePanelWithError(elements.runsPanelContent, 'Failed to load tests');
     if (hasAppDashboardUi) {
+      setDetailEmptyState(elements.reportDetailPanel, true);
       updatePanelWithError(elements.reportDetailPanel, 'Failed to load details');
       updatePanelWithError(elements.topFixesItems, 'Failed to load problems');
       updatePanelWithError(elements.personaSignalsItems, 'Failed to load user notes');
@@ -43,6 +52,7 @@
     };
     
     if (elements.reportDetailPanel) {
+        setDetailEmptyState(elements.reportDetailPanel, true);
         elements.reportDetailPanel.innerHTML = '<div class="empty-detail"><h2>Pick a test</h2><p>The report will open here.</p></div>';
     }
 
@@ -61,6 +71,7 @@
     const { elements = {}, detailMarkup = "", attachReplayPlayers = () => {}, attachShareButtons = () => {} } = config;
 
     if (elements.reportDetailPanel) {
+      setDetailEmptyState(elements.reportDetailPanel, false);
       elements.reportDetailPanel.innerHTML = detailMarkup;
       attachReplayPlayers(elements.reportDetailPanel);
       attachShareButtons(elements.reportDetailPanel);

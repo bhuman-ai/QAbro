@@ -23,6 +23,16 @@ const authState = {
   mode: AUTH_MODE_SIGN_IN,
   sessionChecked: false
 };
+
+function setDashboardAuthState(value) {
+  if (!document.body) {
+    return;
+  }
+  document.body.setAttribute("data-auth-state", String(value || "checking"));
+}
+
+setDashboardAuthState("checking");
+
 let mcpBootstrapSent = false;
 let resolveAuthReady = null;
 const authReadyPromise = new Promise((resolve) => {
@@ -99,6 +109,7 @@ function setCurrentUserHint(user) {
 }
 
 function lockDashboard() {
+  setDashboardAuthState("locked");
   authState.authorized = false;
   authState.user = null;
   setCurrentUserHint(null);
@@ -114,6 +125,7 @@ function lockDashboard() {
 }
 
 function unlockDashboard(user) {
+  setDashboardAuthState("ready");
   authState.authorized = true;
   authState.user = user && typeof user === "object" ? user : null;
   setCurrentUserHint(authState.user);

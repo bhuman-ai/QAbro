@@ -65,6 +65,10 @@ a {
   text-decoration: none;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .container {
   width: 100%;
   max-width: 1400px;
@@ -155,6 +159,7 @@ a {
   font-size: 30px;
   font-weight: 700;
   letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
 .main-nav {
@@ -1892,5 +1897,82 @@ a {
 
   .footer p {
     font-size: 12px;
+  }
+}
+
+/* Concept A homepage */
+.hero-simple {
+  min-height: auto;
+  padding-top: 96px;
+  padding-bottom: 44px;
+}
+
+.hero-grid-simple {
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 0.92fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.hero-copy-simple {
+  gap: 16px;
+}
+
+.hero-copy-simple h1 {
+  max-width: 12ch;
+  margin-bottom: 0;
+}
+
+.hero-copy-simple .hero-copy {
+  max-width: 540px;
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.hero-simple-points {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.hero-simple-points article {
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 18px;
+}
+
+.hero-simple-points strong {
+  width: auto;
+  height: auto;
+  padding: 6px 10px;
+  justify-self: start;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hero-simple-points span {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.home-qa-panel {
+  gap: 14px;
+  max-width: none;
+}
+
+.home-qa-panel-head h2 {
+  font-size: 24px;
+}
+
+.scan-form-note {
+  margin: -2px 0 0;
+}
+
+@media (max-width: 1100px) {
+  .hero-grid-simple,
+  .hero-simple-points {
+    grid-template-columns: 1fr;
   }
 }

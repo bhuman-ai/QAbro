@@ -12,10 +12,10 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css?v=20260326y" />
-    <link rel="stylesheet" href="reports.css?v=20260403a" />
+    <link rel="stylesheet" href="reports.css?v=20260403b" />
   </head>
   <body>
-    <header class="topbar">
+    <header class="topbar reports-topbar">
       <div class="container nav-wrap">
         <a class="brand" href="/" aria-label="Swarm Tester home">
           <span class="brand-icon" aria-hidden="true">
@@ -29,25 +29,15 @@
 
         <nav class="main-nav" aria-label="Primary">
           <a href="/">Home</a>
-          <a href="/reports.html" aria-current="page">Dashboard</a>
         </nav>
 
         <div class="topbar-actions">
           <button class="btn btn-ghost" type="button" data-auth-signout="true" hidden>Sign Out</button>
-          <a class="btn btn-primary" href="/dashboard">Start Test</a>
         </div>
       </div>
     </header>
 
     <main class="reports-main">
-      <section class="reports-hero">
-        <div class="container">
-          <p class="status-pill"><span class="dot"></span> Test reports</p>
-          <h1>Open a test. See what broke.</h1>
-          <p>Pick a test and read the problem first.</p>
-        </div>
-      </section>
-
       <section class="reports-console container dashboard-auth-shell" id="dashboardAuthShell" data-dashboard-auth-gate="true">
         <article class="card-surface dashboard-auth-card" id="dashboardAuthCard">
           <header>
@@ -75,95 +65,102 @@
         </article>
       </section>
 
-      <section class="reports-console container" id="reportsConsole" data-dashboard-protected="true" hidden aria-hidden="true">
-        <div class="reports-controls card-surface">
-          <div class="field">
-            <label for="brandFilter">Project</label>
-            <input id="brandFilter" type="text" placeholder="Project name or id" list="brandOptions" />
-            <datalist id="brandOptions"></datalist>
+      <section class="reports-console container reports-triage-shell" id="reportsConsole" data-dashboard-protected="true" hidden aria-hidden="true">
+        <aside class="reports-list card-surface">
+          <div class="reports-list-head">
+            <h2>Tests</h2>
+            <span id="reportsCount">0</span>
           </div>
-          <div class="control-actions">
-            <button id="applyFilters" class="btn btn-primary" type="button">Apply</button>
-            <button id="refreshReports" class="btn btn-ghost" type="button">Refresh</button>
+
+          <div class="reports-controls">
+            <div class="field">
+              <label for="brandFilter">Project</label>
+              <input id="brandFilter" type="text" placeholder="Project name or id" list="brandOptions" />
+              <datalist id="brandOptions"></datalist>
+            </div>
+            <div class="control-actions">
+              <button id="applyFilters" class="btn btn-primary" type="button">Apply</button>
+              <button id="refreshReports" class="btn btn-ghost" type="button">Refresh</button>
+            </div>
+            <details class="reports-more-filters">
+              <summary>More filters</summary>
+              <div class="reports-more-filters-grid">
+                <div class="field">
+                  <label for="targetFilter">Site</label>
+                  <input id="targetFilter" type="text" placeholder="example.com" />
+                </div>
+                <div class="field">
+                  <label for="statusFilter">Status</label>
+                  <select id="statusFilter">
+                    <option value="">All</option>
+                    <option value="queued">queued</option>
+                    <option value="processing">processing</option>
+                    <option value="retryable">retryable</option>
+                    <option value="completed">completed</option>
+                    <option value="partial">partial</option>
+                    <option value="failed">failed</option>
+                    <option value="failed_validation">failed_validation</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="searchFilter">Search</label>
+                  <input id="searchFilter" type="text" placeholder="run id, site, project" />
+                </div>
+              </div>
+            </details>
           </div>
-          <details class="reports-more-filters">
-            <summary>More filters</summary>
-            <div class="reports-more-filters-grid">
-              <div class="field">
-                <label for="targetFilter">Site</label>
-                <input id="targetFilter" type="text" placeholder="example.com" />
+
+          <details class="reports-utilities">
+            <summary>
+              <span>More tools</span>
+              <small>Project facts and quick picks</small>
+            </summary>
+            <div class="reports-utilities-body">
+              <div class="brand-summary card-surface">
+                <div class="brand-context">
+                  <p class="brand-context-label">Current project</p>
+                  <h2 id="activeBrandLabel">All projects</h2>
+                  <p id="activeBrandMeta">Showing every saved test.</p>
+                </div>
+                <div class="brand-metrics">
+                  <article class="metric-card">
+                    <strong id="metricRuns">0</strong>
+                    <span>Tests</span>
+                  </article>
+                  <article class="metric-card">
+                    <strong id="metricCompleted">0</strong>
+                    <span>Done</span>
+                  </article>
+                  <article class="metric-card">
+                    <strong id="metricFindings">0</strong>
+                    <span>Problems</span>
+                  </article>
+                  <article class="metric-card">
+                    <strong id="metricRisk">0</strong>
+                    <span>Score</span>
+                  </article>
+                </div>
               </div>
-              <div class="field">
-                <label for="statusFilter">Status</label>
-                <select id="statusFilter">
-                  <option value="">All</option>
-                  <option value="queued">queued</option>
-                  <option value="processing">processing</option>
-                  <option value="retryable">retryable</option>
-                  <option value="completed">completed</option>
-                  <option value="partial">partial</option>
-                  <option value="failed">failed</option>
-                  <option value="failed_validation">failed_validation</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="searchFilter">Search</label>
-                <input id="searchFilter" type="text" placeholder="run id, site, project" />
+
+              <div class="brand-chips card-surface">
+                <div class="brand-chips-head">
+                  <h3>Quick pick</h3>
+                  <span id="brandChipsCount">0 projects</span>
+                </div>
+                <div id="brandChips" class="brand-chip-list"></div>
               </div>
             </div>
           </details>
-        </div>
 
-        <div class="brand-summary card-surface">
-          <div class="brand-context">
-            <p class="brand-context-label">Current project</p>
-            <h2 id="activeBrandLabel">All projects</h2>
-            <p id="activeBrandMeta">Showing every saved test.</p>
+          <div id="reportsItems" class="reports-items"></div>
+        </aside>
+
+        <section class="report-detail card-surface" id="reportDetail">
+          <div class="empty-detail">
+            <h2>Pick a test</h2>
+            <p>Pick a test on the left to read the main report.</p>
           </div>
-          <div class="brand-metrics">
-            <article class="metric-card">
-              <strong id="metricRuns">0</strong>
-              <span>Runs</span>
-            </article>
-            <article class="metric-card">
-              <strong id="metricCompleted">0</strong>
-              <span>Completed</span>
-            </article>
-            <article class="metric-card">
-              <strong id="metricFindings">0</strong>
-              <span>Findings</span>
-            </article>
-            <article class="metric-card">
-              <strong id="metricRisk">0</strong>
-              <span>Avg Risk</span>
-            </article>
-          </div>
-        </div>
-
-        <div class="brand-chips card-surface">
-          <div class="brand-chips-head">
-            <h3>Quick pick</h3>
-            <span id="brandChipsCount">0 projects</span>
-          </div>
-          <div id="brandChips" class="brand-chip-list"></div>
-        </div>
-
-        <div class="reports-layout">
-          <aside class="reports-list card-surface">
-            <div class="reports-list-head">
-              <h2>Tests</h2>
-              <span id="reportsCount">0</span>
-            </div>
-            <div id="reportsItems" class="reports-items"></div>
-          </aside>
-
-          <section class="report-detail card-surface" id="reportDetail">
-            <div class="empty-detail">
-              <h2>Select a run</h2>
-              <p>Pick a test on the left to read the main report.</p>
-            </div>
-          </section>
-        </div>
+        </section>
       </section>
     </main>
 
@@ -173,6 +170,6 @@
     <script src="dashboard-report-runtime.js?v=20260327b"></script>
     <script src="dashboard-render-state.js?v=20260403a"></script>
     <script src="dashboard-panels.js?v=20260318c"></script>
-    <script src="reports.js?v=20260403a"></script>
+    <script src="reports.js?v=20260403b"></script>
   </body>
 </html>

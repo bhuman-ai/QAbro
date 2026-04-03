@@ -88,6 +88,7 @@ const DISTRIBUTION_MAILBOX_PROVIDER_PRESETS = Object.freeze({
 
 const elements = {
   appDashboardRoot: document.getElementById("appQaDashboard"),
+  projectPanelHeader: document.getElementById("projectPanelHeader"),
   topbarProjectShell: document.getElementById("topbarProjectShell"),
   workerHealthChip: document.getElementById("workerHealthChip"),
   workerHealthText: document.getElementById("workerHealthText"),
@@ -3037,11 +3038,13 @@ function renderAuthRequiredState() {
     elements.reportsItems.innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
   }
   if (elements.reportDetail) {
+    elements.reportDetail.classList.add("is-empty");
     elements.reportDetail.innerHTML = `<div class="empty-detail"><h2>Sign in first</h2><p>${escapeHtml(
       message
     )}</p></div>`;
   }
   if (elements.appReportOnlyPanel) {
+    elements.appReportOnlyPanel.classList.add("is-empty");
     elements.appReportOnlyPanel.innerHTML = `<div class="empty-detail"><h2>Sign in first</h2><p>${escapeHtml(
       message
     )}</p></div>`;
@@ -7995,7 +7998,7 @@ function syncProjectSwitcherVisibility() {
   const authorized = isDashboardAuthorized();
   const hasProjects = Array.isArray(state.brandOptions) && state.brandOptions.length > 0;
   const catalogResolved = isProjectCatalogResolved();
-  const shouldShowProjectShell = authorized && catalogResolved;
+  const shouldShowProjectShell = authorized && catalogResolved && hasProjects;
   const shouldShowAppHeader = authorized && catalogResolved && hasProjects;
   elements.appDashboardRoot.setAttribute("data-has-projects", hasProjects ? "true" : "false");
   elements.appDashboardRoot.setAttribute("data-project-catalog-status", state.projectCatalogStatus);
@@ -8177,6 +8180,12 @@ function renderBrandSummary() {
   const avgRisk = riskValues.length
     ? Math.round((riskValues.reduce((acc, value) => acc + value, 0) / riskValues.length) * 10) / 10
     : 0;
+  const shouldShowProjectSummary = Boolean(state.filters.brand || runsCount > 0);
+
+  if (elements.projectPanelHeader) {
+    elements.projectPanelHeader.hidden = !shouldShowProjectSummary;
+    elements.projectPanelHeader.setAttribute("aria-hidden", shouldShowProjectSummary ? "false" : "true");
+  }
 
   elements.activeBrandLabel.textContent = activeBrand;
   const personaSuffix = runsCount > 0 && state.filters.persona ? ` User: ${state.filters.persona}.` : "";
@@ -10486,6 +10495,11 @@ function renderSelectedHeader(report, row, liveStatus = null) {
           <p class="report-hero-project">${escapeHtml(projectLabel)}</p>
           <p class="report-hero-headline">${escapeHtml(heroNarrative.headline)}</p>
           <p class="report-hero-summary">${escapeHtml(heroNarrative.summary)}</p>
+          <article class="report-next-step">
+            <span class="report-next-step-label">${escapeHtml(nextAction.eyebrow || "Do this next")}</span>
+            <strong>${escapeHtml(nextAction.title || "Open the first problem below.")}</strong>
+            <p>${escapeHtml(nextAction.copy || "Use the first saved problem as the next fix.")}</p>
+          </article>
           <div class="report-hero-meta">${metaPills}</div>
         </div>
       </div>
@@ -14591,6 +14605,9 @@ function openDashboardLiveView(runId, options = {}) {
   }
   state.appViewMode = APP_VIEW_MODES.LIVE;
   window.SwarmDashboardShell?.revealPanel?.("settings");
+  if (elements.appShellSidebar && elements.appShellSidebar.tagName === "DETAILS") {
+    elements.appShellSidebar.open = true;
+  }
   syncUrlFromState();
   applyAppViewMode();
   renderSelectedReport().catch(() => {
