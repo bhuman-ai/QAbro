@@ -42,6 +42,11 @@
   gap: 18px;
 }
 
+.reports-console > .brand-summary,
+.reports-console > .brand-chips {
+  display: none;
+}
+
 .reports-more-filters {
   grid-column: 1 / -1;
   border-top: 1px solid hsl(var(--border) / 0.55);
@@ -1988,7 +1993,7 @@ body.report-view-mode .nav-wrap {
 
 .reports-controls {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   padding: 14px;
 }
@@ -2015,9 +2020,45 @@ body.report-view-mode .nav-wrap {
 }
 
 .control-actions {
-  grid-column: 1 / -1;
   display: flex;
   gap: 10px;
+}
+
+.app-onboarding-stepcount,
+.app-onboarding-progress,
+.app-onboarding-steps {
+  display: none;
+}
+
+.app-onboarding-titlebar {
+  grid-template-columns: 1fr;
+}
+
+.onboarding-optional {
+  margin-top: 10px;
+  border-top: 1px solid hsl(var(--border) / 0.55);
+  padding-top: 12px;
+}
+
+.onboarding-optional summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.onboarding-optional summary::-webkit-details-marker {
+  display: none;
+}
+
+.onboarding-optional label {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.onboarding-preview-card {
+  padding: 14px;
 }
 
 .btn-ghost {

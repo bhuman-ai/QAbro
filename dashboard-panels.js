@@ -7,7 +7,7 @@
     }
 
     if (!rows.length) {
-      elements.recentRunsRows.innerHTML = '<tr><td colspan="7"><div class="app-empty"><p>No runs match current filters.</p></div></td></tr>';
+      elements.recentRunsRows.innerHTML = '<tr><td colspan="7"><div class="app-empty"><p>No tests match these filters.</p></div></td></tr>';
       if (elements.recentRunsMeta) {
         elements.recentRunsMeta.textContent = "0 runs";
       }
@@ -72,7 +72,7 @@
 
     const runs = Array.isArray(config.runs) ? config.runs : [];
     if (!runs.length) {
-      elements.appRunPicker.innerHTML = '<option value="">No runs</option>';
+      elements.appRunPicker.innerHTML = '<option value="">No tests</option>';
       return;
     }
 
@@ -133,7 +133,7 @@
     const buildDashboardMissionModel =
       typeof helpers.buildDashboardMissionModel === "function"
         ? helpers.buildDashboardMissionModel
-        : () => ({ headline: "", steps: [], personaLabel: "Audience", personaDetail: "", metaPills: [] });
+        : () => ({ headline: "", steps: [], personaLabel: "User", personaDetail: "", metaPills: [] });
     const normalizeScopeModeInput =
       typeof helpers.normalizeScopeModeInput === "function" ? helpers.normalizeScopeModeInput : (value) => String(value || "");
     const formatRelativeTime = typeof helpers.formatRelativeTime === "function" ? helpers.formatRelativeTime : () => "";
@@ -212,7 +212,7 @@
             .join("")}</ol>`
         : "";
       elements.dashboardPrimaryGoalText.innerHTML = `
-        <p class="primary-goal-headline">${escapeHtml(missionModel.headline || mission.goal || "Mission context updates with the selected run.")}</p>
+        <p class="primary-goal-headline">${escapeHtml(missionModel.headline || mission.goal || "Pick a test to see the goal.")}</p>
         ${stepsMarkup}
       `;
     }
@@ -221,11 +221,11 @@
         ? missionModel.metaPills
             .map((item) => `<span class="primary-goal-meta-pill">${escapeHtml(item)}</span>`)
             .join("")
-        : '<span class="primary-goal-meta-note">Target, run mode, and task count appear here.</span>';
+        : '<span class="primary-goal-meta-note">Site and timing show here.</span>';
       elements.dashboardPrimaryGoalMeta.innerHTML = metaMarkup;
     }
     if (elements.dashboardPrimaryGoalPersona) {
-      elements.dashboardPrimaryGoalPersona.textContent = missionModel.personaLabel || "Audience";
+      elements.dashboardPrimaryGoalPersona.textContent = missionModel.personaLabel || "User";
       if (missionModel.personaDetail) {
         elements.dashboardPrimaryGoalPersona.setAttribute("title", missionModel.personaDetail);
       } else {
@@ -273,7 +273,7 @@
     if (elements.dashboardPrimaryMeta) {
       const statusLabel = isLive ? queueStatus || "processing" : canonicalStatus || "unknown";
       const deliveredAt = row?.delivered_at || report?.delivered_at || "";
-      const recency = deliveredAt ? formatRelativeTime(deliveredAt) : "no run yet";
+      const recency = deliveredAt ? formatRelativeTime(deliveredAt) : "no test yet";
       elements.dashboardPrimaryMeta.textContent = `${row?.run_id || report?.run_id || "no-run"} · ${formatStatusLabel(statusLabel)} · ${recency}`;
     }
     if (elements.dashboardPrimaryAction) {
@@ -308,16 +308,16 @@
     if (elements.topFixesMeta) {
       if (mode === "failed") {
         elements.topFixesMeta.textContent = findingsCount
-          ? `${Math.min(5, findingsCount)} partial finding${findingsCount === 1 ? "" : "s"} from incomplete run`
-          : "Run failed before blockers were validated";
+          ? `${Math.min(5, findingsCount)} saved problem${findingsCount === 1 ? "" : "s"} from the incomplete test`
+          : "This test stopped before the biggest problems were confirmed";
       } else if (mode === "partial") {
         elements.topFixesMeta.textContent = findingsCount
-          ? `${Math.min(5, findingsCount)} partial finding${findingsCount === 1 ? "" : "s"} shown`
-          : "Partial coverage only - retry to validate blockers";
+          ? `${Math.min(5, findingsCount)} saved problem${findingsCount === 1 ? "" : "s"} shown`
+          : "This test only covered part of the flow";
       } else {
         elements.topFixesMeta.textContent = findingsCount
-          ? `${Math.min(5, findingsCount)} of ${findingsCount} findings shown`
-          : "No blockers identified in selected run";
+          ? `${Math.min(5, findingsCount)} of ${findingsCount} problem${findingsCount === 1 ? "" : "s"} shown`
+          : "No big problems found in this test";
       }
     }
     if (elements.personaSignalsTitle) {
@@ -329,12 +329,12 @@
     if (elements.personaSignalsMeta) {
       if (mode === "failed") {
         elements.personaSignalsMeta.textContent = findingsCount
-          ? `${Math.min(4, findingsCount)} partial signal${findingsCount === 1 ? "" : "s"}`
-          : "No validated persona signals";
+          ? `${Math.min(4, findingsCount)} saved note${findingsCount === 1 ? "" : "s"}`
+          : "No saved user notes";
       } else {
         elements.personaSignalsMeta.textContent = findingsCount
-          ? `${Math.min(4, findingsCount)} live user signal${findingsCount === 1 ? "" : "s"}`
-          : "No persona signals yet";
+          ? `${Math.min(4, findingsCount)} user note${findingsCount === 1 ? "" : "s"}`
+          : "No user notes yet";
       }
     }
 
@@ -354,11 +354,11 @@
       if (isLive && progress) {
         elements.appProgressMeta.textContent = `${String(progress.percent ?? 0)}% · ${progress.message || "Processing"}`;
       } else if (mode === "failed") {
-        elements.appProgressMeta.textContent = `${journeysCount} attempted journey${journeysCount === 1 ? "" : "s"} before failure`;
+        elements.appProgressMeta.textContent = `${journeysCount} path${journeysCount === 1 ? "" : "s"} tried before the test stopped`;
       } else if (mode === "partial") {
-        elements.appProgressMeta.textContent = `${journeysCount} journey${journeysCount === 1 ? "" : "s"} tracked · partial confidence`;
+        elements.appProgressMeta.textContent = `${journeysCount} path${journeysCount === 1 ? "" : "s"} tracked`;
       } else {
-        elements.appProgressMeta.textContent = `${journeysCount} journey${journeysCount === 1 ? "" : "s"} tracked`;
+        elements.appProgressMeta.textContent = `${journeysCount} path${journeysCount === 1 ? "" : "s"} tracked`;
       }
     }
 
@@ -380,7 +380,7 @@
           const queueExperience = buildQueueExperience(liveStatus, row);
           elements.liveMissionMeta.textContent =
             queueStatus === "queued" || queueStatus === "retryable"
-              ? `queued · ${queueExperience.queueAhead === null ? "waiting for worker" : `${queueExperience.queueAhead} ahead`} · ${queueExperience.etaLabel}`
+              ? `queued · ${queueExperience.queueAhead === null ? "waiting to start" : `${queueExperience.queueAhead} ahead`} · ${queueExperience.etaLabel}`
               : `${queueStatus || "processing"} · ${String(progress?.percent ?? 0)}%`;
         } else {
           const terminal = buildLiveTerminalSummary(report, liveStatus, row);
@@ -389,19 +389,19 @@
           }`;
         }
       } else {
-        elements.liveMissionMeta.textContent = "Awaiting live run";
+        elements.liveMissionMeta.textContent = "Waiting for a live test";
       }
     }
     updateLiveStreamPanel(report?.run_id || row?.run_id, liveStatus, report, row, showLiveMission);
     if (elements.recentIssuesItems) {
       elements.recentIssuesItems.innerHTML = showLiveMission
         ? renderLiveIncomingFindings(report, row, liveStatus)
-        : '<div class="app-empty"><p>Incoming findings appear while a run is live.</p></div>';
+        : '<div class="app-empty"><p>Problems show up while the test is live.</p></div>';
     }
     if (elements.liveActivityItems) {
       elements.liveActivityItems.innerHTML = showLiveMission
         ? renderLiveActivityFeed(liveStatus, row)
-        : '<div class="app-empty"><p>Live agent activity appears during processing.</p></div>';
+        : '<div class="app-empty"><p>Steps show up while the test is live.</p></div>';
     }
 
     renderRecentRunsTableHelper();

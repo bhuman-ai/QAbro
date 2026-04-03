@@ -4,8 +4,8 @@ const STORAGE_ONBOARDING_COMPLETED_KEY_PREFIX = "swarmtester.onboarding.complete
 const STORAGE_THEME_MODE_KEY = "swarmtester.theme.mode";
 const STORAGE_GITHUB_APP_RETURN_KEY = "swarmtester.githubAppReturn";
 const ADD_NEW_PROJECT_OPTION_VALUE = "__add_new__";
-const DEFAULT_DASHBOARD_PERSONA = "General non-developer business user with moderate technical comfort.";
-const DEFAULT_ONBOARDING_SCENARIO = "Clear signup, authentication, and onboarding to reach a usable in-product state.";
+const DEFAULT_DASHBOARD_PERSONA = "A new customer using the product for the first time.";
+const DEFAULT_ONBOARDING_SCENARIO = "Finish sign-up and onboarding so the product becomes usable.";
 const DEFAULT_SHARED_REPORT_PROMO = Object.freeze({
   enabled: true,
   headline: "Try Swarm Tester for your own product.",
@@ -320,7 +320,7 @@ const ONBOARDING_STEP_META = {
   }
 };
 const ONBOARDING_MAX_STEP = 4;
-const ONBOARDING_MAX_PERSONALITIES = 3;
+const ONBOARDING_MAX_PERSONALITIES = 1;
 const ONBOARDING_SCOPE_META = {
   core_20m: {
     label: "Fast pass",
@@ -2560,7 +2560,7 @@ function renderFindingDetailModalContent(report, row, finding, findingIndex) {
   const safeReport = report && typeof report === "object" ? report : {};
   const safeRow = row && typeof row === "object" ? row : {};
   const safeFinding = finding && typeof finding === "object" ? finding : {};
-  const title = safeFinding.title || safeFinding.observed_behavior || safeFinding.id || `Finding ${findingIndex + 1}`;
+  const title = safeFinding.title || safeFinding.observed_behavior || safeFinding.id || `Problem ${findingIndex + 1}`;
   const typeVisual = getFindingTypeVisual(safeFinding.type);
   const severity = normalizeSeverity(safeFinding.severity);
   const confidencePct = toConfidencePercent(safeFinding.confidence);
@@ -3058,10 +3058,10 @@ function renderAuthRequiredState() {
       elements.appEvidencePanel.innerHTML = '<div class="app-empty"><p>Sign in to load evidence.</p></div>';
     }
     if (elements.topFixesItems) {
-      elements.topFixesItems.innerHTML = '<div class="app-empty"><p>Sign in to load findings.</p></div>';
+      elements.topFixesItems.innerHTML = '<div class="app-empty"><p>Sign in to load problems.</p></div>';
     }
     if (elements.personaSignalsItems) {
-      elements.personaSignalsItems.innerHTML = '<div class="app-empty"><p>Sign in to load persona signals.</p></div>';
+      elements.personaSignalsItems.innerHTML = '<div class="app-empty"><p>Sign in to load user notes.</p></div>';
     }
     if (elements.personaSignalsMeta) {
       elements.personaSignalsMeta.textContent = "Auth required";
@@ -3550,7 +3550,7 @@ async function queueDashboardRun(payload) {
     throw new Error("Your session expired. Sign in again.");
   }
   if (!response.ok || !data.ok) {
-    throw new Error(data.error || "Failed to launch swarm run");
+    throw new Error(data.error || "Failed to start the test");
   }
   return data;
 }
@@ -3632,14 +3632,14 @@ function trimLeadingArticle(value) {
 function buildMissionPersonaDisplay(persona) {
   const full = normalizeMissionCopy(
     String(persona || "")
-      .replace(/^roleplay these icps:\s*/i, "")
-      .replace(/^custom icp guidance:\s*/i, "")
+      .replace(/^act like this user:\s*/i, "")
+      .replace(/^custom user:\s*/i, "")
       .replace(/^persona:\s*/i, ""),
     500
   );
   if (!full) {
     return {
-      label: "Audience",
+      label: "User",
       detail: ""
     };
   }
@@ -3652,7 +3652,7 @@ function buildMissionPersonaDisplay(persona) {
   const label = labelSource.length > 44 ? truncateText(labelSource, 44) : labelSource;
 
   return {
-    label: label ? `${label.charAt(0).toUpperCase()}${label.slice(1)}` : "Audience",
+    label: label ? `${label.charAt(0).toUpperCase()}${label.slice(1)}` : "User",
     detail: full
   };
 }
@@ -3671,7 +3671,6 @@ function buildDashboardMissionModel(mission = {}, row = null) {
   const targetLabel = String(config.brandName || buildTargetLabelFromUrl(config.targetUrl) || row?.target || "")
     .trim()
     .slice(0, 120);
-  const scopeMeta = getOnboardingScopeMeta(config.scopeMode);
   const steps = getUserMissionScenariosFromValue(config.scenarios).map(normalizeMissionStep).filter(Boolean).slice(0, 4);
   const persona = buildMissionPersonaDisplay(safeMission.persona);
 
@@ -3690,10 +3689,10 @@ function buildDashboardMissionModel(mission = {}, row = null) {
       "Finish onboarding and complete a meaningful in-product task.";
   }
 
-  const metaPills = [targetLabel, scopeMeta?.label, steps.length ? `${steps.length} task${steps.length === 1 ? "" : "s"}` : ""]
+  const metaPills = [targetLabel, steps.length ? `${steps.length} goal${steps.length === 1 ? "" : "s"}` : ""]
     .map((item) => String(item || "").trim())
     .filter(Boolean)
-    .slice(0, 3);
+    .slice(0, 2);
 
   return {
     headline,
@@ -3868,13 +3867,13 @@ async function launchDashboardRunFromConfig(config = {}, options = {}) {
   const safeConfig = config && typeof config === "object" ? config : {};
   const built = buildDashboardRunPayload(safeConfig, options);
   if (!built.payload.target_url) {
-    throw new Error("Target URL must be a valid site domain or URL.");
+    throw new Error("Enter a real site URL first.");
   }
   if (!built.payload.brand_persona) {
-    throw new Error("Bot personality is required.");
+    throw new Error("Choose one user for the test.");
   }
   if (built.payload.scope_mode === "feature_targeted" && !built.payload.scenario_list.length) {
-    throw new Error("Add at least one scenario for feature-targeted scope.");
+    throw new Error("Choose one goal for the test.");
   }
 
   const queued = await queueDashboardRun(built.payload);
@@ -5397,17 +5396,18 @@ function getSelectedCriticalInputs() {
   if (!elements.onboardingCriticalChoices) {
     return [];
   }
-  return Array.from(elements.onboardingCriticalChoices.querySelectorAll("input[type='checkbox']:checked"));
+  return Array.from(elements.onboardingCriticalChoices.querySelectorAll("input:checked"));
 }
 
 function getSelectedMissionScenarios() {
   const selected = getSelectedCriticalInputs()
     .map((input) => String(input.value || "").trim())
-    .filter(Boolean);
-  const custom = parseScenarioText(elements.onboardingScenariosCustom?.value || "");
+    .filter(Boolean)
+    .slice(0, 1);
+  const custom = parseScenarioText(elements.onboardingScenariosCustom?.value || "").slice(0, 1);
   return [...selected, ...custom]
     .filter((item) => item && item !== DEFAULT_ONBOARDING_SCENARIO)
-    .slice(0, 24);
+    .slice(0, 1);
 }
 
 function getSelectedMissionLabels() {
@@ -5416,9 +5416,10 @@ function getSelectedMissionLabels() {
       const label = input.closest(".onboarding-toggle");
       return String(label?.querySelector("strong")?.textContent || input.value || "").trim();
     })
-    .filter(Boolean);
-  const custom = parseScenarioText(elements.onboardingScenariosCustom?.value || "");
-  return [...selected, ...custom].slice(0, 24);
+    .filter(Boolean)
+    .slice(0, 1);
+  const custom = parseScenarioText(elements.onboardingScenariosCustom?.value || "").slice(0, 1);
+  return [...selected, ...custom].slice(0, 1);
 }
 
 function getActiveIntensityChoice() {
@@ -5434,8 +5435,8 @@ function syncOnboardingPersonaField() {
   const custom = String(elements.onboardingPersonaCustom?.value || "").trim();
   const personaValue =
     [
-      selected.length ? `Roleplay these ICPs: ${selected.join(" ")}` : "",
-      custom ? `Custom ICP guidance: ${custom}` : ""
+      selected.length ? `Act like this user: ${selected[0]}` : "",
+      custom ? `Custom user: ${custom}` : ""
     ]
       .filter(Boolean)
       .join(" ")
@@ -5500,7 +5501,7 @@ function updateOnboardingScopeUi() {
   }
   const scopeMeta = getOnboardingScopeMeta(scopeMode);
   if (elements.onboardingScenarioHint) {
-    elements.onboardingScenarioHint.textContent = `${scopeMeta.label}: pick at least one post-onboarding goal. Onboarding is always included automatically.`;
+    elements.onboardingScenarioHint.textContent = `${scopeMeta.label}: pick one main goal. Sign-up and onboarding are always included.`;
   }
 }
 
@@ -5593,11 +5594,11 @@ function refreshOnboardingLaunchSummary() {
   }
   if (elements.onboardingReviewSiteMeta) {
     elements.onboardingReviewSiteMeta.textContent = targetUrl
-      ? "We start from the public entry point, discover auth, and treat onboarding as part of the run."
-      : "We will start at the public entry point and discover auth if needed.";
+      ? "We start from the public page and include sign-up if needed."
+      : "We start from the public page.";
   }
-  renderOnboardingReviewList(elements.onboardingReviewPersonas, personaReviewItems, "Choose at least one persona");
-  renderOnboardingReviewList(elements.onboardingReviewGoals, goalReviewItems, "Choose at least one post-onboarding goal");
+  renderOnboardingReviewList(elements.onboardingReviewPersonas, personaReviewItems, "Choose one user");
+  renderOnboardingReviewList(elements.onboardingReviewGoals, goalReviewItems, "Choose one goal");
   if (elements.onboardingReviewCoverage) {
     elements.onboardingReviewCoverage.textContent = scopeMeta.label;
   }
@@ -5611,15 +5612,9 @@ function refreshOnboardingLaunchSummary() {
     elements.onboardingReviewRepoTriageMeta.textContent = repoTriageReview.meta;
   }
 
-  const goalCount = scenarioState.missions.length;
-  const personaCount = personaReviewItems.length;
   elements.onboardingLaunchSummary.textContent = targetUrl
-    ? `We will test ${brandName || host} as ${
-        personaCount ? `${personaCount} persona${personaCount === 1 ? "" : "s"}` : "the selected ICP"
-      }, clear onboarding, then push on ${
-        goalCount ? `${goalCount} real product goal${goalCount === 1 ? "" : "s"}` : "the goals you select"
-      }.`
-    : "Choose a site, a persona, and at least one goal to review the mission.";
+    ? `We will open ${brandName || host}, act like ${personaReviewItems[0] || "the user you pick"}, and try ${goalReviewItems[0] || "the goal you pick"}.`
+    : "Choose a site, one user, and one goal to review the test.";
 }
 
 function setOnboardingStep(stepValue) {
@@ -5695,7 +5690,7 @@ function validateOnboardingStep(stepValue) {
     const selectedCount = getSelectedPersonaButtons().length;
     const customPersona = String(elements.onboardingPersonaCustom?.value || "").trim();
     if (!selectedCount && !customPersona) {
-      setOnboardingMessage("Pick at least one persona for the swarm to roleplay.", "error");
+      setOnboardingMessage("Pick one user for the test.", "error");
       elements.onboardingPersonaCustom?.focus();
       return false;
     }
@@ -5704,7 +5699,7 @@ function validateOnboardingStep(stepValue) {
   if (step === 3) {
     const scenarioState = syncOnboardingScenariosField();
     if (!scenarioState.missions.length) {
-      setOnboardingMessage("Choose at least one post-onboarding goal to test.", "error");
+      setOnboardingMessage("Choose one main goal to test.", "error");
       elements.onboardingScenariosCustom?.focus();
       return false;
     }
@@ -5719,12 +5714,12 @@ async function playLaunchSequence() {
     return;
   }
   const frames = [
-    "Mission control online.",
-    "Arming the swarm.",
+    "Checking setup.",
+    "Getting the browser ready.",
     "3",
     "2",
     "1",
-    "Launching agents..."
+    "Starting test..."
   ];
   for (const frame of frames) {
     elements.onboardingLaunchSequence.textContent = frame;
@@ -5830,7 +5825,7 @@ async function retryRunFromContext(runId, event) {
       retryOfRunId: String(runId || context.row?.run_id || "").trim()
     });
   } catch (error) {
-    setDashboardStateMessage(error.message || "Could not relaunch the run.");
+    setDashboardStateMessage(error.message || "Could not restart the test.");
   } finally {
     setButtonPending(trigger, false);
   }
@@ -5842,7 +5837,7 @@ async function submitOnboardingRun(event) {
     return;
   }
   if (!isDashboardAuthorized()) {
-    setOnboardingMessage("Sign in required before launching a swarm.", "error");
+    setOnboardingMessage("Sign in before starting a test.", "error");
     return;
   }
 
@@ -5866,29 +5861,29 @@ async function submitOnboardingRun(event) {
   const repoTriage = readOnboardingRepoTriageConfig();
 
   if (!targetUrl) {
-    setOnboardingMessage("Target URL must be a valid site domain or URL.", "error");
+    setOnboardingMessage("Enter a real site URL first.", "error");
     setOnboardingStep(1);
     elements.onboardingTargetUrl?.focus();
     return;
   }
   if (!persona) {
-    setOnboardingMessage("Bot personality is required.", "error");
+    setOnboardingMessage("Choose one user for the test.", "error");
     setOnboardingStep(2);
     elements.onboardingPersonaCustom?.focus();
     return;
   }
   if (!missions.length) {
-    setOnboardingMessage("Add at least one post-onboarding goal for the swarm.", "error");
+    setOnboardingMessage("Choose one goal for the test.", "error");
     setOnboardingStep(3);
     elements.onboardingScenariosCustom?.focus();
     return;
   }
 
   setOnboardingSubmitting(true);
-  setOnboardingMessage("Preparing launch sequence...", "");
+  setOnboardingMessage("Getting the test ready...", "");
   try {
     await playLaunchSequence();
-    setOnboardingMessage("Queueing swarm run...", "");
+    setOnboardingMessage("Starting the test...", "");
     const launched = await launchDashboardRunFromConfig(
       {
         targetUrl,
@@ -5905,13 +5900,13 @@ async function submitOnboardingRun(event) {
         launchedFrom: "dashboard_onboarding"
       }
     );
-    setOnboardingMessage("Swarm launched. Tracking your run now.", "ok");
-    setDashboardStateMessage("Swarm launched. Tracking the new run now.");
+    setOnboardingMessage("Test started. Tracking it now.", "ok");
+    setDashboardStateMessage("Test started. Tracking it now.");
     if (launched?.runId) {
       state.requestedRunId = launched.runId;
     }
   } catch (error) {
-    setOnboardingMessage(error.message || "Could not launch swarm run.", "error");
+    setOnboardingMessage(error.message || "Could not start the test.", "error");
   } finally {
     setOnboardingSubmitting(false);
   }
@@ -8221,7 +8216,7 @@ function renderBrandSummary() {
       state.runs[0] ||
       null;
     if (!selectedRow) {
-      elements.dashboardRunMeta.textContent = "No run selected";
+      elements.dashboardRunMeta.textContent = "No test selected";
     } else {
       const liveStatus = getLiveStatus(selectedRow.run_id);
       const queueStatus = String(liveStatus?.queue?.queue_status || liveStatus?.queue?.status || "").toLowerCase();
@@ -8229,7 +8224,7 @@ function renderBrandSummary() {
       const findingsCount = Array.isArray(liveStatus?.live_report?.findings)
         ? liveStatus.live_report.findings.length
         : Number(selectedRow.findings_count) || 0;
-      elements.dashboardRunMeta.textContent = `${selectedRow.run_id} · ${status} · ${findingsCount} findings`;
+      elements.dashboardRunMeta.textContent = `${selectedRow.run_id} · ${status} · ${findingsCount} problem${findingsCount === 1 ? "" : "s"}`;
     }
   }
 }
@@ -8378,7 +8373,7 @@ function renderRunsList() {
       state.activeRenderedReport = null;
       state.activeRenderedRow = null;
     }
-    elements.reportsItems.innerHTML = '<div class="empty-state">No reports found for these filters.</div>';
+    elements.reportsItems.innerHTML = '<div class="empty-state">No tests match these filters.</div>';
     elements.reportDetail.innerHTML = `
       <div class="empty-detail">
         <h2>No test yet</h2>
@@ -8405,7 +8400,6 @@ function renderRunsList() {
       const targetLabel = buildTargetLabelFromUrl(run.target || "") || run.target || run.brand_key || run.run_id;
       const relativeTime = formatRelativeTime(run.delivered_at);
       const statusLabel = formatStatusLabel(queueStatus || displayStatus);
-      const riskLabel = Number.isFinite(Number(run.risk_score)) ? `${Number(run.risk_score)}/100` : "No score";
       return `
         <article class="report-item ${active}" data-run-id="${escapeHtml(run.run_id)}">
           <div class="report-item-simple-head">
@@ -8416,7 +8410,7 @@ function renderRunsList() {
             <span class="issue-severity ${escapeHtml(statusBadgeClass(displayStatus))}">${escapeHtml(displayStatus || "unknown")}</span>
           </div>
           <p class="report-item-simple-meta">
-            ${escapeHtml(String(findingsCount || 0))} problem${Number(findingsCount || 0) === 1 ? "" : "s"} · score ${escapeHtml(riskLabel)}
+            ${escapeHtml(String(findingsCount || 0))} problem${Number(findingsCount || 0) === 1 ? "" : "s"}
           </p>
         </article>
       `;
@@ -9967,7 +9961,7 @@ function buildReportHeroNarrative(mode, verdict, report, row, liveStatus, summar
     const blockerCount = snapshot.criticalCount || snapshot.brokenJourneys;
     return {
       kicker: "Big problems found",
-      headline: `${blockerCount} blocker${blockerCount === 1 ? "" : "s"} ${blockerCount === 1 ? "is" : "are"} breaking the mission.`,
+      headline: `${blockerCount} blocker${blockerCount === 1 ? "" : "s"} ${blockerCount === 1 ? "is" : "are"} breaking the main path.`,
       summary: buildRiskSummaryMessage(mode, verdict, snapshot, environment)
     };
   }
@@ -10447,10 +10441,7 @@ function renderFindingEngineeringTriageSection(report, finding) {
 }
 
 function renderSelectedHeader(report, row, liveStatus = null) {
-  const repoTriage = getRepoTriageState(report, row, liveStatus);
   const sessionUrl = toExternalUrl(row.session_url);
-  const mission = resolveRunMission(row, report);
-  const missionModel = buildDashboardMissionModel(mission, row);
   const newerRun = findNewerRunForSelection(row, report);
   const summaryNote = redactVendorText(report?.summary?.note || "No summary note available.");
   const mode = deriveDashboardMode(report, row, liveStatus);
@@ -10467,32 +10458,16 @@ function renderSelectedHeader(report, row, liveStatus = null) {
         report?.target ||
         row?.target ||
         report?.run_id ||
-        "Run report"
-    ).trim() || "Run report";
+        "Test report"
+    ).trim() || "Test report";
   const quickLinks = [
     `<span class="report-status-pill ${escapeHtml(verdictMeta.severityClass)}">${escapeHtml(verdictMeta.label)}</span>`,
-    sessionUrl ? `<a class="report-action-button" href="${escapeHtml(sessionUrl)}" target="_blank" rel="noreferrer">Watch test</a>` : "",
-    canManageReportSharing() && (report?.run_id || row?.run_id)
-      ? `
-        <button
-          type="button"
-          class="report-action-button report-action-button-primary"
-          data-team-share-run="${escapeHtml(report?.run_id || row?.run_id || "")}"
-          aria-label="Share with team"
-          title="Share with team"
-        >
-          Share with team
-        </button>
-      `
-      : ""
+    sessionUrl ? `<a class="report-action-button" href="${escapeHtml(sessionUrl)}" target="_blank" rel="noreferrer">Watch live</a>` : ""
   ]
     .filter(Boolean)
     .join("");
   const metaPills = [
-    `<span class="report-hero-meta-pill">Test ${escapeHtml(report?.run_id || row?.run_id || "unknown")}</span>`,
-    repoTriage.enabled
-      ? `<span class="report-hero-meta-pill">Engineering triage: ${escapeHtml(formatRepoTriageStatusLabel(repoTriage.status))}</span>`
-      : ""
+    `<span class="report-hero-meta-pill">Test ${escapeHtml(report?.run_id || row?.run_id || "unknown")}</span>`
   ]
     .filter(Boolean)
     .join("");
@@ -10546,11 +10521,11 @@ function renderLiveWatch(runId, row) {
         <small>Live browser preview · frame ${escapeHtml(String(latestScreenshotIndex + 1))}</small>
       </a>
     `
-    : "<p>Capturing first browser frame...</p>";
+    : "<p>Waiting for the first picture...</p>";
 
   const eventsMarkup = runLog.length
     ? renderLiveActivityItems(runLog.slice().reverse(), row, { compact: true })
-    : "<p>Waiting for first worker event...</p>";
+    : "<p>Waiting for the first step...</p>";
 
   return `
     <section class="section-block report-live-watch">
@@ -10561,28 +10536,28 @@ function renderLiveWatch(runId, row) {
       </p>
       <p>${escapeHtml(progress?.message || "The tester is still moving through the site.")}</p>
       ${previewMarkup}
-      <p>Problems so far: ${escapeHtml(String(findingsCount))} · Things tried so far: ${escapeHtml(String(journeysCount))}</p>
+      <p>Problems so far: ${escapeHtml(String(findingsCount))} · Paths tried: ${escapeHtml(String(journeysCount))}</p>
       ${eventsMarkup}
     </section>
   `;
 }
 
 function renderCounts(report, row = {}, liveStatus = null) {
-  const counts = report?.summary?.counts || {};
   const snapshot = computeRiskSnapshot(report);
   const mode = deriveDashboardMode(report, row, liveStatus);
-  const metrics = buildHeroMetricModel(mode, report, snapshot, liveStatus, row);
-  const badges = [
-    { label: "bugs", value: counts.bug || 0 },
-    { label: "friction", value: counts.frustration_point || 0 },
-    { label: "confusion", value: counts.confusion_point || 0 },
-    { label: "dead ends", value: counts.dead_end || 0 },
-    { label: "performance", value: counts.performance_issue || 0 },
-    { label: "a11y", value: counts.accessibility_issue || 0 },
-    { label: "copy", value: counts.copy_issue || 0 }
-  ]
-    .filter((item) => Number(item.value) > 0)
-    .slice(0, 5);
+  const coverage = buildCoverageSnapshot(report);
+  const metrics =
+    mode === "running"
+      ? [
+          { label: "Status", value: formatStatusLabel(getCanonicalRunStatus(report, row, liveStatus) || "running") },
+          { label: "Problems", value: String(Array.isArray(report?.findings) ? report.findings.length : 0) },
+          { label: "Pages", value: String(coverage.pagesVisited) }
+        ]
+      : [
+          { label: "Problems", value: String(Array.isArray(report?.findings) ? report.findings.length : 0) },
+          { label: "Paths tried", value: String(coverage.attemptedJourneys || coverage.completedJourneys || 0) },
+          { label: "Big issues", value: String(snapshot.criticalCount) }
+        ];
 
   return `
     <article class="report-hero-panel report-overview-panel" id="section-snapshot">
@@ -10604,21 +10579,6 @@ function renderCounts(report, row = {}, liveStatus = null) {
           )
           .join("")}
       </div>
-      ${
-        badges.length
-          ? `
-            <div class="report-overview-badges">
-              ${badges
-                .map(
-                  (badge) => `
-                    <span class="report-overview-badge">${escapeHtml(badge.label)} ${escapeHtml(String(badge.value))}</span>
-                  `
-                )
-                .join("")}
-            </div>
-          `
-          : ""
-      }
     </article>
   `;
 }
@@ -11595,21 +11555,21 @@ function buildQueueExperience(liveStatus, row = null) {
       ? formatEtaDuration(estimatedStartSeconds)
       : "starting soon";
 
-  let headline = "Agents are starting up.";
-  let detail = "Live browser frames, findings, and persona reactions will appear as soon as the worker begins exploring.";
+  let headline = "The test is getting ready.";
+  let detail = "Pictures, problems, and notes will show up as soon as the test starts moving through the site.";
 
   if (queueStatus === "queued" || queueStatus === "retryable") {
-    headline = "Waiting for the next worker slot.";
+    headline = "Waiting for the next open slot.";
     if (queueAheadSafe === 0) {
-      detail = "This run is next in line. It will start automatically as soon as the active worker frees up.";
+      detail = "This test is next in line. It starts automatically when the current slot opens.";
     } else if (queueAheadSafe > 0) {
-      detail = `${queueAheadSafe} run${queueAheadSafe === 1 ? "" : "s"} ahead in queue. This run will start automatically when earlier work clears.`;
+      detail = `${queueAheadSafe} test${queueAheadSafe === 1 ? "" : "s"} ahead. This one starts automatically when earlier work clears.`;
     } else {
-      detail = "This run is queued and will start automatically when a worker slot opens.";
+      detail = "This test is queued and will start automatically when a slot opens.";
     }
   } else if (queueStatus === "processing") {
-    headline = "Run is now exploring the product.";
-    detail = "The browser agent is live. The stream, findings, and persona thoughts will populate as coverage expands.";
+    headline = "The test is moving through the product now.";
+    detail = "The live view, saved problems, and user notes will grow as more of the site is checked.";
   }
 
   return {
@@ -12083,7 +12043,7 @@ function renderTopFixes(report, row, mode = "completed") {
   if (mode === "failed" || mode === "partial") {
     return `
       <div class="app-empty">
-        <p>These findings came from an incomplete run.</p>
+        <p>These problems came from a test that stopped early.</p>
         <small>Use them as directional evidence, then rerun to confirm.</small>
       </div>
       ${cards}
@@ -12097,11 +12057,11 @@ function renderPersonaSignals(report, row, mode = "completed") {
   const findings = sortFindingsByPriority(Array.isArray(report?.findings) ? report.findings : []);
   const personaName = resolvePersonaName(row);
   if (!findings.length) {
-    let message = "Signals from tester personas will appear after findings are captured.";
+    let message = "Notes from the selected user will appear after problems are saved.";
     if (mode === "failed") {
-      message = "No persona signals were captured before the run failed.";
+      message = "No user notes were saved before the test stopped.";
     } else if (mode === "partial") {
-      message = "Persona signals are limited because this run ended with partial coverage.";
+      message = "User notes are limited because this test only covered part of the flow.";
     }
     return `
       <div class="app-empty">
@@ -12208,7 +12168,7 @@ function computeJourneySatisfactionScore(report, journey) {
 function renderCoverageAttemptTable(report) {
   const journeys = Array.isArray(report?.tested_journeys) ? report.tested_journeys : [];
   if (!journeys.length) {
-    return '<div class="app-empty"><p>No coverage details were captured before the run ended.</p></div>';
+    return '<div class="app-empty"><p>No path details were saved before the test ended.</p></div>';
   }
 
   const rows = journeys.slice(0, 8).map((journey) => {
@@ -12228,7 +12188,7 @@ function renderCoverageAttemptTable(report) {
 
     return `
       <div class="coverage-attempt-row">
-        <span class="journey-name">${escapeHtml(journey?.name || journey?.id || "Journey")}</span>
+        <span class="journey-name">${escapeHtml(journey?.name || journey?.id || "Path")}</span>
         <span class="issue-severity ${escapeHtml(severityClass)}">${escapeHtml(label)}</span>
         <span>${escapeHtml(journey?.summary || "No additional details captured.")}</span>
       </div>
@@ -12238,9 +12198,9 @@ function renderCoverageAttemptTable(report) {
   return `
     <div class="coverage-attempt-table">
       <div class="coverage-attempt-head">
-        <span>Journey</span>
+        <span>Path</span>
         <span>Coverage</span>
-        <span>Observed before failure</span>
+        <span>What happened before it stopped</span>
       </div>
       ${rows.join("")}
     </div>
@@ -12254,8 +12214,8 @@ function renderAppProgress(report, liveStatus, mode = "completed") {
     const percent = Math.max(0, Math.min(100, Number(progress.percent) || 0));
     return `
       <div class="app-progress-row">
-        <div class="journey-health-live">
-          <span>${escapeHtml(progress.message || "Processing run")}</span>
+          <div class="journey-health-live">
+          <span>${escapeHtml(progress.message || "Running test")}</span>
           <strong>${escapeHtml(String(percent))}%</strong>
           <div class="app-progress-track"><span style="width:${percent}%"></span></div>
         </div>
@@ -12265,7 +12225,7 @@ function renderAppProgress(report, liveStatus, mode = "completed") {
 
   const journeys = Array.isArray(report.tested_journeys) ? report.tested_journeys : [];
   if (!journeys.length) {
-    return '<div class="app-empty"><p>No journey data captured yet.</p></div>';
+    return '<div class="app-empty"><p>No path data saved yet.</p></div>';
   }
 
   if (mode === "failed") {
@@ -12276,7 +12236,7 @@ function renderAppProgress(report, liveStatus, mode = "completed") {
   const rows = journeys.slice(0, 8).map((journey) => {
     const journeyStatus = String(journey?.status || "completed").toLowerCase();
     const satisfaction = computeJourneySatisfactionScore(report, journey);
-    const journeyName = journey.name || journey.id || "Journey";
+    const journeyName = journey.name || journey.id || "Path";
     const journeyTokens = [
       journey?.id,
       journey?.journey_id,
@@ -12318,10 +12278,10 @@ function renderAppProgress(report, liveStatus, mode = "completed") {
   return `
     <div class="journey-health-table">
       <div class="journey-health-head">
-        <span>Journey</span>
+        <span>Path</span>
         <span>Status</span>
         <span>Score</span>
-        <span>Issues</span>
+        <span>Problems</span>
         <span>Trend</span>
       </div>
       ${rows
@@ -12395,15 +12355,15 @@ function renderLiveIncomingFindings(report, row, liveStatus) {
         const failure = extractRunFailureContext(report, liveStatus);
         return `
           <div class="app-empty">
-            <p>No validated findings were captured before the run failed.</p>
+            <p>No saved problems were captured before the test stopped.</p>
             <small>${escapeHtml(`${failure.headline} ${failure.detail}`)}</small>
           </div>
         `;
       }
       if (!isQueueActiveStatus(queueStatus) && terminalStatus === "completed") {
-        return '<div class="app-empty"><p>No findings were captured in this run.</p><small>The run completed without validated blockers.</small></div>';
+        return '<div class="app-empty"><p>No problems were saved in this test.</p><small>The test finished without any big blockers.</small></div>';
       }
-      return '<div class="app-empty"><p>No incoming findings yet.</p><small>Agents are still exploring flows.</small></div>';
+      return '<div class="app-empty"><p>No problems yet.</p><small>The test is still moving through the flow.</small></div>';
     }
 
     return findings
@@ -12428,7 +12388,7 @@ function renderLiveIncomingFindings(report, row, liveStatus) {
       })
       .join("");
   } catch {
-    return '<div class="app-empty"><p>Findings will appear after the run starts collecting signals.</p></div>';
+    return '<div class="app-empty"><p>Problems will appear after the test starts collecting proof.</p></div>';
   }
 }
 
@@ -14389,12 +14349,11 @@ function installOnboardingInteractions() {
     button.setAttribute("aria-pressed", "false");
     button.addEventListener("click", () => {
       const isActive = button.classList.contains("active");
-      if (!isActive && getSelectedPersonaButtons().length >= ONBOARDING_MAX_PERSONALITIES) {
-        setOnboardingMessage(`Choose up to ${ONBOARDING_MAX_PERSONALITIES} personalities for the first run.`, "error");
-        return;
+      for (const node of personaButtons) {
+        const shouldActivate = node === button ? !isActive : false;
+        node.classList.toggle("active", shouldActivate);
+        node.setAttribute("aria-pressed", shouldActivate ? "true" : "false");
       }
-      button.classList.toggle("active", !isActive);
-      button.setAttribute("aria-pressed", isActive ? "false" : "true");
       syncOnboardingPersonaField();
       refreshOnboardingLaunchSummary();
       setOnboardingMessage("", "");
@@ -14417,7 +14376,7 @@ function installOnboardingInteractions() {
   }
 
   const criticalInputs = elements.onboardingCriticalChoices
-    ? Array.from(elements.onboardingCriticalChoices.querySelectorAll("input[type='checkbox']"))
+    ? Array.from(elements.onboardingCriticalChoices.querySelectorAll("input"))
     : [];
   for (const input of criticalInputs) {
     const label = input.closest(".onboarding-toggle");
@@ -14425,8 +14384,11 @@ function installOnboardingInteractions() {
       label.classList.toggle("active", input.checked);
     }
     input.addEventListener("change", () => {
-      if (label) {
-        label.classList.toggle("active", input.checked);
+      for (const node of criticalInputs) {
+        const currentLabel = node.closest(".onboarding-toggle");
+        if (currentLabel) {
+          currentLabel.classList.toggle("active", node.checked);
+        }
       }
       syncOnboardingScenariosField();
       refreshOnboardingLaunchSummary();

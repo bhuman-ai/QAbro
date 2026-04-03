@@ -1894,6 +1894,7 @@ body {
 .app-live-mission .app-live-grid {
   display: grid;
   gap: 14px;
+  grid-template-columns: 1fr;
 }
 
 .app-empty.compact p {
@@ -1953,6 +1954,25 @@ body {
 .app-secondary-actions,
 .app-evidence-panel {
   display: none !important;
+}
+
+.app-onboarding-progress,
+.app-onboarding-steps,
+.app-onboarding-stepcount {
+  display: none !important;
+}
+
+.app-onboarding-titlebar {
+  grid-template-columns: 1fr;
+}
+
+.onboarding-preview-card {
+  padding: 14px;
+  gap: 12px;
+}
+
+.onboarding-preview-brand {
+  display: none;
 }
 
 .dashboard-header-right {

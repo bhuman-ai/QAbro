@@ -8,11 +8,11 @@
       }
     };
 
-    updatePanel(elements.runsPanelContent, 'Loading runs...');
+    updatePanel(elements.runsPanelContent, 'Loading tests...');
     if (hasAppDashboardUi) {
-      updatePanel(elements.reportDetailPanel, 'Loading reports...');
-      updatePanel(elements.topFixesItems, 'Loading findings...');
-      updatePanel(elements.personaSignalsItems, 'Loading persona signals...');
+      updatePanel(elements.reportDetailPanel, 'Loading details...');
+      updatePanel(elements.topFixesItems, 'Loading problems...');
+      updatePanel(elements.personaSignalsItems, 'Loading user notes...');
     }
   }
 
@@ -25,11 +25,11 @@
       }
     };
 
-    updatePanelWithError(elements.runsPanelContent, 'Failed to load runs');
+    updatePanelWithError(elements.runsPanelContent, 'Failed to load tests');
     if (hasAppDashboardUi) {
-      updatePanelWithError(elements.reportDetailPanel, 'Failed to load report details');
-      updatePanelWithError(elements.topFixesItems, 'Failed to load findings');
-      updatePanelWithError(elements.personaSignalsItems, 'Failed to load persona signals');
+      updatePanelWithError(elements.reportDetailPanel, 'Failed to load details');
+      updatePanelWithError(elements.topFixesItems, 'Failed to load problems');
+      updatePanelWithError(elements.personaSignalsItems, 'Failed to load user notes');
     }
   }
 
@@ -49,7 +49,7 @@
     if (hasAppDashboardUi) {
       updatePanelWithPlaceholder(elements.runsPanelContent, '<h3>No tests yet</h3><p>Your recent tests will appear here.</p>');
       updatePanelWithPlaceholder(elements.topFixesItems, '<h3>Fix first</h3><p>Pick a test to see the biggest problems.</p>');
-      updatePanelWithPlaceholder(elements.personaSignalsItems, '<h3>What felt hard</h3><p>Pick a test to see where users struggled.</p>');
+      updatePanelWithPlaceholder(elements.personaSignalsItems, '<h3>What felt hard</h3><p>Pick a test to see where the user got stuck.</p>');
       
       if (renderRecentRunsTable && elements.runsPanelContent) {
         renderRecentRunsTable();
