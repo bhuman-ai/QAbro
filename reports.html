@@ -44,7 +44,7 @@
         <div class="container">
           <p class="status-pill"><span class="dot"></span> Test reports</p>
           <h1>Open a test. See what broke.</h1>
-          <p>Pick a project, open a test, and read the report from top to bottom.</p>
+          <p>Pick a test and read the problem first.</p>
         </div>
       </section>
 
@@ -52,35 +52,24 @@
         <article class="card-surface dashboard-auth-card" id="dashboardAuthCard">
           <header>
             <h3>Open your tests</h3>
-            <p>Use your email to open the dashboard.</p>
+            <p>Enter your email. We send a secure sign-in link.</p>
           </header>
-
-          <div class="dashboard-auth-tabs" role="tablist" aria-label="Authentication mode">
-            <button id="authModeSignIn" type="button" role="tab" aria-selected="true">Sign In</button>
-            <button id="authModeSignUp" type="button" role="tab" aria-selected="false">Sign Up</button>
-          </div>
 
           <form id="authSignInForm" class="dashboard-auth-form" action="#" method="post" autocomplete="on">
             <label>
               <span>Email</span>
               <input name="email" type="email" required autocomplete="email" placeholder="you@company.com" />
             </label>
+            <details class="dashboard-auth-optional">
+              <summary>I have a team code</summary>
+              <label>
+                <span>Team code</span>
+                <input name="invite_code" type="text" autocomplete="off" placeholder="Enter team code" />
+              </label>
+            </details>
             <button class="btn btn-primary" type="submit">Email Me a Link</button>
           </form>
-
-          <form id="authSignUpForm" class="dashboard-auth-form" action="#" method="post" autocomplete="on" hidden>
-            <label>
-              <span>Email</span>
-              <input name="email" type="email" required autocomplete="email" placeholder="you@company.com" />
-            </label>
-            <label>
-              <span>Code</span>
-              <input name="invite_code" type="text" required autocomplete="off" placeholder="Enter code" />
-            </label>
-            <button class="btn btn-primary" type="submit">Create Account</button>
-          </form>
-
-          <p class="dashboard-auth-note">Use the sign-up tab only if you have a code.</p>
+          <p class="dashboard-auth-note">If you have a team code, add it before we email your link.</p>
           <p class="dashboard-auth-message" id="dashboardAuthMessage" aria-live="polite"></p>
           <p class="dashboard-auth-user" id="dashboardAuthUserHint"></p>
         </article>

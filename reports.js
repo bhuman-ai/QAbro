@@ -303,20 +303,20 @@ const hasReportsUi = hasLegacyReportsUi || hasAppDashboardUi;
 const onboardingGatedSections = Array.from(document.querySelectorAll("[data-onboarding-gated='true']"));
 const ONBOARDING_STEP_META = {
   1: {
-    title: "Choose the site",
-    subtitle: "Start with the page a real user sees first."
+    title: "Choose the start page",
+    subtitle: "Paste the public homepage or first page. We add https://."
   },
   2: {
-    title: "Choose the user",
-    subtitle: "Pick the kind of person this test should act like."
+    title: "Choose the test user",
+    subtitle: "If you are unsure, pick First-time visitor."
   },
   3: {
-    title: "Choose the goal",
-    subtitle: "Pick the main thing the user should finish."
+    title: "Choose what happens after sign-up",
+    subtitle: "Pick one clear goal after the product opens."
   },
   4: {
-    title: "Start the test",
-    subtitle: "Check the setup, then start."
+    title: "Review and start",
+    subtitle: "Start Test opens the live site right away."
   }
 };
 const ONBOARDING_MAX_STEP = 4;
@@ -324,11 +324,11 @@ const ONBOARDING_MAX_PERSONALITIES = 1;
 const ONBOARDING_SCOPE_META = {
   core_20m: {
     label: "Fast pass",
-    description: "Quick confidence check on the highest-risk path."
+    description: "Quick pass over the highest-risk path."
   },
   deep_45m: {
-    label: "Balanced run",
-    description: "Broader coverage that keeps pushing after onboarding."
+    label: "Standard test",
+    description: "Covers the main path and keeps going after sign-up."
   },
   feature_targeted: {
     label: "Deep sweep",
@@ -2563,7 +2563,6 @@ function renderFindingDetailModalContent(report, row, finding, findingIndex) {
   const title = safeFinding.title || safeFinding.observed_behavior || safeFinding.id || `Problem ${findingIndex + 1}`;
   const typeVisual = getFindingTypeVisual(safeFinding.type);
   const severity = normalizeSeverity(safeFinding.severity);
-  const confidencePct = toConfidencePercent(safeFinding.confidence);
   const journeyLabel = getFindingJourneyLabel(safeFinding);
   const recommendation = deriveFindingRecommendation(safeReport, safeFinding, findingIndex);
   const findingAnchorId = `finding-${toAnchorToken(safeFinding?.id || safeFinding?.title || `finding-${findingIndex + 1}`)}`;
@@ -2601,12 +2600,12 @@ function renderFindingDetailModalContent(report, row, finding, findingIndex) {
         <div class="finding-detail-heading">
           <h2 id="findingDetailModalTitle">${escapeHtml(title)}</h2>
           <p class="finding-detail-meta">
-            ${escapeHtml(typeVisual.label)} · ${escapeHtml(journeyLabel)} · ${escapeHtml(severity.toUpperCase())} · ${escapeHtml(String(confidencePct))}% sure${deliveredAt ? ` · ${escapeHtml(deliveredAt)}` : ""}
+            ${escapeHtml(severity.toUpperCase())} problem on ${escapeHtml(journeyLabel)}${deliveredAt ? ` · ${escapeHtml(deliveredAt)}` : ""}
           </p>
         </div>
       </div>
       <div class="finding-detail-actions">
-        ${findingUrl ? `<a href="${escapeHtml(findingUrl)}" target="_blank" rel="noreferrer">Open report</a>` : ""}
+        ${findingUrl ? `<a href="${escapeHtml(findingUrl)}" target="_blank" rel="noreferrer">Open test</a>` : ""}
         ${findingUrl ? `<button type="button" data-share-url="${escapeHtml(findingUrl)}" data-label="Copy finding link">Copy link</button>` : ""}
       </div>
     </div>
@@ -3033,17 +3032,17 @@ async function waitForDashboardAuthReady() {
 }
 
 function renderAuthRequiredState() {
-  const message = "Sign in required to access dashboard reports.";
+  const message = "Sign in to open your tests.";
   if (elements.reportsItems) {
     elements.reportsItems.innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
   }
   if (elements.reportDetail) {
-    elements.reportDetail.innerHTML = `<div class="empty-detail"><h2>Authentication required</h2><p>${escapeHtml(
+    elements.reportDetail.innerHTML = `<div class="empty-detail"><h2>Sign in first</h2><p>${escapeHtml(
       message
     )}</p></div>`;
   }
   if (elements.appReportOnlyPanel) {
-    elements.appReportOnlyPanel.innerHTML = `<div class="empty-detail"><h2>Authentication required</h2><p>${escapeHtml(
+    elements.appReportOnlyPanel.innerHTML = `<div class="empty-detail"><h2>Sign in first</h2><p>${escapeHtml(
       message
     )}</p></div>`;
   }
@@ -3084,13 +3083,13 @@ function renderAuthRequiredState() {
     }
     if (elements.dashboardStateBadge) {
       elements.dashboardStateBadge.className = "issue-severity severity-low";
-      elements.dashboardStateBadge.textContent = "Auth Required";
+      elements.dashboardStateBadge.textContent = "Sign in first";
     }
     if (elements.dashboardStateMessage) {
       elements.dashboardStateMessage.textContent = message;
     }
     if (elements.healthHeroTitle) {
-      elements.healthHeroTitle.textContent = `${getEnvironmentLabel(getActiveEnvironment())} Health`;
+      elements.healthHeroTitle.textContent = "Open a test";
     }
     resetQaAutomationState();
     if (elements.qaScheduleMeta) {
@@ -3098,7 +3097,7 @@ function renderAuthRequiredState() {
     }
     if (elements.qaScheduleStateBadge) {
       elements.qaScheduleStateBadge.className = "issue-severity severity-low";
-      elements.qaScheduleStateBadge.textContent = "Auth Required";
+      elements.qaScheduleStateBadge.textContent = "Sign in first";
     }
     if (elements.qaScheduleSaveAction) {
       elements.qaScheduleSaveAction.disabled = true;
@@ -3373,10 +3372,20 @@ function focusOnboardingActiveControl() {
       return;
     }
     if (step === 2) {
+      const firstPersonaButton = elements.onboardingPersonaChoices?.querySelector(".onboarding-choice");
+      if (firstPersonaButton instanceof HTMLElement) {
+        firstPersonaButton.focus();
+        return;
+      }
       elements.onboardingPersonaCustom?.focus();
       return;
     }
     if (step === 3) {
+      const firstGoalInput = elements.onboardingCriticalChoices?.querySelector("input");
+      if (firstGoalInput instanceof HTMLElement) {
+        firstGoalInput.focus();
+        return;
+      }
       elements.onboardingScenariosCustom?.focus();
       return;
     }
@@ -5035,7 +5044,7 @@ function renderQaAlertsPanel() {
             ${alert?.run_id ? `<span>${escapeHtml(alert.run_id)}</span>` : ""}
           </div>
           <div class="app-alert-actions">
-            ${openUrl ? `<a class="btn btn-ghost" href="${escapeHtml(openUrl)}" target="_blank" rel="noreferrer">Open report</a>` : ""}
+            ${openUrl ? `<a class="btn btn-ghost" href="${escapeHtml(openUrl)}" target="_blank" rel="noreferrer">Open test</a>` : ""}
             <button class="btn btn-ghost" type="button" data-qa-alert-ack="${escapeHtml(alert?.id || "")}">Acknowledge</button>
           </div>
         </article>
@@ -5537,7 +5546,7 @@ function refreshOnboardingPreview() {
   const targetUrl = normalizeOnboardingTargetUrlInput(String(elements.onboardingTargetUrl?.value || ""));
   if (!targetUrl) {
     elements.onboardingPreviewHost.textContent = "Waiting for your site";
-    elements.onboardingPreviewUrl.textContent = "Type your domain and we will normalize the full URL.";
+    elements.onboardingPreviewUrl.textContent = "Paste the homepage or first page. We add https://.";
     if (elements.onboardingPreviewBrandName) {
       elements.onboardingPreviewBrandName.textContent = "Waiting for URL";
     }
@@ -5556,7 +5565,7 @@ function refreshOnboardingPreview() {
     elements.onboardingPreviewIcon.src = `https://www.google.com/s2/favicons?sz=64&domain_url=${encodeURIComponent(targetUrl)}`;
   } catch {
     elements.onboardingPreviewHost.textContent = "Waiting for your site";
-    elements.onboardingPreviewUrl.textContent = "Type your domain and we will normalize the full URL.";
+    elements.onboardingPreviewUrl.textContent = "Paste the homepage or first page. We add https://.";
     if (elements.onboardingPreviewBrandName) {
       elements.onboardingPreviewBrandName.textContent = "Waiting for URL";
     }
@@ -5594,7 +5603,7 @@ function refreshOnboardingLaunchSummary() {
   }
   if (elements.onboardingReviewSiteMeta) {
     elements.onboardingReviewSiteMeta.textContent = targetUrl
-      ? "We start from the public page and include sign-up if needed."
+      ? "We open this live page first and include sign-up."
       : "We start from the public page.";
   }
   renderOnboardingReviewList(elements.onboardingReviewPersonas, personaReviewItems, "Choose one user");
@@ -5613,8 +5622,8 @@ function refreshOnboardingLaunchSummary() {
   }
 
   elements.onboardingLaunchSummary.textContent = targetUrl
-    ? `We will open ${brandName || host}, act like ${personaReviewItems[0] || "the user you pick"}, and try ${goalReviewItems[0] || "the goal you pick"}.`
-    : "Choose a site, one user, and one goal to review the test.";
+    ? `Start Test opens ${brandName || host}, tries sign-up, then acts like ${personaReviewItems[0] || "the user you pick"} and tries ${goalReviewItems[0] || "the goal you pick"}.`
+    : "Choose a site, one user, and one goal to preview the test.";
 }
 
 function setOnboardingStep(stepValue) {
@@ -5680,7 +5689,7 @@ function validateOnboardingStep(stepValue) {
   if (step === 1) {
     const targetUrl = normalizeOnboardingTargetUrlInput(String(elements.onboardingTargetUrl?.value || ""));
     if (!targetUrl) {
-      setOnboardingMessage("Enter a valid site domain or URL first.", "error");
+      setOnboardingMessage("Enter the public homepage or first page URL.", "error");
       elements.onboardingTargetUrl?.focus();
       return false;
     }
@@ -5690,8 +5699,8 @@ function validateOnboardingStep(stepValue) {
     const selectedCount = getSelectedPersonaButtons().length;
     const customPersona = String(elements.onboardingPersonaCustom?.value || "").trim();
     if (!selectedCount && !customPersona) {
-      setOnboardingMessage("Pick one user for the test.", "error");
-      elements.onboardingPersonaCustom?.focus();
+      setOnboardingMessage("Pick one test user.", "error");
+      focusOnboardingActiveControl();
       return false;
     }
   }
@@ -5699,8 +5708,8 @@ function validateOnboardingStep(stepValue) {
   if (step === 3) {
     const scenarioState = syncOnboardingScenariosField();
     if (!scenarioState.missions.length) {
-      setOnboardingMessage("Choose one main goal to test.", "error");
-      elements.onboardingScenariosCustom?.focus();
+      setOnboardingMessage("Pick what the user should reach after sign-up.", "error");
+      focusOnboardingActiveControl();
       return false;
     }
   }
@@ -10026,16 +10035,11 @@ function buildReportNextAction(mode, verdict, report) {
   }
 
   if (topFinding) {
-    const priorityScore = computeFindingPriorityScore(topFinding);
     return {
       eyebrow: "Do this next",
       title: `Fix “${String(topFinding.title || topFinding.id || "top finding").trim()}” first.`,
       copy: deriveFindingRecommendation(report, topFinding, 0),
-      meta: [
-        `Priority ${priorityScore}/100`,
-        `${normalizeSeverity(topFinding.severity).toUpperCase()} severity`,
-        formatFindingTypeLabel(topFinding.type)
-      ]
+      meta: ["Fix this first", `${normalizeSeverity(topFinding.severity).toUpperCase()} severity`, getFindingJourneyLabel(topFinding)]
     };
   }
 
@@ -10113,13 +10117,13 @@ function renderReportInfoBar(report, row, liveStatus, missionModel, nextAction, 
   const coverage = buildCoverageSnapshot(report);
   const canonicalStatus = formatStatusLabel(getCanonicalRunStatus(report, row, liveStatus) || mode || "unknown");
   const completedCoverage = coverage.attemptedJourneys
-    ? `${coverage.completedJourneys + coverage.partialJourneys}/${coverage.attemptedJourneys} flows`
+    ? `${coverage.completedJourneys + coverage.partialJourneys}/${coverage.attemptedJourneys} paths checked`
     : `${coverage.pagesVisited} pages`;
   const blockerLabel = snapshot.criticalCount
-    ? `${snapshot.criticalCount} blocker${snapshot.criticalCount === 1 ? "" : "s"}`
+    ? `${snapshot.criticalCount} big problem${snapshot.criticalCount === 1 ? "" : "s"}`
     : snapshot.majorCount
-      ? `${snapshot.majorCount} friction point${snapshot.majorCount === 1 ? "" : "s"}`
-      : "No major blockers";
+      ? `${snapshot.majorCount} other problem${snapshot.majorCount === 1 ? "" : "s"}`
+      : "No saved problems";
   const items = [
     {
       kind: "goal",
@@ -10129,19 +10133,19 @@ function renderReportInfoBar(report, row, liveStatus, missionModel, nextAction, 
     },
     {
       kind: "persona",
-      label: missionModel.personaLabel || "Persona",
+      label: "User",
       value: missionModel.personaDetail || "General business user",
       meta: "First-time tester lens"
     },
     {
       kind: "status",
-      label: "Run",
+      label: "Test",
       value: canonicalStatus,
       meta: report?.run_id || row?.run_id || "Unknown run"
     },
     {
       kind: "coverage",
-      label: "Coverage",
+      label: "Checked",
       value: completedCoverage,
       meta: `${coverage.pagesVisited} pages opened`
     },
@@ -10149,7 +10153,7 @@ function renderReportInfoBar(report, row, liveStatus, missionModel, nextAction, 
       kind: "problems",
       label: "Problems",
       value: blockerLabel,
-      meta: `${snapshot.avgSatisfaction}/100 test score`
+      meta: "Saved from this test"
     },
     {
       kind: "next",
@@ -10536,7 +10540,7 @@ function renderLiveWatch(runId, row) {
       </p>
       <p>${escapeHtml(progress?.message || "The tester is still moving through the site.")}</p>
       ${previewMarkup}
-      <p>Problems so far: ${escapeHtml(String(findingsCount))} · Paths tried: ${escapeHtml(String(journeysCount))}</p>
+      <p>Problems so far: ${escapeHtml(String(findingsCount))} · Paths checked: ${escapeHtml(String(journeysCount))}</p>
       ${eventsMarkup}
     </section>
   `;
@@ -10555,8 +10559,8 @@ function renderCounts(report, row = {}, liveStatus = null) {
         ]
       : [
           { label: "Problems", value: String(Array.isArray(report?.findings) ? report.findings.length : 0) },
-          { label: "Paths tried", value: String(coverage.attemptedJourneys || coverage.completedJourneys || 0) },
-          { label: "Big issues", value: String(snapshot.criticalCount) }
+          { label: "Paths checked", value: String(coverage.attemptedJourneys || coverage.completedJourneys || 0) },
+          { label: "Big problems", value: String(snapshot.criticalCount) }
         ];
 
   return `
@@ -10620,13 +10624,10 @@ function renderPrioritySummary(report, mode = "completed") {
         ${topFindings
           .map((finding) => {
             const anchor = `finding-${toAnchorToken(finding?.id || finding?.title || "finding")}`;
-            const score = computeFindingPriorityScore(finding);
             return `
               <li>
                 <a href="#${escapeHtml(anchor)}">${escapeHtml(finding.title || finding.id || "Untitled finding")}</a>
-                <span>Priority ${escapeHtml(score)}/100 · ${escapeHtml(String(finding.severity || "medium").toUpperCase())} · ${escapeHtml(
-                  formatFindingTypeLabel(finding.type)
-                )}</span>
+                <span>${escapeHtml(String(finding.severity || "medium").toUpperCase())} · ${escapeHtml(getFindingJourneyLabel(finding))}</span>
               </li>
             `;
           })
@@ -11116,13 +11117,11 @@ function renderFindings(report, row = {}, replayPlayerId = "") {
       <div class="finding-ledger-list">
         ${findings
           .map((finding, findingIndex) => {
-            const typeLabel = formatFindingTypeLabel(finding?.type);
             const severity = normalizeSeverity(finding?.severity);
             const recommendation = deriveFindingRecommendation(report, finding, findingIndex);
             const proofModel = buildFindingProofModel(report, finding, { maxItems: 1 });
             const proofToneClass = getFindingIssueToneClass(finding);
             const journeyLabel = getFindingJourneyLabel(finding);
-            const confidencePct = toConfidencePercent(finding?.confidence);
             const findingAnchorId = `finding-${toAnchorToken(finding?.id || finding?.title || `finding-${findingIndex + 1}`)}`;
             const findingFrameIndex = findFirstEvidenceIndex(finding?.evidence?.screenshots || [], screenshotIndexMap);
             const modalDataAttributes = buildFindingModalDataAttributes(finding, findingIndex);
@@ -11132,7 +11131,7 @@ function renderFindings(report, row = {}, replayPlayerId = "") {
                   <div class="finding-ledger-heading">
                     <h4>${escapeHtml(finding.title || finding.id || `Finding ${findingIndex + 1}`)}</h4>
                     <p class="finding-ledger-meta">
-                      ${escapeHtml(journeyLabel)} · ${escapeHtml(typeLabel)} · ${escapeHtml(String(confidencePct))}% sure
+                      ${escapeHtml(journeyLabel)}
                     </p>
                   </div>
                   <span class="issue-severity ${escapeHtml(`severity-${severity}`)}">${escapeHtml(severity.toUpperCase())}</span>
@@ -11817,23 +11816,22 @@ function deriveRiskVerdict(mode, snapshot, report = null, liveStatus = null) {
 
 function buildVerdictMeta(verdict, environment = "production") {
   const normalized = String(verdict || "").toLowerCase();
-  const releaseLens = isReleaseReadinessEnvironment(environment);
   if (normalized === "blocked") {
-    return { label: releaseLens ? "BLOCKED" : "CRITICAL ISSUE", severityClass: "severity-critical" };
+    return { label: "Blocked", severityClass: "severity-critical" };
   }
   if (normalized === "risky") {
-    return { label: releaseLens ? "RISKY" : "FRICTION DETECTED", severityClass: "severity-high" };
+    return { label: "Problems found", severityClass: "severity-high" };
   }
   if (normalized === "failed") {
-    return { label: releaseLens ? "FAILED" : "RUN FAILED", severityClass: "severity-critical" };
+    return { label: "Test stopped", severityClass: "severity-critical" };
   }
   if (normalized === "partial") {
-    return { label: "PARTIAL", severityClass: "severity-medium" };
+    return { label: "Partly done", severityClass: "severity-medium" };
   }
   if (normalized === "monitoring") {
-    return { label: releaseLens ? "IN PROGRESS" : "MONITORING", severityClass: "severity-medium" };
+    return { label: "Running", severityClass: "severity-medium" };
   }
-  return { label: releaseLens ? "READY" : "STABLE", severityClass: "severity-low" };
+  return { label: "Looks good", severityClass: "severity-low" };
 }
 
 function buildLiveVerdictMeta(queueStatus) {
@@ -11956,7 +11954,7 @@ function buildHeroMetricModel(mode, report, snapshot, liveStatus = null, row = n
 function renderTopFixes(report, row, mode = "completed") {
   const findings = sortFindingsByPriority(Array.isArray(report?.findings) ? report.findings : []);
   if (!findings.length) {
-    let note = report?.summary?.note || "No major friction was detected.";
+    let note = report?.summary?.note || "No big problems were found.";
     if (mode === "failed") {
       note = "Run failed before blocker extraction completed. Retry this run before treating the absence of findings as a clean result.";
     } else if (mode === "partial") {
@@ -11977,7 +11975,6 @@ function renderTopFixes(report, row, mode = "completed") {
     .map((finding, index) => {
       const title = finding?.title || finding?.observed_behavior || finding?.id || `Finding ${index + 1}`;
       const severity = normalizeSeverity(finding?.severity);
-      const confidencePct = toConfidencePercent(finding?.confidence);
       const findingAnchorId = `finding-${toAnchorToken(finding?.id || finding?.title || `finding-${index + 1}`)}`;
       const findingUrl = shareBaseUrl ? `${shareBaseUrl}#${findingAnchorId}` : "";
       const journeyLabel = getFindingJourneyLabel(finding);
@@ -12001,7 +11998,6 @@ function renderTopFixes(report, row, mode = "completed") {
           : hasProof
             ? screenshotMarkup
             : "";
-      const priorityScore = computeFindingPriorityScore(finding);
       const modalDataAttributes = buildFindingModalDataAttributes(finding, index);
       const llmCopyMarkup = renderLlmCopyButtons("finding", {
         findingIndex: index,
@@ -12018,7 +12014,7 @@ function renderTopFixes(report, row, mode = "completed") {
             <span class="issue-severity ${escapeHtml(`severity-${severity}`)}">${escapeHtml(severity.toUpperCase())}</span>
           </header>
           <p class="app-top-fix-meta">
-            Priority ${escapeHtml(String(priorityScore))}/100 · ${escapeHtml(journeyLabel)} · Confidence ${escapeHtml(String(confidencePct))}%
+            ${escapeHtml(journeyLabel)} · ${escapeHtml(severity.toUpperCase())}
             ${Number.isInteger(replayFrame) && replayFrame >= 0 ? ` · Replay frame ${escapeHtml(String(replayFrame + 1))}` : ""}
           </p>
           <p class="app-top-fix-quote">${escapeHtml(opinion)}</p>
@@ -12026,12 +12022,12 @@ function renderTopFixes(report, row, mode = "completed") {
             ${
               hasProof
                 ? `<span class="app-inline-pill ${escapeHtml(`tone-${proofToneClass}`)}">${escapeHtml(proofModel.label)}</span>`
-                : `<span class="app-inline-pill ${escapeHtml(`tone-${proofToneClass}`)}">Proof Missing</span>`
+                : `<span class="app-inline-pill ${escapeHtml(`tone-${proofToneClass}`)}">No proof saved</span>`
             }
             ${Number.isInteger(replayFrame) && replayFrame >= 0 ? `<span class="app-inline-pill">Replay ${escapeHtml(String(replayFrame + 1))}</span>` : ""}
             ${llmCopyMarkup}
             <button type="button" ${modalDataAttributes}>Details</button>
-            ${findingUrl ? `<a href="${escapeHtml(findingUrl)}" target="_blank" rel="noreferrer">Open Finding</a>` : ""}
+            ${findingUrl ? `<a href="${escapeHtml(findingUrl)}" target="_blank" rel="noreferrer">Open problem</a>` : ""}
             ${findingUrl ? `<button type="button" class="share-link-button" data-share-url="${escapeHtml(findingUrl)}">Copy Link</button>` : ""}
           </div>
           ${compactProofMarkup}
@@ -12371,16 +12367,13 @@ function renderLiveIncomingFindings(report, row, liveStatus) {
       .map((finding, index) => {
         const severity = normalizeSeverity(finding?.severity);
         const title = finding?.title || finding?.observed_behavior || finding?.id || "Untitled finding";
-        const confidencePct = toConfidencePercent(finding?.confidence);
         const modalDataAttributes = buildFindingModalDataAttributes(finding, index);
         return `
           <button type="button" class="app-issue-item app-issue-item-button" ${modalDataAttributes}>
             <span class="issue-severity ${escapeHtml(`severity-${severity}`)}">${escapeHtml(severity.toUpperCase())}</span>
             <div class="issue-copy">
               <strong>${escapeHtml(title)}</strong>
-              <span>${escapeHtml(getFindingJourneyLabel(finding))} · confidence ${escapeHtml(String(confidencePct))}% · ${escapeHtml(
-                formatRelativeTime(row?.delivered_at)
-              )}</span>
+              <span>${escapeHtml(getFindingJourneyLabel(finding))} · ${escapeHtml(formatRelativeTime(row?.delivered_at))}</span>
               <small class="issue-action-hint">View evidence and screenshots</small>
             </div>
           </button>

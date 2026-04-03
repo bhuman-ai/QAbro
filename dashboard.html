@@ -88,34 +88,24 @@
               <article class="card-surface dashboard-auth-card" id="dashboardAuthCard">
                 <header>
                   <h3>Open your tests</h3>
-                  <p>Use your email to open the dashboard.</p>
+                  <p>Enter your email. We send a secure sign-in link.</p>
                 </header>
-
-                <div class="dashboard-auth-tabs" role="tablist" aria-label="Authentication mode">
-                  <button id="authModeSignIn" type="button" role="tab" aria-selected="true">Sign In</button>
-                  <button id="authModeSignUp" type="button" role="tab" aria-selected="false">Sign Up</button>
-                </div>
 
                 <form id="authSignInForm" class="dashboard-auth-form" action="#" method="post" autocomplete="on">
                   <label>
                     <span>Email</span>
                     <input name="email" type="email" required autocomplete="email" placeholder="you@company.com" />
                   </label>
+                  <details class="dashboard-auth-optional">
+                    <summary>I have a team code</summary>
+                    <label>
+                      <span>Team code</span>
+                      <input name="invite_code" type="text" autocomplete="off" placeholder="Enter team code" />
+                    </label>
+                  </details>
                   <button class="btn btn-primary" type="submit">Email Me a Link</button>
                 </form>
-
-                <form id="authSignUpForm" class="dashboard-auth-form" action="#" method="post" autocomplete="on" hidden>
-                  <label>
-                    <span>Email</span>
-                    <input name="email" type="email" required autocomplete="email" placeholder="you@company.com" />
-                  </label>
-                  <label>
-                    <span>Code</span>
-                    <input name="invite_code" type="text" required autocomplete="off" placeholder="Enter code" />
-                  </label>
-                  <button class="btn btn-primary" type="submit">Create Account</button>
-                </form>
-
+                <p class="dashboard-auth-note">If you have a team code, add it before we email your link.</p>
                 <p class="dashboard-auth-message" id="dashboardAuthMessage" aria-live="polite"></p>
                 <p class="dashboard-auth-user" id="dashboardAuthUserHint"></p>
               </article>
@@ -364,8 +354,8 @@
                 <div class="app-onboarding-titlebar">
                   <div>
                     <p class="app-onboarding-kicker">New test</p>
-                    <h3 id="onboardingStepTitle">Choose the site</h3>
-                    <p class="app-onboarding-subtitle" id="onboardingStatusText">Pick the site, the user, and the goal.</p>
+                    <h3 id="onboardingStepTitle">Choose the start page</h3>
+                    <p class="app-onboarding-subtitle" id="onboardingStatusText">Paste the public page, pick one user, then pick one goal.</p>
                   </div>
                   <p class="app-onboarding-stepcount" id="onboardingStepCount">1 of 4</p>
                 </div>
@@ -385,23 +375,23 @@
                   <div class="app-onboarding-main">
                     <section class="onboarding-step active" data-onboarding-step="1">
                       <p class="onboarding-step-note">
-                        Start with the public page a new user would open first.
+                        Use the public homepage or first page a new user opens.
                       </p>
                       <label>
-                        <span>Site URL</span>
+                        <span>Start page</span>
                         <input
                           id="onboardingTargetUrl"
                           name="target_url"
                           type="text"
                           required
-                          placeholder="workolo.com"
+                          placeholder="your-site.com or your-site.com/pricing"
                           inputmode="url"
                           autocapitalize="off"
                           spellcheck="false"
                           autocomplete="url"
                         />
                       </label>
-                      <small class="app-field-hint">We add <strong>https://</strong> for you.</small>
+                      <small class="app-field-hint">Use the live public page. We add <strong>https://</strong> for you.</small>
                       <article class="onboarding-preview-card">
                         <div class="onboarding-preview-icon">
                           <img id="onboardingPreviewIcon" alt="Site icon preview" />
@@ -415,23 +405,23 @@
                     </section>
 
                     <section class="onboarding-step" data-onboarding-step="2" hidden>
-                      <p class="onboarding-step-note">Pick one kind of user to act like.</p>
+                      <p class="onboarding-step-note">If you are unsure, pick First-time visitor.</p>
                       <div class="onboarding-choice-grid" id="onboardingPersonaChoices">
-                        <button type="button" class="onboarding-choice" data-persona-choice="A brand new user checking whether the product feels clear and easy to start.">
-                          <strong>New user</strong>
-                          <span>Wants the next step to feel obvious.</span>
+                        <button type="button" class="onboarding-choice" data-persona-choice="A first-time visitor seeing the product for the first time and checking whether the next step feels obvious.">
+                          <strong>First-time visitor</strong>
+                          <span>Best first test. Wants the next step to feel obvious.</span>
                         </button>
                         <button type="button" class="onboarding-choice" data-persona-choice="A careful buyer checking whether the product feels trustworthy and worth paying for.">
                           <strong>Careful buyer</strong>
                           <span>Looks for trust, proof, and clear pricing.</span>
                         </button>
-                        <button type="button" class="onboarding-choice" data-persona-choice="A busy person trying to get useful value as fast as possible with very little patience.">
-                          <strong>Busy user</strong>
+                        <button type="button" class="onboarding-choice" data-persona-choice="A busy visitor trying to get useful value as fast as possible with very little patience.">
+                          <strong>Busy visitor</strong>
                           <span>Wants the fastest path to something useful.</span>
                         </button>
                       </div>
                       <details class="onboarding-optional">
-                        <summary>Add a custom user</summary>
+                        <summary>Use a different user</summary>
                         <label>
                           <span>Custom user</span>
                           <textarea id="onboardingPersonaCustom" rows="3" placeholder="Example: Founder trying to finish the first campaign without help."></textarea>
@@ -440,46 +430,46 @@
                     </section>
 
                     <section class="onboarding-step" data-onboarding-step="3" hidden>
-                      <p class="onboarding-step-note">Pick the main thing this user should finish.</p>
+                      <p class="onboarding-step-note">Pick what should happen after sign-up. If you are unsure, pick Reach the first win.</p>
                       <div class="onboarding-toggle-grid" id="onboardingCriticalChoices">
                         <label class="onboarding-toggle">
-                          <input type="radio" name="onboarding_primary_goal" value="Complete the primary workflow end to end after onboarding and confirm the first value moment is reachable." />
+                          <input type="radio" name="onboarding_primary_goal" value="Reach the first useful result inside the product after sign-up and basic onboarding." />
                           <span class="onboarding-toggle-copy">
-                            <strong>Finish the main task</strong>
-                            <small>Get to the first real win in the product.</small>
+                            <strong>Reach the first win</strong>
+                            <small>Example: send the first message, publish the first page, or see the first result.</small>
                           </span>
                         </label>
                         <label class="onboarding-toggle">
-                          <input type="radio" name="onboarding_primary_goal" value="Configure the workspace, settings, or integrations required to make the product usable after onboarding." />
+                          <input type="radio" name="onboarding_primary_goal" value="Finish the setup needed before the product works after sign-up." />
                           <span class="onboarding-toggle-copy">
                             <strong>Finish setup</strong>
-                            <small>Handle the setup needed before the product works.</small>
+                            <small>Example: connect an integration or choose the basic settings.</small>
                           </span>
                         </label>
                         <label class="onboarding-toggle">
-                          <input type="radio" name="onboarding_primary_goal" value="Create, save, and revisit the first real output inside the product after onboarding." />
+                          <input type="radio" name="onboarding_primary_goal" value="Create and save the first real thing inside the product after sign-up." />
                           <span class="onboarding-toggle-copy">
-                            <strong>Create something real</strong>
-                            <small>Make the first real output and make sure it stays saved.</small>
+                            <strong>Create the first saved thing</strong>
+                            <small>Example: create a project, report, or draft and save it.</small>
                           </span>
                         </label>
                       </div>
                       <details class="onboarding-optional">
-                        <summary>Add a custom goal</summary>
+                        <summary>Use a different goal</summary>
                         <label>
                           <span>Custom goal</span>
                           <textarea id="onboardingScenariosCustom" rows="3" placeholder="One goal per line. Example: connect a CRM, make the first video, then export it."></textarea>
                         </label>
                       </details>
-                      <small id="onboardingScenarioHint" class="app-field-hint">Pick at least one goal. The test always includes sign-up and onboarding.</small>
+                      <small id="onboardingScenarioHint" class="app-field-hint">Sign-up is always included before this step. Pick one goal after the product opens.</small>
                     </section>
 
                     <section class="onboarding-step" data-onboarding-step="4" hidden>
-                      <p class="onboarding-step-note">Check the setup, then start the test.</p>
+                      <p class="onboarding-step-note">Start Test opens the live site right away.</p>
                       <article class="onboarding-subsection onboarding-final-simple">
                         <div class="onboarding-subsection-head">
                           <h4>Test summary</h4>
-                          <p>We will open the site, act like the chosen user, and try the goal you picked.</p>
+                          <p>We open the public site, try sign-up, then try the user and goal you picked.</p>
                         </div>
                         <div class="onboarding-review-grid onboarding-review-grid-simple">
                           <article class="onboarding-review-card">
@@ -498,8 +488,9 @@
                         </div>
                       </article>
                       <article class="onboarding-launch-card onboarding-launch-card-simple">
-                        <p id="onboardingLaunchSummary">Choose a site, a user, and a goal to review the test.</p>
+                        <p id="onboardingLaunchSummary">Choose a site, one user, and one goal to preview the test.</p>
                         <p class="onboarding-launch-sequence" id="onboardingLaunchSequence"></p>
+                        <p class="app-field-hint onboarding-launch-safety">Start Test uses the live public flow and saves proof for the report.</p>
                       </article>
                     </section>
                   </div>

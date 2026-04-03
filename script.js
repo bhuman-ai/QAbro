@@ -104,8 +104,8 @@ if (scanForm && scanUrl && scanEmail && scanConsoleBody && scanResult && scanRes
 
   const renderScanResult = (payload) => {
     scanResultSummary.textContent = payload?.summary || "Test ready.";
-    scanResultAction.href = payload?.actionUrl || "/dashboard?mode=signup";
-    scanResultAction.textContent = payload?.actionLabel || "Open report";
+    scanResultAction.href = payload?.actionUrl || "/dashboard";
+    scanResultAction.textContent = payload?.actionLabel || "Open tests";
     scanResultGrid.innerHTML = Array.isArray(payload?.findings)
       ? payload.findings.map(renderFindingCard).join("")
       : "";
@@ -251,8 +251,8 @@ if (scanForm && scanUrl && scanEmail && scanConsoleBody && scanResult && scanRes
               description: "This request failed before the worker queue accepted the run."
             }
           ],
-          actionUrl: "/dashboard?mode=signup",
-          actionLabel: "Create account"
+          actionUrl: "/dashboard",
+          actionLabel: "Open tests"
         };
 
         streamConsoleLines(
@@ -281,8 +281,8 @@ if (scanForm && scanUrl && scanEmail && scanConsoleBody && scanResult && scanRes
         renderScanResult({
           summary: payload?.message || "The test is queued.",
           findings: buildQueuedCards(payload),
-          actionUrl: payload?.share_url || payload?.ui_report_url || "/dashboard?mode=signup",
-          actionLabel: "Open report"
+          actionUrl: payload?.share_url || payload?.ui_report_url || "/dashboard",
+          actionLabel: "Open test"
         })
       );
     } catch (_error) {
@@ -302,8 +302,8 @@ if (scanForm && scanUrl && scanEmail && scanConsoleBody && scanResult && scanRes
             description: "Once the queue accepts the request, Swarm Tester will open the browser, record the run, and email the report."
           }
         ],
-        actionUrl: "/dashboard?mode=signup",
-        actionLabel: "Create account"
+        actionUrl: "/dashboard",
+        actionLabel: "Open tests"
       };
 
       streamConsoleLines(

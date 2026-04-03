@@ -145,6 +145,7 @@ Keep machine terms only where the user truly needs them.
 
 - One primary action per screen
 - One main column or one clear work area by default
+- One email entry path for auth, with team code hidden behind disclosure
 - Hide advanced filters, diagnostics, and repo-aware controls behind disclosure
 - Keep helper copy to one short sentence when possible
 - Remove badges, pills, and metrics that do not change the next action

@@ -8,6 +8,7 @@ const authElements = {
   signUpForm: document.getElementById("authSignUpForm"),
   signInModeButton: document.getElementById("authModeSignIn"),
   signUpModeButton: document.getElementById("authModeSignUp"),
+  optionalCode: document.querySelector(".dashboard-auth-optional"),
   message: document.getElementById("dashboardAuthMessage"),
   userHint: document.getElementById("dashboardAuthUserHint"),
   userChip: document.getElementById("dashboardAuthUserChip")
@@ -127,10 +128,13 @@ function setMode(mode) {
   authState.mode = nextMode;
 
   if (authElements.signInForm) {
-    authElements.signInForm.hidden = nextMode !== AUTH_MODE_SIGN_IN;
+    authElements.signInForm.hidden = false;
   }
   if (authElements.signUpForm) {
     authElements.signUpForm.hidden = nextMode !== AUTH_MODE_SIGN_UP;
+  }
+  if (authElements.optionalCode) {
+    authElements.optionalCode.open = nextMode === AUTH_MODE_SIGN_UP;
   }
   if (authElements.signInModeButton) {
     authElements.signInModeButton.classList.toggle("active", nextMode === AUTH_MODE_SIGN_IN);
@@ -474,6 +478,7 @@ async function handleSignInSubmit(event) {
   }
 
   const email = String(form.querySelector("input[name='email']")?.value || "").trim().toLowerCase();
+  const inviteCode = String(form.querySelector("input[name='invite_code']")?.value || "").trim();
   if (!email) {
     setAuthMessage("Enter your email address.", "error");
     return;
@@ -482,8 +487,13 @@ async function handleSignInSubmit(event) {
   setFormPending(form, true, "Sending link...");
   setAuthMessage("");
   try {
-    await requestSignInMagicLink(email);
-    setAuthMessage("Check your email for a sign-in link.", "ok");
+    if (inviteCode) {
+      await requestSignUpMagicLink(email, inviteCode);
+      setAuthMessage("Team code accepted. Check your email for your sign-in link.", "ok");
+    } else {
+      await requestSignInMagicLink(email);
+      setAuthMessage("Check your email for a sign-in link.", "ok");
+    }
   } catch (error) {
     setAuthMessage(error.message || "Could not send sign-in link", "error");
   } finally {
@@ -569,6 +579,16 @@ function applyAuthRoutePrefill() {
     }
   }
 
+  if (inviteCode) {
+    const inviteInput = authElements.signInForm?.querySelector("input[name='invite_code']");
+    if (inviteInput && !String(inviteInput.value || "").trim()) {
+      inviteInput.value = inviteCode;
+    }
+    if (authElements.optionalCode) {
+      authElements.optionalCode.open = true;
+    }
+  }
+
   if (inviteCode && authElements.signUpForm) {
     const inviteInput = authElements.signUpForm.querySelector("input[name='invite_code']");
     if (inviteInput && !String(inviteInput.value || "").trim()) {
@@ -577,10 +597,22 @@ function applyAuthRoutePrefill() {
   }
 
   if (mcpCallback && note instanceof HTMLElement) {
-    note.textContent = "Sign in to connect SwarmTester MCP to this machine.";
+    note.textContent = "Enter your email to connect SwarmTester MCP to this machine.";
   }
 
   if (!promoCode || !authElements.signUpForm) {
+    if (promoCode) {
+      const inviteInput = authElements.signInForm?.querySelector("input[name='invite_code']");
+      if (inviteInput && !String(inviteInput.value || "").trim()) {
+        inviteInput.value = promoCode;
+      }
+      if (authElements.optionalCode) {
+        authElements.optionalCode.open = true;
+      }
+      if (note instanceof HTMLElement) {
+        note.textContent = `Team code ${promoCode} is already filled in.`;
+      }
+    }
     return;
   }
 
@@ -597,9 +629,6 @@ function hasAuthUi() {
   return Boolean(
     authElements.authShell &&
       authElements.signInForm &&
-      authElements.signUpForm &&
-      authElements.signInModeButton &&
-      authElements.signUpModeButton &&
       protectedAreas.length
   );
 }
