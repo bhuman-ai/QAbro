@@ -1578,6 +1578,7 @@ function WorkspacePage({
   const isSharedView = Boolean(sharedRunId && shareKey);
   const currentView = String(params.get("view") || "report").toLowerCase() === "live" ? "live" : "report";
   const composeOpen = params.get("compose") === "1";
+  const composeMode = params.get("compose_mode") === "advanced" ? "advanced" : "simple";
   const requestedRunId = String(params.get("run_id") || "").trim();
   const selectedBrandFilter = normalizeBrandKey(params.get("brand") || "");
   const currentPanel = String(params.get("panel") || (requestedRunId ? "report" : "overview")).toLowerCase();
@@ -2212,6 +2213,7 @@ function WorkspacePage({
     next.set("panel", "overview");
     next.delete("run_id");
     next.delete("compose");
+    next.delete("compose_mode");
     navigate("/dashboard", next);
 
     if (input.connectGitHub) {
@@ -2366,6 +2368,7 @@ function WorkspacePage({
       nextParams.set("panel", "report");
       nextParams.set("view", "live");
       nextParams.delete("compose");
+      nextParams.delete("compose_mode");
       navigate("/dashboard", nextParams);
       setSelectedReport(null);
       setSelectedStatus({
@@ -2827,32 +2830,22 @@ function WorkspacePage({
     });
   }
 
-  async function handleQuickRun() {
+  function handleQuickRun() {
     if (!activeStarterBrand?.website) {
       openPanel("onboarding");
       return;
     }
-
-    await handleLaunchRun({
-      targetUrl: activeStarterBrand.website,
-      brandKey: activeStarterBrand.id,
-      brandName: activeStarterBrand.name,
-      runMode: "live_qa",
-      scopeMode: "core_20m",
-      persona: DEFAULT_PERSONA,
-      goalsText: DEFAULT_GOALS.join("\n"),
-      userJob: "",
-      entryPath: "",
-      routeHintsText: "",
-      successSignalsText: "",
-      repoTriageEnabled: repoConnection?.connection_status === "connected",
-      selectedRepoFullName: repoConnection?.selected_repo_full_name || ""
-    });
+    handleOpenComposer("simple");
   }
 
-  function handleOpenComposer() {
+  function handleOpenComposer(mode: "simple" | "advanced" = "simple") {
     const next = new URLSearchParams(route.search);
     next.set("compose", "1");
+    if (mode === "advanced") {
+      next.set("compose_mode", "advanced");
+    } else {
+      next.delete("compose_mode");
+    }
     next.set("panel", currentPanel === "report" ? "report" : "overview");
     if (!next.get("brand") && activeStarterBrand?.id) {
       next.set("brand", activeStarterBrand.id);
@@ -2966,7 +2959,7 @@ function WorkspacePage({
         onViewHistory={() => openPanel("history", { brand: currentBrandKey || "" })}
         onViewHelp={() => openPanel("help", { brand: currentBrandKey || "" })}
         onRunNewTest={handleQuickRun}
-        onOpenAdvancedLaunch={handleOpenComposer}
+        onOpenAdvancedLaunch={() => handleOpenComposer("advanced")}
         onScheduleTest={() => openPanel("automations", { brand: currentBrandKey || "" })}
       />
     );
@@ -2997,6 +2990,7 @@ function WorkspacePage({
             onClick={() => {
               const next = new URLSearchParams(route.search);
               next.delete("compose");
+              next.delete("compose_mode");
               navigate("/dashboard", next, true);
             }}
           >
@@ -3008,79 +3002,426 @@ function WorkspacePage({
               className="w-full max-w-6xl max-h-[92vh] overflow-y-auto rounded-[2rem]"
               onClick={(event) => event.stopPropagation()}
             >
-              <LaunchComposer
-                draft={launchDraft}
-                currentProject={currentProject}
-                repoConnection={repoConnection}
-                repoRoutes={repoRoutes}
-                repoRoutesLoading={repoRoutesLoading}
-                repoRoutesError={repoRoutesError}
-                busy={launchBusy}
-                message={launchMessage}
-                tone={launchTone}
-                onCancel={() => {
-                  const next = new URLSearchParams(route.search);
-                  next.delete("compose");
-                  navigate("/dashboard", next, true);
-                }}
-                onChange={setLaunchDraft}
-                onUsePersona={(persona) =>
-                  setLaunchDraft((current) => ({
-                    ...current,
-                    persona: persona.persona
-                  }))
-                }
-                onUseRunMode={(runMode) =>
-                  setLaunchDraft((current) => ({
-                    ...current,
-                    runMode,
-                    scopeMode: runMode === "controlled_ux" ? "feature_targeted" : current.scopeMode === "feature_targeted" ? "core_20m" : current.scopeMode
-                  }))
-                }
-                onToggleGoal={(goal) =>
-                  setLaunchDraft((current) => {
-                    const lines = current.goalsText
-                      .split(/\r?\n/g)
-                      .map((item) => item.trim())
-                      .filter(Boolean);
-                    const exists = lines.includes(goal);
-                    const nextGoals = exists ? lines.filter((item) => item !== goal) : [...lines, goal];
-                    return {
+              {composeMode === "advanced" ? (
+                <LaunchComposer
+                  draft={launchDraft}
+                  currentProject={currentProject}
+                  repoConnection={repoConnection}
+                  repoRoutes={repoRoutes}
+                  repoRoutesLoading={repoRoutesLoading}
+                  repoRoutesError={repoRoutesError}
+                  busy={launchBusy}
+                  message={launchMessage}
+                  tone={launchTone}
+                  onCancel={() => {
+                    const next = new URLSearchParams(route.search);
+                    next.delete("compose");
+                    next.delete("compose_mode");
+                    navigate("/dashboard", next, true);
+                  }}
+                  onChange={setLaunchDraft}
+                  onUsePersona={(persona) =>
+                    setLaunchDraft((current) => ({
                       ...current,
-                      goalsText: nextGoals.join("\n")
-                    };
-                  })
-                }
-                onUseRouteAsEntry={(routePath) =>
-                  setLaunchDraft((current) => ({
-                    ...current,
-                    entryPath: routePath
-                  }))
-                }
-                onAddRouteHint={(routePath) =>
-                  setLaunchDraft((current) => {
-                    const lines = current.routeHintsText
-                      .split(/\r?\n/g)
-                      .map((item) => item.trim())
-                      .filter(Boolean);
-                    if (lines.includes(routePath)) {
-                      return current;
-                    }
-                    return {
+                      persona: persona.persona
+                    }))
+                  }
+                  onUseRunMode={(runMode) =>
+                    setLaunchDraft((current) => ({
                       ...current,
-                      routeHintsText: [...lines, routePath].join("\n")
-                    };
-                  })
-                }
-                onSaveRepository={handleRepositorySelect}
-                onStartGitHubInstall={handleGitHubInstall}
-                onSubmit={() => handleLaunchRun()}
-              />
+                      runMode,
+                      scopeMode: runMode === "controlled_ux" ? "feature_targeted" : current.scopeMode === "feature_targeted" ? "core_20m" : current.scopeMode
+                    }))
+                  }
+                  onToggleGoal={(goal) =>
+                    setLaunchDraft((current) => {
+                      const lines = current.goalsText
+                        .split(/\r?\n/g)
+                        .map((item) => item.trim())
+                        .filter(Boolean);
+                      const exists = lines.includes(goal);
+                      const nextGoals = exists ? lines.filter((item) => item !== goal) : [...lines, goal];
+                      return {
+                        ...current,
+                        goalsText: nextGoals.join("\n")
+                      };
+                    })
+                  }
+                  onUseRouteAsEntry={(routePath) =>
+                    setLaunchDraft((current) => ({
+                      ...current,
+                      entryPath: routePath
+                    }))
+                  }
+                  onAddRouteHint={(routePath) =>
+                    setLaunchDraft((current) => {
+                      const lines = current.routeHintsText
+                        .split(/\r?\n/g)
+                        .map((item) => item.trim())
+                        .filter(Boolean);
+                      if (lines.includes(routePath)) {
+                        return current;
+                      }
+                      return {
+                        ...current,
+                        routeHintsText: [...lines, routePath].join("\n")
+                      };
+                    })
+                  }
+                  onSaveRepository={handleRepositorySelect}
+                  onStartGitHubInstall={handleGitHubInstall}
+                  onSubmit={() => handleLaunchRun()}
+                />
+              ) : (
+                <QuickLaunchModal
+                  draft={launchDraft}
+                  currentProject={currentProject}
+                  busy={launchBusy}
+                  message={launchMessage}
+                  tone={launchTone}
+                  onCancel={() => {
+                    const next = new URLSearchParams(route.search);
+                    next.delete("compose");
+                    next.delete("compose_mode");
+                    navigate("/dashboard", next, true);
+                  }}
+                  onChange={setLaunchDraft}
+                  onOpenAdvanced={() => handleOpenComposer("advanced")}
+                  onSubmit={() => handleLaunchRun()}
+                />
+              )}
             </motion.div>
           </motion.div>
         ) : null}
       </AnimatePresence>
     </div>
+  );
+}
+
+function QuickLaunchModal({
+  draft,
+  currentProject,
+  busy,
+  message,
+  tone,
+  onCancel,
+  onChange,
+  onOpenAdvanced,
+  onSubmit
+}: {
+  draft: LaunchDraft;
+  currentProject: ProjectSummary | null;
+  busy: boolean;
+  message: string;
+  tone: "neutral" | "success" | "danger";
+  onCancel: () => void;
+  onChange: React.Dispatch<React.SetStateAction<LaunchDraft>>;
+  onOpenAdvanced: () => void;
+  onSubmit: () => Promise<void>;
+}) {
+  const validationTarget = normalizeValidationTarget(draft.validationTarget);
+  const accessMethod = normalizeAccessMethod(draft.accessMethod, validationTarget);
+  const projectMetadata = currentProject?.metadata && typeof currentProject.metadata === "object" ? currentProject.metadata : {};
+  const savedSessionAvailable =
+    projectMetadata?.qa_profile && typeof projectMetadata.qa_profile === "object"
+      ? (projectMetadata.qa_profile as Record<string, unknown>).available === true
+      : false;
+  const firstGoal = draft.goalsText
+    .split(/\r?\n/g)
+    .map((item) => item.trim())
+    .filter(Boolean)[0] || "";
+  const canStart =
+    Boolean(normalizeUrlInput(draft.targetUrl)) &&
+    (draft.runMode !== "controlled_ux" || hasControlledUxFlowPlan(draft)) &&
+    (validationTarget !== "inside_product" ||
+      accessMethod === "saved_session" ||
+      Boolean(String(draft.authUsername || "").trim() && String(draft.authPassword || "").trim())) &&
+    (accessMethod !== "auth_url" || Boolean(normalizeUrlInput(draft.authUrl))) &&
+    (accessMethod !== "credentials" ||
+      Boolean(String(draft.authUsername || "").trim() && String(draft.authPassword || "").trim()));
+
+  return (
+    <section className="w-full max-w-2xl rounded-[2rem] border border-brand-line bg-white shadow-2xl">
+      <div className="flex items-start justify-between gap-4 border-b border-brand-line px-6 py-5">
+        <div>
+          <div className="text-sm font-semibold text-brand-muted">New test</div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-brand-ink">Start one test</h1>
+          <p className="mt-2 text-sm leading-6 text-brand-muted">
+            Enter the site, choose what to validate, and start. Everything else stays hidden unless you ask for it.
+          </p>
+        </div>
+        <Button tone="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+
+      <div className="space-y-5 px-6 py-6">
+        <div>
+          <FieldLabel>Environment URL</FieldLabel>
+          <TextInput
+            placeholder="https://staging.example.com"
+            value={draft.targetUrl}
+            onChange={(event) =>
+              onChange((current) => {
+                const nextTarget = event.target.value;
+                const nextBrandKey = current.brandKey || deriveBrandKeyFromUrl(nextTarget);
+                return {
+                  ...current,
+                  targetUrl: nextTarget,
+                  brandKey: nextBrandKey,
+                  brandName: current.brandName || inferBrandName(nextBrandKey)
+                };
+              })
+            }
+          />
+        </div>
+
+        <div>
+          <FieldLabel>Test mode</FieldLabel>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {RUN_MODE_OPTIONS.map((option) => {
+              const active = draft.runMode === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`rounded-xl border px-4 py-4 text-left transition ${
+                    active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:border-brand-primary/25 hover:bg-brand-bg"
+                  }`}
+                  onClick={() =>
+                    onChange((current) => ({
+                      ...current,
+                      runMode: option.value,
+                      scopeMode:
+                        option.value === "controlled_ux"
+                          ? "feature_targeted"
+                          : current.scopeMode === "feature_targeted"
+                            ? "core_20m"
+                            : current.scopeMode
+                    }))
+                  }
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-brand-ink">{option.label}</div>
+                    {active ? <Check className="h-4 w-4 text-brand-primary" /> : null}
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-brand-muted">{option.description}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <FieldLabel>What should we test?</FieldLabel>
+          <div className="grid gap-3">
+            {VALIDATION_TARGET_OPTIONS.map((option) => {
+              const active = validationTarget === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`rounded-xl border px-4 py-4 text-left transition ${
+                    active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:border-brand-primary/25 hover:bg-brand-bg"
+                  }`}
+                  onClick={() =>
+                    onChange((current) => ({
+                      ...current,
+                      validationTarget: option.value,
+                      accessMethod:
+                        option.value === "public_flow"
+                          ? "none"
+                          : option.value === "inside_product"
+                            ? savedSessionAvailable
+                              ? "saved_session"
+                              : "credentials"
+                            : normalizeAccessMethod(current.accessMethod, option.value)
+                    }))
+                  }
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-brand-ink">{option.label}</div>
+                    {active ? <Check className="h-4 w-4 text-brand-primary" /> : null}
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-brand-muted">{option.description}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {draft.runMode === "controlled_ux" ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <FieldLabel>Owned flow</FieldLabel>
+              <TextInput
+                value={draft.userJob}
+                onChange={(event) =>
+                  onChange((current) => ({
+                    ...current,
+                    userJob: event.target.value
+                  }))
+                }
+                placeholder={
+                  validationTarget === "inside_product"
+                    ? "Create the first project from the dashboard."
+                    : validationTarget === "login_signup"
+                      ? "Create an account and understand what happens next."
+                      : "Understand the product and reach the main get-started page."
+                }
+              />
+            </div>
+            <div>
+              <FieldLabel>Entry path</FieldLabel>
+              <TextInput
+                value={draft.entryPath}
+                onChange={(event) =>
+                  onChange((current) => ({
+                    ...current,
+                    entryPath: normalizeEntryPath(event.target.value)
+                  }))
+                }
+                placeholder={validationTarget === "login_signup" ? "/login" : "/dashboard"}
+              />
+            </div>
+            <div>
+              <FieldLabel>Optional route hint</FieldLabel>
+              <TextInput
+                value={draft.routeHintsText}
+                onChange={(event) =>
+                  onChange((current) => ({
+                    ...current,
+                    routeHintsText: event.target.value
+                  }))
+                }
+                placeholder="/onboarding"
+              />
+            </div>
+          </div>
+        ) : (
+          <div>
+            <FieldLabel>Mission</FieldLabel>
+            <TextInput
+              value={firstGoal}
+              onChange={(event) =>
+                onChange((current) => ({
+                  ...current,
+                  goalsText: event.target.value
+                }))
+              }
+              placeholder="Understand the product and reach the main get-started flow."
+            />
+          </div>
+        )}
+
+        {validationTarget === "public_flow" ? (
+          <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+            We will stay on public pages only. No login is needed here.
+          </div>
+        ) : validationTarget === "inside_product" && savedSessionAvailable && accessMethod === "saved_session" ? (
+          <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+            We will start from the saved session for this project and focus on the product after login.
+            <button
+              type="button"
+              className="mt-3 block text-sm font-semibold text-brand-primary hover:underline"
+              onClick={() =>
+                onChange((current) => ({
+                  ...current,
+                  accessMethod: "credentials"
+                }))
+              }
+            >
+              Use a test login instead
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <FieldLabel>{validationTarget === "login_signup" ? "Optional auth URL" : "Login URL"}</FieldLabel>
+              <TextInput
+                value={draft.authUrl}
+                onChange={(event) =>
+                  onChange((current) => ({
+                    ...current,
+                    authUrl: event.target.value,
+                    accessMethod:
+                      validationTarget === "inside_product" || String(event.target.value || "").trim()
+                        ? validationTarget === "inside_product"
+                          ? "credentials"
+                          : "auth_url"
+                        : current.accessMethod
+                  }))
+                }
+                placeholder="https://staging.example.com/login"
+              />
+            </div>
+            <div>
+              <FieldLabel>Test login email</FieldLabel>
+              <TextInput
+                value={draft.authUsername}
+                onChange={(event) =>
+                  onChange((current) => ({
+                    ...current,
+                    authUsername: event.target.value,
+                    accessMethod: "credentials"
+                  }))
+                }
+                placeholder="tester@example.com"
+              />
+            </div>
+            <div>
+              <FieldLabel>Test login password</FieldLabel>
+              <TextInput
+                type="password"
+                value={draft.authPassword}
+                onChange={(event) =>
+                  onChange((current) => ({
+                    ...current,
+                    authPassword: event.target.value,
+                    accessMethod: "credentials"
+                  }))
+                }
+                placeholder="••••••••"
+              />
+            </div>
+            {validationTarget === "login_signup" ? (
+              <div className="sm:col-span-2 rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+                Leave the login blank if you only want us to judge the visible auth experience.
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {message ? (
+          <div
+            className={`rounded-xl border px-4 py-3 text-sm ${
+              tone === "success"
+                ? "border-brand-success/30 bg-brand-success/10 text-brand-success"
+                : tone === "danger"
+                  ? "border-brand-danger/30 bg-brand-danger/10 text-brand-danger"
+                  : "border-brand-line bg-brand-bg text-brand-muted"
+            }`}
+          >
+            {message}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-brand-line px-6 py-5">
+        <button type="button" className="text-sm font-semibold text-brand-muted hover:text-brand-ink" onClick={onOpenAdvanced}>
+          More options
+        </button>
+        <div className="flex items-center gap-3">
+          <Button tone="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button tone="primary" onClick={() => onSubmit()} disabled={busy || !canStart}>
+            {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+            Start test
+          </Button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -4612,7 +4953,7 @@ function StarterDashboard({
   onViewAutomations: () => void;
   onViewHistory: () => void;
   onViewHelp: () => void;
-  onRunNewTest: () => Promise<void>;
+  onRunNewTest: () => void;
   onOpenAdvancedLaunch: () => void;
   onScheduleTest: () => void;
 }) {
@@ -4728,9 +5069,9 @@ function StarterDashboard({
               <Clock className="w-4 h-4 text-slate-400" />
               Schedule Test
             </button>
-            <button onClick={onOpenAdvancedLaunch} className="bg-brand-ink text-white px-8 py-3 rounded-xl font-black text-sm flex items-center gap-2 hover:bg-brand-accent transition-all shadow-sm">
+            <button onClick={onRunNewTest} className="bg-brand-ink text-white px-8 py-3 rounded-xl font-black text-sm flex items-center gap-2 hover:bg-brand-accent transition-all shadow-sm">
               <Play className="w-4 h-4" />
-              Run New Test
+              New Test
             </button>
           </div>
         </header>
