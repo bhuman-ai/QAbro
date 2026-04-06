@@ -726,8 +726,8 @@ function Button({
       : tone === "danger"
         ? "bg-brand-danger/15 text-brand-danger hover:bg-brand-danger/20"
         : tone === "ghost"
-          ? "bg-transparent text-brand-ink hover:bg-white/5"
-          : "bg-white/5 text-brand-ink hover:bg-white/8";
+          ? "bg-transparent text-brand-muted hover:bg-brand-bg hover:text-brand-ink"
+          : "bg-brand-shell text-brand-ink hover:bg-brand-bg";
 
   return (
     <button
@@ -747,7 +747,7 @@ function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`h-11 w-full rounded-lg border border-brand-line bg-brand-panel px-3 text-sm text-brand-ink outline-none transition focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 ${props.className || ""}`}
+      className={`h-11 w-full rounded-lg border border-brand-line bg-brand-panel px-3 text-sm text-brand-ink outline-none transition placeholder:text-slate-400 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 ${props.className || ""}`}
     />
   );
 }
@@ -756,7 +756,7 @@ function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
       {...props}
-      className={`min-h-[108px] w-full rounded-lg border border-brand-line bg-brand-panel px-3 py-2.5 text-sm text-brand-ink outline-none transition focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 ${props.className || ""}`}
+      className={`min-h-[108px] w-full rounded-lg border border-brand-line bg-brand-panel px-3 py-2.5 text-sm text-brand-ink outline-none transition placeholder:text-slate-400 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 ${props.className || ""}`}
     />
   );
 }
@@ -780,7 +780,7 @@ function StatusPill({ label, tone }: { label: string; tone: string }) {
             ? "border-brand-danger/30 bg-brand-danger/10 text-brand-danger"
             : tone === "warning"
               ? "border-brand-warning/30 bg-brand-warning/10 text-brand-warning"
-              : "border-brand-line bg-white/5 text-brand-muted"
+              : "border-brand-line bg-brand-bg text-brand-muted"
       }`}
     >
       <span className="h-1.5 w-1.5 rounded-full bg-current" />
@@ -3278,7 +3278,7 @@ function LaunchComposer({
                       <button
                         key={option.value}
                         className={`rounded-xl border px-4 py-4 text-left transition ${
-                          active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:bg-white/4"
+                          active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:border-brand-primary/25 hover:bg-brand-bg"
                         }`}
                         type="button"
                         onClick={() => onUseRunMode(option.value)}
@@ -3313,7 +3313,7 @@ function LaunchComposer({
                       key={option.value}
                       type="button"
                       className={`rounded-xl border px-4 py-4 text-left transition ${
-                        active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:bg-white/4"
+                        active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:border-brand-primary/25 hover:bg-brand-bg"
                       }`}
                       onClick={() =>
                         onChange((current) => {
@@ -3371,7 +3371,7 @@ function LaunchComposer({
                           key={option.value}
                           type="button"
                           className={`rounded-xl border px-4 py-4 text-left transition ${
-                            active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:bg-white/4"
+                            active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:border-brand-primary/25 hover:bg-brand-bg"
                           }`}
                           onClick={() =>
                             onChange((current) => ({
@@ -3455,7 +3455,7 @@ function LaunchComposer({
                           key={option.value}
                           type="button"
                           className={`rounded-xl border px-4 py-4 text-left transition ${
-                            active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:bg-white/4"
+                            active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:border-brand-primary/25 hover:bg-brand-bg"
                           }`}
                           onClick={() =>
                             onChange((current) => ({
@@ -3557,7 +3557,7 @@ function LaunchComposer({
                       <button
                         key={persona.id}
                         className={`rounded-xl border px-4 py-4 text-left transition ${
-                          active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:bg-white/4"
+                          active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:border-brand-primary/25 hover:bg-brand-bg"
                         }`}
                         type="button"
                         onClick={() => onUsePersona(persona)}
@@ -3723,7 +3723,7 @@ function LaunchComposer({
                           <button
                             key={option.value}
                             className={`rounded-xl border px-4 py-4 text-left transition ${
-                              active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:bg-white/4"
+                              active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:border-brand-primary/25 hover:bg-brand-bg"
                             }`}
                             type="button"
                             onClick={() =>
@@ -3750,7 +3750,9 @@ function LaunchComposer({
                           <button
                             key={goal}
                             className={`rounded-full border px-3 py-1.5 text-sm transition ${
-                              active ? "border-brand-primary/60 bg-brand-primary/12 text-brand-ink" : "border-brand-line bg-brand-shell text-brand-muted hover:text-brand-ink"
+                              active
+                                ? "border-brand-primary/60 bg-brand-primary/12 text-brand-ink"
+                                : "border-brand-line bg-brand-shell text-brand-muted hover:bg-brand-bg hover:text-brand-ink"
                             }`}
                             type="button"
                             onClick={() => onToggleGoal(goal)}
@@ -3944,7 +3946,7 @@ function LaunchComposer({
                   ? "border-brand-success/30 bg-brand-success/10 text-brand-success"
                   : tone === "danger"
                     ? "border-brand-danger/30 bg-brand-danger/10 text-brand-danger"
-                    : "border-brand-line bg-white/5 text-brand-muted"
+                    : "border-brand-line bg-brand-bg text-brand-muted"
               }`}
             >
               {message}
@@ -4312,7 +4314,7 @@ function SharedReportPage({
       <header className="border-b border-brand-line bg-brand-shell/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1440px] items-center justify-between px-6 py-4">
           <BrandMark />
-          <a className="inline-flex items-center gap-2 rounded-lg border border-brand-line bg-white/5 px-3.5 py-2 text-sm font-semibold text-brand-ink transition hover:bg-white/8" href="/">
+          <a className="inline-flex items-center gap-2 rounded-lg border border-brand-line bg-brand-shell px-3.5 py-2 text-sm font-semibold text-brand-ink transition hover:bg-brand-bg" href="/">
             Run your own test
             <ArrowRight className="h-4 w-4" />
           </a>
