@@ -1588,6 +1588,7 @@ function WorkspacePage({
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [reports, setReports] = useState<RunSummary[]>([]);
   const [runsLoading, setRunsLoading] = useState(false);
+  const [workspaceBootstrapped, setWorkspaceBootstrapped] = useState(() => isSharedView || !authState.authorized);
   const [runsError, setRunsError] = useState("");
   const [selectedReport, setSelectedReport] = useState<QaReport | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<StatusResponse | null>(null);
@@ -1737,9 +1738,17 @@ function WorkspacePage({
   const liveAgents = buildStarterLiveAgents(sameBrandRuns.length ? sameBrandRuns : reports);
   const frictionRows = buildStarterFrictionRows(selectedReport, sameBrandRuns.length ? sameBrandRuns : reports);
   const trendData = buildTrendData(sameBrandRuns.length ? sameBrandRuns : reports);
-  const emptyWorkspace = !projectCatalog.length && !reports.length;
-  const workspaceState = runsLoading ? "loading" : runsError ? "error" : "ready";
+  const emptyWorkspace = workspaceBootstrapped && !projectCatalog.length && !reports.length;
+  const workspaceState = !workspaceBootstrapped || runsLoading ? "loading" : runsError ? "error" : "ready";
   const detailState = detailLoading ? "loading" : detailError ? "error" : selectedReport ? "ready" : "empty";
+
+  useEffect(() => {
+    if (isSharedView || !authState.authorized) {
+      setWorkspaceBootstrapped(true);
+      return;
+    }
+    setWorkspaceBootstrapped(false);
+  }, [authState.authorized, isSharedView]);
 
   useEffect(() => {
     if (isSharedView) {
@@ -1793,6 +1802,7 @@ function WorkspacePage({
       }
 
       setRunsLoading(false);
+      setWorkspaceBootstrapped(true);
     }
 
     loadWorkspace();
@@ -2774,6 +2784,10 @@ function WorkspacePage({
         shareKey={shareKey}
       />
     );
+  }
+
+  if (!workspaceBootstrapped) {
+    return <LoadingShell label="Loading your dashboard..." />;
   }
 
   function openPanel(panel: string, options: { brand?: string | null; runId?: string | null; keepRun?: boolean } = {}) {
