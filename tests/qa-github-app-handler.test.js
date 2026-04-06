@@ -4,6 +4,7 @@ const crypto = require("crypto");
 
 const installUrlHandler = require("../api/qa/github-app/install-url");
 const connectionHandler = require("../api/qa/github-app/connection");
+const routesHandler = require("../api/qa/github-app/routes");
 const setupHandler = require("../api/qa/github-app/setup");
 
 const { privateKey } = crypto.generateKeyPairSync("rsa", {
@@ -226,6 +227,121 @@ test("github app connection handler returns saved connection with installation r
         assert.equal(res.body.connection.selected_repo_full_name, "acme-org/web");
         assert.equal(res.body.repositories.length, 2);
         assert.equal(res.body.repositories[1].full_name, "acme-org/docs");
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("github app routes handler infers route hints from the connected repository", async () => {
+  const originalFetch = global.fetch;
+
+  global.fetch = async (url, options = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes("/rest/v1/swarmtest_brand_repo_connections")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return [
+            {
+              brand_key: "acme",
+              provider: "github",
+              connection_status: "connected",
+              installation_id: 789,
+              installation_account_login: "acme-org",
+              selected_repo_full_name: "acme-org/web",
+              default_branch: "main"
+            }
+          ];
+        }
+      };
+    }
+    if (requestUrl === "https://api.github.com/app/installations/789/access_tokens") {
+      return {
+        ok: true,
+        status: 201,
+        headers: new Headers({ "content-type": "application/json" }),
+        async json() {
+          return {
+            token: "inst_token_123",
+            expires_at: "2026-04-01T13:00:00.000Z"
+          };
+        }
+      };
+    }
+    if (requestUrl === "https://api.github.com/repos/acme-org/web") {
+      assert.equal(options.headers.Authorization, "Bearer inst_token_123");
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        async json() {
+          return {
+            id: 10,
+            name: "web",
+            full_name: "acme-org/web",
+            default_branch: "main",
+            owner: { login: "acme-org" }
+          };
+        }
+      };
+    }
+    if (requestUrl === "https://api.github.com/repos/acme-org/web/git/trees/main?recursive=1") {
+      assert.equal(options.headers.Authorization, "Bearer inst_token_123");
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        async json() {
+          return {
+            truncated: false,
+            tree: [
+              { path: "app/page.tsx", type: "blob" },
+              { path: "app/signup/page.tsx", type: "blob" },
+              { path: "app/onboarding/page.tsx", type: "blob" },
+              { path: "app/dashboard/[teamId]/page.tsx", type: "blob" }
+            ]
+          };
+        }
+      };
+    }
+    throw new Error(`Unexpected fetch: ${requestUrl}`);
+  };
+
+  try {
+    await withEnv(
+      {
+        QA_SERVICE_TOKEN: "service-token",
+        SUPABASE_URL: "https://supabase.example",
+        SUPABASE_SERVICE_KEY: "service-key",
+        GITHUB_APP_ID: "12345",
+        GITHUB_APP_SLUG: "swarmtester-qa",
+        GITHUB_APP_PRIVATE_KEY: TEST_GITHUB_PRIVATE_KEY
+      },
+      async () => {
+        const req = {
+          method: "GET",
+          query: {
+            brand_key: "acme"
+          },
+          headers: {
+            "x-qa-service-token": "service-token",
+            "x-owner-user-id": "user_123"
+          }
+        };
+        const res = createRes();
+
+        await routesHandler(req, res);
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.body.ok, true);
+        assert.equal(res.body.routes[0].path, "/");
+        assert.deepEqual(
+          res.body.routes.map((route) => route.path),
+          ["/", "/onboarding", "/signup", "/dashboard/:teamId"]
+        );
       }
     );
   } finally {

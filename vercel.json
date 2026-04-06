@@ -1,5 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "crons": [
     {
       "path": "/api/qa/schedules/trigger",
@@ -8,8 +10,13 @@
   ],
   "redirects": [
     {
-      "source": "/dashboard",
-      "destination": "/dashboard.html",
+      "source": "/dashboard.html",
+      "destination": "/dashboard",
+      "permanent": false
+    },
+    {
+      "source": "/reports.html",
+      "destination": "/reports",
       "permanent": false
     },
     {
@@ -121,6 +128,16 @@
       ],
       "destination": "https://swarmtester.com/:path*",
       "permanent": true
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/dashboard",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/reports",
+      "destination": "/index.html"
     }
   ]
 }

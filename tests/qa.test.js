@@ -156,6 +156,32 @@ test("buildTaskPrompt defaults feature-targeted runs toward account creation whe
   assert.match(prompt, /complete OTP\/email verification when available/i);
 });
 
+test("buildTaskPrompt adds controlled UX instructions when qa_mode is controlled", () => {
+  const prompt = buildTaskPrompt({
+    run_id: "run_controlled_ux_1",
+    target_url: "https://example.com",
+    scope_mode: "feature_targeted",
+    scenario_list: ["Validate the signup flow"],
+    brand_persona: "Test user",
+    source: "qa_bot",
+    metadata: {
+      qa_mode: "controlled_ux",
+      controlled_ux: {
+        enabled: true,
+        entry_path: "/signup",
+        user_job: "Create an account and understand the next step.",
+        route_hints: ["/signup", "/onboarding", "/dashboard"],
+        success_signals: ["The next step is obvious", "Validation errors are clear"]
+      }
+    }
+  });
+
+  assert.match(prompt, /Run mode: Controlled UX validation/);
+  assert.match(prompt, /Owned flow entry path: \/signup/);
+  assert.match(prompt, /Planned route hints:\n- \/signup\n- \/onboarding\n- \/dashboard/);
+  assert.match(prompt, /Do not spend the run on unrelated exploratory coverage/);
+});
+
 test("buildPrimaryUserGoal prefers explicit metadata goal", () => {
   const goal = buildPrimaryUserGoal({
     scenario_list: ["Create a project", "Invite teammate"],

@@ -23,14 +23,34 @@
     "qa:dashboard:smoke": "node scripts/smoke-dashboard-authenticated.js",
     "qa:customerio:login": "node scripts/run-customerio-login-once.js",
     "qa:agent-task": "node scripts/run-browser-agent-task.js",
-    "stripe:bootstrap:share-offer": "node scripts/bootstrap-stripe-share-offer.js"
+    "stripe:bootstrap:share-offer": "node scripts/bootstrap-stripe-share-offer.js",
+    "dev": "node scripts/dev-server.js",
+    "dev:client": "vite --host 0.0.0.0 --port 3000",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 3000",
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@browserbasehq/stagehand": "^3.1.0",
     "@modelcontextprotocol/sdk": "^1.28.0",
     "imapflow": "^1.2.18",
+    "lucide-react": "^1.7.0",
+    "motion": "^12.38.0",
     "nodemailer": "^6.10.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "recharts": "^3.8.1",
     "stripe": "^18.5.0",
     "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/node": "^25.5.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.4"
   }
 }

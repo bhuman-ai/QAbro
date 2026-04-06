@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const { chromium } = require("playwright");
 
-const DEFAULT_URL = "https://swarmtester.com/dashboard.html?smoke=1";
+const DEFAULT_URL = "https://swarmtester.com/dashboard?smoke=1";
 const DEFAULT_TIMEOUT_MS = 20000;
 
 function loadEnvFileIfPresent(filePath) {
@@ -197,32 +197,34 @@ async function deleteTempDashboardUser(config, userId) {
 function createDomSnapshot(state = {}) {
   return {
     url: state.url || "",
-    authShellHidden: state.authShellHidden === true,
-    appRootHidden: state.appRootHidden === true,
-    shellReady: String(state.shellReady || ""),
-    loading: String(state.loading || ""),
-    projectStatus: String(state.projectStatus || ""),
-    hasProjects: String(state.hasProjects || ""),
-    topbarProjectHidden: state.topbarProjectHidden === true,
-    recentRunsMeta: String(state.recentRunsMeta || ""),
-    activeBrandLabel: String(state.activeBrandLabel || ""),
-    activeBrandMeta: String(state.activeBrandMeta || "")
+    appShell: String(state.appShell || ""),
+    authGateVisible: state.authGateVisible === true,
+    loadingVisible: state.loadingVisible === true,
+    route: String(state.route || ""),
+    view: String(state.view || ""),
+    workspaceState: String(state.workspaceState || ""),
+    detailState: String(state.detailState || ""),
+    composeOpen: String(state.composeOpen || ""),
+    projectCount: String(state.projectCount || ""),
+    visibleRunCount: String(state.visibleRunCount || ""),
+    selectedRun: String(state.selectedRun || "")
   };
 }
 
 async function readDashboardState(page) {
   const rawState = await page.evaluate(() => ({
     url: window.location.href,
-    authShellHidden: document.getElementById("dashboardAuthShell")?.hidden ?? null,
-    appRootHidden: document.getElementById("appQaDashboard")?.hidden ?? null,
-    shellReady: document.getElementById("appQaDashboard")?.getAttribute("data-shell-ready") || "",
-    loading: document.getElementById("appQaDashboard")?.getAttribute("data-loading") || "",
-    projectStatus: document.getElementById("appQaDashboard")?.getAttribute("data-project-catalog-status") || "",
-    hasProjects: document.getElementById("appQaDashboard")?.getAttribute("data-has-projects") || "",
-    topbarProjectHidden: document.getElementById("topbarProjectShell")?.hidden ?? null,
-    recentRunsMeta: document.getElementById("recentRunsMeta")?.textContent || "",
-    activeBrandLabel: document.getElementById("activeBrandLabel")?.textContent || "",
-    activeBrandMeta: document.getElementById("activeBrandMeta")?.textContent || ""
+    appShell: document.querySelector("[data-app-shell]")?.getAttribute("data-app-shell") || "",
+    authGateVisible: Boolean(document.querySelector('[data-app-shell="auth-gate"]')),
+    loadingVisible: Boolean(document.querySelector('[data-app-shell="loading"]')),
+    route: document.querySelector('[data-app-shell="workspace"]')?.getAttribute("data-route") || "",
+    view: document.querySelector('[data-app-shell="workspace"]')?.getAttribute("data-view") || "",
+    workspaceState: document.querySelector('[data-app-shell="workspace"]')?.getAttribute("data-workspace-state") || "",
+    detailState: document.querySelector('[data-app-shell="workspace"]')?.getAttribute("data-detail-state") || "",
+    composeOpen: document.querySelector('[data-app-shell="workspace"]')?.getAttribute("data-compose-open") || "",
+    projectCount: document.querySelector('[data-app-shell="workspace"]')?.getAttribute("data-project-count") || "",
+    visibleRunCount: document.querySelector('[data-app-shell="workspace"]')?.getAttribute("data-visible-run-count") || "",
+    selectedRun: document.querySelector('[data-app-shell="workspace"]')?.getAttribute("data-selected-run") || ""
   }));
 
   return createDomSnapshot(rawState);
@@ -298,15 +300,15 @@ async function main() {
 
     await page.waitForFunction(
       () => {
-        const authShell = document.getElementById("dashboardAuthShell");
-        const appRoot = document.getElementById("appQaDashboard");
-        const projectStatus = String(appRoot?.getAttribute("data-project-catalog-status") || "").toLowerCase();
+        const workspace = document.querySelector('[data-app-shell="workspace"]');
+        const authGate = document.querySelector('[data-app-shell="auth-gate"]');
+        const loading = document.querySelector('[data-app-shell="loading"]');
         return (
-          authShell?.hidden === true &&
-          appRoot?.hidden === false &&
-          appRoot?.getAttribute("data-shell-ready") === "true" &&
-          appRoot?.getAttribute("data-loading") !== "true" &&
-          (projectStatus === "ready" || projectStatus === "empty")
+          Boolean(workspace) &&
+          !authGate &&
+          !loading &&
+          workspace?.getAttribute("data-workspace-state") === "ready" &&
+          ["ready", "empty"].includes(String(workspace?.getAttribute("data-detail-state") || ""))
         );
       },
       { timeout: args.timeoutMs }
