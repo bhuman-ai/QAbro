@@ -159,6 +159,73 @@ test("report handler normalizes sparse stored report payloads", async () => {
   }
 });
 
+test("report handler does not synthesize a completed report for queued rows", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    async json() {
+      return [
+        {
+          id: "row_queued_1",
+          run_id: "run_queued_1",
+          target: "clusterseo.com",
+          status: "queued",
+          source: "qa_bot",
+          report_url: "https://swarmtester.com/api/qa/report?run_id=run_queued_1",
+          delivered_at: "2026-04-06T15:10:00.000Z",
+          payload: {
+            run_request: {
+              run_id: "run_queued_1",
+              target_url: "https://clusterseo.com",
+              metadata: {
+                owner_user_id: "user_123",
+                brand_id: "clusterseo.com",
+                brand_name: "ClusterSEO"
+              }
+            },
+            artifacts: {},
+            run_log: []
+          }
+        }
+      ];
+    }
+  });
+
+  try {
+    await withEnv(
+      {
+        QA_SERVICE_TOKEN: "service-token",
+        SUPABASE_URL: "https://supabase.example",
+        SUPABASE_SERVICE_KEY: "service-key"
+      },
+      async () => {
+        const req = {
+          method: "GET",
+          query: {
+            run_id: "run_queued_1"
+          },
+          headers: {
+            host: "swarmtester.com",
+            "x-qa-service-token": "service-token",
+            "x-owner-user-id": "user_123"
+          }
+        };
+        const res = createRes();
+
+        await reportHandler(req, res);
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.body.ok, true);
+        assert.equal(res.body.report, null);
+        assert.equal(res.body.markdown, null);
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test("report handler requires owner-authenticated access by run_id", async () => {
   const originalFetch = global.fetch;
   global.fetch = async () => ({

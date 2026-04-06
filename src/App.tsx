@@ -2922,12 +2922,25 @@ function WorkspacePage({
         report={selectedReport}
         status={selectedStatus}
         shareKey={shareKey}
+        view={currentView}
         loading={detailLoading}
         error={detailError}
         copyFeedback={copyFeedback}
         previousRunId={previousRun?.run_id || null}
         nextRunId={nextRun?.run_id || null}
         onBack={() => openPanel("overview", { brand: currentBrandKey || "" })}
+        onChangeView={(nextView) => {
+          const next = new URLSearchParams(route.search);
+          next.set("panel", "report");
+          next.set("view", nextView);
+          if (requestedRunId) {
+            next.set("run_id", requestedRunId);
+          }
+          if (currentBrandKey) {
+            next.set("brand", currentBrandKey);
+          }
+          navigate("/dashboard", next, true);
+        }}
         onCopyShareLink={handleCopyShareLink}
         onRunAgain={() => handleLaunchRun(buildDraftFromRun(selectedRun, selectedReport, repoConnection), { retryOfRunId: selectedRun?.run_id || null })}
         onViewRun={handleOpenReport}
@@ -5510,12 +5523,14 @@ function StarterReportPage({
   report,
   status,
   shareKey,
+  view,
   loading,
   error,
   copyFeedback,
   previousRunId,
   nextRunId,
   onBack,
+  onChangeView,
   onCopyShareLink,
   onRunAgain,
   onViewRun
@@ -5524,12 +5539,14 @@ function StarterReportPage({
   report: QaReport | null;
   status: StatusResponse | null;
   shareKey: string;
+  view: "report" | "live";
   loading: boolean;
   error: string;
   copyFeedback: string;
   previousRunId: string | null;
   nextRunId: string | null;
   onBack: () => void;
+  onChangeView: (view: "report" | "live") => void;
   onCopyShareLink: () => Promise<void>;
   onRunAgain: () => Promise<void>;
   onViewRun: (runId: string) => void;
@@ -5574,6 +5591,32 @@ function StarterReportPage({
     result: String(entry.message || entry.note || "Recorded"),
     time: entry.ts ? formatDateTime(String(entry.ts)) : `0:${String(index * 8).padStart(2, "0")}`
   }));
+  const isActiveRun = ["queued", "processing", "retryable"].includes(effectiveStatus);
+  const liveSummary =
+    status?.progress?.message ||
+    run?.summary_note ||
+    (effectiveStatus === "queued"
+      ? "Waiting for worker pickup."
+      : effectiveStatus === "processing"
+        ? "The run is in progress."
+        : "Waiting for another attempt.");
+  const liveLogRows = (status?.run_log || []).slice(-12).map((entry, index) => {
+    const details = entry.details && typeof entry.details === "object" ? (entry.details as Record<string, unknown>) : {};
+    return {
+    id: `${entry.timestamp || entry.ts || index}-${entry.event || "event"}`,
+    title: String(entry.event || "update").replaceAll("_", " "),
+    note:
+      String(
+        entry.message ||
+          entry.note ||
+          details.message ||
+          details.current_state ||
+          details.reason ||
+          "Recorded"
+      ).trim() || "Recorded",
+    at: String(entry.timestamp || entry.ts || "").trim()
+    };
+  });
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col relative">
@@ -5606,6 +5649,24 @@ function StarterReportPage({
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1">
+            <button
+              onClick={() => onChangeView("report")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
+                view === "report" ? "bg-brand-ink text-white" : "text-slate-500 hover:text-brand-ink"
+              }`}
+            >
+              Report
+            </button>
+            <button
+              onClick={() => onChangeView("live")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
+                view === "live" ? "bg-brand-ink text-white" : "text-slate-500 hover:text-brand-ink"
+              }`}
+            >
+              Live
+            </button>
+          </div>
           <button onClick={() => onCopyShareLink().catch(() => null)} className="handcrafted-card px-6 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 hover:bg-slate-50 transition-all">
             <Globe className="w-4 h-4 text-slate-400" />
             {copyFeedback || "Share Link"}
@@ -5624,6 +5685,117 @@ function StarterReportPage({
           </div>
         ) : error ? (
           <div className="dash-card p-10 text-sm font-bold text-brand-danger">{error}</div>
+        ) : view === "live" || isActiveRun ? (
+          <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-12">
+            <aside className="space-y-8">
+              <div className="dash-card p-8 space-y-6">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status</div>
+                  <div className="mt-3 flex items-center gap-3">
+                    <div className={`w-3 h-3 rounded-full ${effectiveStatus === "processing" ? "bg-brand-warning" : "bg-brand-accent"}`} />
+                    <div className="text-lg font-black uppercase tracking-widest text-brand-ink">
+                      {formatStatusLabel(effectiveStatus || "queued")}
+                    </div>
+                  </div>
+                </div>
+                <div className="pt-6 border-t border-slate-100">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Current test</div>
+                  <div className="mt-2 text-sm font-bold text-brand-ink">{run?.goal || run?.summary_note || "Waiting for the test to start."}</div>
+                </div>
+                <div className="pt-6 border-t border-slate-100">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">User</div>
+                  <div className="mt-3 flex items-center gap-3">
+                    <div className={`w-12 h-12 rounded-xl overflow-hidden border-2 border-white shadow-md ${persona.color}`}>
+                      <img src={persona.avatar} alt={persona.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    </div>
+                    <div>
+                      <div className="font-black text-sm">{persona.name}</div>
+                      <div className="text-[10px] font-bold text-slate-400">{persona.role}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            <div className="space-y-8">
+              <section className="dash-card p-10 bg-white">
+                <div className="flex items-center gap-3 mb-6">
+                  <LoaderCircle className={`w-6 h-6 ${isActiveRun ? "animate-spin text-brand-accent" : "text-brand-accent"}`} />
+                  <h3 className="text-xl font-black tracking-tight">
+                    {effectiveStatus === "queued" ? "Run queued" : effectiveStatus === "processing" ? "Run in progress" : "Run update"}
+                  </h3>
+                </div>
+                <p className="text-2xl font-bold text-brand-ink leading-relaxed">{liveSummary}</p>
+                <p className="mt-4 text-sm font-bold text-slate-400">
+                  {isActiveRun
+                    ? "This run has not finished yet. A full report will appear after the worker completes."
+                    : "Open the report tab once the run is complete."}
+                </p>
+              </section>
+
+              <section className="space-y-6">
+                <div className="flex items-center justify-between gap-4">
+                  <h3 className="text-xl font-black tracking-tight">Live activity</h3>
+                  <div className="text-xs font-black uppercase tracking-widest text-slate-400">
+                    {liveLogRows.length ? `${liveLogRows.length} updates` : "No updates yet"}
+                  </div>
+                </div>
+                <div className="dash-card overflow-hidden">
+                  <div className="divide-y border-slate-100">
+                    {(liveLogRows.length
+                      ? liveLogRows
+                      : [
+                          {
+                            id: "waiting",
+                            title: "waiting for worker pickup",
+                            note: "The queue row exists, but no worker activity has been recorded yet.",
+                            at: ""
+                          }
+                        ]).map((log) => (
+                      <div key={log.id} className="flex items-start justify-between gap-6 p-6 hover:bg-slate-50/60 transition-all">
+                        <div>
+                          <div className="text-sm font-black uppercase tracking-widest text-brand-ink">{log.title}</div>
+                          <div className="mt-2 text-sm font-bold text-slate-500">{log.note}</div>
+                        </div>
+                        <div className="shrink-0 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          {log.at ? formatDateTime(log.at) : "pending"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section>
+
+              <section className="space-y-6">
+                <h3 className="text-xl font-black tracking-tight">Session watch</h3>
+                <div className="dash-card p-8">
+                  {status?.artifacts?.live_stream_viewer_url || status?.artifacts?.live_stream_embed_url ? (
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <div className="text-lg font-black text-brand-ink">Open the live viewer</div>
+                        <div className="mt-2 text-sm font-bold text-slate-500">
+                          Watch the worker as it moves through the flow.
+                        </div>
+                      </div>
+                      <a
+                        href={status?.artifacts?.live_stream_viewer_url || status?.artifacts?.live_stream_embed_url || "#"}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="bg-brand-ink text-white px-6 py-3 rounded-xl font-black text-sm hover:bg-brand-accent transition-all shadow-sm inline-flex items-center gap-2"
+                      >
+                        Open live viewer
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="text-sm font-bold text-slate-500">
+                      Live viewer is not attached yet. If the run stays queued here, the worker likely has not picked it up.
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-12">
             <aside className="lg:col-span-1 space-y-8">

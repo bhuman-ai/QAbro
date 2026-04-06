@@ -11,6 +11,7 @@ const { requireDashboardOrServiceAuth } = require("../../lib/auth");
 
 const FALLBACK_BRAND_PERSONA =
   "General non-developer business user with moderate technical comfort.";
+const FINAL_REPORT_STATUSES = new Set(["completed", "partial", "failed", "failed_validation"]);
 
 function redactEngineeringTriage(report) {
   if (!report || typeof report !== "object") {
@@ -33,6 +34,12 @@ function redactEngineeringTriage(report) {
 }
 
 function buildStoredReportCandidate(row, payload, mergedArtifacts) {
+  const rowStatus = sanitizeString(row?.status, 64).toLowerCase();
+  const hasExplicitReportJson = payload.report_json && typeof payload.report_json === "object";
+  if (!FINAL_REPORT_STATUSES.has(rowStatus) && !hasExplicitReportJson) {
+    return null;
+  }
+
   if (payload.report_json && typeof payload.report_json === "object") {
     return payload.report_json;
   }
@@ -163,29 +170,33 @@ module.exports = async (req, res) => {
     ...buildLiveStreamArtifacts(storedArtifacts)
   };
   const runRequest = buildStoredRunRequest(row, payload);
-  let reportJson = normalizeReport({
-    candidateReport: buildStoredReportCandidate(row, payload, mergedArtifacts),
-    runRequest,
-    artifacts: mergedArtifacts,
-    actions: payload.actions && typeof payload.actions === "object" ? payload.actions : {},
-    reportUrl: row.report_url,
-    deliveredAt: row.delivered_at,
-    failureMessage: sanitizeString(payload.failure_message || payload.error, 2000),
-    rawAgentMessage: sanitizeString(payload.raw_agent_output || payload.agent_output, 4000),
-    runLog: Array.isArray(payload.run_log) ? payload.run_log : [],
-    failureDiagnostics:
-      payload.failure_diagnostics && typeof payload.failure_diagnostics === "object"
-        ? payload.failure_diagnostics
-        : payload.report_json?.failure_diagnostics && typeof payload.report_json.failure_diagnostics === "object"
-          ? payload.report_json.failure_diagnostics
-          : null
-  });
-  if (access.access_type !== "owner") {
-    reportJson = redactEngineeringTriage(reportJson);
+  const candidateReport = buildStoredReportCandidate(row, payload, mergedArtifacts);
+  let reportJson = null;
+  if (candidateReport) {
+    reportJson = normalizeReport({
+      candidateReport,
+      runRequest,
+      artifacts: mergedArtifacts,
+      actions: payload.actions && typeof payload.actions === "object" ? payload.actions : {},
+      reportUrl: row.report_url,
+      deliveredAt: row.delivered_at,
+      failureMessage: sanitizeString(payload.failure_message || payload.error, 2000),
+      rawAgentMessage: sanitizeString(payload.raw_agent_output || payload.agent_output, 4000),
+      runLog: Array.isArray(payload.run_log) ? payload.run_log : [],
+      failureDiagnostics:
+        payload.failure_diagnostics && typeof payload.failure_diagnostics === "object"
+          ? payload.failure_diagnostics
+          : payload.report_json?.failure_diagnostics && typeof payload.report_json.failure_diagnostics === "object"
+            ? payload.report_json.failure_diagnostics
+            : null
+    });
+    if (access.access_type !== "owner") {
+      reportJson = redactEngineeringTriage(reportJson);
+    }
   }
 
   let markdown = null;
-  if (!skipMarkdown) {
+  if (!skipMarkdown && reportJson) {
     markdown = sanitizeString(payload.report_markdown, 200000);
     if (!markdown) {
       try {
