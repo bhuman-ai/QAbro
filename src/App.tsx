@@ -54,6 +54,7 @@ import {
 import { ApiError, apiFetch } from "@/lib/api";
 import {
   buildEvidenceAssetUrl,
+  collectEvidenceValues,
   buildEvidenceIndexMap,
   buildLaunchPayload,
   DEFAULT_CONTROLLED_UX_JOB,
@@ -1272,7 +1273,7 @@ function AuthGate({
             {isLogin ? "Welcome back!" : "Join the fleet"}
           </h2>
           <p className="text-slate-500 font-bold text-center mb-8">
-            {isLogin ? "Our agents missed you." : "Start testing at the speed of light."}
+            {isLogin ? "We will email you a sign-in link." : "Start testing at the speed of light."}
           </p>
 
           <div className="space-y-4 mb-8">
@@ -1326,24 +1327,28 @@ function AuthGate({
                 />
               </div>
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-2">
-                {isLogin ? "Password" : "Invite Code"}
-              </label>
-              <div className="handcrafted-card p-4 rounded-2xl flex items-center gap-3">
-                <Shield className="text-slate-300 w-5 h-5" />
-                <input
-                  type={isLogin ? "password" : "text"}
-                  placeholder={isLogin ? "••••••••" : DEFAULT_SIGNUP_INVITE_CODE}
-                  className="bg-transparent outline-none w-full font-bold"
-                  value={passwordOrInvite}
-                  onChange={(event) => setPasswordOrInvite(event.target.value)}
-                />
+            {!isLogin ? (
+              <div className="space-y-1">
+                <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-2">Invite Code</label>
+                <div className="handcrafted-card p-4 rounded-2xl flex items-center gap-3">
+                  <Shield className="text-slate-300 w-5 h-5" />
+                  <input
+                    type="text"
+                    placeholder={DEFAULT_SIGNUP_INVITE_CODE}
+                    className="bg-transparent outline-none w-full font-bold"
+                    value={passwordOrInvite}
+                    onChange={(event) => setPasswordOrInvite(event.target.value)}
+                  />
+                </div>
               </div>
-            </div>
+            ) : (
+              <p className="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500">
+                Enter your email and we&apos;ll send a magic link.
+              </p>
+            )}
 
             <button className="w-full bg-brand-accent text-white p-5 rounded-2xl font-black text-xl hover:bg-brand-ink transition-all shadow-xl mt-4">
-              {loading ? "Sending..." : isLogin ? "Login" : "Create Account"}
+              {loading ? "Sending..." : isLogin ? "Send Sign-In Link" : "Create Account"}
             </button>
           </form>
 
@@ -1803,6 +1808,9 @@ function WorkspacePage({
     if (!authState.authorized) {
       return;
     }
+    if (currentPanel !== "report") {
+      return;
+    }
     if (requestedRunId || composeOpen) {
       return;
     }
@@ -1817,7 +1825,7 @@ function WorkspacePage({
     }
     nextParams.set("view", "report");
     navigate(route.pathname, nextParams, true);
-  }, [authState.authorized, composeOpen, filteredRuns, isSharedView, navigate, reports, requestedRunId, route.pathname, route.search]);
+  }, [authState.authorized, composeOpen, currentPanel, filteredRuns, isSharedView, navigate, reports, requestedRunId, route.pathname, route.search]);
 
   useEffect(() => {
     if (!currentBrandKey || isSharedView || !authState.authorized) {
@@ -5380,6 +5388,106 @@ ${point.recommended_fix || "Review the relevant interaction, tighten feedback, a
   );
 }
 
+function StarterSessionReplayModal({
+  title,
+  videoUrl,
+  posterUrl,
+  sessionUrl,
+  onClose
+}: {
+  title: string;
+  videoUrl: string;
+  posterUrl: string;
+  sessionUrl: string;
+  onClose: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-brand-ink/70 backdrop-blur-md p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.96, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.96, opacity: 0, y: 20 }}
+        className="w-full max-w-6xl bg-white rounded-[2rem] shadow-2xl overflow-hidden"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-6 py-5 bg-slate-50/70">
+          <div>
+            <h2 className="text-xl font-black tracking-tight text-brand-ink">{title}</h2>
+            <p className="mt-1 text-sm font-bold text-slate-500">
+              {videoUrl ? "Replay is ready to watch." : sessionUrl ? "Open the recorded session in a separate tab." : "Replay data is not available for this run yet."}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-all"
+          >
+            <Plus className="w-6 h-6 rotate-45 text-slate-400" />
+          </button>
+        </div>
+
+        <div className="bg-brand-ink p-4 md:p-6">
+          {videoUrl ? (
+            <video
+              controls
+              autoPlay
+              playsInline
+              poster={posterUrl || undefined}
+              className="w-full max-h-[72vh] rounded-[1.5rem] bg-black object-contain"
+              src={videoUrl}
+            >
+              Your browser could not play this replay.
+            </video>
+          ) : posterUrl ? (
+            <img
+              src={posterUrl}
+              alt={title}
+              className="w-full max-h-[72vh] rounded-[1.5rem] bg-black object-contain"
+            />
+          ) : (
+            <div className="flex min-h-[360px] items-center justify-center rounded-[1.5rem] bg-white/5 text-center text-white/80">
+              <div>
+                <div className="text-lg font-black">No replay video attached</div>
+                <div className="mt-2 text-sm font-bold text-white/50">This run only has static proof right now.</div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-5 bg-white">
+          <div className="text-sm font-bold text-slate-500">
+            {videoUrl ? "You can scrub, pause, and rewatch directly here." : "If a hosted session exists, open it from the button on the right."}
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {sessionUrl ? (
+              <a
+                href={sessionUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-brand-ink hover:bg-slate-50 transition-all"
+              >
+                Open Session
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            ) : null}
+            <button
+              onClick={onClose}
+              className="inline-flex items-center gap-2 rounded-xl bg-brand-ink px-5 py-3 text-sm font-black text-white hover:bg-brand-accent transition-all"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 function StarterReportPage({
   run,
   report,
@@ -5410,11 +5518,31 @@ function StarterReportPage({
   onViewRun: (runId: string) => void;
 }) {
   const [selectedFix, setSelectedFix] = useState<{ title: string; severity: string; description: string; recommended_fix?: string | null } | null>(null);
+  const [replayOpen, setReplayOpen] = useState(false);
   const evidenceIndexMap = buildEvidenceIndexMap(report, "screenshot");
   const firstEvidence = Array.from(evidenceIndexMap.entries()).sort((left, right) => left[1] - right[1])[0];
+  const videoEvidence = collectEvidenceValues(report, "video");
+  const firstVideoValue = videoEvidence[0] || "";
   const persona = getStarterPersona(run?.persona || report?.summary?.note || run?.run_id);
   const effectiveStatus = String(status?.queue?.queue_status || status?.report_status || report?.status || run?.status || "completed").toLowerCase();
   const score = deriveScoreFromReport(report, run);
+  const replayVideoUrl =
+    firstVideoValue && (report?.run_id || run?.run_id)
+      ? buildEvidenceAssetUrl(report?.run_id || run?.run_id || "", "video", 0, shareKey)
+      : "";
+  const replaySessionUrl =
+    String(
+      report?.evidence_gallery?.session_url ||
+        run?.session_url ||
+        status?.artifacts?.live_stream_viewer_url ||
+        status?.artifacts?.live_stream_embed_url ||
+        ""
+    ).trim();
+  const replayPosterUrl =
+    firstEvidence && (report?.run_id || run?.run_id)
+      ? buildEvidenceAssetUrl(report?.run_id || run?.run_id || "", "screenshot", firstEvidence[1], shareKey)
+      : "";
+  const hasReplay = Boolean(replayVideoUrl || replaySessionUrl);
   const frictionPoints =
     (report?.findings || []).map((finding, index) => ({
       id: finding.id || `finding-${index}`,
@@ -5434,6 +5562,15 @@ function StarterReportPage({
     <div className="min-h-screen bg-slate-50 flex flex-col relative">
       <AnimatePresence>
         {selectedFix ? <StarterFixDiagnosis point={selectedFix} onClose={() => setSelectedFix(null)} /> : null}
+        {replayOpen ? (
+          <StarterSessionReplayModal
+            title={`Watch ${persona.name}'s Session`}
+            videoUrl={replayVideoUrl}
+            posterUrl={replayPosterUrl}
+            sessionUrl={replaySessionUrl}
+            onClose={() => setReplayOpen(false)}
+          />
+        ) : null}
       </AnimatePresence>
 
       <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-50">
@@ -5562,19 +5699,40 @@ function StarterReportPage({
 
               <section className="space-y-6">
                 <h3 className="text-xl font-black tracking-tight">Session Replay</h3>
-                <div className="aspect-video bg-brand-ink rounded-[3rem] flex items-center justify-center relative group cursor-pointer overflow-hidden shadow-2xl border-8 border-white">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!hasReplay) {
+                      return;
+                    }
+                    if (!replayVideoUrl && replaySessionUrl) {
+                      window.open(replaySessionUrl, "_blank", "noopener,noreferrer");
+                      return;
+                    }
+                    setReplayOpen(true);
+                  }}
+                  disabled={!hasReplay}
+                  className={`aspect-video w-full bg-brand-ink rounded-[3rem] flex items-center justify-center relative group overflow-hidden shadow-2xl border-8 border-white text-left ${
+                    hasReplay ? "cursor-pointer" : "cursor-not-allowed opacity-80"
+                  }`}
+                >
                   {firstEvidence ? (
-                    <img className="absolute inset-0 h-full w-full object-cover opacity-80" src={buildEvidenceAssetUrl(report?.run_id || run?.run_id || "", "screenshot", firstEvidence[1], shareKey)} alt="Session replay" />
+                    <img className="absolute inset-0 h-full w-full object-cover opacity-80" src={replayPosterUrl} alt="Session replay" />
                   ) : null}
                   <div className="absolute inset-0 bg-gradient-to-t from-brand-ink/90 via-brand-ink/20 to-transparent" />
                   <div className="relative z-10 text-center">
-                    <div className="w-24 h-24 bg-white/10 backdrop-blur-xl rounded-full flex items-center justify-center mx-auto mb-6 border border-white/20 shadow-2xl">
+                    <div className="w-24 h-24 bg-white/10 backdrop-blur-xl rounded-full flex items-center justify-center mx-auto mb-6 border border-white/20 shadow-2xl group-hover:scale-105 transition-transform">
                       <Play className="w-10 h-10 text-white fill-white ml-1.5" />
                     </div>
                     <p className="text-white font-black uppercase tracking-widest text-lg">Watch {persona.name}&apos;s Session</p>
-                    <p className="text-white/40 text-sm mt-2 font-bold tracking-tight">{run?.target_url || run?.target || report?.target || "Real session proof"} • {frictionPoints.length} friction points</p>
+                    <p className="text-white/40 text-sm mt-2 font-bold tracking-tight">
+                      {run?.target_url || run?.target || report?.target || "Real session proof"} • {frictionPoints.length} friction points
+                    </p>
+                    <p className="mt-4 text-xs font-black uppercase tracking-widest text-white/70">
+                      {replayVideoUrl ? "Click to play replay" : replaySessionUrl ? "Click to open session" : "Replay not available yet"}
+                    </p>
                   </div>
-                </div>
+                </button>
               </section>
 
               <section className="space-y-6">
