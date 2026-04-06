@@ -168,8 +168,25 @@ export interface QaReport {
     debug_url?: string | null;
     [key: string]: unknown;
   } | null;
+  artifacts?: {
+    started_at?: string | null;
+    finished_at?: string | null;
+    viewport_width?: number | null;
+    viewport_height?: number | null;
+    [key: string]: unknown;
+  } | null;
   metadata?: Record<string, unknown> | null;
   engineering_triage?: EngineeringTriage;
+}
+
+export interface RunLogEntry {
+  ts?: string | null;
+  timestamp?: string | null;
+  event?: string | null;
+  message?: string | null;
+  note?: string | null;
+  data?: Record<string, unknown> | null;
+  details?: Record<string, unknown> | null;
 }
 
 export interface StatusResponse {
@@ -203,9 +220,13 @@ export interface StatusResponse {
     live_stream_viewer_url?: string | null;
     local_screenshots?: string[];
     local_video_path?: string | null;
+    started_at?: string | null;
+    finished_at?: string | null;
+    viewport_width?: number | null;
+    viewport_height?: number | null;
     [key: string]: unknown;
   } | null;
-  run_log?: Array<Record<string, unknown>>;
+  run_log?: RunLogEntry[];
   live_report?: {
     status?: string | null;
     summary?: {

@@ -262,3 +262,75 @@ test("status handler only returns repo triage details to the owner view", async 
     global.fetch = originalFetch;
   }
 });
+
+test("status handler exposes replay timing and viewport metadata from artifacts", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({
+    ok: true,
+    status: 200,
+    async json() {
+      return [
+        {
+          id: "row_status_artifacts_1",
+          run_id: "run_status_artifacts_1",
+          target: "clusterseo.com",
+          brand_key: "clusterseo.com",
+          status: "completed",
+          report_url: "https://swarmtester.com/api/qa/report?run_id=run_status_artifacts_1",
+          delivered_at: "2026-04-07T15:20:00.000Z",
+          payload: {
+            run_request: {
+              metadata: {
+                owner_user_id: "user_123"
+              }
+            },
+            report_json: {
+              status: "completed",
+              findings: []
+            },
+            artifacts: {
+              started_at: "2026-04-07T15:18:00.000Z",
+              finished_at: "2026-04-07T15:19:30.000Z",
+              viewport_width: 1440,
+              viewport_height: 900
+            }
+          }
+        }
+      ];
+    }
+  });
+
+  try {
+    await withEnv(
+      {
+        QA_SERVICE_TOKEN: "service-token",
+        SUPABASE_URL: "https://supabase.example",
+        SUPABASE_SERVICE_KEY: "service-key"
+      },
+      async () => {
+        const req = {
+          method: "GET",
+          query: {
+            run_id: "run_status_artifacts_1"
+          },
+          headers: {
+            host: "swarmtester.com",
+            "x-qa-service-token": "service-token",
+            "x-owner-user-id": "user_123"
+          }
+        };
+        const res = createRes();
+
+        await statusHandler(req, res);
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.body.artifacts.started_at, "2026-04-07T15:18:00.000Z");
+        assert.equal(res.body.artifacts.finished_at, "2026-04-07T15:19:30.000Z");
+        assert.equal(res.body.artifacts.viewport_width, 1440);
+        assert.equal(res.body.artifacts.viewport_height, 900);
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

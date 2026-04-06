@@ -87,6 +87,7 @@ import type {
   QaReport,
   RepoConnection,
   RepoRouteSuggestion,
+  RunLogEntry,
   RunSummary,
   ScheduleItem,
   ShareResponse,
@@ -5425,17 +5426,352 @@ ${point.recommended_fix || "Review the relevant interaction, tighten feedback, a
   );
 }
 
+type ReplayThoughtCue = {
+  id: string;
+  action: string;
+  target: string;
+  emotion: string;
+  text: string;
+  timestampLabel: string;
+  progress: number;
+  left: number;
+  top: number;
+  align: "left" | "right";
+};
+
+type ReplayCursorCue = {
+  id: string;
+  label: string;
+  progress: number;
+  left: number;
+  top: number;
+};
+
+function getRunLogEvent(entry: RunLogEntry | Record<string, unknown> | null | undefined) {
+  return String(entry && typeof entry === "object" ? entry.event || "" : "")
+    .trim()
+    .toLowerCase();
+}
+
+function getRunLogPayload(entry: RunLogEntry | Record<string, unknown> | null | undefined) {
+  if (!entry || typeof entry !== "object") {
+    return {};
+  }
+  if (entry.data && typeof entry.data === "object") {
+    return entry.data as Record<string, unknown>;
+  }
+  if (entry.details && typeof entry.details === "object") {
+    return entry.details as Record<string, unknown>;
+  }
+  return {};
+}
+
+function getRunLogTimestampMs(entry: RunLogEntry | Record<string, unknown> | null | undefined) {
+  const raw = String((entry && typeof entry === "object" ? entry.ts || entry.timestamp : "") || "").trim();
+  if (!raw) {
+    return Number.NaN;
+  }
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+}
+
+function clampReplayPercent(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.max(min, Math.min(max, value));
+}
+
+function resolveReplayCoordinates(payload: Record<string, unknown>) {
+  const directX = Number(payload.x);
+  const directY = Number(payload.y);
+  if (Number.isFinite(directX) && Number.isFinite(directY)) {
+    return { x: directX, y: directY };
+  }
+
+  const pair = Array.isArray(payload.fallback_coordinates) ? payload.fallback_coordinates : [];
+  const pairX = Number(pair[0]);
+  const pairY = Number(pair[1]);
+  if (Number.isFinite(pairX) && Number.isFinite(pairY)) {
+    return { x: pairX, y: pairY };
+  }
+
+  const box = payload.box && typeof payload.box === "object" ? (payload.box as Record<string, unknown>) : null;
+  const boxX = Number(box?.center_x);
+  const boxY = Number(box?.center_y);
+  if (Number.isFinite(boxX) && Number.isFinite(boxY)) {
+    return { x: boxX, y: boxY };
+  }
+
+  return null;
+}
+
+function buildReplayOverlayData(
+  runLog: StatusResponse["run_log"] | null | undefined,
+  reportArtifacts?: QaReport["artifacts"] | null,
+  statusArtifacts?: StatusResponse["artifacts"] | null
+) {
+  const safeRunLog = Array.isArray(runLog) ? runLog : [];
+  const timestamps = safeRunLog
+    .map((entry) => getRunLogTimestampMs(entry))
+    .filter((value) => Number.isFinite(value));
+  const startedAtMs = Date.parse(String(reportArtifacts?.started_at || statusArtifacts?.started_at || ""));
+  const finishedAtMs = Date.parse(String(reportArtifacts?.finished_at || statusArtifacts?.finished_at || ""));
+  const startMs = Number.isFinite(startedAtMs) ? startedAtMs : timestamps[0];
+  const endMs = Number.isFinite(finishedAtMs) ? finishedAtMs : timestamps[timestamps.length - 1];
+  const hasWindow = Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs;
+  const totalMs = hasWindow ? Math.max(1000, endMs - startMs) : 1000;
+  const viewportWidth =
+    Number(reportArtifacts?.viewport_width || statusArtifacts?.viewport_width) > 0
+      ? Number(reportArtifacts?.viewport_width || statusArtifacts?.viewport_width)
+      : 1440;
+  const viewportHeight =
+    Number(reportArtifacts?.viewport_height || statusArtifacts?.viewport_height) > 0
+      ? Number(reportArtifacts?.viewport_height || statusArtifacts?.viewport_height)
+      : 900;
+
+  const cursorCues: Array<ReplayCursorCue & { atMs: number }> = [];
+  const thoughtCandidates: Array<
+    Omit<ReplayThoughtCue, "left" | "top" | "align"> & { atMs: number }
+  > = [];
+  let hasPersonaThoughtEvent = false;
+
+  safeRunLog.forEach((entry, index) => {
+    const event = getRunLogEvent(entry);
+    const payload = getRunLogPayload(entry);
+    const atMs = getRunLogTimestampMs(entry);
+    const normalizedProgress =
+      hasWindow && Number.isFinite(atMs) ? clampReplayPercent((atMs - startMs) / totalMs, 0, 1) : 0;
+
+    if (event === "agent_click_coordinate_fallback_succeeded") {
+      const coordinates = resolveReplayCoordinates(payload);
+      if (coordinates) {
+        cursorCues.push({
+          id: `cursor-${index}`,
+          label: String(payload.describe || payload.reason || "interaction").trim() || "interaction",
+          progress: normalizedProgress,
+          left: clampReplayPercent((coordinates.x / viewportWidth) * 100, 2, 98),
+          top: clampReplayPercent((coordinates.y / viewportHeight) * 100, 4, 96),
+          atMs: Number.isFinite(atMs) ? atMs : startMs || 0
+        });
+      }
+    }
+
+    if (event === "persona_thought") {
+      const thoughtText = String(payload.text || payload.think_aloud || "").trim();
+      if (!thoughtText) {
+        return;
+      }
+      hasPersonaThoughtEvent = true;
+      thoughtCandidates.push({
+        id: `thought-${index}`,
+        action: String(payload.action || "").trim(),
+        target: String(payload.target || "").trim(),
+        emotion: String(payload.emotion || "").trim(),
+        text: thoughtText,
+        timestampLabel:
+          entry && typeof entry === "object" && (entry.ts || entry.timestamp)
+            ? formatDateTime(String(entry.ts || entry.timestamp))
+            : "",
+        progress: normalizedProgress,
+        atMs: Number.isFinite(atMs) ? atMs : startMs || 0
+      });
+    }
+  });
+
+  if (!hasPersonaThoughtEvent) {
+    safeRunLog.forEach((entry, index) => {
+      if (getRunLogEvent(entry) !== "vision_only_step_decision") {
+        return;
+      }
+      const payload = getRunLogPayload(entry);
+      const thoughtText = String(payload.think_aloud || "").trim();
+      if (!thoughtText) {
+        return;
+      }
+      const atMs = getRunLogTimestampMs(entry);
+      const normalizedProgress =
+        hasWindow && Number.isFinite(atMs) ? clampReplayPercent((atMs - startMs) / totalMs, 0, 1) : 0;
+      thoughtCandidates.push({
+        id: `thought-fallback-${index}`,
+        action: String(payload.action || "").trim(),
+        target: String(payload.target || "").trim(),
+        emotion: String(payload.emotion || "").trim(),
+        text: thoughtText,
+        timestampLabel:
+          entry && typeof entry === "object" && (entry.ts || entry.timestamp)
+            ? formatDateTime(String(entry.ts || entry.timestamp))
+            : "",
+        progress: normalizedProgress,
+        atMs: Number.isFinite(atMs) ? atMs : startMs || 0
+      });
+    });
+  }
+
+  const sortedCursors = cursorCues.slice().sort((left, right) => left.atMs - right.atMs);
+  const thoughts = thoughtCandidates
+    .slice()
+    .sort((left, right) => left.atMs - right.atMs)
+    .map((thought) => {
+      let anchor = sortedCursors
+        .filter((cursor) => cursor.atMs <= thought.atMs && thought.atMs - cursor.atMs <= 6000)
+        .slice(-1)[0];
+      if (!anchor) {
+        anchor = sortedCursors.find((cursor) => cursor.atMs >= thought.atMs && cursor.atMs - thought.atMs <= 1800);
+      }
+      const left = anchor ? clampReplayPercent(anchor.left, 12, 78) : 14;
+      const top = anchor ? clampReplayPercent(anchor.top - 13, 10, 76) : 72;
+      return {
+        ...thought,
+        left,
+        top,
+        align: left > 56 ? ("right" as const) : ("left" as const)
+      };
+    });
+
+  return {
+    thoughts,
+    cursors: sortedCursors,
+    viewportWidth,
+    viewportHeight
+  };
+}
+
+function getActiveReplayCue<T extends { progress: number }>(cues: T[], duration: number, currentTime: number, lingerMs: number) {
+  if (!Array.isArray(cues) || !cues.length || !Number.isFinite(duration) || duration <= 0) {
+    return null;
+  }
+  const lingerSeconds = Math.max(0.6, lingerMs / 1000);
+  let active: T | null = null;
+  cues.forEach((cue) => {
+    const cueTime = cue.progress * duration;
+    if (currentTime >= cueTime && currentTime - cueTime <= lingerSeconds) {
+      active = cue;
+    }
+  });
+  return active;
+}
+
+function ReplayVideoWithOverlay({
+  title,
+  videoUrl,
+  posterUrl,
+  thoughtCues,
+  cursorCues
+}: {
+  title: string;
+  videoUrl: string;
+  posterUrl: string;
+  thoughtCues: ReplayThoughtCue[];
+  cursorCues: ReplayCursorCue[];
+}) {
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const activeThought = getActiveReplayCue(thoughtCues, duration, currentTime, 4200);
+  const activeCursor = getActiveReplayCue(cursorCues, duration, currentTime, 2200);
+
+  return (
+    <div className="relative overflow-hidden rounded-[1.5rem] bg-black">
+      <video
+        controls
+        autoPlay
+        playsInline
+        poster={posterUrl || undefined}
+        className="w-full max-h-[72vh] bg-black object-contain"
+        src={videoUrl}
+        aria-label={title}
+        onLoadedMetadata={(event) => {
+          setDuration(Number(event.currentTarget.duration) || 0);
+          setCurrentTime(Number(event.currentTarget.currentTime) || 0);
+        }}
+        onTimeUpdate={(event) => {
+          setCurrentTime(Number(event.currentTarget.currentTime) || 0);
+        }}
+        onSeeked={(event) => {
+          setCurrentTime(Number(event.currentTarget.currentTime) || 0);
+        }}
+      >
+        Your browser could not play this replay.
+      </video>
+
+      <AnimatePresence>
+        {activeCursor ? (
+          <motion.div
+            key={activeCursor.id}
+            initial={{ opacity: 0, scale: 0.7 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.85 }}
+            className="pointer-events-none absolute z-20"
+            style={{
+              left: `${activeCursor.left}%`,
+              top: `${activeCursor.top}%`,
+              transform: "translate(-12%, -10%)"
+            }}
+          >
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-white/35 blur-md" />
+              <MousePointer2 className="relative h-8 w-8 fill-white text-brand-ink drop-shadow-[0_10px_25px_rgba(15,23,42,0.45)]" />
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {activeThought ? (
+          <motion.div
+            key={activeThought.id}
+            initial={{ opacity: 0, y: 10, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.97 }}
+            className="pointer-events-none absolute z-30 max-w-[min(24rem,76vw)]"
+            style={{
+              left: `${activeThought.left}%`,
+              top: `${activeThought.top}%`,
+              transform: activeThought.align === "right" ? "translate(-100%, -100%)" : "translate(0, -100%)"
+            }}
+          >
+            <div className="rounded-[1.4rem] border border-white/20 bg-white/92 px-4 py-3 shadow-[0_20px_60px_rgba(15,23,42,0.34)] backdrop-blur-xl">
+              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                <Quote className="h-3.5 w-3.5 text-brand-accent" />
+                User thought
+                {activeThought.emotion ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] text-slate-500">{activeThought.emotion}</span> : null}
+              </div>
+              <div className="mt-2 text-sm font-black leading-6 text-brand-ink">{activeThought.text}</div>
+              {activeThought.target ? (
+                <div className="mt-2 text-[11px] font-bold text-slate-500">
+                  {activeThought.action ? `${activeThought.action} -> ` : ""}
+                  {activeThought.target}
+                </div>
+              ) : null}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      {!thoughtCues.length ? (
+        <div className="pointer-events-none absolute inset-x-6 bottom-6 z-10 rounded-2xl border border-white/10 bg-brand-ink/55 px-4 py-3 text-xs font-bold text-white/75 backdrop-blur">
+          No thought cues were captured for this replay yet.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function StarterSessionReplayModal({
   title,
   videoUrl,
   posterUrl,
   sessionUrl,
+  thoughtCues,
+  cursorCues,
   onClose
 }: {
   title: string;
   videoUrl: string;
   posterUrl: string;
   sessionUrl: string;
+  thoughtCues: ReplayThoughtCue[];
+  cursorCues: ReplayCursorCue[];
   onClose: () => void;
 }) {
   return (
@@ -5470,16 +5806,13 @@ function StarterSessionReplayModal({
 
         <div className="bg-brand-ink p-4 md:p-6">
           {videoUrl ? (
-            <video
-              controls
-              autoPlay
-              playsInline
-              poster={posterUrl || undefined}
-              className="w-full max-h-[72vh] rounded-[1.5rem] bg-black object-contain"
-              src={videoUrl}
-            >
-              Your browser could not play this replay.
-            </video>
+            <ReplayVideoWithOverlay
+              title={title}
+              videoUrl={videoUrl}
+              posterUrl={posterUrl}
+              thoughtCues={thoughtCues}
+              cursorCues={cursorCues}
+            />
           ) : posterUrl ? (
             <img
               src={posterUrl}
@@ -5496,9 +5829,40 @@ function StarterSessionReplayModal({
           )}
         </div>
 
+        {thoughtCues.length ? (
+          <div className="border-t border-slate-100 bg-slate-50/70 px-6 py-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="text-sm font-black text-brand-ink">Thought timeline</div>
+                <div className="mt-1 text-xs font-bold text-slate-500">Short first-person reactions captured during the run.</div>
+              </div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">{thoughtCues.length} cues</div>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {thoughtCues.slice(0, 6).map((thought) => (
+                <div key={thought.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                    <Quote className="h-3.5 w-3.5 text-brand-accent" />
+                    {thought.timestampLabel || "Thought"}
+                  </div>
+                  <div className="mt-2 text-sm font-black leading-6 text-brand-ink">{thought.text}</div>
+                  {thought.target ? (
+                    <div className="mt-2 text-[11px] font-bold text-slate-500">
+                      {thought.action ? `${thought.action} -> ` : ""}
+                      {thought.target}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-5 bg-white">
           <div className="text-sm font-bold text-slate-500">
-            {videoUrl ? "You can scrub, pause, and rewatch directly here." : "If a hosted session exists, open it from the button on the right."}
+            {videoUrl
+              ? "Scrub the replay to see the user thoughts and cursor markers at each recorded interaction."
+              : "If a hosted session exists, open it from the button on the right."}
           </div>
           <div className="flex flex-wrap gap-3">
             {sessionUrl ? (
@@ -5583,6 +5947,7 @@ function StarterReportPage({
     firstEvidence && (report?.run_id || run?.run_id)
       ? buildEvidenceAssetUrl(report?.run_id || run?.run_id || "", "screenshot", firstEvidence[1], shareKey)
       : "";
+  const replayOverlay = buildReplayOverlayData(status?.run_log, report?.artifacts, status?.artifacts);
   const hasReplay = Boolean(replayVideoUrl || replaySessionUrl);
   const frictionPoints =
     (report?.findings || []).map((finding, index) => ({
@@ -5595,7 +5960,7 @@ function StarterReportPage({
   const replayLogs = (status?.run_log || []).slice(0, 8).map((entry, index) => ({
     step: index + 1,
     action: String(entry.event || entry.message || "Interaction").replaceAll("_", " "),
-    result: String(entry.message || entry.note || "Recorded"),
+    result: String(entry.message || entry.note || getRunLogPayload(entry).text || getRunLogPayload(entry).reason || "Recorded"),
     time: entry.ts ? formatDateTime(String(entry.ts)) : `0:${String(index * 8).padStart(2, "0")}`
   }));
   const isActiveRun = ["queued", "processing", "retryable"].includes(effectiveStatus);
@@ -5607,8 +5972,9 @@ function StarterReportPage({
       : effectiveStatus === "processing"
         ? "The run is in progress."
         : "Waiting for another attempt.");
+  const liveThoughtRows = replayOverlay.thoughts.slice(-6).reverse();
   const liveLogRows = (status?.run_log || []).slice(-12).map((entry, index) => {
-    const details = entry.details && typeof entry.details === "object" ? (entry.details as Record<string, unknown>) : {};
+    const details = getRunLogPayload(entry);
     return {
     id: `${entry.timestamp || entry.ts || index}-${entry.event || "event"}`,
     title: String(entry.event || "update").replaceAll("_", " "),
@@ -5616,6 +5982,7 @@ function StarterReportPage({
       String(
         entry.message ||
           entry.note ||
+          details.text ||
           details.message ||
           details.current_state ||
           details.reason ||
@@ -5635,6 +6002,8 @@ function StarterReportPage({
             videoUrl={replayVideoUrl}
             posterUrl={replayPosterUrl}
             sessionUrl={replaySessionUrl}
+            thoughtCues={replayOverlay.thoughts}
+            cursorCues={replayOverlay.cursors}
             onClose={() => setReplayOpen(false)}
           />
         ) : null}
@@ -5741,6 +6110,35 @@ function StarterReportPage({
               </section>
 
               <section className="space-y-6">
+                {liveThoughtRows.length ? (
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between gap-4">
+                      <h3 className="text-xl font-black tracking-tight">What the user is thinking</h3>
+                      <div className="text-xs font-black uppercase tracking-widest text-slate-400">
+                        {liveThoughtRows.length} cues
+                      </div>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {liveThoughtRows.map((thought) => (
+                        <div key={thought.id} className="dash-card p-6 border border-slate-100 bg-white">
+                          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                            <Quote className="h-3.5 w-3.5 text-brand-accent" />
+                            User thought
+                            {thought.emotion ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] text-slate-500">{thought.emotion}</span> : null}
+                          </div>
+                          <div className="mt-3 text-base font-black leading-7 text-brand-ink">{thought.text}</div>
+                          {thought.target ? (
+                            <div className="mt-3 text-xs font-black uppercase tracking-widest text-slate-400">
+                              {thought.action ? `${thought.action} -> ` : ""}
+                              {thought.target}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="flex items-center justify-between gap-4">
                   <h3 className="text-xl font-black tracking-tight">Live activity</h3>
                   <div className="text-xs font-black uppercase tracking-widest text-slate-400">
@@ -5930,6 +6328,35 @@ function StarterReportPage({
                   </div>
                 </button>
               </section>
+
+              {replayOverlay.thoughts.length ? (
+                <section className="space-y-6">
+                  <div className="flex items-center justify-between gap-4">
+                    <h3 className="text-xl font-black tracking-tight">What the user was thinking</h3>
+                    <div className="text-xs font-black uppercase tracking-widest text-slate-400">
+                      {replayOverlay.thoughts.length} excerpts
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {replayOverlay.thoughts.slice(0, 6).map((thought) => (
+                      <div key={thought.id} className="dash-card p-6 border-2 border-slate-100 bg-white">
+                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                          <Quote className="h-3.5 w-3.5 text-brand-accent" />
+                          {thought.timestampLabel || "User thought"}
+                          {thought.emotion ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] text-slate-500">{thought.emotion}</span> : null}
+                        </div>
+                        <div className="mt-3 text-base font-black leading-7 text-brand-ink">{thought.text}</div>
+                        {thought.target ? (
+                          <div className="mt-3 text-xs font-black uppercase tracking-widest text-slate-400">
+                            {thought.action ? `${thought.action} -> ` : ""}
+                            {thought.target}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
               <section className="space-y-6">
                 <h3 className="text-xl font-black tracking-tight">Full Step-by-Step Log</h3>

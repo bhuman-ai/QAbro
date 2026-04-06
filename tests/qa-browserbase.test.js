@@ -886,6 +886,8 @@ test("executeBrowserbaseQaRun supports vision_only mode with annotation-based cl
           return {
             action: "click",
             target: "Start Here",
+            think_aloud: "I think this starts the main flow.",
+            emotion: "confidence",
             reason: "begin primary flow",
             success_criteria: "The app should open the next screen"
           };
@@ -907,6 +909,13 @@ test("executeBrowserbaseQaRun supports vision_only mode with annotation-based cl
   assert.equal(result.report.artifacts.coordinate_click_fallback.failed, 0);
   assert.ok(
     result.runLog.some((entry) => entry.event === "vision_only_step_decision")
+  );
+  assert.ok(
+    result.runLog.some(
+      (entry) =>
+        entry.event === "persona_thought" &&
+        String(entry.details?.text || "").includes("starts the main flow")
+    )
   );
 });
 

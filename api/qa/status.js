@@ -107,6 +107,14 @@ module.exports = async (req, res) => {
           local_matrix_dir: sanitizeString(mergedLiveArtifacts.local_matrix_dir, 4096) || null,
           local_trace_path: sanitizeString(mergedLiveArtifacts.local_trace_path, 4096) || null,
           local_video_path: sanitizeString(mergedLiveArtifacts.local_video_path, 4096) || null,
+          started_at: sanitizeString(mergedLiveArtifacts.started_at, 128) || null,
+          finished_at: sanitizeString(mergedLiveArtifacts.finished_at, 128) || null,
+          viewport_width: Number.isFinite(Number(mergedLiveArtifacts.viewport_width))
+            ? Math.max(0, Math.round(Number(mergedLiveArtifacts.viewport_width)))
+            : null,
+          viewport_height: Number.isFinite(Number(mergedLiveArtifacts.viewport_height))
+            ? Math.max(0, Math.round(Number(mergedLiveArtifacts.viewport_height)))
+            : null,
           local_screenshots: Array.isArray(mergedLiveArtifacts.local_screenshots)
             ? mergedLiveArtifacts.local_screenshots
                 .map((item) => sanitizeString(item, 4096))
