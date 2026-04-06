@@ -5,9 +5,101 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Swarm Tester</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+      :root {
+        color-scheme: light;
+        --boot-bg: #f8fafc;
+        --boot-shell: #ffffff;
+        --boot-line: #d9e2ec;
+        --boot-text: #0f172a;
+        --boot-muted: #64748b;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--boot-bg);
+        color: var(--boot-text);
+        font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+      }
+
+      body {
+        min-height: 100vh;
+      }
+
+      #root {
+        min-height: 100vh;
+      }
+
+      .boot-shell {
+        display: flex;
+        min-height: 100vh;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+
+      .boot-card {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        border: 1px solid var(--boot-line);
+        background: var(--boot-shell);
+        border-radius: 14px;
+        padding: 14px 18px;
+        box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
+      }
+
+      .boot-spinner {
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        border: 2px solid var(--boot-line);
+        border-top-color: var(--boot-text);
+        animation: boot-spin 0.9s linear infinite;
+        flex: 0 0 auto;
+      }
+
+      .boot-label {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--boot-muted);
+      }
+
+      @keyframes boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-shell" aria-live="polite">
+        <div class="boot-card">
+          <div class="boot-spinner" aria-hidden="true"></div>
+          <div class="boot-label" id="boot-label">Loading Swarm Tester...</div>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var label = document.getElementById("boot-label");
+        if (!label) return;
+        var params = new URLSearchParams(window.location.search);
+        var pathname = window.location.pathname || "/";
+        if (params.get("compose") === "1") {
+          label.textContent = "Opening test setup...";
+          return;
+        }
+        if (pathname === "/dashboard" || pathname === "/reports") {
+          label.textContent = "Loading your dashboard...";
+          return;
+        }
+        label.textContent = "Loading Swarm Tester...";
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
