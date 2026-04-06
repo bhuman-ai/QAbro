@@ -9,7 +9,7 @@ export const DEFAULT_GOALS = [
   "Reach the first meaningful in-product state."
 ];
 
-export const DEFAULT_CONTROLLED_UX_JOB = "Validate the main owned flow before broad live QA.";
+export const DEFAULT_CONTROLLED_UX_JOB = "Example: Create an account and reach the first dashboard screen.";
 
 export function normalizeValidationTarget(value: string) {
   const safe = String(value || "").trim().toLowerCase();
@@ -138,6 +138,10 @@ export function normalizeEntryPath(value: string) {
   return normalized.replace(/\/{2,}/g, "/");
 }
 
+export function hasControlledUxFlowPlan(draft: Pick<LaunchDraft, "entryPath" | "routeHintsText">) {
+  return Boolean(normalizeEntryPath(draft.entryPath) || parseGoalsText(draft.routeHintsText).length);
+}
+
 function buildControlledScenarioList(draft: LaunchDraft) {
   const routeHints = parseGoalsText(draft.routeHintsText);
   const successSignals = parseGoalsText(draft.successSignalsText);
@@ -147,12 +151,14 @@ function buildControlledScenarioList(draft: LaunchDraft) {
 
   if (userJob && entryPath) {
     scenarios.push(`Start at ${entryPath} and validate this owned flow: ${userJob}`);
-  } else if (userJob) {
-    scenarios.push(userJob);
   } else if (entryPath) {
-    scenarios.push(`Start at ${entryPath} and validate the main owned flow.`);
-  } else {
-    scenarios.push(DEFAULT_CONTROLLED_UX_JOB);
+    scenarios.push(
+      userJob ? `Start at ${entryPath} and validate this owned flow: ${userJob}` : `Start at ${entryPath} and validate the declared owned flow.`
+    );
+  } else if (userJob && routeHints.length) {
+    scenarios.push(`Validate this owned flow near the declared routes: ${userJob}`);
+  } else if (routeHints.length) {
+    scenarios.push(`Validate the owned flow around these planned routes: ${routeHints.join(" -> ")}`);
   }
 
   if (routeHints.length) {
@@ -222,7 +228,7 @@ export function buildLaunchPayload(draft: LaunchDraft, options: { retryOfRunId?:
       auth_policy: authPolicy,
       goal:
         qaMode === "controlled_ux"
-          ? controlled.userJob || goals[0] || DEFAULT_CONTROLLED_UX_JOB
+          ? controlled.userJob || goals[0] || "Follow the declared owned flow."
           : goals.length === 1
           ? goals[0]
           : goals.length > 1

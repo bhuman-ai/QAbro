@@ -71,6 +71,7 @@ import {
   getSeverityTone,
   getStatusTone,
   inferBrandName,
+  hasControlledUxFlowPlan,
   normalizeAccessMethod,
   normalizeEntryPath,
   normalizeBrandKey,
@@ -2272,11 +2273,9 @@ function WorkspacePage({
     }
     if (
       nextDraft.runMode === "controlled_ux" &&
-      !String(nextDraft.userJob || "").trim() &&
-      !normalizeEntryPath(nextDraft.entryPath) &&
-      !String(nextDraft.routeHintsText || "").trim()
+      !hasControlledUxFlowPlan(nextDraft)
     ) {
-      setLaunchMessage("Controlled UX mode needs a user job, an entry path, or at least one planned route.");
+      setLaunchMessage("Controlled UX mode needs an entry path or at least one planned route. Otherwise it turns into generic live-site clicking.");
       setLaunchTone("danger");
       return;
     }
@@ -3034,11 +3033,7 @@ function WorkspacePage({
                   setLaunchDraft((current) => ({
                     ...current,
                     runMode,
-                    scopeMode: runMode === "controlled_ux" ? "feature_targeted" : current.scopeMode === "feature_targeted" ? "core_20m" : current.scopeMode,
-                    userJob:
-                      runMode === "controlled_ux" && !current.userJob
-                        ? DEFAULT_CONTROLLED_UX_JOB
-                        : current.userJob
+                    scopeMode: runMode === "controlled_ux" ? "feature_targeted" : current.scopeMode === "feature_targeted" ? "core_20m" : current.scopeMode
                   }))
                 }
                 onToggleGoal={(goal) =>
@@ -3180,6 +3175,12 @@ function LaunchComposer({
           ? "Test login"
           : "App URL";
 
+  const controlledJobPlaceholder =
+    validationTarget === "inside_product"
+      ? "Open the dashboard and create the first project."
+      : validationTarget === "login_signup"
+        ? "Create an account and understand what happens next."
+        : "Understand the product and reach the main get-started page.";
   const stepReady =
     step === 1
       ? Boolean(normalizeUrlInput(draft.targetUrl))
@@ -3199,7 +3200,7 @@ function LaunchComposer({
                   : true
           : step === 4
             ? isControlled
-              ? Boolean(String(draft.userJob || "").trim() || normalizeEntryPath(draft.entryPath) || routeHintLines.length)
+              ? hasControlledUxFlowPlan(draft)
               : Boolean(draft.persona)
             : true;
 
@@ -3570,7 +3571,7 @@ function LaunchComposer({
                 <div className="text-lg font-semibold text-brand-ink">Flow setup</div>
                 <p className="mt-1 text-sm leading-6 text-brand-muted">
                   {isControlled
-                    ? "Define the owned flow and keep it tight."
+                    ? "Anchor the review to a real start path or planned route so it stays on the owned flow."
                     : "Pick one user and decide how deep the run should go."}
                 </p>
               </div>
@@ -3605,6 +3606,12 @@ function LaunchComposer({
 
               {isControlled ? (
                 <>
+                  <div className="rounded-xl border border-brand-line bg-brand-panel p-4">
+                    <div className="text-sm font-semibold text-brand-ink">Controlled UX needs a route plan</div>
+                    <p className="mt-1 text-sm leading-6 text-brand-muted">
+                      Add an entry path or at least one planned route. If both are blank, the runner falls back to generic live-site clicking.
+                    </p>
+                  </div>
                   <div>
                     <FieldLabel>Primary user job</FieldLabel>
                     <TextArea
@@ -3615,7 +3622,7 @@ function LaunchComposer({
                           userJob: event.target.value
                         }))
                       }
-                      placeholder={DEFAULT_CONTROLLED_UX_JOB}
+                      placeholder={controlledJobPlaceholder}
                     />
                   </div>
                   <div>

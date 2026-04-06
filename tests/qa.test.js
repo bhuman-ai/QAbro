@@ -43,6 +43,25 @@ test("validateRunRequest rejects feature_targeted without scenarios", () => {
   assert.match(result.error, /scenario_list/i);
 });
 
+test("validateRunRequest rejects controlled UX runs without an entry path or route hints", () => {
+  const result = validateRunRequest({
+    run_id: "run_controlled_missing_plan",
+    target_url: "https://example.com",
+    scope_mode: "feature_targeted",
+    scenario_list: ["Validate the signup flow"],
+    metadata: {
+      qa_mode: "controlled_ux",
+      controlled_ux: {
+        enabled: true,
+        user_job: "Create an account and understand the next step."
+      }
+    }
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /entry_path|route_hints/i);
+});
+
 test("validateRunRequest accepts webhook config and defaults events", () => {
   const result = validateRunRequest({
     run_id: "run_webhook_1",
@@ -182,6 +201,27 @@ test("buildTaskPrompt adds controlled UX instructions when qa_mode is controlled
   assert.match(prompt, /Owned flow entry path: \/signup/);
   assert.match(prompt, /Planned route hints:\n- \/signup\n- \/onboarding\n- \/dashboard/);
   assert.match(prompt, /Do not spend the run on unrelated exploratory coverage/);
+});
+
+test("buildTaskPrompt tells controlled UX runs to stop when the flow plan is missing", () => {
+  const prompt = buildTaskPrompt({
+    run_id: "run_controlled_ux_missing_plan_1",
+    target_url: "https://example.com",
+    scope_mode: "feature_targeted",
+    scenario_list: ["Validate the signup flow"],
+    brand_persona: "Test user",
+    source: "qa_bot",
+    metadata: {
+      qa_mode: "controlled_ux",
+      controlled_ux: {
+        enabled: true,
+        user_job: "Create an account and understand the next step."
+      }
+    }
+  });
+
+  assert.match(prompt, /Owned flow entry path: Not provided/);
+  assert.match(prompt, /stop and report missing controlled-flow setup instead of clicking generic homepage CTAs/i);
 });
 
 test("buildTaskPrompt adds inside-product instructions when validation target is authenticated", () => {
