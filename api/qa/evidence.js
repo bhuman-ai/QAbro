@@ -98,19 +98,27 @@ function readEvidenceMediaEntry(payload, kind, source) {
       continue;
     }
 
-    const entrySource = normalizeEvidenceSource(entry.source || entry.path || entry.raw);
-    if (!entrySource || entrySource !== expectedSource) {
+    const entrySources = [
+      entry.source,
+      entry.path,
+      entry.raw,
+      ...(Array.isArray(entry.aliases) ? entry.aliases : [])
+    ]
+      .map(normalizeEvidenceSource)
+      .filter(Boolean);
+    if (!entrySources.length || !entrySources.includes(expectedSource)) {
       continue;
     }
 
     return {
-      source: entrySource,
+      source: entrySources[0],
       content_type: sanitizeString(entry.content_type || entry.contentType, 128) || null,
       data_url: sanitizeString(entry.data_url || entry.dataUrl || entry.value, getEmbeddedEvidenceMaxLength(kind)),
       storage_bucket: sanitizeString(entry.storage_bucket || entry.storageBucket || entry.bucket, 128) || null,
       storage_path:
         sanitizeString(entry.storage_path || entry.storagePath || entry.object_path || entry.objectPath, 4096)
-          .replaceAll("\\", "/") || null
+          .replaceAll("\\", "/") || null,
+      ...(entrySources.length > 1 ? { aliases: entrySources.slice(1) } : {})
     };
   }
 

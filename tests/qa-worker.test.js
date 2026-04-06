@@ -205,6 +205,59 @@ test("buildStoredExecutionPayload preserves portable evidence media for local sc
   });
 });
 
+test("buildStoredExecutionPayload prefers storage-backed evidence media and cleaned artifacts", () => {
+  const payload = __private.buildStoredExecutionPayload(
+    {
+      status: "partial",
+      evidence_gallery: {
+        videos: ["https://local.example/artifacts/proof.webm"]
+      }
+    },
+    "Report",
+    {
+      artifacts: {
+        local_video_path: "/tmp/proof.webm",
+        local_video_url: "https://local.example/artifacts/proof.webm",
+        local_run_dir: "/tmp/run-dir"
+      },
+      publishedArtifacts: {
+        local_video_path: "/tmp/proof.webm",
+        local_video_url: null,
+        local_run_dir: null
+      },
+      evidenceMedia: {
+        videos: [
+          {
+            source: "/tmp/proof.webm",
+            aliases: ["https://local.example/artifacts/proof.webm"],
+            content_type: "video/webm",
+            storage_bucket: "qa-evidence",
+            storage_path: "run_1/videos/proof.webm"
+          }
+        ]
+      },
+      runLog: []
+    }
+  );
+
+  assert.deepEqual(payload.artifacts, {
+    local_video_path: "/tmp/proof.webm",
+    local_video_url: null,
+    local_run_dir: null
+  });
+  assert.deepEqual(payload.evidenceMedia, {
+    videos: [
+      {
+        source: "/tmp/proof.webm",
+        aliases: ["https://local.example/artifacts/proof.webm"],
+        content_type: "video/webm",
+        storage_bucket: "qa-evidence",
+        storage_path: "run_1/videos/proof.webm"
+      }
+    ]
+  });
+});
+
 test("collectExecutionScreenshotEvidence and video evidence dedupe report and artifact sources", () => {
   const screenshots = __private.collectExecutionScreenshotEvidence(
     {

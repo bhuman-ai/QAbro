@@ -41,7 +41,12 @@ const {
 } = require("../lib/qa-workers");
 const { executeLocalAgentQaRun } = require("../lib/qa-local-agent");
 const repoTriageWorker = require("./qa-repo-triage-worker");
-const { buildEmbeddedEvidenceMedia } = qaLocalPublishPrivate;
+const {
+  buildEmbeddedEvidenceMedia,
+  buildPortableEvidenceMedia,
+  buildPublishedArtifacts,
+  cleanupPublishedLocalArtifacts
+} = qaLocalPublishPrivate;
 
 function loadEnvFileIfPresent(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -1181,12 +1186,20 @@ function createLiveProgressUpdater(claimed, workerId, options = {}) {
 
 function buildStoredExecutionPayload(finalReport, markdown, execution = {}) {
   const sanitizedReport = sanitizeReportForCallback(finalReport);
-  const evidenceMedia = buildEmbeddedEvidenceMedia(finalReport, execution.artifacts || {});
+  const evidenceMedia =
+    isPlainObject(execution.evidenceMedia) ||
+    Array.isArray(execution.evidenceMedia?.screenshots) ||
+    Array.isArray(execution.evidenceMedia?.videos)
+      ? execution.evidenceMedia
+      : buildEmbeddedEvidenceMedia(finalReport, execution.artifacts || {});
+  const callbackArtifacts = sanitizeArtifactsForCallback(
+    isPlainObject(execution.publishedArtifacts) ? execution.publishedArtifacts : execution.artifacts || {}
+  );
   return {
     reportJson: sanitizedReport,
     findings: Array.isArray(sanitizedReport?.findings) ? sanitizedReport.findings : [],
     reportMarkdown: sanitizeReportMarkdown(markdown, 12000),
-    artifacts: sanitizeArtifactsForCallback(execution.artifacts || {}),
+    artifacts: callbackArtifacts,
     runLog: sanitizeRunLogForCallback(execution.runLog),
     evidenceMedia
   };
@@ -1633,13 +1646,24 @@ async function processOne(workerId, options = {}) {
     await liveProgress.flushNow();
   }
 
+  const portableEvidenceMedia = await buildPortableEvidenceMedia(finalReport, execution.artifacts || {}, {
+    runId: claimed.row.run_id
+  });
+  const publishedArtifacts = buildPublishedArtifacts(execution.artifacts || {}, {
+    evidenceMedia: portableEvidenceMedia
+  });
+  const executionForStorage = {
+    ...execution,
+    evidenceMedia: portableEvidenceMedia,
+    publishedArtifacts
+  };
+
   const callbackUrl =
     process.env.QA_CALLBACK_URL || `${process.env.QA_PUBLIC_APP_URL || DEFAULT_PUBLIC_BASE_URL}/api/qa-report-callback`;
-  const evidenceMedia = buildEmbeddedEvidenceMedia(finalReport, execution.artifacts || {});
   const callbackResult = await sendFinalCallback({
     report: finalReport,
     markdown,
-    artifacts: execution.artifacts,
+    artifacts: publishedArtifacts,
     runLog: execution.runLog,
     callbackUrl,
     callbackSecret: process.env.QA_CALLBACK_SECRET,
@@ -1651,7 +1675,7 @@ async function processOne(workerId, options = {}) {
       },
       status_url: claimed.payload?.status_url || null,
       run_request: claimed.runRequest,
-      ...(evidenceMedia ? { evidence_media: evidenceMedia } : {}),
+      ...(portableEvidenceMedia ? { evidence_media: portableEvidenceMedia } : {}),
       worker: {
         worker_id: workerId
       }
@@ -1664,10 +1688,11 @@ async function processOne(workerId, options = {}) {
         claimed,
         finalReport,
         markdown,
-        execution,
+        executionForStorage,
         callbackResult,
         workerId
       );
+      cleanupPublishedLocalArtifacts(finalReport, execution.artifacts || {}, portableEvidenceMedia);
       await maybeQueueRepoTriageAfterRun(claimed, finalReport);
       const finalEventType = ["completed", "partial"].includes(
         String(finalReport.status || "").toLowerCase()
@@ -1704,7 +1729,7 @@ async function processOne(workerId, options = {}) {
       claimed,
       finalReport,
       markdown,
-      execution,
+      executionForStorage,
       callbackResult,
       workerId
     );
@@ -1738,10 +1763,11 @@ async function processOne(workerId, options = {}) {
     claimed,
     finalReport,
     markdown,
-    execution,
+    executionForStorage,
     callbackResult,
     workerId
   );
+  cleanupPublishedLocalArtifacts(finalReport, execution.artifacts || {}, portableEvidenceMedia);
   await maybeQueueRepoTriageAfterRun(claimed, finalReport);
   const finalEventType = ["completed", "partial"].includes(String(finalReport.status || "").toLowerCase())
     ? "run.completed"

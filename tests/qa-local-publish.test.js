@@ -211,6 +211,107 @@ test("buildPortableEvidenceMedia uploads proof assets to storage when configured
   );
 });
 
+test("buildPortableEvidenceMedia includes local video URL aliases for storage-backed videos", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-local-publish-video-storage-"));
+  const videoPath = path.join(tempDir, "proof.webm");
+  fs.writeFileSync(videoPath, Buffer.from("proof-video"));
+
+  const evidenceMedia = await __private.buildPortableEvidenceMedia(
+    {
+      evidence_gallery: {
+        videos: ["https://local.example/artifacts/proof.webm"]
+      }
+    },
+    {
+      local_video_path: videoPath,
+      local_video_url: "https://local.example/artifacts/proof.webm"
+    },
+    {
+      runId: "run_storage_video",
+      maxScreenshots: 0,
+      maxVideos: 1,
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        headers: {
+          get() {
+            return "";
+          }
+        },
+        async json() {
+          return {};
+        }
+      })
+    }
+  );
+
+  assert.deepEqual(evidenceMedia, {
+    videos: [
+      {
+        source: videoPath.replaceAll("\\", "/"),
+        content_type: "video/webm",
+        aliases: ["https://local.example/artifacts/proof.webm"],
+        storage_bucket: "qa-evidence",
+        storage_path: evidenceMedia.videos[0].storage_path,
+        byte_length: Buffer.byteLength("proof-video")
+      }
+    ]
+  });
+});
+
+test("cleanupPublishedLocalArtifacts removes local run directories after storage upload", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-local-publish-cleanup-"));
+  const screenshotPath = path.join(tempDir, "proof.png");
+  const videoPath = path.join(tempDir, "proof.webm");
+  const reportPath = path.join(tempDir, "report.json");
+  fs.writeFileSync(screenshotPath, Buffer.from("proof-image"));
+  fs.writeFileSync(videoPath, Buffer.from("proof-video"));
+  fs.writeFileSync(reportPath, "{}");
+
+  const cleanup = __private.cleanupPublishedLocalArtifacts(
+    {
+      findings: [
+        {
+          evidence: {
+            screenshots: [screenshotPath]
+          }
+        }
+      ],
+      evidence_gallery: {
+        videos: [videoPath]
+      }
+    },
+    {
+      local_run_dir: tempDir,
+      local_screenshots: [screenshotPath],
+      local_video_path: videoPath,
+      local_qa_report_json: reportPath
+    },
+    {
+      screenshots: [
+        {
+          source: screenshotPath,
+          storage_bucket: "qa-evidence",
+          storage_path: "run_1/screenshots/proof.png"
+        }
+      ],
+      videos: [
+        {
+          source: videoPath,
+          storage_bucket: "qa-evidence",
+          storage_path: "run_1/videos/proof.webm"
+        }
+      ]
+    }
+  );
+
+  assert.equal(cleanup.ok, true);
+  assert.equal(cleanup.skipped, false);
+  assert.equal(fs.existsSync(tempDir), false);
+});
+
 test("attachStepVideoClipsToReport derives and stores real step clip refs", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-local-step-clips-"));
   const masterVideoPath = path.join(tempDir, "full.webm");

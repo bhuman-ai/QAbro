@@ -116,6 +116,35 @@ test("readEvidenceMediaEntry resolves storage-backed media metadata for matching
   });
 });
 
+test("readEvidenceMediaEntry resolves storage-backed media metadata for matching aliases", () => {
+  const entry = evidenceHandler.__private.readEvidenceMediaEntry(
+    {
+      evidence_media: {
+        videos: [
+          {
+            source: "/tmp/proof.webm",
+            aliases: ["https://local.example/artifacts/proof.webm"],
+            storage_bucket: "qa-evidence",
+            storage_path: "run_1/videos/proof.webm",
+            content_type: "video/webm"
+          }
+        ]
+      }
+    },
+    "video",
+    "https://local.example/artifacts/proof.webm"
+  );
+
+  assert.deepEqual(entry, {
+    source: "/tmp/proof.webm",
+    content_type: "video/webm",
+    data_url: "",
+    storage_bucket: "qa-evidence",
+    storage_path: "run_1/videos/proof.webm",
+    aliases: ["https://local.example/artifacts/proof.webm"]
+  });
+});
+
 test("fetchStoredEvidenceObject streams media from Supabase storage", async () => {
   const result = await evidenceHandler.__private.fetchStoredEvidenceObject(
     {
