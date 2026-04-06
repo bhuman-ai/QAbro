@@ -2353,6 +2353,7 @@ function WorkspacePage({
       if (payload.metadata.brand_key) {
         nextParams.set("brand", String(payload.metadata.brand_key));
       }
+      nextParams.set("panel", "report");
       nextParams.set("view", "live");
       nextParams.delete("compose");
       navigate("/dashboard", nextParams);
@@ -4690,7 +4691,7 @@ function StarterDashboard({
               <Clock className="w-4 h-4 text-slate-400" />
               Schedule Test
             </button>
-            <button onClick={() => onRunNewTest().catch(() => null)} className="bg-brand-ink text-white px-8 py-3 rounded-xl font-black text-sm flex items-center gap-2 hover:bg-brand-accent transition-all shadow-sm">
+            <button onClick={onOpenAdvancedLaunch} className="bg-brand-ink text-white px-8 py-3 rounded-xl font-black text-sm flex items-center gap-2 hover:bg-brand-accent transition-all shadow-sm">
               <Play className="w-4 h-4" />
               Run New Test
             </button>
