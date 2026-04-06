@@ -28,6 +28,9 @@ export function normalizeAccessMethod(value: string, validationTarget: string) {
   if (target === "public_flow") {
     return "none";
   }
+  if (safe === "saved_session" || safe === "saved-session" || safe === "session" || safe === "saved") {
+    return "saved_session";
+  }
   if (safe === "auth_url" || safe === "auth-url") {
     return "auth_url";
   }

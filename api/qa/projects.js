@@ -1,6 +1,30 @@
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
 const { parseRequestBody, sanitizeString } = require("../../lib/qa-core");
 const { listCanonicalQaProjects, upsertQaProjects } = require("../../lib/qa-projects");
+const { getQaProfileState } = require("../../lib/qa-session-profiles");
+
+function attachQaProfileMetadata(project, owner) {
+  const safeProject = project && typeof project === "object" ? project : {};
+  const metadata = safeProject.metadata && typeof safeProject.metadata === "object" ? safeProject.metadata : {};
+  return {
+    ...safeProject,
+    metadata: {
+      ...metadata,
+      qa_profile: getQaProfileState(
+        {
+          ...safeProject,
+          metadata: {
+            ...metadata,
+            owner_user_id: owner.ownerUserId || safeProject.owner_user_id,
+            owner_email: owner.ownerEmail || safeProject.owner_email,
+            brand_key: safeProject.brand_key
+          }
+        },
+        {}
+      )
+    }
+  };
+}
 
 module.exports = async (req, res) => {
   const auth = await requireDashboardOrServiceAuth(req, res);
@@ -29,7 +53,12 @@ module.exports = async (req, res) => {
     return res.status(200).json({
       ok: true,
       total: listed.total,
-      items: listed.items,
+      items: (listed.items || []).map((item) =>
+        attachQaProfileMetadata(item, {
+          ownerUserId,
+          ownerEmail
+        })
+      ),
       source: listed.source || "canonical"
     });
   }
@@ -53,7 +82,12 @@ module.exports = async (req, res) => {
 
     return res.status(200).json({
       ok: true,
-      items: saved.items
+      items: (saved.items || []).map((item) =>
+        attachQaProfileMetadata(item, {
+          ownerUserId,
+          ownerEmail
+        })
+      )
     });
   }
 

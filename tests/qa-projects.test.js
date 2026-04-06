@@ -1,5 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 
 const projectsHandler = require("../api/qa/projects");
 
@@ -224,6 +227,7 @@ test("projects handler returns the canonical project catalog even when bootstrap
         assert.equal(res.body.source, "canonical");
         assert.equal(res.body.total, 1);
         assert.equal(res.body.items[0].brand_key, "acme");
+        assert.equal(res.body.items[0].metadata.qa_profile.available, false);
         assert.equal(capturedUrls.length, 2);
         assert.match(capturedUrls[0], /swarmtest_projects/);
         assert.match(capturedUrls[1], /swarmtest_reports/);
@@ -231,6 +235,76 @@ test("projects handler returns the canonical project catalog even when bootstrap
     );
   } finally {
     global.fetch = originalFetch;
+  }
+});
+
+test("projects handler reports saved session availability from the QA profile directory", async () => {
+  const originalFetch = global.fetch;
+  const profileRoot = fs.mkdtempSync(path.join(os.tmpdir(), "qa-project-profiles-"));
+  const profileDir = path.join(profileRoot, "dashboard", "user_123", "acme");
+  fs.mkdirSync(profileDir, { recursive: true });
+  fs.writeFileSync(path.join(profileDir, "Cookies"), "sqlite");
+
+  global.fetch = async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes("/rest/v1/swarmtest_projects")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return [
+            {
+              brand_key: "acme",
+              brand_name: "Acme",
+              target_url: "https://acme.example",
+              owner_user_id: "user_123",
+              last_used_at: "2026-03-16T10:20:00.000Z",
+              created_at: "2026-03-15T10:20:00.000Z",
+              updated_at: "2026-03-16T10:20:00.000Z",
+              metadata: { source: "dashboard" }
+            }
+          ];
+        }
+      };
+    }
+
+    return {
+      ok: true,
+      status: 200,
+      async json() {
+        return [];
+      }
+    };
+  };
+
+  try {
+    await withEnv(
+      {
+        QA_SERVICE_TOKEN: "service-token",
+        SUPABASE_URL: "https://supabase.example",
+        SUPABASE_SERVICE_KEY: "service-key",
+        QA_SELF_HOSTED_PROFILE_ROOT_DIR: profileRoot
+      },
+      async () => {
+        const req = {
+          method: "GET",
+          headers: {
+            "x-qa-service-token": "service-token",
+            "x-owner-user-id": "user_123"
+          }
+        };
+        const res = createRes();
+
+        await projectsHandler(req, res);
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.body.items[0].metadata.qa_profile.available, true);
+        assert.match(String(res.body.items[0].metadata.qa_profile.profile_dir || ""), /dashboard\/user_123\/acme$/);
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+    fs.rmSync(profileRoot, { recursive: true, force: true });
   }
 });
 

@@ -347,7 +347,7 @@ export interface LaunchDraft {
   brandName: string;
   runMode: "live_qa" | "controlled_ux";
   validationTarget: "public_flow" | "login_signup" | "inside_product";
-  accessMethod: "none" | "app_url" | "auth_url" | "credentials";
+  accessMethod: "none" | "app_url" | "auth_url" | "credentials" | "saved_session";
   authUrl: string;
   authUsername: string;
   authPassword: string;

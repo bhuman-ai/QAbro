@@ -198,6 +198,19 @@ const AUTH_FLOW_ACCESS_OPTIONS = [
   }
 ] as const;
 
+const INSIDE_PRODUCT_ACCESS_OPTIONS = [
+  {
+    value: "saved_session",
+    label: "Use saved session",
+    description: "Reuse the last working browser session for this project."
+  },
+  {
+    value: "credentials",
+    label: "Use test login",
+    description: "Log in with a test account and save that session for later runs."
+  }
+] as const;
+
 const GOAL_PRESETS = [
   "Understand what the product does from the first screen.",
   "Start sign-up or the main get-started flow.",
@@ -455,6 +468,77 @@ function buildDraftFromRun(run?: RunSummary | null, report?: QaReport | null, re
     successSignalsText: successSignals.map((item) => String(item || "").trim()).filter(Boolean).join("\n"),
     repoTriageEnabled: repoConnection?.connection_status === "connected",
     selectedRepoFullName: repoConnection?.selected_repo_full_name || ""
+  };
+}
+
+function buildDraftFromProject(project?: ProjectSummary | null, repoConnection?: RepoConnection | null): Partial<LaunchDraft> {
+  const metadata = project?.metadata && typeof project.metadata === "object" ? project.metadata : {};
+  const launchDefaults =
+    metadata?.launch_defaults && typeof metadata.launch_defaults === "object"
+      ? (metadata.launch_defaults as Record<string, unknown>)
+      : metadata?.launchDefaults && typeof metadata.launchDefaults === "object"
+        ? (metadata.launchDefaults as Record<string, unknown>)
+        : {};
+  const controlledRaw =
+    launchDefaults?.controlled_ux && typeof launchDefaults.controlled_ux === "object"
+      ? (launchDefaults.controlled_ux as Record<string, unknown>)
+      : launchDefaults?.controlledUx && typeof launchDefaults.controlledUx === "object"
+        ? (launchDefaults.controlledUx as Record<string, unknown>)
+        : {};
+  const validationTarget = normalizeValidationTarget(
+    String(launchDefaults.validation_target || launchDefaults.validationTarget || "").trim()
+  );
+  const accessMethod = normalizeAccessMethod(
+    String(launchDefaults.access_method || launchDefaults.accessMethod || "").trim(),
+    validationTarget
+  );
+  const routeHints = Array.isArray(controlledRaw.route_hints)
+    ? controlledRaw.route_hints
+    : Array.isArray(controlledRaw.routeHints)
+      ? controlledRaw.routeHints
+      : [];
+  const successSignals = Array.isArray(controlledRaw.success_signals)
+    ? controlledRaw.success_signals
+    : Array.isArray(controlledRaw.successSignals)
+      ? controlledRaw.successSignals
+      : [];
+
+  return {
+    targetUrl: project?.target_url || "",
+    brandKey: project?.brand_key || "",
+    brandName: project?.brand_name || inferBrandName(project?.brand_key || ""),
+    runMode:
+      String(launchDefaults.qa_mode || launchDefaults.qaMode || launchDefaults.run_mode || launchDefaults.runMode || "")
+        .trim()
+        .toLowerCase() === "controlled_ux"
+        ? "controlled_ux"
+        : "live_qa",
+    validationTarget,
+    accessMethod,
+    authUrl: String(launchDefaults.auth_entry_url || launchDefaults.authEntryUrl || "").trim(),
+    authUsername: "",
+    authPassword: "",
+    scopeMode: String(launchDefaults.scope_mode || launchDefaults.scopeMode || "core_20m").trim() || "core_20m",
+    persona: String(launchDefaults.persona || DEFAULT_PERSONA).trim() || DEFAULT_PERSONA,
+    goalsText:
+      Array.isArray(launchDefaults.goals) && launchDefaults.goals.length
+        ? launchDefaults.goals.map((item) => String(item || "").trim()).filter(Boolean).join("\n")
+        : DEFAULT_GOALS.join("\n"),
+    userJob: String(controlledRaw.user_job || controlledRaw.userJob || launchDefaults.goal || "").trim(),
+    entryPath: String(controlledRaw.entry_path || controlledRaw.entryPath || "").trim(),
+    routeHintsText: routeHints.map((item) => String(item || "").trim()).filter(Boolean).join("\n"),
+    successSignalsText: successSignals.map((item) => String(item || "").trim()).filter(Boolean).join("\n"),
+    repoTriageEnabled:
+      metadata?.repo_triage && typeof metadata.repo_triage === "object"
+        ? Boolean((metadata.repo_triage as Record<string, unknown>).enabled)
+        : repoConnection?.connection_status === "connected",
+    selectedRepoFullName:
+      String(
+        launchDefaults.selected_repo_full_name ||
+          launchDefaults.selectedRepoFullName ||
+          repoConnection?.selected_repo_full_name ||
+          ""
+      ).trim() || ""
   };
 }
 
@@ -1599,6 +1683,8 @@ function WorkspacePage({
         reports.find((item) => item.run_id === requestedRunId)?.brand_key ||
         launchDraft.brandKey
     );
+  const currentProject =
+    projectCatalog.find((project) => normalizeBrandKey(project.brand_key) === currentBrandKey) || null;
 
   const selectedRun = reports.find((item) => item.run_id === requestedRunId) || null;
   const filteredRuns = reports.filter((run) => {
@@ -1931,12 +2017,17 @@ function WorkspacePage({
       if (composeOpen && current.targetUrl) {
         return current;
       }
+      const projectDefaults = buildDraftFromProject(currentProject, repoConnection);
       const next = buildDraftFromRun(selectedRun, selectedReport, repoConnection);
       return {
         ...current,
+        ...projectDefaults,
         ...next,
-        brandKey: next.brandKey || currentBrandKey || current.brandKey,
-        brandName: next.brandName || inferBrandName(currentBrandKey || current.brandKey || "")
+        brandKey: next.brandKey || projectDefaults.brandKey || currentBrandKey || current.brandKey,
+        brandName:
+          next.brandName ||
+          projectDefaults.brandName ||
+          inferBrandName(currentBrandKey || current.brandKey || "")
       };
     });
     if (currentSchedule) {
@@ -1946,7 +2037,7 @@ function WorkspacePage({
         persona: currentSchedule.persona || DEFAULT_PERSONA
       });
     }
-  }, [composeOpen, currentBrandKey, currentSchedule, repoConnection, selectedReport, selectedRun]);
+  }, [composeOpen, currentBrandKey, currentProject, currentSchedule, repoConnection, selectedReport, selectedRun]);
 
   useEffect(() => {
     if (!operatorState.open || operatorState.loading || operatorState.brands.length) {
@@ -2115,13 +2206,35 @@ function WorkspacePage({
       ...launchDraft,
       ...(payloadOverride || {})
     };
+    const currentProjectMetadata =
+      currentProject?.metadata && typeof currentProject.metadata === "object"
+        ? { ...currentProject.metadata }
+        : {};
+    delete (currentProjectMetadata as Record<string, unknown>).qa_profile;
+    const projectQaProfile =
+      currentProject?.metadata &&
+      typeof currentProject.metadata === "object" &&
+      currentProject.metadata.qa_profile &&
+      typeof currentProject.metadata.qa_profile === "object"
+        ? (currentProject.metadata.qa_profile as Record<string, unknown>)
+        : {};
+    const savedSessionAvailable = projectQaProfile.available === true;
     if (nextDraft.validationTarget === "inside_product") {
       if (
-        nextDraft.accessMethod !== "credentials" ||
-        !String(nextDraft.authUsername || "").trim() ||
-        !String(nextDraft.authPassword || "").trim()
+        nextDraft.accessMethod === "saved_session" &&
+        !savedSessionAvailable
       ) {
-        setLaunchMessage("Inside the product currently needs a test login so the run can start authenticated.");
+        setLaunchMessage("There is no saved session for this project yet. Start once with a test login first.");
+        setLaunchTone("danger");
+        return;
+      }
+      if (
+        nextDraft.accessMethod !== "saved_session" &&
+        (nextDraft.accessMethod !== "credentials" ||
+          !String(nextDraft.authUsername || "").trim() ||
+          !String(nextDraft.authPassword || "").trim())
+      ) {
+        setLaunchMessage("Inside the product needs either a saved session or a real test login.");
         setLaunchTone("danger");
         return;
       }
@@ -2165,6 +2278,9 @@ function WorkspacePage({
       setReports((current) => [optimistic, ...current.filter((item) => item.run_id !== optimistic.run_id)]);
       if (payload.metadata.brand_key) {
         try {
+          const controlled = payload.metadata.controlled_ux && typeof payload.metadata.controlled_ux === "object"
+            ? payload.metadata.controlled_ux
+            : { enabled: false };
           await apiFetch("/api/qa/projects", {
             method: "POST",
             body: {
@@ -2172,7 +2288,38 @@ function WorkspacePage({
               brand_name: payload.metadata.brand_name,
               target_url: payload.target_url,
               metadata: {
-                source: "react_dashboard"
+                ...currentProjectMetadata,
+                source: "react_dashboard",
+                repo_triage: {
+                  enabled: payload.metadata.repo_triage?.enabled === true,
+                  repo: payload.metadata.repo_triage?.repo || null
+                },
+                launch_defaults: {
+                  qa_mode: payload.metadata.qa_mode,
+                  validation_target: payload.metadata.validation_target,
+                  access_method:
+                    nextDraft.validationTarget === "inside_product" && nextDraft.accessMethod === "credentials"
+                      ? "saved_session"
+                      : payload.metadata.access_method,
+                  auth_entry_url: payload.metadata.auth_entry_url || null,
+                  scope_mode: payload.scope_mode,
+                  persona: payload.brand_persona,
+                  goals: payload.scenario_list,
+                  goal: payload.metadata.goal || null,
+                  selected_repo_full_name: nextDraft.selectedRepoFullName || null,
+                  controlled_ux:
+                    controlled && controlled.enabled === true
+                      ? {
+                          enabled: true,
+                          user_job: controlled.user_job || null,
+                          entry_path: controlled.entry_path || null,
+                          route_hints: Array.isArray(controlled.route_hints) ? controlled.route_hints : [],
+                          success_signals: Array.isArray(controlled.success_signals) ? controlled.success_signals : []
+                        }
+                      : {
+                          enabled: false
+                        }
+                }
               }
             }
           });
@@ -2827,6 +2974,7 @@ function WorkspacePage({
             >
               <LaunchComposer
                 draft={launchDraft}
+                currentProject={currentProject}
                 repoConnection={repoConnection}
                 repoRoutes={repoRoutes}
                 repoRoutesLoading={repoRoutesLoading}
@@ -2906,6 +3054,7 @@ function WorkspacePage({
 
 function LaunchComposer({
   draft,
+  currentProject,
   repoConnection,
   repoRoutes,
   repoRoutesLoading,
@@ -2925,6 +3074,7 @@ function LaunchComposer({
   onSubmit
 }: {
   draft: LaunchDraft;
+  currentProject: ProjectSummary | null;
   repoConnection: RepoConnection | null;
   repoRoutes: RepoRouteSuggestion[];
   repoRoutesLoading: boolean;
@@ -2947,6 +3097,11 @@ function LaunchComposer({
   const isControlled = draft.runMode === "controlled_ux";
   const validationTarget = draft.validationTarget;
   const accessMethod = normalizeAccessMethod(draft.accessMethod, validationTarget);
+  const projectMetadata = currentProject?.metadata && typeof currentProject.metadata === "object" ? currentProject.metadata : {};
+  const savedSessionAvailable =
+    projectMetadata?.qa_profile && typeof projectMetadata.qa_profile === "object"
+      ? (projectMetadata.qa_profile as Record<string, unknown>).available === true
+      : false;
   const goalLines = draft.goalsText
     .split(/\r?\n/g)
     .map((item) => item.trim())
@@ -2968,9 +3123,21 @@ function LaunchComposer({
     setStep((current) => Math.max(1, Math.min(5, current)));
   }, [draft.runMode, draft.validationTarget]);
 
+  useEffect(() => {
+    if (draft.validationTarget !== "inside_product" || accessMethod !== "saved_session" || savedSessionAvailable) {
+      return;
+    }
+    onChange((current) => ({
+      ...current,
+      accessMethod: "credentials"
+    }));
+  }, [accessMethod, draft.validationTarget, onChange, savedSessionAvailable]);
+
   const reviewAccessLabel =
     validationTarget === "public_flow"
       ? "No login needed"
+      : accessMethod === "saved_session"
+        ? "Saved project session"
       : accessMethod === "auth_url"
         ? "Specific auth URL"
         : accessMethod === "credentials"
@@ -2986,7 +3153,9 @@ function LaunchComposer({
           ? validationTarget === "public_flow"
             ? true
             : validationTarget === "inside_product"
-              ? Boolean(String(draft.authUsername || "").trim() && String(draft.authPassword || "").trim())
+              ? accessMethod === "saved_session"
+                ? savedSessionAvailable
+                : Boolean(String(draft.authUsername || "").trim() && String(draft.authPassword || "").trim())
               : accessMethod === "auth_url"
                 ? Boolean(normalizeUrlInput(draft.authUrl))
                 : accessMethod === "credentials"
@@ -3143,7 +3312,10 @@ function LaunchComposer({
                           return {
                             ...current,
                             validationTarget: nextValidationTarget,
-                            accessMethod: normalizeAccessMethod(current.accessMethod, nextValidationTarget),
+                            accessMethod:
+                              nextValidationTarget === "inside_product" && savedSessionAvailable
+                                ? "saved_session"
+                                : normalizeAccessMethod(current.accessMethod, nextValidationTarget),
                             authUrl: nextValidationTarget === "public_flow" ? "" : current.authUrl
                           };
                         })
@@ -3170,7 +3342,9 @@ function LaunchComposer({
                     ? "No login is needed here."
                     : validationTarget === "login_signup"
                       ? "Choose how we should enter the auth flow."
-                      : "For inside-product runs, we need a test login right now."}
+                      : savedSessionAvailable
+                        ? "Reuse the saved project session or refresh it with a test login."
+                        : "Add one working test login. We will save that session for next time."}
                 </p>
               </div>
 
@@ -3261,54 +3435,94 @@ function LaunchComposer({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
-                    Inside-product runs currently work with a real test login. Session capture and staging bypass come next.
+                  <div className="grid gap-3">
+                    {(savedSessionAvailable
+                      ? INSIDE_PRODUCT_ACCESS_OPTIONS
+                      : INSIDE_PRODUCT_ACCESS_OPTIONS.filter((option) => option.value === "credentials")
+                    ).map((option) => {
+                      const active = accessMethod === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`rounded-xl border px-4 py-4 text-left transition ${
+                            active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:bg-white/4"
+                          }`}
+                          onClick={() =>
+                            onChange((current) => ({
+                              ...current,
+                              accessMethod: option.value
+                            }))
+                          }
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm font-semibold text-brand-ink">{option.label}</div>
+                            {active ? <Check className="h-4 w-4 text-brand-primary" /> : null}
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-brand-muted">{option.description}</p>
+                        </button>
+                      );
+                    })}
                   </div>
-                  <div>
-                    <FieldLabel>Optional login URL</FieldLabel>
-                    <TextInput
-                      value={draft.authUrl}
-                      onChange={(event) =>
-                        onChange((current) => ({
-                          ...current,
-                          authUrl: event.target.value,
-                          accessMethod: "credentials"
-                        }))
-                      }
-                      placeholder="https://staging.example.com/login"
-                    />
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <FieldLabel>Test login email</FieldLabel>
-                      <TextInput
-                        value={draft.authUsername}
-                        onChange={(event) =>
-                          onChange((current) => ({
-                            ...current,
-                            authUsername: event.target.value,
-                            accessMethod: "credentials"
-                          }))
-                        }
-                        placeholder="tester@example.com"
-                      />
+
+                  {savedSessionAvailable && accessMethod === "saved_session" ? (
+                    <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+                      We will open the project with the last saved browser session. If that session has expired, rerun this step with a test login to refresh it.
                     </div>
-                    <div>
-                      <FieldLabel>Test login password</FieldLabel>
-                      <TextInput
-                        type="password"
-                        value={draft.authPassword}
-                        onChange={(event) =>
-                          onChange((current) => ({
-                            ...current,
-                            authPassword: event.target.value,
-                            accessMethod: "credentials"
-                          }))
-                        }
-                        placeholder="••••••••"
-                      />
-                    </div>
-                  </div>
+                  ) : null}
+
+                  {accessMethod === "credentials" ? (
+                    <>
+                      <div>
+                        <FieldLabel>Optional login URL</FieldLabel>
+                        <TextInput
+                          value={draft.authUrl}
+                          onChange={(event) =>
+                            onChange((current) => ({
+                              ...current,
+                              authUrl: event.target.value,
+                              accessMethod: "credentials"
+                            }))
+                          }
+                          placeholder="https://staging.example.com/login"
+                        />
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <FieldLabel>Test login email</FieldLabel>
+                          <TextInput
+                            value={draft.authUsername}
+                            onChange={(event) =>
+                              onChange((current) => ({
+                                ...current,
+                                authUsername: event.target.value,
+                                accessMethod: "credentials"
+                              }))
+                            }
+                            placeholder="tester@example.com"
+                          />
+                        </div>
+                        <div>
+                          <FieldLabel>Test login password</FieldLabel>
+                          <TextInput
+                            type="password"
+                            value={draft.authPassword}
+                            onChange={(event) =>
+                              onChange((current) => ({
+                                ...current,
+                                authPassword: event.target.value,
+                                accessMethod: "credentials"
+                              }))
+                            }
+                            placeholder="••••••••"
+                          />
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+                        After one successful run, this project can start from the saved session instead of asking for the login again.
+                      </div>
+                    </>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -3673,7 +3887,9 @@ function LaunchComposer({
                 ? "We will stay on public pages only."
                 : validationTarget === "login_signup"
                   ? "We will judge the auth experience itself and avoid bypasses."
-                  : "We will use the provided test login and focus on the product after login."}
+                  : accessMethod === "saved_session"
+                    ? "We will start from the saved project session and focus on the product after login."
+                    : "We will use the provided test login and focus on the product after login."}
             </div>
             {isControlled ? (
               <div className="mt-3 text-sm leading-6 text-brand-muted">

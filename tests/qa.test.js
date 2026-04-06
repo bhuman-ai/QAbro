@@ -211,6 +211,25 @@ test("buildTaskPrompt adds inside-product instructions when validation target is
   assert.match(prompt, /Once authenticated, spend the run on the in-product workflow rather than public pages/);
 });
 
+test("buildTaskPrompt supports saved project sessions for inside-product runs", () => {
+  const prompt = buildTaskPrompt({
+    run_id: "run_inside_product_saved_1",
+    target_url: "https://example.com/app",
+    scope_mode: "feature_targeted",
+    scenario_list: ["Open the dashboard and create the first project"],
+    brand_persona: "Test user",
+    source: "qa_bot",
+    metadata: {
+      validation_target: "inside_product",
+      access_method: "saved_session"
+    }
+  });
+
+  assert.match(prompt, /Validation target: Inside the product/);
+  assert.match(prompt, /Access method: Use saved project session/);
+  assert.match(prompt, /Reuse the saved project session when it is still valid/);
+});
+
 test("buildPrimaryUserGoal prefers explicit metadata goal", () => {
   const goal = buildPrimaryUserGoal({
     scenario_list: ["Create a project", "Invite teammate"],
