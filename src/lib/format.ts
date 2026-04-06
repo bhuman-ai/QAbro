@@ -11,6 +11,35 @@ export const DEFAULT_GOALS = [
 
 export const DEFAULT_CONTROLLED_UX_JOB = "Validate the main owned flow before broad live QA.";
 
+export function normalizeValidationTarget(value: string) {
+  const safe = String(value || "").trim().toLowerCase();
+  if (safe === "login_signup" || safe === "login-signup" || safe === "auth" || safe === "login") {
+    return "login_signup";
+  }
+  if (safe === "inside_product" || safe === "inside-product" || safe === "authenticated" || safe === "post_login") {
+    return "inside_product";
+  }
+  return "public_flow";
+}
+
+export function normalizeAccessMethod(value: string, validationTarget: string) {
+  const target = normalizeValidationTarget(validationTarget);
+  const safe = String(value || "").trim().toLowerCase();
+  if (target === "public_flow") {
+    return "none";
+  }
+  if (safe === "auth_url" || safe === "auth-url") {
+    return "auth_url";
+  }
+  if (safe === "credentials" || safe === "test_login" || safe === "login") {
+    return "credentials";
+  }
+  if (safe === "app_url" || safe === "app-url" || safe === "default") {
+    return "app_url";
+  }
+  return target === "inside_product" ? "credentials" : "app_url";
+}
+
 export function normalizePathname(pathname: string) {
   const value = String(pathname || "/").trim().toLowerCase();
   if (!value || value === "/index.html") {
@@ -145,10 +174,25 @@ export function buildLaunchPayload(draft: LaunchDraft, options: { retryOfRunId?:
   const brandKey = normalizeBrandKey(draft.brandKey || deriveBrandKeyFromUrl(targetUrl));
   const brandName = String(draft.brandName || inferBrandName(brandKey)).trim() || null;
   const qaMode = draft.runMode === "controlled_ux" ? "controlled_ux" : "live_qa";
+  const validationTarget = normalizeValidationTarget(draft.validationTarget);
+  const accessMethod = normalizeAccessMethod(draft.accessMethod, validationTarget);
+  const authUrl = normalizeUrlInput(draft.authUrl);
   const controlled = buildControlledScenarioList(draft);
   const goals = qaMode === "controlled_ux" ? controlled.scenarios : parseGoalsText(draft.goalsText);
   const effectiveScopeMode = qaMode === "controlled_ux" ? "feature_targeted" : draft.scopeMode || "core_20m";
   const runId = `${brandKey || "swarm"}_${Date.now()}`;
+  const shouldAttachCredentials =
+    accessMethod === "credentials" &&
+    String(draft.authUsername || "").trim() &&
+    String(draft.authPassword || "").trim();
+  const authPolicy =
+    validationTarget === "public_flow"
+      ? "public_only"
+      : validationTarget === "inside_product"
+        ? "none"
+        : accessMethod === "credentials"
+          ? "none"
+          : "signup_if_needed";
 
   return {
     run_id: runId,
@@ -156,11 +200,23 @@ export function buildLaunchPayload(draft: LaunchDraft, options: { retryOfRunId?:
     scope_mode: effectiveScopeMode,
     scenario_list: goals,
     brand_persona: String(draft.persona || DEFAULT_PERSONA).trim().slice(0, 500),
+    credentials: shouldAttachCredentials
+      ? {
+          login_url: authUrl || null,
+          username: String(draft.authUsername || "").trim(),
+          password: String(draft.authPassword || "").trim(),
+          otp_mode: "none"
+        }
+      : undefined,
     source: options.source || "dashboard_react",
     metadata: {
       brand_key: brandKey || null,
       brand_name: brandName,
       qa_mode: qaMode,
+      validation_target: validationTarget,
+      access_method: accessMethod,
+      auth_entry_url: authUrl || null,
+      auth_policy: authPolicy,
       goal:
         qaMode === "controlled_ux"
           ? controlled.userJob || goals[0] || DEFAULT_CONTROLLED_UX_JOB

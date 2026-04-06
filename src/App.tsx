@@ -70,8 +70,11 @@ import {
   getSeverityTone,
   getStatusTone,
   inferBrandName,
+  normalizeAccessMethod,
   normalizeEntryPath,
   normalizeBrandKey,
+  normalizeUrlInput,
+  normalizeValidationTarget,
   normalizePathname
 } from "@/lib/format";
 import type {
@@ -156,6 +159,42 @@ const RUN_MODE_OPTIONS = [
     value: "controlled_ux",
     label: "Controlled UX",
     description: "Validate one owned flow with repo route hints before full live QA."
+  }
+] as const;
+
+const VALIDATION_TARGET_OPTIONS = [
+  {
+    value: "public_flow",
+    label: "Public flow",
+    description: "Homepage, pricing, navigation, and public buttons."
+  },
+  {
+    value: "login_signup",
+    label: "Login or sign-up",
+    description: "Test the auth experience itself, including trust and friction."
+  },
+  {
+    value: "inside_product",
+    label: "Inside the product",
+    description: "Start authenticated and judge the product after login."
+  }
+] as const;
+
+const AUTH_FLOW_ACCESS_OPTIONS = [
+  {
+    value: "app_url",
+    label: "Start from app URL",
+    description: "Use the environment URL and find the obvious login or sign-up entry."
+  },
+  {
+    value: "auth_url",
+    label: "Use auth URL",
+    description: "Jump straight to a specific login or sign-up page."
+  },
+  {
+    value: "credentials",
+    label: "Use test login",
+    description: "Fill a real test account so the run can prove the login flow."
   }
 ] as const;
 
@@ -373,6 +412,13 @@ function buildDraftFromRun(run?: RunSummary | null, report?: QaReport | null, re
     controlledRaw.enabled === true
       ? "controlled_ux"
       : "live_qa";
+  const validationTarget = normalizeValidationTarget(
+    String(metadata?.validation_target || metadata?.validationTarget || "").trim()
+  );
+  const accessMethod = normalizeAccessMethod(
+    String(metadata?.access_method || metadata?.accessMethod || "").trim(),
+    validationTarget
+  );
   const goals = Array.isArray(run?.scenario_list) && run!.scenario_list!.length
     ? run!.scenario_list!
     : run?.goal
@@ -395,6 +441,11 @@ function buildDraftFromRun(run?: RunSummary | null, report?: QaReport | null, re
     brandKey: run?.brand_key || deriveBrandKeyFromUrl(run?.target_url || ""),
     brandName: run?.brand_name || inferBrandName(run?.brand_key || ""),
     runMode,
+    validationTarget,
+    accessMethod,
+    authUrl: String(metadata?.auth_entry_url || metadata?.authEntryUrl || "").trim(),
+    authUsername: "",
+    authPassword: "",
     scopeMode: runMode === "controlled_ux" ? "feature_targeted" : run?.scope_mode || "core_20m",
     persona: run?.persona || DEFAULT_PERSONA,
     goalsText: goals.join("\n"),
@@ -1523,6 +1574,11 @@ function WorkspacePage({
     brandKey: selectedBrandFilter || "",
     brandName: inferBrandName(selectedBrandFilter || ""),
     runMode: "live_qa",
+    validationTarget: "public_flow",
+    accessMethod: "none",
+    authUrl: "",
+    authUsername: "",
+    authPassword: "",
     scopeMode: "core_20m",
     persona: DEFAULT_PERSONA,
     goalsText: DEFAULT_GOALS.join("\n"),
@@ -2059,6 +2115,30 @@ function WorkspacePage({
       ...launchDraft,
       ...(payloadOverride || {})
     };
+    if (nextDraft.validationTarget === "inside_product") {
+      if (
+        nextDraft.accessMethod !== "credentials" ||
+        !String(nextDraft.authUsername || "").trim() ||
+        !String(nextDraft.authPassword || "").trim()
+      ) {
+        setLaunchMessage("Inside the product currently needs a test login so the run can start authenticated.");
+        setLaunchTone("danger");
+        return;
+      }
+    }
+    if (nextDraft.accessMethod === "auth_url" && !normalizeUrlInput(nextDraft.authUrl)) {
+      setLaunchMessage("Add a valid auth URL before starting the test.");
+      setLaunchTone("danger");
+      return;
+    }
+    if (
+      nextDraft.accessMethod === "credentials" &&
+      (!String(nextDraft.authUsername || "").trim() || !String(nextDraft.authPassword || "").trim())
+    ) {
+      setLaunchMessage("Add the test login email and password before starting the test.");
+      setLaunchTone("danger");
+      return;
+    }
     if (
       nextDraft.runMode === "controlled_ux" &&
       !String(nextDraft.userJob || "").trim() &&
@@ -2162,11 +2242,20 @@ function WorkspacePage({
     }
   }
 
-  async function handleSaveSchedule() {
+  async function handleSaveSchedule(override?: {
+    name?: string;
+    frequency_hours: number;
+    mission: string;
+    persona: string;
+  }) {
     if (!currentBrandKey) {
       setScheduleMessage("Pick a project first.");
       setScheduleTone("danger");
       return;
+    }
+    const nextScheduleDraft = override || scheduleDraft;
+    if (override) {
+      setScheduleDraft(nextScheduleDraft);
     }
     setScheduleSaving(true);
     try {
@@ -2174,6 +2263,7 @@ function WorkspacePage({
         method: "POST",
         body: {
           id: currentSchedule?.id,
+          name: override?.name || currentSchedule?.name || null,
           brand_key: currentBrandKey,
           brand_name:
             projectCatalog.find((project) => normalizeBrandKey(project.brand_key) === currentBrandKey)?.brand_name ||
@@ -2182,10 +2272,10 @@ function WorkspacePage({
             selectedRun?.target_url ||
             projectCatalog.find((project) => normalizeBrandKey(project.brand_key) === currentBrandKey)?.target_url ||
             launchDraft.targetUrl,
-          frequency_hours: scheduleDraft.frequency_hours,
+          frequency_hours: nextScheduleDraft.frequency_hours,
           scope_mode: launchDraft.scopeMode || "core_20m",
-          persona: scheduleDraft.persona,
-          mission: scheduleDraft.mission
+          persona: nextScheduleDraft.persona,
+          mission: nextScheduleDraft.mission
         }
       });
       setScheduleMessage("Automation saved.");
@@ -2530,6 +2620,175 @@ function WorkspacePage({
     );
   }
 
+  function openPanel(panel: string, options: { brand?: string | null; runId?: string | null; keepRun?: boolean } = {}) {
+    const next = new URLSearchParams(route.search);
+    next.set("panel", panel);
+    next.delete("compose");
+
+    if (options.brand === "") {
+      next.delete("brand");
+    } else if (options.brand) {
+      next.set("brand", options.brand);
+    }
+
+    if (panel === "report") {
+      const fallbackRunId = options.runId || requestedRunId || filteredRuns[0]?.run_id || reports[0]?.run_id || "";
+      if (fallbackRunId) {
+        next.set("run_id", fallbackRunId);
+      }
+      next.set("view", currentView || "report");
+    } else if (!options.keepRun) {
+      next.delete("run_id");
+      next.delete("view");
+    }
+
+    startTransition(() => navigate("/dashboard", next));
+  }
+
+  function handleBrandSwitch(brandId: string) {
+    openPanel("overview", { brand: brandId || "", runId: null });
+  }
+
+  function handleOpenReport(runId: string) {
+    const run = reports.find((item) => item.run_id === runId) || filteredRuns.find((item) => item.run_id === runId) || null;
+    openPanel("report", {
+      brand: run?.brand_key || currentBrandKey || "",
+      runId
+    });
+  }
+
+  async function handleQuickRun() {
+    if (!activeStarterBrand?.website) {
+      openPanel("onboarding");
+      return;
+    }
+
+    await handleLaunchRun({
+      targetUrl: activeStarterBrand.website,
+      brandKey: activeStarterBrand.id,
+      brandName: activeStarterBrand.name,
+      runMode: "live_qa",
+      scopeMode: "core_20m",
+      persona: DEFAULT_PERSONA,
+      goalsText: DEFAULT_GOALS.join("\n"),
+      userJob: "",
+      entryPath: "",
+      routeHintsText: "",
+      successSignalsText: "",
+      repoTriageEnabled: repoConnection?.connection_status === "connected",
+      selectedRepoFullName: repoConnection?.selected_repo_full_name || ""
+    });
+  }
+
+  function handleOpenComposer() {
+    const next = new URLSearchParams(route.search);
+    next.set("compose", "1");
+    next.set("panel", currentPanel === "report" ? "report" : "overview");
+    if (!next.get("brand") && activeStarterBrand?.id) {
+      next.set("brand", activeStarterBrand.id);
+    }
+    navigate("/dashboard", next);
+  }
+
+  const resolvedPanel = emptyWorkspace && currentPanel !== "help" ? "onboarding" : currentPanel;
+  const canShowReportPanel = Boolean(requestedRunId || selectedRun || selectedReport);
+  const previousRun = requestedRunId ? sameBrandRuns.find((run, index) => sameBrandRuns[index + 1]?.run_id === requestedRunId) || null : null;
+  const currentRunIndex = sameBrandRuns.findIndex((run) => run.run_id === requestedRunId);
+  const nextRun = currentRunIndex > 0 ? sameBrandRuns[currentRunIndex - 1] : null;
+
+  let workspaceContent: React.ReactNode;
+
+  if (resolvedPanel === "onboarding") {
+    workspaceContent = (
+      <StarterOnboardingFlow
+        personas={starterPersonas}
+        onComplete={handleStarterOnboardingComplete}
+      />
+    );
+  } else if (resolvedPanel === "history") {
+    workspaceContent = (
+      <StarterTestHistory
+        rows={historyRows}
+        onBack={() => openPanel("overview", { brand: currentBrandKey || "" })}
+        onViewReport={handleOpenReport}
+      />
+    );
+  } else if (resolvedPanel === "personas") {
+    workspaceContent = (
+      <StarterPersonaLab
+        personas={starterPersonas}
+        setPersonas={setStarterPersonas}
+        onBack={() => openPanel("overview", { brand: currentBrandKey || "" })}
+      />
+    );
+  } else if (resolvedPanel === "automations") {
+    workspaceContent = (
+      <StarterAutomationsPage
+        personas={starterPersonas}
+        activeBrand={activeStarterBrand}
+        currentSchedule={currentSchedule}
+        scheduleDraft={scheduleDraft}
+        setScheduleDraft={setScheduleDraft}
+        scheduleSaving={scheduleSaving}
+        scheduleMessage={scheduleMessage}
+        scheduleTone={scheduleTone}
+        repoConnection={repoConnection}
+        repoLoading={repoLoading}
+        repoError={repoError}
+        alerts={currentAlerts}
+        onBack={() => openPanel("overview", { brand: currentBrandKey || "" })}
+        onSaveSchedule={handleSaveSchedule}
+        onRunScheduleNow={handleRunScheduleNow}
+        onConnectGitHub={handleGitHubInstall}
+        onAcknowledgeAlert={handleAlertAcknowledge}
+      />
+    );
+  } else if (resolvedPanel === "help") {
+    workspaceContent = <StarterHelpCenter onBack={() => openPanel(activeStarterBrand ? "overview" : "onboarding", { brand: currentBrandKey || "" })} />;
+  } else if (resolvedPanel === "report" && canShowReportPanel) {
+    workspaceContent = (
+      <StarterReportPage
+        run={selectedRun}
+        report={selectedReport}
+        status={selectedStatus}
+        shareKey={shareKey}
+        loading={detailLoading}
+        error={detailError}
+        copyFeedback={copyFeedback}
+        previousRunId={previousRun?.run_id || null}
+        nextRunId={nextRun?.run_id || null}
+        onBack={() => openPanel("overview", { brand: currentBrandKey || "" })}
+        onCopyShareLink={handleCopyShareLink}
+        onRunAgain={() => handleLaunchRun(buildDraftFromRun(selectedRun, selectedReport, repoConnection), { retryOfRunId: selectedRun?.run_id || null })}
+        onViewRun={handleOpenReport}
+      />
+    );
+  } else {
+    workspaceContent = (
+      <StarterDashboard
+        brands={starterBrands}
+        activeBrand={activeStarterBrand}
+        personas={starterPersonas}
+        historyRows={historyRows}
+        liveAgents={liveAgents}
+        frictionRows={frictionRows}
+        trendData={trendData}
+        workerLabel={workerSummary?.label || ""}
+        onSwitchBrand={handleBrandSwitch}
+        onAddBrand={() => openPanel("onboarding")}
+        onLogout={onSignOut}
+        onViewReport={handleOpenReport}
+        onViewPersonas={() => openPanel("personas", { brand: currentBrandKey || "" })}
+        onViewAutomations={() => openPanel("automations", { brand: currentBrandKey || "" })}
+        onViewHistory={() => openPanel("history", { brand: currentBrandKey || "" })}
+        onViewHelp={() => openPanel("help", { brand: currentBrandKey || "" })}
+        onRunNewTest={handleQuickRun}
+        onOpenAdvancedLaunch={handleOpenComposer}
+        onScheduleTest={() => openPanel("automations", { brand: currentBrandKey || "" })}
+      />
+    );
+  }
+
   return (
     <div
       className="min-h-screen bg-brand-bg text-brand-ink"
@@ -2543,843 +2802,104 @@ function WorkspacePage({
       data-visible-run-count={String(filteredRuns.length)}
       data-selected-run={requestedRunId ? "true" : "false"}
     >
-      <header className="sticky top-0 z-30 border-b border-brand-line bg-brand-shell/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1680px] items-center justify-between px-6 py-4">
-          <BrandMark />
-          <div className="flex items-center gap-3">
-            {workerSummary?.label ? (
-              <div className="hidden items-center gap-2 rounded-full border border-brand-line bg-brand-panel px-3 py-1.5 text-xs text-brand-muted md:flex">
-                <Activity className="h-3.5 w-3.5 text-brand-primary" />
-                {workerSummary.label}
-              </div>
-            ) : null}
-            <Button
-              tone="primary"
-              onClick={() => {
-                const next = new URLSearchParams(route.search);
-                next.set("compose", "1");
-                next.delete("run_id");
-                next.set("view", "report");
-                if (currentBrandKey) {
-                  next.set("brand", currentBrandKey);
+      {workspaceContent}
+
+      <AnimatePresence>
+        {composeOpen ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-brand-ink/50 backdrop-blur-md p-4"
+            onClick={() => {
+              const next = new URLSearchParams(route.search);
+              next.delete("compose");
+              navigate("/dashboard", next, true);
+            }}
+          >
+            <motion.div
+              initial={{ y: 24, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 24, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="w-full max-w-6xl max-h-[92vh] overflow-y-auto rounded-[2rem]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <LaunchComposer
+                draft={launchDraft}
+                repoConnection={repoConnection}
+                repoRoutes={repoRoutes}
+                repoRoutesLoading={repoRoutesLoading}
+                repoRoutesError={repoRoutesError}
+                busy={launchBusy}
+                message={launchMessage}
+                tone={launchTone}
+                onCancel={() => {
+                  const next = new URLSearchParams(route.search);
+                  next.delete("compose");
+                  navigate("/dashboard", next, true);
+                }}
+                onChange={setLaunchDraft}
+                onUsePersona={(persona) =>
+                  setLaunchDraft((current) => ({
+                    ...current,
+                    persona: persona.persona
+                  }))
                 }
-                navigate("/dashboard", next);
-              }}
-            >
-              <Play className="h-4 w-4" />
-              Start test
-            </Button>
-            <div className="hidden text-right md:block">
-              <div className="text-sm font-medium text-brand-ink">{authState.user?.email || "Signed in"}</div>
-              <div className="text-xs text-brand-muted">Private test history</div>
-            </div>
-            <Button tone="ghost" onClick={onSignOut}>
-              <LogOut className="h-4 w-4" />
-              Sign out
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto grid max-w-[1680px] xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-        <aside className="border-r border-brand-line bg-brand-rail">
-          <div className="sticky top-[73px] flex max-h-[calc(100vh-73px)] flex-col px-4 py-5">
-            <div className="space-y-3">
-              <div>
-                <FieldLabel>Project</FieldLabel>
-                <Select
-                  value={selectedBrandFilter}
-                  onChange={(event) => {
-                    const next = new URLSearchParams(route.search);
-                    if (event.target.value) {
-                      next.set("brand", event.target.value);
-                    } else {
-                      next.delete("brand");
+                onUseRunMode={(runMode) =>
+                  setLaunchDraft((current) => ({
+                    ...current,
+                    runMode,
+                    scopeMode: runMode === "controlled_ux" ? "feature_targeted" : current.scopeMode === "feature_targeted" ? "core_20m" : current.scopeMode,
+                    userJob:
+                      runMode === "controlled_ux" && !current.userJob
+                        ? DEFAULT_CONTROLLED_UX_JOB
+                        : current.userJob
+                  }))
+                }
+                onToggleGoal={(goal) =>
+                  setLaunchDraft((current) => {
+                    const lines = current.goalsText
+                      .split(/\r?\n/g)
+                      .map((item) => item.trim())
+                      .filter(Boolean);
+                    const exists = lines.includes(goal);
+                    const nextGoals = exists ? lines.filter((item) => item !== goal) : [...lines, goal];
+                    return {
+                      ...current,
+                      goalsText: nextGoals.join("\n")
+                    };
+                  })
+                }
+                onUseRouteAsEntry={(routePath) =>
+                  setLaunchDraft((current) => ({
+                    ...current,
+                    entryPath: routePath
+                  }))
+                }
+                onAddRouteHint={(routePath) =>
+                  setLaunchDraft((current) => {
+                    const lines = current.routeHintsText
+                      .split(/\r?\n/g)
+                      .map((item) => item.trim())
+                      .filter(Boolean);
+                    if (lines.includes(routePath)) {
+                      return current;
                     }
-                    next.delete("run_id");
-                    next.delete("compose");
-                    navigate("/dashboard", next);
-                  }}
-                >
-                  <option value="">All projects</option>
-                  {projectCatalog.map((project) => (
-                    <option key={project.brand_key} value={project.brand_key}>
-                      {project.brand_name || inferBrandName(project.brand_key)}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <FieldLabel>Search</FieldLabel>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-brand-muted" />
-                  <TextInput
-                    value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Run, site, or persona"
-                    className="pl-10"
-                  />
-                </div>
-              </div>
-              <div>
-                <FieldLabel>Status</FieldLabel>
-                <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-                  <option value="all">All</option>
-                  <option value="queued">Queued</option>
-                  <option value="processing">Processing</option>
-                  <option value="retryable">Retryable</option>
-                  <option value="completed">Completed</option>
-                  <option value="partial">Partial</option>
-                  <option value="failed">Failed</option>
-                </Select>
-              </div>
-            </div>
-
-            <div className="mt-5 flex items-center justify-between border-t border-brand-line pt-4">
-              <div>
-                <div className="text-sm font-semibold text-brand-ink">Tests</div>
-                <div className="text-xs text-brand-muted">{filteredRuns.length} visible</div>
-              </div>
-              {runsLoading ? <LoaderCircle className="h-4 w-4 animate-spin text-brand-muted" /> : null}
-            </div>
-
-            <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
-              {runsError ? (
-                <div className="rounded-lg border border-brand-danger/30 bg-brand-danger/10 px-3 py-2 text-sm text-brand-danger">
-                  {runsError}
-                </div>
-              ) : null}
-              {!filteredRuns.length && !runsLoading ? (
-                <div className="rounded-xl border border-dashed border-brand-line px-4 py-5 text-sm text-brand-muted">
-                  No tests match these filters.
-                </div>
-              ) : null}
-              <div className="space-y-2">
-                {filteredRuns.map((run) => {
-                  const active = run.run_id === requestedRunId && !composeOpen;
-                  return (
-                    <button
-                      key={run.run_id}
-                      className={`w-full rounded-xl border px-3 py-3 text-left transition ${
-                        active
-                          ? "border-brand-primary/60 bg-brand-primary/12"
-                          : "border-brand-line bg-transparent hover:bg-white/4"
-                      }`}
-                      type="button"
-                      onClick={() => {
-                        const next = new URLSearchParams(route.search);
-                        next.set("run_id", run.run_id);
-                        next.delete("compose");
-                        next.set("view", "report");
-                        if (run.brand_key) {
-                          next.set("brand", run.brand_key);
-                        }
-                        startTransition(() => navigate("/dashboard", next));
-                      }}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-brand-ink">
-                            {run.brand_name || inferBrandName(run.brand_key || "") || run.run_id}
-                          </div>
-                          <div className="mt-1 line-clamp-2 text-xs leading-5 text-brand-muted">
-                            {run.summary_note || run.goal || run.target_url || "No summary yet."}
-                          </div>
-                        </div>
-                        <StatusPill
-                          label={formatStatusLabel(run.status || run.queue_status || "queued")}
-                          tone={getStatusTone(run.status || run.queue_status || "queued")}
-                        />
-                      </div>
-                      <div className="mt-3 flex items-center justify-between text-xs text-brand-muted">
-                        <span>{run.findings_count || 0} problems</span>
-                        <span>{formatDateTime(run.delivered_at)}</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </aside>
-
-        <main className="min-h-[calc(100vh-73px)] px-6 py-6">
-          <AnimatePresence mode="wait">
-            {composeOpen ? (
-              <motion.div
-                key="composer"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -12 }}
-                transition={{ duration: 0.18 }}
-              >
-                <LaunchComposer
-                  draft={launchDraft}
-                  repoConnection={repoConnection}
-                  repoRoutes={repoRoutes}
-                  repoRoutesLoading={repoRoutesLoading}
-                  repoRoutesError={repoRoutesError}
-                  busy={launchBusy}
-                  message={launchMessage}
-                  tone={launchTone}
-                  onCancel={() => {
-                    const next = new URLSearchParams(route.search);
-                    next.delete("compose");
-                    if (requestedRunId) {
-                      next.set("run_id", requestedRunId);
-                    }
-                    navigate("/dashboard", next);
-                  }}
-                  onChange={setLaunchDraft}
-                  onUsePersona={(persona) =>
-                    setLaunchDraft((current) => ({
+                    return {
                       ...current,
-                      persona: persona.persona
-                    }))
-                  }
-                  onUseRunMode={(runMode) =>
-                    setLaunchDraft((current) => ({
-                      ...current,
-                      runMode,
-                      scopeMode: runMode === "controlled_ux" ? "feature_targeted" : current.scopeMode === "feature_targeted" ? "core_20m" : current.scopeMode,
-                      userJob:
-                        runMode === "controlled_ux" && !current.userJob
-                          ? DEFAULT_CONTROLLED_UX_JOB
-                          : current.userJob
-                    }))
-                  }
-                  onToggleGoal={(goal) =>
-                    setLaunchDraft((current) => {
-                      const lines = current.goalsText
-                        .split(/\r?\n/g)
-                        .map((item) => item.trim())
-                        .filter(Boolean);
-                      const exists = lines.includes(goal);
-                      const next = exists ? lines.filter((item) => item !== goal) : [...lines, goal];
-                      return {
-                        ...current,
-                        goalsText: next.join("\n")
-                      };
-                    })
-                  }
-                  onUseRouteAsEntry={(routePath) =>
-                    setLaunchDraft((current) => ({
-                      ...current,
-                      entryPath: routePath
-                    }))
-                  }
-                  onAddRouteHint={(routePath) =>
-                    setLaunchDraft((current) => {
-                      const lines = current.routeHintsText
-                        .split(/\r?\n/g)
-                        .map((item) => item.trim())
-                        .filter(Boolean);
-                      if (lines.includes(routePath)) {
-                        return current;
-                      }
-                      return {
-                        ...current,
-                        routeHintsText: [...lines, routePath].join("\n")
-                      };
-                    })
-                  }
-                  onSaveRepository={handleRepositorySelect}
-                  onStartGitHubInstall={handleGitHubInstall}
-                  onSubmit={() => handleLaunchRun()}
-                />
-              </motion.div>
-            ) : (
-              <motion.div
-                key={requestedRunId || "empty"}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -12 }}
-                transition={{ duration: 0.18 }}
-              >
-                <ReportReader
-                  run={selectedRun}
-                  report={selectedReport}
-                  status={selectedStatus}
-                  loading={detailLoading}
-                  error={detailError}
-                  shareKey={shareKey}
-                  view={currentView}
-                  onChangeView={(nextView) => {
-                    const next = new URLSearchParams(route.search);
-                    next.set("view", nextView);
-                    navigate("/dashboard", next);
-                  }}
-                  onRunAgain={() => handleLaunchRun(buildDraftFromRun(selectedRun, selectedReport, repoConnection), { retryOfRunId: selectedRun?.run_id || null })}
-                  onCopyShareLink={handleCopyShareLink}
-                  copyFeedback={copyFeedback}
-                  selectedFindingId={selectedFindingId}
-                  onSelectFinding={setSelectedFindingId}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </main>
-
-        <aside className="border-l border-brand-line bg-brand-rail px-5 py-6">
-          <div className="sticky top-[89px] space-y-4">
-            <div className="rounded-xl border border-brand-line bg-brand-shell p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-brand-ink">Current project</div>
-                  <div className="mt-1 text-sm text-brand-muted">
-                    {currentBrandKey ? inferBrandName(currentBrandKey) : "No project selected"}
-                  </div>
-                </div>
-                {currentBrandKey ? (
-                  <StatusPill label={`${sameBrandRuns.length} tests`} tone="neutral" />
-                ) : null}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button
-                  tone="primary"
-                  onClick={() => {
-                    const next = new URLSearchParams(route.search);
-                    next.set("compose", "1");
-                    next.delete("run_id");
-                    navigate("/dashboard", next);
-                  }}
-                >
-                  <Play className="h-4 w-4" />
-                  Start test
-                </Button>
-                {requestedRunId ? (
-                  <Button tone="secondary" onClick={() => handleLaunchRun(buildDraftFromRun(selectedRun, selectedReport, repoConnection), { retryOfRunId: requestedRunId })}>
-                    Run again
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-
-            <details className="group rounded-xl border border-brand-line bg-brand-shell p-4" open>
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-brand-ink">
-                Automation
-                <ChevronDown className="h-4 w-4 text-brand-muted transition group-open:rotate-180" />
-              </summary>
-              <div className="mt-4 space-y-4">
-                {currentSchedule ? (
-                  <div className="rounded-lg border border-brand-line bg-brand-panel px-3 py-3 text-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="font-medium text-brand-ink">{currentSchedule.name || "Saved schedule"}</div>
-                      <StatusPill label={currentSchedule.active === false ? "Paused" : "Active"} tone={currentSchedule.active === false ? "warning" : "success"} />
-                    </div>
-                    <div className="mt-2 text-brand-muted">
-                      Every {currentSchedule.frequency_hours || 24}h. Next run {formatRelativeTime(currentSchedule.next_run_at)}.
-                    </div>
-                    <div className="mt-3 flex gap-2">
-                      <Button tone="secondary" onClick={() => handleRunScheduleNow(currentSchedule.id)}>
-                        Run now
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-dashed border-brand-line px-3 py-3 text-sm text-brand-muted">
-                    No schedule saved for this project.
-                  </div>
-                )}
-
-                <div className="grid gap-3">
-                  <div>
-                    <FieldLabel>Every</FieldLabel>
-                    <Select
-                      value={String(scheduleDraft.frequency_hours)}
-                      onChange={(event) =>
-                        setScheduleDraft((current) => ({
-                          ...current,
-                          frequency_hours: Number(event.target.value) || 24
-                        }))
-                      }
-                    >
-                      {[6, 12, 24, 48, 72, 168].map((hours) => (
-                        <option key={hours} value={hours}>
-                          {hours < 24 ? `${hours} hours` : hours === 24 ? "24 hours" : hours === 168 ? "7 days" : `${hours / 24} days`}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                  <div>
-                    <FieldLabel>Persona</FieldLabel>
-                    <TextArea
-                      value={scheduleDraft.persona}
-                      onChange={(event) =>
-                        setScheduleDraft((current) => ({
-                          ...current,
-                          persona: event.target.value
-                        }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <FieldLabel>Mission</FieldLabel>
-                    <TextArea
-                      value={scheduleDraft.mission}
-                      onChange={(event) =>
-                        setScheduleDraft((current) => ({
-                          ...current,
-                          mission: event.target.value
-                        }))
-                      }
-                    />
-                  </div>
-                  <Button tone="primary" onClick={handleSaveSchedule} disabled={scheduleSaving}>
-                    {scheduleSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Clock3 className="h-4 w-4" />}
-                    Save automation
-                  </Button>
-                  {scheduleMessage ? (
-                    <div className={`rounded-lg border px-3 py-2 text-sm ${
-                      scheduleTone === "success"
-                        ? "border-brand-success/30 bg-brand-success/10 text-brand-success"
-                        : scheduleTone === "danger"
-                          ? "border-brand-danger/30 bg-brand-danger/10 text-brand-danger"
-                          : "border-brand-line bg-white/5 text-brand-muted"
-                    }`}>
-                      {scheduleMessage}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </details>
-
-            <details className="group rounded-xl border border-brand-line bg-brand-shell p-4">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-brand-ink">
-                Engineering handoff
-                <ChevronDown className="h-4 w-4 text-brand-muted transition group-open:rotate-180" />
-              </summary>
-              <div className="mt-4 space-y-4">
-                {repoLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-brand-muted">
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
-                    Loading repository connection
-                  </div>
-                ) : null}
-                {repoConnection?.connection_status === "connected" ? (
-                  <div className="rounded-lg border border-brand-line bg-brand-panel px-3 py-3 text-sm">
-                    <div className="font-medium text-brand-ink">{repoConnection.selected_repo_full_name}</div>
-                    <div className="mt-1 text-brand-muted">Connected through the GitHub App. New tests can attach repo-aware triage.</div>
-                  </div>
-                ) : null}
-                {repoConnection?.repositories && repoConnection.repositories.length > 1 ? (
-                  <div>
-                    <FieldLabel>Repository</FieldLabel>
-                    <Select
-                      value={launchDraft.selectedRepoFullName}
-                      onChange={(event) => handleRepositorySelect(event.target.value)}
-                    >
-                      <option value="">Choose a repository</option>
-                      {repoConnection.repositories.map((repo) => (
-                        <option key={repo.full_name || repo.id} value={repo.full_name || ""}>
-                          {repo.full_name}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                ) : null}
-                {repoConnection?.connection_status !== "connected" ? (
-                  <Button tone="secondary" onClick={handleGitHubInstall}>
-                    <GitBranch className="h-4 w-4" />
-                    Connect GitHub
-                  </Button>
-                ) : null}
-                {repoError ? <div className="text-sm text-brand-danger">{repoError}</div> : null}
-              </div>
-            </details>
-
-            <details
-              className="group rounded-xl border border-brand-line bg-brand-shell p-4"
-              onToggle={(event) =>
-                setOperatorState((current) => ({
-                  ...current,
-                  open: (event.currentTarget as HTMLDetailsElement).open
-                }))
-              }
-            >
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-brand-ink">
-                Operator tools
-                <ChevronDown className="h-4 w-4 text-brand-muted transition group-open:rotate-180" />
-              </summary>
-              <div className="mt-4 space-y-4">
-                {operatorState.loading ? (
-                  <div className="flex items-center gap-2 text-sm text-brand-muted">
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
-                    Loading operator tools
-                  </div>
-                ) : null}
-                {operatorState.error ? <div className="text-sm text-brand-danger">{operatorState.error}</div> : null}
-                {!operatorState.loading && !operatorState.brands.length ? (
-                  <div className="rounded-lg border border-dashed border-brand-line px-3 py-3 text-sm text-brand-muted">
-                    No submission brands yet.
-                  </div>
-                ) : null}
-                {operatorState.brands.length ? (
-                  <>
-                    <div>
-                      <FieldLabel>Brand profile</FieldLabel>
-                      <Select
-                        value={operatorState.selectedBrandId}
-                        onChange={(event) =>
-                          setOperatorState((current) => ({
-                            ...current,
-                            selectedBrandId: event.target.value
-                          }))
-                        }
-                      >
-                        {operatorState.brands.map((brand) => (
-                          <option key={brand.brand_profile_id} value={brand.brand_profile_id}>
-                            {brand.display_name || brand.brand_key || brand.brand_profile_id}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                    <div>
-                      <FieldLabel>Pack</FieldLabel>
-                      <Select
-                        value={operatorState.selectedPackId}
-                        onChange={(event) =>
-                          setOperatorState((current) => ({
-                            ...current,
-                            selectedPackId: event.target.value
-                          }))
-                        }
-                      >
-                        {operatorState.packs.map((pack) => (
-                          <option key={pack.pack_id} value={pack.pack_id}>
-                            {pack.pack_name || pack.pack_id} ({pack.effective_site_count || pack.sites?.length || 0})
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                    <label className="flex items-center gap-3 rounded-lg border border-brand-line bg-brand-panel px-3 py-2 text-sm text-brand-muted">
-                      <input
-                        type="checkbox"
-                        checked={operatorState.liveMode}
-                        onChange={(event) =>
-                          setOperatorState((current) => ({
-                            ...current,
-                            liveMode: event.target.checked
-                          }))
-                        }
-                      />
-                      Queue live submit jobs
-                    </label>
-                    <label className="flex items-center gap-3 rounded-lg border border-brand-line bg-brand-panel px-3 py-2 text-sm text-brand-muted">
-                      <input
-                        type="checkbox"
-                        checked={operatorState.noHumanActions}
-                        onChange={(event) =>
-                          setOperatorState((current) => ({
-                            ...current,
-                            noHumanActions: event.target.checked
-                          }))
-                        }
-                        disabled={!operatorState.liveMode}
-                      />
-                      No human actions
-                    </label>
-                    <div className="grid gap-2 sm:grid-cols-3">
-                      <Button tone="secondary" onClick={() => handleOperatorAction("prepare")} disabled={operatorState.preparing}>
-                        Prepare
-                      </Button>
-                      <Button tone="secondary" onClick={() => handleOperatorAction("preflight")} disabled={operatorState.preflighting}>
-                        Preflight
-                      </Button>
-                      <Button tone="primary" onClick={() => handleOperatorAction("queue")} disabled={operatorState.queueing}>
-                        {operatorState.liveMode ? "Queue live" : "Dry run"}
-                      </Button>
-                    </div>
-                    {operatorState.actionMessage ? (
-                      <div className={`rounded-lg border px-3 py-2 text-sm ${
-                        operatorState.actionTone === "success"
-                          ? "border-brand-success/30 bg-brand-success/10 text-brand-success"
-                          : operatorState.actionTone === "danger"
-                            ? "border-brand-danger/30 bg-brand-danger/10 text-brand-danger"
-                            : "border-brand-line bg-white/5 text-brand-muted"
-                      }`}>
-                        {operatorState.actionMessage}
-                      </div>
-                    ) : null}
-                    {operatorState.preflight ? (
-                      <div className="rounded-lg border border-brand-line bg-brand-panel px-3 py-3 text-sm text-brand-muted">
-                        <div className="font-medium text-brand-ink">{operatorState.preflight.pack?.pack_name || "Pack preflight"}</div>
-                        <div className="mt-1">
-                          {operatorState.preflight.summary?.ready_auto_count || 0} auto, {operatorState.preflight.summary?.ready_assist_count || 0} assist, {operatorState.preflight.summary?.blocked_count || 0} blocked.
-                        </div>
-                      </div>
-                    ) : null}
-                    {operatorState.queueBatch ? (
-                      <div className="rounded-lg border border-brand-line bg-brand-panel px-3 py-3 text-sm">
-                        <div className="font-medium text-brand-ink">
-                          {operatorState.queueBatch.dry_run ? "Dry run result" : "Queued jobs"}
-                        </div>
-                        <div className="mt-1 text-brand-muted">
-                          {operatorState.queueBatch.summary?.queued_count || 0} queued, {operatorState.queueBatch.summary?.skipped_count || 0} skipped, {operatorState.queueBatch.summary?.failed_count || 0} failed.
-                        </div>
-                        <div className="mt-3 space-y-2">
-                          {(operatorState.queueBatch.queued_jobs || []).slice(0, 5).map((job: any) => {
-                            const jobStatus = operatorState.queueStatuses[job.job_id]?.job?.status || job.status || "queued";
-                            return (
-                              <div key={job.job_id} className="flex items-center justify-between gap-3 rounded-md border border-brand-line px-2.5 py-2 text-xs">
-                                <span className="truncate text-brand-ink">{job.site_name || job.site_id}</span>
-                                <StatusPill label={formatStatusLabel(jobStatus)} tone={getStatusTone(jobStatus)} />
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <details className="rounded-lg border border-brand-line bg-brand-panel p-3">
-                      <summary className="cursor-pointer list-none text-sm font-medium text-brand-ink">Brand profile</summary>
-                      <div className="mt-3 grid gap-3">
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <FieldLabel>Profile id</FieldLabel>
-                            <TextInput
-                              value={brandEditor.brand_profile_id}
-                              onChange={(event) =>
-                                setBrandEditor((current) => ({
-                                  ...current,
-                                  brand_profile_id: event.target.value
-                                }))
-                              }
-                              placeholder="acme-main"
-                            />
-                          </div>
-                          <div>
-                            <FieldLabel>Display name</FieldLabel>
-                            <TextInput
-                              value={brandEditor.display_name}
-                              onChange={(event) =>
-                                setBrandEditor((current) => ({
-                                  ...current,
-                                  display_name: event.target.value
-                                }))
-                              }
-                              placeholder="Acme"
-                            />
-                          </div>
-                          <div>
-                            <FieldLabel>Brand key</FieldLabel>
-                            <TextInput
-                              value={brandEditor.brand_key}
-                              onChange={(event) =>
-                                setBrandEditor((current) => ({
-                                  ...current,
-                                  brand_key: normalizeBrandKey(event.target.value)
-                                }))
-                              }
-                              placeholder="acme"
-                            />
-                          </div>
-                          <div>
-                            <FieldLabel>Track</FieldLabel>
-                            <Select
-                              value={brandEditor.track}
-                              onChange={(event) =>
-                                setBrandEditor((current) => ({
-                                  ...current,
-                                  track: event.target.value
-                                }))
-                              }
-                            >
-                              <option value="startup">Startup</option>
-                              <option value="physical_local">Physical local</option>
-                            </Select>
-                          </div>
-                        </div>
-                        <div>
-                          <FieldLabel>Website</FieldLabel>
-                          <TextInput
-                            value={brandEditor.website_url}
-                            onChange={(event) =>
-                              setBrandEditor((current) => ({
-                                ...current,
-                                website_url: event.target.value
-                              }))
-                            }
-                            placeholder="https://your-site.com"
-                          />
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <FieldLabel>Mailbox email</FieldLabel>
-                            <TextInput
-                              value={brandEditor.mailbox_email}
-                              onChange={(event) =>
-                                setBrandEditor((current) => ({
-                                  ...current,
-                                  mailbox_email: event.target.value
-                                }))
-                              }
-                              placeholder="team@brand.com"
-                            />
-                          </div>
-                          <div>
-                            <FieldLabel>Provider</FieldLabel>
-                            <TextInput
-                              value={brandEditor.mailbox_provider}
-                              onChange={(event) =>
-                                setBrandEditor((current) => ({
-                                  ...current,
-                                  mailbox_provider: event.target.value
-                                }))
-                              }
-                              placeholder="gmail"
-                            />
-                          </div>
-                          <div>
-                            <FieldLabel>Username</FieldLabel>
-                            <TextInput
-                              value={brandEditor.mailbox_username}
-                              onChange={(event) =>
-                                setBrandEditor((current) => ({
-                                  ...current,
-                                  mailbox_username: event.target.value
-                                }))
-                              }
-                              placeholder="Mailbox username"
-                            />
-                          </div>
-                          <div>
-                            <FieldLabel>Password</FieldLabel>
-                            <TextInput
-                              type="password"
-                              value={brandEditor.mailbox_password}
-                              onChange={(event) =>
-                                setBrandEditor((current) => ({
-                                  ...current,
-                                  mailbox_password: event.target.value
-                                }))
-                              }
-                              placeholder="App password"
-                            />
-                          </div>
-                          <div>
-                            <FieldLabel>IMAP host</FieldLabel>
-                            <TextInput
-                              value={brandEditor.mailbox_host}
-                              onChange={(event) =>
-                                setBrandEditor((current) => ({
-                                  ...current,
-                                  mailbox_host: event.target.value
-                                }))
-                              }
-                              placeholder="imap.host.com"
-                            />
-                          </div>
-                          <div>
-                            <FieldLabel>IMAP port</FieldLabel>
-                            <TextInput
-                              value={brandEditor.mailbox_port}
-                              onChange={(event) =>
-                                setBrandEditor((current) => ({
-                                  ...current,
-                                  mailbox_port: event.target.value
-                                }))
-                              }
-                              placeholder="993"
-                            />
-                          </div>
-                          <div>
-                            <FieldLabel>SMTP host</FieldLabel>
-                            <TextInput
-                              value={brandEditor.mailbox_smtp_host}
-                              onChange={(event) =>
-                                setBrandEditor((current) => ({
-                                  ...current,
-                                  mailbox_smtp_host: event.target.value
-                                }))
-                              }
-                              placeholder="smtp.host.com"
-                            />
-                          </div>
-                          <div>
-                            <FieldLabel>SMTP port</FieldLabel>
-                            <TextInput
-                              value={brandEditor.mailbox_smtp_port}
-                              onChange={(event) =>
-                                setBrandEditor((current) => ({
-                                  ...current,
-                                  mailbox_smtp_port: event.target.value
-                                }))
-                              }
-                              placeholder="587"
-                            />
-                          </div>
-                        </div>
-                        <label className="flex items-center gap-3 text-sm text-brand-muted">
-                          <input
-                            type="checkbox"
-                            checked={brandEditor.mailbox_secure}
-                            onChange={(event) =>
-                              setBrandEditor((current) => ({
-                                ...current,
-                                mailbox_secure: event.target.checked
-                              }))
-                            }
-                          />
-                          IMAP secure
-                        </label>
-                        <label className="flex items-center gap-3 text-sm text-brand-muted">
-                          <input
-                            type="checkbox"
-                            checked={brandEditor.mailbox_smtp_secure}
-                            onChange={(event) =>
-                              setBrandEditor((current) => ({
-                                ...current,
-                                mailbox_smtp_secure: event.target.checked
-                              }))
-                            }
-                          />
-                          SMTP secure
-                        </label>
-                        <Button tone="secondary" onClick={handleSaveBrandProfile} disabled={brandEditor.saving}>
-                          {brandEditor.saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Settings2 className="h-4 w-4" />}
-                          Save brand profile
-                        </Button>
-                        {brandEditor.message ? (
-                          <div className={`rounded-lg border px-3 py-2 text-sm ${
-                            brandEditor.tone === "success"
-                              ? "border-brand-success/30 bg-brand-success/10 text-brand-success"
-                              : brandEditor.tone === "danger"
-                                ? "border-brand-danger/30 bg-brand-danger/10 text-brand-danger"
-                                : "border-brand-line bg-white/5 text-brand-muted"
-                          }`}>
-                            {brandEditor.message}
-                          </div>
-                        ) : null}
-                      </div>
-                    </details>
-                  </>
-                ) : null}
-              </div>
-            </details>
-
-            {currentAlerts.length ? (
-              <div className="rounded-xl border border-brand-line bg-brand-shell p-4">
-                <div className="text-sm font-semibold text-brand-ink">Open alerts</div>
-                <div className="mt-3 space-y-2">
-                  {currentAlerts.slice(0, 4).map((alert) => (
-                    <div key={alert.id} className="rounded-lg border border-brand-line bg-brand-panel px-3 py-3 text-sm">
-                      <div className="font-medium text-brand-ink">{alert.title || "Alert"}</div>
-                      <div className="mt-1 text-brand-muted">{alert.message || "No alert message."}</div>
-                      <div className="mt-3 flex items-center justify-between gap-2">
-                        <span className="text-xs text-brand-muted">{formatDateTime(alert.created_at)}</span>
-                        <Button tone="ghost" onClick={() => handleAlertAcknowledge(alert.id)}>
-                          Acknowledge
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </aside>
-      </div>
+                      routeHintsText: [...lines, routePath].join("\n")
+                    };
+                  })
+                }
+                onSaveRepository={handleRepositorySelect}
+                onStartGitHubInstall={handleGitHubInstall}
+                onSubmit={() => handleLaunchRun()}
+              />
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
@@ -3423,7 +2943,10 @@ function LaunchComposer({
   onStartGitHubInstall: () => Promise<void>;
   onSubmit: () => Promise<void>;
 }) {
+  const [step, setStep] = useState(1);
   const isControlled = draft.runMode === "controlled_ux";
+  const validationTarget = draft.validationTarget;
+  const accessMethod = normalizeAccessMethod(draft.accessMethod, validationTarget);
   const goalLines = draft.goalsText
     .split(/\r?\n/g)
     .map((item) => item.trim())
@@ -3436,429 +2959,762 @@ function LaunchComposer({
     .split(/\r?\n/g)
     .map((item) => item.trim())
     .filter(Boolean);
+  const stepTitles = ["Basics", "What To Test", "Access", "Flow Setup", "Review"];
   const effectiveScopeLabel = isControlled
     ? "Focused owned flow"
     : SCOPE_OPTIONS.find((option) => option.value === draft.scopeMode)?.label || "Fast pass";
+
+  useEffect(() => {
+    setStep((current) => Math.max(1, Math.min(5, current)));
+  }, [draft.runMode, draft.validationTarget]);
+
+  const reviewAccessLabel =
+    validationTarget === "public_flow"
+      ? "No login needed"
+      : accessMethod === "auth_url"
+        ? "Specific auth URL"
+        : accessMethod === "credentials"
+          ? "Test login"
+          : "App URL";
+
+  const stepReady =
+    step === 1
+      ? Boolean(normalizeUrlInput(draft.targetUrl))
+      : step === 2
+        ? Boolean(validationTarget)
+        : step === 3
+          ? validationTarget === "public_flow"
+            ? true
+            : validationTarget === "inside_product"
+              ? Boolean(String(draft.authUsername || "").trim() && String(draft.authPassword || "").trim())
+              : accessMethod === "auth_url"
+                ? Boolean(normalizeUrlInput(draft.authUrl))
+                : accessMethod === "credentials"
+                  ? Boolean(String(draft.authUsername || "").trim() && String(draft.authPassword || "").trim())
+                  : true
+          : step === 4
+            ? isControlled
+              ? Boolean(String(draft.userJob || "").trim() || normalizeEntryPath(draft.entryPath) || routeHintLines.length)
+              : Boolean(draft.persona)
+            : true;
+
+  const handleNext = async () => {
+    if (step < 5) {
+      setStep((current) => Math.min(5, current + 1));
+      return;
+    }
+    await onSubmit();
+  };
 
   return (
     <section className="rounded-2xl border border-brand-line bg-brand-shell p-6 shadow-shell">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-brand-line pb-5">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-brand-ink">Start a new test</h1>
+          <div className="text-sm font-medium text-brand-muted">{`Step ${step} of 5`}</div>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-brand-ink">Start a new test</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-brand-muted">
-            {isControlled
-              ? "Validate one owned flow before broad live QA. Define the job, the entry path, the planned route hints, and what success looks like."
-              : "Keep the input tight: target, one user, one test depth, and explicit goals only when the flow needs it."}
+            One choice at a time. Pick the environment, say what you want to validate, then add access only if the run needs it.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button tone="ghost" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button tone="primary" onClick={onSubmit} disabled={busy}>
-            {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-            Start test
-          </Button>
-        </div>
+        <Button tone="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <div className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="md:col-span-2">
-              <FieldLabel>Site</FieldLabel>
-              <TextInput
-                placeholder="https://your-site.com"
-                value={draft.targetUrl}
-                onChange={(event) =>
-                  onChange((current) => {
-                    const nextTarget = event.target.value;
-                    const nextBrandKey = current.brandKey || deriveBrandKeyFromUrl(nextTarget);
-                    return {
-                      ...current,
-                      targetUrl: nextTarget,
-                      brandKey: nextBrandKey,
-                      brandName: current.brandName || inferBrandName(nextBrandKey)
-                    };
-                  })
-                }
-              />
-            </div>
-            <div>
-              <FieldLabel>Project key</FieldLabel>
-              <TextInput
-                value={draft.brandKey}
-                onChange={(event) =>
-                  onChange((current) => ({
-                    ...current,
-                    brandKey: normalizeBrandKey(event.target.value)
-                  }))
-                }
-                placeholder="acme"
-              />
-            </div>
-            <div>
-              <FieldLabel>Project name</FieldLabel>
-              <TextInput
-                value={draft.brandName}
-                onChange={(event) =>
-                  onChange((current) => ({
-                    ...current,
-                    brandName: event.target.value
-                  }))
-                }
-                placeholder="Acme"
-              />
-            </div>
-          </div>
+      <div className="mt-6 h-2 rounded-full bg-black/10">
+        <div className="h-2 rounded-full bg-brand-primary transition-all" style={{ width: `${(step / 5) * 100}%` }} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-brand-muted">
+        {stepTitles.map((label, index) => (
+          <span key={label} className={index + 1 === step ? "text-brand-ink" : ""}>
+            {index + 1}. {label}
+          </span>
+        ))}
+      </div>
 
-          <div>
-            <div className="mb-3 text-sm font-medium text-brand-muted">Mode</div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {RUN_MODE_OPTIONS.map((option) => {
-                const active = draft.runMode === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    className={`rounded-xl border px-4 py-4 text-left transition ${
-                      active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-panel hover:bg-white/4"
-                    }`}
-                    type="button"
-                    onClick={() => onUseRunMode(option.value)}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-sm font-semibold text-brand-ink">{option.label}</div>
-                      {active ? <Check className="h-4 w-4 text-brand-primary" /> : null}
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-brand-muted">{option.description}</p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-3 text-sm font-medium text-brand-muted">User</div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {PERSONA_PRESETS.map((persona) => {
-                const active = draft.persona === persona.persona;
-                return (
-                  <button
-                    key={persona.id}
-                    className={`rounded-xl border px-4 py-4 text-left transition ${
-                      active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-panel hover:bg-white/4"
-                    }`}
-                    type="button"
-                    onClick={() => onUsePersona(persona)}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold text-brand-ink">{persona.name}</div>
-                        <div className="text-sm text-brand-muted">{persona.role}</div>
-                      </div>
-                      {active ? <Check className="h-4 w-4 text-brand-primary" /> : null}
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-brand-muted">{persona.description}</p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {isControlled ? (
-            <div className="rounded-xl border border-brand-line bg-brand-panel p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-brand-ink">Owned flow</div>
-                  <p className="mt-1 max-w-2xl text-sm leading-6 text-brand-muted">
-                    The single primary action here is validating one owned user flow. Broad coverage is hidden in this mode so the run stays focused on UI clarity, trust, and step-to-step friction.
-                  </p>
-                </div>
-                <StatusPill label="Focused flow" tone="warning" />
-              </div>
-
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <div>
-                  <FieldLabel>Primary user job</FieldLabel>
-                  <TextArea
-                    value={draft.userJob}
-                    onChange={(event) =>
-                      onChange((current) => ({
-                        ...current,
-                        userJob: event.target.value
-                      }))
-                    }
-                    placeholder={DEFAULT_CONTROLLED_UX_JOB}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Entry path</FieldLabel>
-                  <TextInput
-                    value={draft.entryPath}
-                    onChange={(event) =>
-                      onChange((current) => ({
-                        ...current,
-                        entryPath: normalizeEntryPath(event.target.value)
-                      }))
-                    }
-                    placeholder="/signup"
-                  />
-                  <p className="mt-2 text-xs leading-5 text-brand-muted">
-                    Start where the owned flow begins. Use a route path, not a broad homepage guess.
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <FieldLabel>Planned route hints</FieldLabel>
-                <TextArea
-                  value={draft.routeHintsText}
-                  onChange={(event) =>
-                    onChange((current) => ({
-                      ...current,
-                      routeHintsText: event.target.value
-                    }))
-                  }
-                  placeholder={"/signup\n/onboarding\n/dashboard"}
-                />
-                <p className="mt-2 text-xs leading-5 text-brand-muted">
-                  Add the known route sequence or checkpoints. The runner will treat these as guidance and call out drift on the live site.
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="rounded-2xl border border-brand-line bg-brand-panel p-5">
+          {step === 1 ? (
+            <div className="space-y-5">
+              <div>
+                <div className="text-lg font-semibold text-brand-ink">Basics</div>
+                <p className="mt-1 text-sm leading-6 text-brand-muted">
+                  Start with the environment URL and the kind of test you want.
                 </p>
               </div>
 
-              <div className="mt-4">
-                <FieldLabel>Success checks</FieldLabel>
-                <TextArea
-                  value={draft.successSignalsText}
-                  onChange={(event) =>
-                    onChange((current) => ({
-                      ...current,
-                      successSignalsText: event.target.value
-                    }))
-                  }
-                  placeholder={"The next step is obvious\nValidation errors are clear\nThe user reaches the first useful state"}
-                />
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <FieldLabel>Environment URL</FieldLabel>
+                  <TextInput
+                    placeholder="https://staging.example.com"
+                    value={draft.targetUrl}
+                    onChange={(event) =>
+                      onChange((current) => {
+                        const nextTarget = event.target.value;
+                        const nextBrandKey = current.brandKey || deriveBrandKeyFromUrl(nextTarget);
+                        return {
+                          ...current,
+                          targetUrl: nextTarget,
+                          brandKey: nextBrandKey,
+                          brandName: current.brandName || inferBrandName(nextBrandKey)
+                        };
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Project key</FieldLabel>
+                  <TextInput
+                    value={draft.brandKey}
+                    onChange={(event) =>
+                      onChange((current) => ({
+                        ...current,
+                        brandKey: normalizeBrandKey(event.target.value)
+                      }))
+                    }
+                    placeholder="acme"
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Project name</FieldLabel>
+                  <TextInput
+                    value={draft.brandName}
+                    onChange={(event) =>
+                      onChange((current) => ({
+                        ...current,
+                        brandName: event.target.value
+                      }))
+                    }
+                    placeholder="Acme"
+                  />
+                </div>
               </div>
-            </div>
-          ) : (
-            <>
+
               <div>
-                <div className="mb-3 text-sm font-medium text-brand-muted">Coverage</div>
-                <div className="grid gap-3 md:grid-cols-3">
-                  {SCOPE_OPTIONS.map((option) => {
-                    const active = draft.scopeMode === option.value;
+                <div className="mb-3 text-sm font-medium text-brand-muted">Mode</div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {RUN_MODE_OPTIONS.map((option) => {
+                    const active = draft.runMode === option.value;
                     return (
                       <button
                         key={option.value}
                         className={`rounded-xl border px-4 py-4 text-left transition ${
-                          active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-panel hover:bg-white/4"
+                          active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:bg-white/4"
                         }`}
                         type="button"
-                        onClick={() =>
+                        onClick={() => onUseRunMode(option.value)}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-semibold text-brand-ink">{option.label}</div>
+                          {active ? <Check className="h-4 w-4 text-brand-primary" /> : null}
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-brand-muted">{option.description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {step === 2 ? (
+            <div className="space-y-5">
+              <div>
+                <div className="text-lg font-semibold text-brand-ink">What should we test?</div>
+                <p className="mt-1 text-sm leading-6 text-brand-muted">
+                  Choose the surface first. This decides whether bypass is allowed and what the runner should care about.
+                </p>
+              </div>
+
+              <div className="grid gap-3">
+                {VALIDATION_TARGET_OPTIONS.map((option) => {
+                  const active = validationTarget === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`rounded-xl border px-4 py-4 text-left transition ${
+                        active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:bg-white/4"
+                      }`}
+                      onClick={() =>
+                        onChange((current) => {
+                          const nextValidationTarget = option.value;
+                          return {
+                            ...current,
+                            validationTarget: nextValidationTarget,
+                            accessMethod: normalizeAccessMethod(current.accessMethod, nextValidationTarget),
+                            authUrl: nextValidationTarget === "public_flow" ? "" : current.authUrl
+                          };
+                        })
+                      }
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-semibold text-brand-ink">{option.label}</div>
+                        {active ? <Check className="h-4 w-4 text-brand-primary" /> : null}
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-brand-muted">{option.description}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {step === 3 ? (
+            <div className="space-y-5">
+              <div>
+                <div className="text-lg font-semibold text-brand-ink">Access</div>
+                <p className="mt-1 text-sm leading-6 text-brand-muted">
+                  {validationTarget === "public_flow"
+                    ? "No login is needed here."
+                    : validationTarget === "login_signup"
+                      ? "Choose how we should enter the auth flow."
+                      : "For inside-product runs, we need a test login right now."}
+                </p>
+              </div>
+
+              {validationTarget === "public_flow" ? (
+                <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+                  We will stay on public pages, public CTAs, and public forms. No login or account creation will be attempted in this path.
+                </div>
+              ) : validationTarget === "login_signup" ? (
+                <div className="space-y-4">
+                  <div className="grid gap-3">
+                    {AUTH_FLOW_ACCESS_OPTIONS.map((option) => {
+                      const active = accessMethod === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`rounded-xl border px-4 py-4 text-left transition ${
+                            active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:bg-white/4"
+                          }`}
+                          onClick={() =>
+                            onChange((current) => ({
+                              ...current,
+                              accessMethod: option.value
+                            }))
+                          }
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm font-semibold text-brand-ink">{option.label}</div>
+                            {active ? <Check className="h-4 w-4 text-brand-primary" /> : null}
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-brand-muted">{option.description}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {accessMethod === "auth_url" || accessMethod === "credentials" ? (
+                    <div>
+                      <FieldLabel>Auth URL</FieldLabel>
+                      <TextInput
+                        value={draft.authUrl}
+                        onChange={(event) =>
                           onChange((current) => ({
                             ...current,
-                            scopeMode: option.value
+                            authUrl: event.target.value
                           }))
                         }
-                      >
-                        <div className="text-sm font-semibold text-brand-ink">{option.label}</div>
-                        <div className="mt-1 text-sm leading-6 text-brand-muted">{option.description}</div>
-                      </button>
-                    );
-                  })}
+                        placeholder="https://staging.example.com/login"
+                      />
+                    </div>
+                  ) : null}
+
+                  {accessMethod === "credentials" ? (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <FieldLabel>Test login email</FieldLabel>
+                        <TextInput
+                          value={draft.authUsername}
+                          onChange={(event) =>
+                            onChange((current) => ({
+                              ...current,
+                              authUsername: event.target.value
+                            }))
+                          }
+                          placeholder="tester@example.com"
+                        />
+                      </div>
+                      <div>
+                        <FieldLabel>Test login password</FieldLabel>
+                        <TextInput
+                          type="password"
+                          value={draft.authPassword}
+                          onChange={(event) =>
+                            onChange((current) => ({
+                              ...current,
+                              authPassword: event.target.value
+                            }))
+                          }
+                          placeholder="••••••••"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+                      If no credentials are provided, the runner will judge the auth UX using the public path and try sign-up when the product supports it.
+                    </div>
+                  )}
                 </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+                    Inside-product runs currently work with a real test login. Session capture and staging bypass come next.
+                  </div>
+                  <div>
+                    <FieldLabel>Optional login URL</FieldLabel>
+                    <TextInput
+                      value={draft.authUrl}
+                      onChange={(event) =>
+                        onChange((current) => ({
+                          ...current,
+                          authUrl: event.target.value,
+                          accessMethod: "credentials"
+                        }))
+                      }
+                      placeholder="https://staging.example.com/login"
+                    />
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <FieldLabel>Test login email</FieldLabel>
+                      <TextInput
+                        value={draft.authUsername}
+                        onChange={(event) =>
+                          onChange((current) => ({
+                            ...current,
+                            authUsername: event.target.value,
+                            accessMethod: "credentials"
+                          }))
+                        }
+                        placeholder="tester@example.com"
+                      />
+                    </div>
+                    <div>
+                      <FieldLabel>Test login password</FieldLabel>
+                      <TextInput
+                        type="password"
+                        value={draft.authPassword}
+                        onChange={(event) =>
+                          onChange((current) => ({
+                            ...current,
+                            authPassword: event.target.value,
+                            accessMethod: "credentials"
+                          }))
+                        }
+                        placeholder="••••••••"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {step === 4 ? (
+            <div className="space-y-5">
+              <div>
+                <div className="text-lg font-semibold text-brand-ink">Flow setup</div>
+                <p className="mt-1 text-sm leading-6 text-brand-muted">
+                  {isControlled
+                    ? "Define the owned flow and keep it tight."
+                    : "Pick one user and decide how deep the run should go."}
+                </p>
               </div>
 
               <div>
-                <div className="mb-3 text-sm font-medium text-brand-muted">Goals</div>
-                <div className="mb-3 flex flex-wrap gap-2">
-                  {GOAL_PRESETS.map((goal) => {
-                    const active = goalLines.includes(goal);
+                <div className="mb-3 text-sm font-medium text-brand-muted">User</div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {PERSONA_PRESETS.map((persona) => {
+                    const active = draft.persona === persona.persona;
                     return (
                       <button
-                        key={goal}
-                        className={`rounded-full border px-3 py-1.5 text-sm transition ${
-                          active ? "border-brand-primary/60 bg-brand-primary/12 text-brand-ink" : "border-brand-line bg-brand-panel text-brand-muted hover:text-brand-ink"
+                        key={persona.id}
+                        className={`rounded-xl border px-4 py-4 text-left transition ${
+                          active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:bg-white/4"
                         }`}
                         type="button"
-                        onClick={() => onToggleGoal(goal)}
+                        onClick={() => onUsePersona(persona)}
                       >
-                        {goal}
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-brand-ink">{persona.name}</div>
+                            <div className="text-sm text-brand-muted">{persona.role}</div>
+                          </div>
+                          {active ? <Check className="h-4 w-4 text-brand-primary" /> : null}
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-brand-muted">{persona.description}</p>
                       </button>
                     );
                   })}
                 </div>
-                <TextArea
-                  value={draft.goalsText}
-                  onChange={(event) =>
-                    onChange((current) => ({
-                      ...current,
-                      goalsText: event.target.value
-                    }))
-                  }
-                />
               </div>
-            </>
-          )}
-        </div>
 
-        <div className="space-y-4">
-          <div className="rounded-xl border border-brand-line bg-brand-panel p-4">
-            <div className="text-sm font-semibold text-brand-ink">{isControlled ? "Repo map" : "Engineering handoff"}</div>
-            <p className="mt-2 text-sm leading-6 text-brand-muted">
-              {isControlled
-                ? "Controlled UX runs work best with a connected repo. Route hints come from the selected repository, while repo-aware triage still stays optional."
-                : "Keep repo-aware triage behind a disclosure. Turn it on only when the project is connected."}
-            </p>
-
-            <label className="mt-4 flex items-center gap-3 text-sm text-brand-muted">
-              <input
-                type="checkbox"
-                checked={draft.repoTriageEnabled}
-                onChange={(event) =>
-                  onChange((current) => ({
-                    ...current,
-                    repoTriageEnabled: event.target.checked
-                  }))
-                }
-              />
-              Attach repo-aware triage
-            </label>
-
-            {repoConnection?.connection_status === "connected" ? (
-              <div className="mt-4 rounded-lg border border-brand-line bg-brand-shell px-3 py-3 text-sm">
-                <div className="font-medium text-brand-ink">{repoConnection.selected_repo_full_name}</div>
-                <div className="mt-1 text-brand-muted">
-                  {isControlled ? "Connected and ready to supply route hints plus repo-aware diagnosis." : "Connected and ready to enrich future reports."}
-                </div>
-              </div>
-            ) : null}
-
-            {isControlled ? (
-              <div className="mt-4 rounded-lg border border-brand-line bg-brand-shell px-3 py-3 text-sm">
-                <div className="font-medium text-brand-ink">Route hints</div>
-                {repoRoutesLoading ? (
-                  <div className="mt-2 text-brand-muted">Loading route suggestions from the connected repository.</div>
-                ) : repoRoutes.length ? (
-                  <>
-                    <div className="mt-2 text-brand-muted">Pick an entry path or append known routes to the plan.</div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {repoRoutes.slice(0, 10).map((route) => {
-                        const activeEntry = normalizeEntryPath(draft.entryPath) === route.path;
-                        return (
-                          <div key={`${route.path}:${route.file_path}`} className="flex items-center gap-2 rounded-full border border-brand-line bg-brand-panel px-2 py-1">
-                            <button
-                              type="button"
-                              className={`rounded-full px-2 py-1 text-xs font-semibold transition ${
-                                activeEntry ? "bg-brand-primary/15 text-brand-ink" : "text-brand-muted hover:text-brand-ink"
-                              }`}
-                              onClick={() => onUseRouteAsEntry(route.path)}
-                            >
-                              {route.path}
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded-full border border-brand-line px-2 py-1 text-[11px] font-semibold text-brand-muted transition hover:text-brand-ink"
-                              onClick={() => onAddRouteHint(route.path)}
-                            >
-                              Add
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                ) : (
-                  <div className="mt-2 text-brand-muted">
-                    {repoRoutesError || "No route suggestions were inferred from the repo. You can still type the entry path and route hints manually."}
-                  </div>
-                )}
-              </div>
-            ) : null}
-
-            {repoConnection?.repositories && repoConnection.repositories.length > 1 ? (
-              <div className="mt-4">
-                <FieldLabel>Repository</FieldLabel>
-                <Select
-                  value={draft.selectedRepoFullName}
-                  onChange={(event) =>
-                    onChange((current) => ({
-                      ...current,
-                      selectedRepoFullName: event.target.value
-                    }))
-                  }
-                >
-                  <option value="">Choose a repository</option>
-                  {repoConnection.repositories.map((repo) => (
-                    <option key={repo.full_name || repo.id} value={repo.full_name || ""}>
-                      {repo.full_name}
-                    </option>
-                  ))}
-                </Select>
-                <Button tone="secondary" className="mt-3" onClick={() => onSaveRepository(draft.selectedRepoFullName)} disabled={!draft.selectedRepoFullName}>
-                  Save repository
-                </Button>
-              </div>
-            ) : null}
-
-            {repoConnection?.connection_status !== "connected" ? (
-              <Button tone="secondary" className="mt-4" onClick={onStartGitHubInstall}>
-                <GitBranch className="h-4 w-4" />
-                Connect GitHub
-              </Button>
-            ) : null}
-          </div>
-
-          <div className="rounded-xl border border-brand-line bg-brand-panel p-4">
-            <div className="text-sm font-semibold text-brand-ink">Review</div>
-            <dl className="mt-4 space-y-3 text-sm">
-              <div>
-                <dt className="text-brand-muted">Mode</dt>
-                <dd className="mt-1 text-brand-ink">{RUN_MODE_OPTIONS.find((option) => option.value === draft.runMode)?.label || "Live QA"}</dd>
-              </div>
-              <div>
-                <dt className="text-brand-muted">Site</dt>
-                <dd className="mt-1 text-brand-ink">{draft.targetUrl || "Add a public site."}</dd>
-              </div>
-              <div>
-                <dt className="text-brand-muted">Project</dt>
-                <dd className="mt-1 text-brand-ink">{draft.brandName || inferBrandName(draft.brandKey) || "Project name will be inferred."}</dd>
-              </div>
-              <div>
-                <dt className="text-brand-muted">Coverage</dt>
-                <dd className="mt-1 text-brand-ink">{effectiveScopeLabel}</dd>
-              </div>
               {isControlled ? (
                 <>
                   <div>
-                    <dt className="text-brand-muted">Entry path</dt>
-                    <dd className="mt-1 text-brand-ink">{draft.entryPath || "Add the first owned-flow route."}</dd>
+                    <FieldLabel>Primary user job</FieldLabel>
+                    <TextArea
+                      value={draft.userJob}
+                      onChange={(event) =>
+                        onChange((current) => ({
+                          ...current,
+                          userJob: event.target.value
+                        }))
+                      }
+                      placeholder={DEFAULT_CONTROLLED_UX_JOB}
+                    />
                   </div>
                   <div>
-                    <dt className="text-brand-muted">Primary user job</dt>
-                    <dd className="mt-1 text-brand-ink">{draft.userJob || "Describe what the user is trying to accomplish."}</dd>
+                    <FieldLabel>Entry path</FieldLabel>
+                    <TextInput
+                      value={draft.entryPath}
+                      onChange={(event) =>
+                        onChange((current) => ({
+                          ...current,
+                          entryPath: normalizeEntryPath(event.target.value)
+                        }))
+                      }
+                      placeholder={validationTarget === "login_signup" ? "/login" : "/dashboard"}
+                    />
                   </div>
                   <div>
-                    <dt className="text-brand-muted">Route hints</dt>
-                    <dd className="mt-1 text-brand-ink">{routeHintLines.length} added</dd>
+                    <FieldLabel>Planned route hints</FieldLabel>
+                    <TextArea
+                      value={draft.routeHintsText}
+                      onChange={(event) =>
+                        onChange((current) => ({
+                          ...current,
+                          routeHintsText: event.target.value
+                        }))
+                      }
+                      placeholder={"/signup\n/onboarding\n/dashboard"}
+                    />
                   </div>
                   <div>
-                    <dt className="text-brand-muted">Success checks</dt>
-                    <dd className="mt-1 text-brand-ink">{successLines.length} added</dd>
+                    <FieldLabel>Success checks</FieldLabel>
+                    <TextArea
+                      value={draft.successSignalsText}
+                      onChange={(event) =>
+                        onChange((current) => ({
+                          ...current,
+                          successSignalsText: event.target.value
+                        }))
+                      }
+                      placeholder={"The next step is obvious\nErrors are clear\nThe first useful state is reachable"}
+                    />
+                  </div>
+
+                  <div className="rounded-xl border border-brand-line bg-brand-shell p-4">
+                    <div className="text-sm font-semibold text-brand-ink">GitHub route hints</div>
+                    <p className="mt-1 text-sm leading-6 text-brand-muted">
+                      Connect the repo if you want us to suggest likely routes and keep the run closer to the owned flow.
+                    </p>
+
+                    {repoConnection?.connection_status === "connected" ? (
+                      <div className="mt-4 rounded-lg border border-brand-line bg-brand-panel px-3 py-3 text-sm">
+                        <div className="font-medium text-brand-ink">{repoConnection.selected_repo_full_name}</div>
+                        <div className="mt-1 text-brand-muted">Connected and ready to supply route hints.</div>
+                      </div>
+                    ) : (
+                      <Button tone="secondary" className="mt-4" onClick={onStartGitHubInstall}>
+                        <GitBranch className="h-4 w-4" />
+                        Connect GitHub
+                      </Button>
+                    )}
+
+                    {repoConnection?.repositories && repoConnection.repositories.length > 1 ? (
+                      <div className="mt-4">
+                        <FieldLabel>Repository</FieldLabel>
+                        <Select
+                          value={draft.selectedRepoFullName}
+                          onChange={(event) =>
+                            onChange((current) => ({
+                              ...current,
+                              selectedRepoFullName: event.target.value
+                            }))
+                          }
+                        >
+                          <option value="">Choose a repository</option>
+                          {repoConnection.repositories.map((repo) => (
+                            <option key={repo.full_name || repo.id} value={repo.full_name || ""}>
+                              {repo.full_name}
+                            </option>
+                          ))}
+                        </Select>
+                        <Button tone="secondary" className="mt-3" onClick={() => onSaveRepository(draft.selectedRepoFullName)} disabled={!draft.selectedRepoFullName}>
+                          Save repository
+                        </Button>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-4 rounded-lg border border-brand-line bg-brand-panel px-3 py-3 text-sm">
+                      <div className="font-medium text-brand-ink">Suggested routes</div>
+                      {repoRoutesLoading ? (
+                        <div className="mt-2 text-brand-muted">Loading route suggestions.</div>
+                      ) : repoRoutes.length ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {repoRoutes.slice(0, 10).map((route) => {
+                            const activeEntry = normalizeEntryPath(draft.entryPath) === route.path;
+                            return (
+                              <div key={`${route.path}:${route.file_path}`} className="flex items-center gap-2 rounded-full border border-brand-line bg-brand-shell px-2 py-1">
+                                <button
+                                  type="button"
+                                  className={`rounded-full px-2 py-1 text-xs font-semibold transition ${
+                                    activeEntry ? "bg-brand-primary/15 text-brand-ink" : "text-brand-muted hover:text-brand-ink"
+                                  }`}
+                                  onClick={() => onUseRouteAsEntry(route.path)}
+                                >
+                                  {route.path}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="rounded-full border border-brand-line px-2 py-1 text-[11px] font-semibold text-brand-muted transition hover:text-brand-ink"
+                                  onClick={() => onAddRouteHint(route.path)}
+                                >
+                                  Add
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-brand-muted">
+                          {repoRoutesError || "No route suggestions yet. You can still type the route plan manually."}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </>
               ) : (
+                <>
+                  <div>
+                    <div className="mb-3 text-sm font-medium text-brand-muted">Coverage</div>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      {SCOPE_OPTIONS.map((option) => {
+                        const active = draft.scopeMode === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            className={`rounded-xl border px-4 py-4 text-left transition ${
+                              active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:bg-white/4"
+                            }`}
+                            type="button"
+                            onClick={() =>
+                              onChange((current) => ({
+                                ...current,
+                                scopeMode: option.value
+                              }))
+                            }
+                          >
+                            <div className="text-sm font-semibold text-brand-ink">{option.label}</div>
+                            <div className="mt-1 text-sm leading-6 text-brand-muted">{option.description}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-3 text-sm font-medium text-brand-muted">Mission</div>
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {GOAL_PRESETS.map((goal) => {
+                        const active = goalLines.includes(goal);
+                        return (
+                          <button
+                            key={goal}
+                            className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                              active ? "border-brand-primary/60 bg-brand-primary/12 text-brand-ink" : "border-brand-line bg-brand-shell text-brand-muted hover:text-brand-ink"
+                            }`}
+                            type="button"
+                            onClick={() => onToggleGoal(goal)}
+                          >
+                            {goal}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <TextArea
+                      value={draft.goalsText}
+                      onChange={(event) =>
+                        onChange((current) => ({
+                          ...current,
+                          goalsText: event.target.value
+                        }))
+                      }
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
+
+          {step === 5 ? (
+            <div className="space-y-5">
+              <div>
+                <div className="text-lg font-semibold text-brand-ink">Review</div>
+                <p className="mt-1 text-sm leading-6 text-brand-muted">
+                  Check the setup, then start the test.
+                </p>
+              </div>
+
+              <dl className="space-y-4 text-sm">
                 <div>
-                  <dt className="text-brand-muted">Goals</dt>
-                  <dd className="mt-1 text-brand-ink">{goalLines.length ? goalLines.length : 0} selected</dd>
+                  <dt className="text-brand-muted">Environment</dt>
+                  <dd className="mt-1 text-brand-ink">{draft.targetUrl || "Add an environment URL."}</dd>
+                </div>
+                <div>
+                  <dt className="text-brand-muted">Mode</dt>
+                  <dd className="mt-1 text-brand-ink">{RUN_MODE_OPTIONS.find((option) => option.value === draft.runMode)?.label || "Live QA"}</dd>
+                </div>
+                <div>
+                  <dt className="text-brand-muted">What to test</dt>
+                  <dd className="mt-1 text-brand-ink">{VALIDATION_TARGET_OPTIONS.find((option) => option.value === validationTarget)?.label || "Public flow"}</dd>
+                </div>
+                <div>
+                  <dt className="text-brand-muted">Access</dt>
+                  <dd className="mt-1 text-brand-ink">{reviewAccessLabel}</dd>
+                </div>
+                {draft.authUrl ? (
+                  <div>
+                    <dt className="text-brand-muted">Auth URL</dt>
+                    <dd className="mt-1 text-brand-ink">{draft.authUrl}</dd>
+                  </div>
+                ) : null}
+                <div>
+                  <dt className="text-brand-muted">User</dt>
+                  <dd className="mt-1 text-brand-ink">
+                    {PERSONA_PRESETS.find((persona) => persona.persona === draft.persona)?.name || "Custom user"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-brand-muted">Flow</dt>
+                  <dd className="mt-1 text-brand-ink">
+                    {isControlled ? draft.userJob || "Add the owned flow job." : goalLines[0] || "Add the mission."}
+                  </dd>
+                </div>
+                {isControlled ? (
+                  <>
+                    <div>
+                      <dt className="text-brand-muted">Entry path</dt>
+                      <dd className="mt-1 text-brand-ink">{draft.entryPath || "Add an entry path."}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-brand-muted">Route hints</dt>
+                      <dd className="mt-1 text-brand-ink">{routeHintLines.length} added</dd>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <dt className="text-brand-muted">Coverage</dt>
+                    <dd className="mt-1 text-brand-ink">{effectiveScopeLabel}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          ) : null}
+
+          <div className="mt-6 flex items-center justify-between gap-3 border-t border-brand-line pt-5">
+            <div>
+              {step > 1 ? (
+                <Button tone="ghost" onClick={() => setStep((current) => Math.max(1, current - 1))}>
+                  Back
+                </Button>
+              ) : null}
+            </div>
+            <Button tone="primary" onClick={handleNext} disabled={busy || !stepReady}>
+              {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : step === 5 ? <Play className="h-4 w-4" /> : null}
+              {step === 5 ? "Start test" : "Next"}
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-brand-line bg-brand-panel p-5">
+            <div className="text-sm font-semibold text-brand-ink">Current setup</div>
+            <div className="mt-4 space-y-3 text-sm">
+              <div>
+                <div className="text-brand-muted">Environment</div>
+                <div className="mt-1 text-brand-ink">{draft.targetUrl || "Not set yet"}</div>
+              </div>
+              <div>
+                <div className="text-brand-muted">Mode</div>
+                <div className="mt-1 text-brand-ink">{RUN_MODE_OPTIONS.find((option) => option.value === draft.runMode)?.label || "Live QA"}</div>
+              </div>
+              <div>
+                <div className="text-brand-muted">What to test</div>
+                <div className="mt-1 text-brand-ink">{VALIDATION_TARGET_OPTIONS.find((option) => option.value === validationTarget)?.label || "Public flow"}</div>
+              </div>
+              <div>
+                <div className="text-brand-muted">Access</div>
+                <div className="mt-1 text-brand-ink">{reviewAccessLabel}</div>
+              </div>
+              {isControlled ? (
+                <div>
+                  <div className="text-brand-muted">Owned flow</div>
+                  <div className="mt-1 text-brand-ink">{draft.userJob || "Add the user job in Flow Setup."}</div>
+                </div>
+              ) : (
+                <div>
+                  <div className="text-brand-muted">Mission</div>
+                  <div className="mt-1 text-brand-ink">{goalLines[0] || "Add the mission in Flow Setup."}</div>
                 </div>
               )}
-            </dl>
+            </div>
           </div>
+
+          <div className="rounded-2xl border border-brand-line bg-brand-panel p-5">
+            <div className="text-sm font-semibold text-brand-ink">What happens next</div>
+            <div className="mt-2 text-sm leading-6 text-brand-muted">
+              {validationTarget === "public_flow"
+                ? "We will stay on public pages only."
+                : validationTarget === "login_signup"
+                  ? "We will judge the auth experience itself and avoid bypasses."
+                  : "We will use the provided test login and focus on the product after login."}
+            </div>
+            {isControlled ? (
+              <div className="mt-3 text-sm leading-6 text-brand-muted">
+                Controlled UX keeps the run close to one owned flow and uses route hints when the repo is connected.
+              </div>
+            ) : null}
+          </div>
+
+          <details className="rounded-2xl border border-brand-line bg-brand-panel p-5">
+            <summary className="cursor-pointer list-none text-sm font-semibold text-brand-ink">Advanced</summary>
+            <div className="mt-4 space-y-4 text-sm">
+              <label className="flex items-center gap-3 text-brand-muted">
+                <input
+                  type="checkbox"
+                  checked={draft.repoTriageEnabled}
+                  onChange={(event) =>
+                    onChange((current) => ({
+                      ...current,
+                      repoTriageEnabled: event.target.checked
+                    }))
+                  }
+                />
+                Attach repo-aware diagnosis after the run
+              </label>
+              {repoConnection?.connection_status === "connected" ? (
+                <div className="rounded-lg border border-brand-line bg-brand-shell px-3 py-3 text-sm">
+                  <div className="font-medium text-brand-ink">{repoConnection.selected_repo_full_name}</div>
+                  <div className="mt-1 text-brand-muted">Connected for route hints and post-run diagnosis.</div>
+                </div>
+              ) : (
+                <Button tone="secondary" onClick={onStartGitHubInstall}>
+                  <GitBranch className="h-4 w-4" />
+                  Connect GitHub
+                </Button>
+              )}
+            </div>
+          </details>
 
           {message ? (
             <div
-              className={`rounded-xl border px-4 py-3 text-sm ${
+              className={`rounded-2xl border px-4 py-3 text-sm ${
                 tone === "success"
                   ? "border-brand-success/30 bg-brand-success/10 text-brand-success"
                   : tone === "danger"
@@ -4302,6 +4158,1797 @@ function SharedReportPage({
             </a>
           </div>
         </div>
+      </main>
+    </div>
+  );
+}
+
+type StarterHistoryRow = ReturnType<typeof buildStarterHistoryRows>[number];
+type StarterFrictionPoint = ReturnType<typeof buildStarterFrictionRows>[number];
+type StarterLiveAgent = ReturnType<typeof buildStarterLiveAgents>[number];
+
+function StarterOnboardingFlow({
+  personas,
+  onComplete
+}: {
+  personas: StarterPersona[];
+  onComplete: (input: { name: string; website: string; connectGitHub: boolean }) => Promise<void>;
+}) {
+  const [step, setStep] = useState(1);
+  const [name, setName] = useState("");
+  const [website, setWebsite] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function finish(connectGitHub: boolean) {
+    if (!name || !website) {
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await onComplete({
+        name,
+        website: website.startsWith("http") ? website : `https://${website}`,
+        connectGitHub
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-brand-bg flex flex-col items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="max-w-2xl w-full handcrafted-card bg-white p-12 rounded-[4rem] relative overflow-hidden"
+      >
+        <div className="absolute top-0 left-0 w-full h-2 bg-brand-muted">
+          <motion.div className="h-full bg-brand-accent" animate={{ width: `${(step / 2) * 100}%` }} />
+        </div>
+
+        {step === 1 ? (
+          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
+            <div className="organic-pill inline-block mb-6 bg-brand-secondary/10 text-brand-ink border-brand-ink">
+              Step 1: The Basics
+            </div>
+            <h2 className="text-4xl font-black mb-4">What are we testing?</h2>
+            <p className="text-slate-500 font-bold mb-8">Give your brand a name and drop the URL. Our agents will start mapping it immediately.</p>
+
+            <div className="space-y-6">
+              <div className="space-y-1">
+                <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-2">Brand Name</label>
+                <div className="handcrafted-card p-4 rounded-2xl flex items-center gap-3">
+                  <Star className="text-slate-300 w-5 h-5" />
+                  <input
+                    type="text"
+                    placeholder="Acme Corp"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    className="bg-transparent outline-none w-full font-bold"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-2">Website URL</label>
+                <div className="handcrafted-card p-4 rounded-2xl flex items-center gap-3">
+                  <Globe className="text-slate-300 w-5 h-5" />
+                  <div className="flex items-center w-full">
+                    <span className="text-slate-300 font-bold mr-1">https://</span>
+                    <input
+                      type="text"
+                      placeholder="acme.com"
+                      value={website}
+                      onChange={(event) => setWebsite(event.target.value.replace(/^https?:\/\//, ""))}
+                      className="bg-transparent outline-none w-full font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4">
+                <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-2 block mb-3">Your Test Fleet is Ready</label>
+                <div className="flex -space-x-4">
+                  {personas.map((persona, index) => (
+                    <motion.div
+                      key={persona.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                      className={`w-12 h-12 rounded-2xl border-4 border-white ${persona.color} overflow-hidden shadow-lg relative group`}
+                    >
+                      <img src={persona.avatar} alt={persona.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    </motion.div>
+                  ))}
+                </div>
+                <p className="text-[10px] font-bold text-slate-400 mt-3 italic">These agents will begin exploring your site immediately after setup.</p>
+              </div>
+
+              <button
+                disabled={!name || !website}
+                onClick={() => setStep(2)}
+                className="w-full bg-brand-ink text-white p-5 rounded-2xl font-black text-xl hover:bg-brand-accent transition-all flex items-center justify-center gap-2 disabled:opacity-50 mt-4"
+              >
+                Next Step
+                <ArrowRight className="w-6 h-6" />
+              </button>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
+            <div className="organic-pill inline-block mb-6 bg-brand-accent/10 text-brand-ink border-brand-ink">
+              Step 2: Deep Diagnosis
+            </div>
+            <h2 className="text-4xl font-black mb-4">Connect your Repos</h2>
+            <p className="text-slate-500 font-bold mb-8">By connecting GitHub, our agents can examine your code after finding a bug to recommend a precise fix diagnosis.</p>
+
+            <div className="handcrafted-card p-8 rounded-3xl bg-slate-50 border-dashed border-4 flex flex-col items-center text-center gap-6">
+              <div className="w-20 h-20 bg-brand-ink rounded-3xl flex items-center justify-center rotate-[-5deg]">
+                <GitBranch className="text-white w-12 h-12" />
+              </div>
+              <div>
+                <h4 className="text-xl font-black mb-2">Install GitHub App</h4>
+                <p className="text-sm font-bold text-slate-500">We&apos;ll only request read access to the repositories you select.</p>
+              </div>
+              <button
+                onClick={() => finish(true)}
+                disabled={submitting}
+                className="bg-brand-ink text-white px-8 py-4 rounded-2xl font-black hover:bg-brand-accent transition-all flex items-center gap-2 disabled:opacity-50"
+              >
+                {submitting ? "Connecting..." : "Connect GitHub"}
+                <ArrowRight className="w-5 h-5" />
+              </button>
+            </div>
+
+            <button
+              onClick={() => finish(false)}
+              disabled={submitting}
+              className="mt-8 text-sm font-black text-slate-400 hover:text-brand-ink transition-colors block mx-auto disabled:opacity-50"
+            >
+              Skip for now (I&apos;ll do it later)
+            </button>
+          </motion.div>
+        )}
+      </motion.div>
+    </div>
+  );
+}
+
+function StarterDashboard({
+  brands,
+  activeBrand,
+  personas,
+  historyRows,
+  liveAgents,
+  frictionRows,
+  trendData,
+  workerLabel,
+  onSwitchBrand,
+  onAddBrand,
+  onLogout,
+  onViewReport,
+  onViewPersonas,
+  onViewAutomations,
+  onViewHistory,
+  onViewHelp,
+  onRunNewTest,
+  onOpenAdvancedLaunch,
+  onScheduleTest
+}: {
+  brands: StarterBrand[];
+  activeBrand: StarterBrand | null;
+  personas: StarterPersona[];
+  historyRows: StarterHistoryRow[];
+  liveAgents: StarterLiveAgent[];
+  frictionRows: StarterFrictionPoint[];
+  trendData: Array<{ name: string; score: number }>;
+  workerLabel: string;
+  onSwitchBrand: (brandId: string) => void;
+  onAddBrand: () => void;
+  onLogout: () => Promise<void>;
+  onViewReport: (runId: string) => void;
+  onViewPersonas: () => void;
+  onViewAutomations: () => void;
+  onViewHistory: () => void;
+  onViewHelp: () => void;
+  onRunNewTest: () => Promise<void>;
+  onOpenAdvancedLaunch: () => void;
+  onScheduleTest: () => void;
+}) {
+  const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
+  const [selectedLiveAgent, setSelectedLiveAgent] = useState<StarterLiveAgent | null>(null);
+  const latestScore = trendData[trendData.length - 1]?.score || 0;
+  const openBugCount = frictionRows.filter((item) => item.severity === "high").length;
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex relative">
+      <AnimatePresence>
+        {selectedLiveAgent ? (
+          <StarterLiveAgentDetail agent={selectedLiveAgent} onClose={() => setSelectedLiveAgent(null)} />
+        ) : null}
+      </AnimatePresence>
+
+      <aside className="w-64 border-r border-slate-200 flex flex-col bg-white">
+        <div className="p-6 border-b border-slate-200">
+          <Logo className="scale-75 origin-left" />
+        </div>
+        <div className="p-4 border-b border-slate-200 relative">
+          <button
+            onClick={() => setIsSwitcherOpen((current) => !current)}
+            className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 border border-slate-200 transition-all"
+          >
+            <div className="flex items-center gap-2 overflow-hidden">
+              <div className="w-8 h-8 bg-brand-ink rounded-lg flex items-center justify-center shrink-0">
+                <span className="text-white font-black text-[10px]">{activeBrand?.name?.[0] || "B"}</span>
+              </div>
+              <span className="font-bold text-sm truncate tracking-tight">{activeBrand?.name || "Choose a brand"}</span>
+            </div>
+            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isSwitcherOpen ? "rotate-180" : ""}`} />
+          </button>
+
+          {isSwitcherOpen ? (
+            <motion.div
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="absolute top-full left-4 right-4 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden"
+            >
+              <div className="p-1 space-y-0.5">
+                <div className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Your Brands</div>
+                {brands.map((brand) => (
+                  <button
+                    key={brand.id}
+                    onClick={() => {
+                      onSwitchBrand(brand.id);
+                      setIsSwitcherOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 transition-all ${
+                      activeBrand?.id === brand.id ? "bg-brand-accent/5 text-brand-accent" : ""
+                    }`}
+                  >
+                    <div className="w-6 h-6 bg-brand-ink rounded-md flex items-center justify-center shrink-0">
+                      <span className="text-white font-black text-[10px]">{brand.name[0]}</span>
+                    </div>
+                    <span className="font-bold text-xs truncate">{brand.name}</span>
+                  </button>
+                ))}
+                <div className="border-t border-slate-100 my-1"></div>
+                <button
+                  onClick={() => {
+                    setIsSwitcherOpen(false);
+                    onAddBrand();
+                  }}
+                  className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 transition-all text-brand-accent"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="font-bold text-xs">Add New Brand</span>
+                </button>
+              </div>
+            </motion.div>
+          ) : null}
+        </div>
+
+        <nav className="flex-1 p-3 space-y-1">
+          <StarterNavItem icon={<LayoutDashboard />} label="Overview" active onClick={() => null} />
+          <StarterNavItem icon={<History />} label="Test History" onClick={onViewHistory} />
+          <StarterNavItem icon={<Users />} label="Persona Lab" onClick={onViewPersonas} />
+          <StarterNavItem icon={<Zap />} label="Automations" onClick={onViewAutomations} />
+          <StarterNavItem icon={<FileText />} label="Help Center" onClick={onViewHelp} />
+          <StarterNavItem icon={<Settings />} label="Settings" onClick={onOpenAdvancedLaunch} />
+        </nav>
+
+        <div className="p-4 border-t border-slate-200">
+          <button
+            onClick={() => onLogout().catch(() => null)}
+            className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-brand-danger/5 text-slate-400 hover:text-brand-danger transition-all font-bold text-sm"
+          >
+            <ArrowRight className="w-4 h-4 rotate-180" />
+            Logout
+          </button>
+        </div>
+      </aside>
+
+      <main className="flex-1 overflow-y-auto p-10">
+        <header className="flex justify-between items-start mb-10">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <h1 className="text-4xl font-black tracking-tighter text-brand-ink">Overview</h1>
+              <div className="px-2 py-0.5 rounded-full bg-brand-secondary/10 text-brand-secondary border border-brand-secondary/20 text-[10px] font-black uppercase tracking-widest">
+                {liveAgents.length ? "Live Agents Active" : "Ready"}
+              </div>
+            </div>
+            <p className="text-slate-500 font-bold flex items-center gap-2 text-sm">
+              <Globe className="w-3.5 h-3.5" />
+              {activeBrand?.website || "No brand selected"}
+            </p>
+            {workerLabel ? <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mt-2">{workerLabel}</p> : null}
+          </div>
+          <div className="flex gap-3">
+            <button onClick={onScheduleTest} className="bg-white border border-slate-200 px-6 py-3 rounded-xl font-black text-sm flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm">
+              <Clock className="w-4 h-4 text-slate-400" />
+              Schedule Test
+            </button>
+            <button onClick={() => onRunNewTest().catch(() => null)} className="bg-brand-ink text-white px-8 py-3 rounded-xl font-black text-sm flex items-center gap-2 hover:bg-brand-accent transition-all shadow-sm">
+              <Play className="w-4 h-4" />
+              Run New Test
+            </button>
+          </div>
+        </header>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-4 gap-6">
+            <StarterStatCard label="Satisfaction Score" value={`${latestScore}%`} trend="+ real data" icon={<Star className="text-brand-success" />} color="bg-brand-success/5" />
+            <StarterStatCard label="Open Bugs" value={String(openBugCount).padStart(2, "0")} trend={`${frictionRows.filter((item) => item.severity === "high").length} critical`} icon={<Shield className="text-brand-danger" />} color="bg-brand-danger/5" />
+            <StarterStatCard label="Friction Points" value={String(frictionRows.length).padStart(2, "0")} trend={`${historyRows.length} runs tracked`} icon={<Zap className="text-brand-warning" />} color="bg-brand-warning/5" />
+            <StarterStatCard label="Active Agents" value={String(liveAgents.length).padStart(2, "0")} trend={liveAgents.length ? "Running now" : "Standing by"} icon={<MessageCircle className="text-brand-secondary" />} color="bg-brand-secondary/5" />
+          </div>
+
+          <div className="lg:col-span-3 dash-card p-8 bg-white">
+            <div className="flex justify-between items-center mb-8">
+              <div>
+                <h3 className="text-xl font-black tracking-tight">User Satisfaction Trend</h3>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Last 7 Days</p>
+              </div>
+              <div className="flex items-center gap-2 text-brand-secondary">
+                <TrendingUp className="w-5 h-5" />
+                <span className="font-black text-lg">{latestScore}%</span>
+              </div>
+            </div>
+            <div className="h-[250px]">
+              <StarterHealthScoreChart data={trendData} />
+            </div>
+          </div>
+
+          <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="dash-card p-8 relative overflow-hidden flex flex-col">
+              <div className="flex justify-between items-center mb-8">
+                <h3 className="text-xl font-black tracking-tight">Live Agents</h3>
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-3 w-3">
+                    <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${liveAgents.length ? "bg-brand-accent" : "bg-slate-300"} opacity-75`}></span>
+                    <span className={`relative inline-flex rounded-full h-3 w-3 ${liveAgents.length ? "bg-brand-accent" : "bg-slate-300"}`}></span>
+                  </span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-brand-accent">
+                    {liveAgents.length ? `${liveAgents.length} Tests Running` : "No Live Tests"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-4 flex-1">
+                {liveAgents.length ? (
+                  liveAgents.map((agent) => (
+                    <StarterLiveAgentRow key={agent.id} agent={agent} onClick={() => setSelectedLiveAgent(agent)} />
+                  ))
+                ) : (
+                  <div className="dash-card p-6 bg-slate-50/50 text-sm font-bold text-slate-500">
+                    No live sessions at the moment. Run a new test to watch agents explore the real product.
+                  </div>
+                )}
+              </div>
+              <div className="mt-8 pt-6 border-t border-slate-100">
+                <button onClick={onViewHistory} className="w-full py-3 rounded-xl bg-slate-50 text-slate-400 font-black text-xs hover:bg-slate-100 transition-all">
+                  View All Active Sessions
+                </button>
+              </div>
+            </div>
+
+            <StarterLiveAgentPeek agent={liveAgents[0] || { ...personas[0], task: "Next run", status: "Waiting for a new test", progress: 0, logs: [], thoughts: "Run a new test to see a live agent stream here." }} />
+          </div>
+
+          <div className="lg:col-span-3 space-y-8">
+            <div className="dash-card p-8">
+              <h3 className="text-xl font-black mb-8 tracking-tight">Open Friction Points</h3>
+              <div className="space-y-4">
+                {frictionRows.length ? (
+                  frictionRows.map((point) => <StarterFrictionPointRow key={point.id} point={point} />)
+                ) : (
+                  <div className="text-sm font-bold text-slate-500">No friction points are open right now.</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="lg:col-span-3 dash-card overflow-hidden">
+            <div className="px-8 py-6 border-b border-brand-muted flex justify-between items-center bg-slate-50/50">
+              <h3 className="text-xl font-black tracking-tight">Test History</h3>
+              <button onClick={onViewHistory} className="text-sm font-black text-brand-accent hover:underline">View all reports</button>
+            </div>
+            <div className="divide-y border-t border-brand-muted">
+              {historyRows.slice(0, 3).map((item) => (
+                <StarterTestRow key={item.id} item={item} onClick={() => onViewReport(item.id)} />
+              ))}
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function StarterNavItem({ icon, label, active = false, onClick }: { icon: React.ReactNode; label: string; active?: boolean; onClick?: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all font-bold text-sm ${
+        active ? "bg-brand-ink text-white" : "text-slate-400 hover:bg-slate-50 hover:text-brand-ink"
+      }`}
+    >
+      {cloneElement(icon as React.ReactElement<{ className?: string }>, { className: "w-5 h-5" })}
+      {label}
+    </button>
+  );
+}
+
+function StarterStatCard({ label, value, trend, icon, color }: { label: string; value: string; trend: string; icon: React.ReactNode; color: string }) {
+  return (
+    <div className="dash-card p-6 relative overflow-hidden group">
+      <div className={`absolute top-0 right-0 w-16 h-16 ${color} rounded-full -mr-6 -mt-6 transition-transform group-hover:scale-110`} />
+      <div className="relative z-10">
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</div>
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center">{cloneElement(icon as React.ReactElement<{ className?: string }>, { className: "w-5 h-5" })}</div>
+        </div>
+        <div className="flex items-end gap-2">
+          <div className="text-3xl font-black tracking-tighter">{value}</div>
+          <div className="text-[10px] font-bold text-brand-secondary mb-1.5">{trend}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StarterLiveAgentRow({ agent, onClick }: { agent: StarterLiveAgent; onClick?: () => void }) {
+  return (
+    <div onClick={onClick} className="dash-card p-4 bg-slate-50/50 hover:bg-slate-50 transition-all cursor-pointer group">
+      <div className="flex items-center gap-4">
+        <div className={`w-12 h-12 rounded-xl overflow-hidden border border-white shadow-sm ${agent.color}`}>
+          <img src={agent.avatar} alt={agent.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+        </div>
+        <div className="flex-1">
+          <div className="flex justify-between items-start mb-1">
+            <div>
+              <span className="font-black text-sm">{agent.name}</span>
+              <span className="text-[10px] font-bold text-slate-400 ml-2 uppercase tracking-widest">Testing {agent.task}</span>
+            </div>
+            <span className="text-xs font-black text-brand-accent">{agent.progress}%</span>
+          </div>
+          <div className="text-xs font-bold text-slate-500 mb-2">{agent.status}</div>
+          <div className="h-1.5 w-full bg-brand-muted rounded-full overflow-hidden">
+            <motion.div className="h-full bg-brand-accent" initial={{ width: 0 }} animate={{ width: `${agent.progress}%` }} transition={{ duration: 1, ease: "easeOut" }} />
+          </div>
+        </div>
+        <div className="w-10 h-10 rounded-full bg-white border border-brand-muted flex items-center justify-center group-hover:bg-brand-ink group-hover:border-brand-ink transition-all">
+          <Play className="w-4 h-4 text-brand-ink group-hover:text-white ml-0.5" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StarterLiveThinkingLog({ thoughts }: { thoughts: string[] }) {
+  return (
+    <div className="space-y-2">
+      {thoughts.map((thought, index) => (
+        <motion.div key={index} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="flex gap-3 items-start">
+          <div className="w-1 h-1 rounded-full bg-brand-accent mt-1.5 shrink-0" />
+          <p className="text-[10px] font-bold text-slate-500 leading-tight">{thought}</p>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+function StarterLiveStreamView({ agent }: { agent: StarterLiveAgent }) {
+  const [typedText, setTypedText] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const fullText = "test@example.com";
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setIsTyping(true);
+      setTypedText("");
+      let index = 0;
+      const typingInterval = window.setInterval(() => {
+        if (index < fullText.length) {
+          setTypedText(fullText.slice(0, index + 1));
+          index += 1;
+        } else {
+          window.clearInterval(typingInterval);
+          window.setTimeout(() => setIsTyping(false), 1200);
+        }
+      }, 100);
+    }, 8000);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="aspect-video bg-slate-100 rounded-3xl border-2 border-slate-200 overflow-hidden relative group shadow-inner">
+      <div className="absolute top-0 left-0 right-0 h-8 bg-white border-b border-slate-200 flex items-center px-4 gap-2 z-20">
+        <div className="flex gap-1">
+          <div className="w-2 h-2 rounded-full bg-red-400" />
+          <div className="w-2 h-2 rounded-full bg-yellow-400" />
+          <div className="w-2 h-2 rounded-full bg-green-400" />
+        </div>
+        <div className="flex-1 bg-slate-50 rounded-md h-5 flex items-center px-3 gap-2 border border-slate-100">
+          <Lock className="w-2.5 h-2.5 text-slate-400" />
+          <span className="text-[8px] font-bold text-slate-400 truncate">{agent.task}</span>
+        </div>
+      </div>
+
+      <div className="absolute inset-0 pt-8 p-6 bg-white flex flex-col gap-4">
+        <div className="flex justify-between items-center">
+          <div className="w-24 h-4 bg-slate-100 rounded" />
+          <div className="flex gap-2">
+            <div className="w-8 h-2 bg-slate-100 rounded" />
+            <div className="w-8 h-2 bg-slate-100 rounded" />
+          </div>
+        </div>
+
+        <div className="space-y-3 mt-4">
+          <div className="w-3/4 h-6 bg-slate-50 rounded-lg" />
+          <div className="w-1/2 h-4 bg-slate-50 rounded-lg" />
+        </div>
+
+        <div className="mt-6 space-y-4 max-w-xs">
+          <div className="space-y-1">
+            <div className="w-12 h-2 bg-slate-100 rounded" />
+            <div className="w-full h-10 bg-slate-50 border-2 border-slate-100 rounded-xl flex items-center px-4">
+              <span className="text-xs font-bold text-slate-400">
+                {typedText}
+                <motion.span animate={{ opacity: [1, 0] }} transition={{ duration: 0.8, repeat: Infinity }} className="inline-block w-0.5 h-4 bg-brand-accent ml-0.5 align-middle" />
+              </span>
+            </div>
+          </div>
+          <div className="w-full h-10 bg-brand-ink rounded-xl" />
+        </div>
+      </div>
+
+      <motion.div
+        animate={{ x: [100, 350, 150, 450, 200, 300], y: [80, 200, 120, 250, 100, 180] }}
+        transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute w-6 h-6 pointer-events-none z-30"
+      >
+        <MousePointer2 className="w-5 h-5 text-brand-ink fill-brand-ink drop-shadow-lg" />
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-2 py-0.5 bg-brand-ink text-white text-[8px] font-black rounded whitespace-nowrap shadow-xl">
+          {agent.name} is {isTyping ? "typing..." : "exploring..."}
+        </div>
+      </motion.div>
+
+      <div className="absolute bottom-4 right-4 w-48 bg-white/90 backdrop-blur-md border border-slate-200 rounded-2xl p-4 shadow-2xl z-40">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-2 h-2 rounded-full bg-brand-accent animate-pulse" />
+          <span className="text-[8px] font-black uppercase tracking-widest text-slate-400">Thinking...</span>
+        </div>
+        <StarterLiveThinkingLog thoughts={agent.logs.slice(-3).length ? agent.logs.slice(-3) : ["Scanning the interface for blockers."]} />
+      </div>
+
+      <div className="absolute bottom-0 left-0 right-0 h-6 bg-slate-50 border-t border-slate-200 flex items-center px-4 justify-between z-20">
+        <div className="flex items-center gap-2">
+          <Activity className="w-3 h-3 text-brand-accent" />
+          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{agent.status}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">DOM Stable</span>
+          <div className="w-1.5 h-1.5 rounded-full bg-brand-success" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StarterLiveAgentPeek({ agent }: { agent: StarterLiveAgent }) {
+  return (
+    <div className="dash-card overflow-hidden flex flex-col h-full">
+      <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+        <div className="flex items-center gap-3">
+          <div className="w-2 h-2 rounded-full bg-brand-accent animate-pulse" />
+          <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">Live Peek: {agent.name}</h3>
+        </div>
+        <div className="text-[10px] font-black text-brand-secondary uppercase tracking-widest">{agent.task}</div>
+      </div>
+      <div className="p-6 flex-1 flex flex-col gap-6">
+        <StarterLiveStreamView agent={agent} />
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Current Action</span>
+            <span className="text-[10px] font-black text-brand-accent uppercase tracking-widest">Active</span>
+          </div>
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center shadow-sm">
+              <MousePointer2 className="w-4 h-4 text-brand-ink" />
+            </div>
+            <p className="text-xs font-bold text-slate-600">{agent.status}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StarterLiveAgentDetail({ agent, onClose }: { agent: StarterLiveAgent; onClose: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-end bg-brand-ink/40 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ x: "100%" }}
+        animate={{ x: 0 }}
+        exit={{ x: "100%" }}
+        transition={{ type: "spring", damping: 25, stiffness: 200 }}
+        className="w-full max-w-2xl h-full bg-white rounded-[3rem] shadow-2xl flex flex-col overflow-hidden"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+          <div className="flex items-center gap-4">
+            <div className={`w-16 h-16 rounded-2xl overflow-hidden border-2 border-white shadow-lg ${agent.color}`}>
+              <img src={agent.avatar} alt={agent.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <h2 className="text-2xl font-black tracking-tight">{agent.name}</h2>
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-brand-accent/10 text-brand-accent border border-brand-accent/20 text-[10px] font-black uppercase tracking-widest">
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand-accent animate-pulse" />
+                  Live Run
+                </div>
+              </div>
+              <p className="text-slate-500 font-bold text-sm">Testing {agent.task}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-all">
+            <Plus className="w-6 h-6 rotate-45 text-slate-400" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-8 space-y-8">
+          <div className="space-y-3">
+            <div className="flex justify-between items-end">
+              <span className="text-xs font-black uppercase tracking-widest text-slate-400">Current Progress</span>
+              <span className="text-xl font-black text-brand-accent">{agent.progress}%</span>
+            </div>
+            <div className="h-3 w-full bg-brand-muted rounded-full overflow-hidden">
+              <motion.div className="h-full bg-brand-accent" initial={{ width: 0 }} animate={{ width: `${agent.progress}%` }} transition={{ duration: 1.5, ease: "easeOut" }} />
+            </div>
+            <p className="text-sm font-bold text-slate-500 italic">&quot;{agent.status}&quot;</p>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">Live Browser Stream</h3>
+            <StarterLiveStreamView agent={agent} />
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-brand-secondary" />
+              Agent Thoughts
+            </h3>
+            <div className="bg-brand-secondary/5 border-2 border-brand-secondary/10 p-6 rounded-[2rem] relative">
+              <Quote className="absolute -top-3 -left-3 w-8 h-8 text-brand-secondary opacity-20" />
+              <p className="text-lg font-bold text-brand-ink leading-relaxed italic">&quot;{agent.thoughts}&quot;</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+              <History className="w-4 h-4" />
+              Activity Log
+            </h3>
+            <div className="bg-brand-ink rounded-2xl p-6 font-mono text-xs text-brand-secondary/80 space-y-2 overflow-hidden">
+              {(agent.logs.length ? agent.logs : ["Waiting for the next browser action."]).map((log, index) => (
+                <motion.div key={index} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.1 }} className="flex gap-3">
+                  <span className="text-white/20">[{new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}]</span>
+                  <span className={index === agent.logs.length - 1 ? "text-brand-accent font-bold" : ""}>
+                    {index === agent.logs.length - 1 ? "→ " : ""}{log}
+                  </span>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-8 border-t border-slate-100 bg-slate-50/50 flex gap-4">
+          <button className="flex-1 bg-brand-ink text-white py-4 rounded-2xl font-black hover:bg-brand-accent transition-all flex items-center justify-center gap-2">
+            <MessageCircle className="w-5 h-5" />
+            Intervene as Human
+          </button>
+          <button onClick={onClose} className="px-6 py-4 rounded-2xl border-2 border-slate-200 font-black hover:bg-white transition-all">
+            Close
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function StarterFrictionPointRow({ point }: { point: StarterFrictionPoint }) {
+  const colors = {
+    low: "bg-brand-secondary/10 text-brand-secondary border-brand-secondary/20",
+    medium: "bg-brand-warning/10 text-brand-warning border-brand-warning/20",
+    high: "bg-brand-danger/10 text-brand-danger border-brand-danger/20"
+  };
+
+  return (
+    <div className="flex gap-4 p-4 rounded-xl hover:bg-slate-50 transition-all border-b border-slate-100 last:border-0">
+      <div className={`w-2 h-2 rounded-full mt-2 shrink-0 ${point.severity === "high" ? "bg-brand-danger" : point.severity === "medium" ? "bg-brand-warning" : "bg-brand-secondary"}`} />
+      <div className="flex-1">
+        <div className="flex items-center gap-2 mb-1">
+          <h4 className="font-bold text-sm">{point.title}</h4>
+          <div className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${colors[point.severity]}`}>{point.severity}</div>
+        </div>
+        <p className="text-xs font-medium text-slate-500 leading-relaxed">{point.description}</p>
+      </div>
+      <button className="text-[10px] font-black text-brand-accent hover:underline self-start mt-1">Fix Now</button>
+    </div>
+  );
+}
+
+function StarterTestRow({ item, onClick }: { item: StarterHistoryRow; onClick?: () => void }) {
+  return (
+    <div onClick={onClick} className="flex items-center justify-between px-8 py-6 hover:bg-slate-50 transition-all group cursor-pointer">
+      <div className="flex items-center gap-6">
+        <div className="relative">
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-transform ${item.status === "completed" ? "bg-brand-success/10 text-brand-success" : "bg-brand-danger/10 text-brand-danger"}`}>
+            {item.status === "completed" ? <Zap className="w-6 h-6" /> : <Shield className="w-6 h-6" />}
+          </div>
+          <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-lg border border-white overflow-hidden ${item.persona.color} shadow-sm`}>
+            <img src={item.persona.avatar} alt={item.persona.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          </div>
+        </div>
+        <div>
+          <div className="font-black text-lg tracking-tight">{item.date}</div>
+          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.status} • Tested by {item.persona.name}</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-12">
+        {item.score > 0 ? (
+          <div className="text-right">
+            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Score</div>
+            <div className={`font-black text-2xl tracking-tighter ${item.score >= 90 ? "text-brand-success" : item.score > 0 ? "text-brand-warning" : "text-brand-danger"}`}>{item.score}/100</div>
+          </div>
+        ) : null}
+        <button
+          onClick={(event) => {
+            event.stopPropagation();
+            onClick?.();
+          }}
+          className="bg-brand-muted/20 hover:bg-brand-ink hover:text-white px-6 py-2 rounded-xl font-black text-sm transition-all"
+        >
+          Report
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function StarterHealthScoreChart({ data }: { data: Array<{ name: string; score: number }> }) {
+  return (
+    <div className="h-full w-full min-h-[200px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data}>
+          <defs>
+            <linearGradient id="starterColorScore" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 900, fill: "#94a3b8" }} dy={10} />
+          <YAxis hide domain={[0, 100]} />
+          <Tooltip
+            contentStyle={{
+              borderRadius: "16px",
+              border: "none",
+              boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)",
+              padding: "12px"
+            }}
+            itemStyle={{ fontWeight: 900, fontSize: "12px" }}
+          />
+          <Area type="monotone" dataKey="score" stroke="#10B981" strokeWidth={4} fillOpacity={1} fill="url(#starterColorScore)" />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function StarterTestHistory({
+  rows,
+  onBack,
+  onViewReport
+}: {
+  rows: StarterHistoryRow[];
+  onBack: () => void;
+  onViewReport: (runId: string) => void;
+}) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const filteredRows = rows.filter((item) => `${item.date} ${item.agent} ${item.task} ${item.result}`.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-50">
+        <div className="flex items-center gap-6">
+          <button onClick={onBack} className="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-all group">
+            <ArrowRight className="w-5 h-5 rotate-180 text-slate-400 group-hover:text-brand-ink" />
+          </button>
+          <div>
+            <h1 className="text-xl font-black tracking-tight">Test History</h1>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Historical Audit Logs</p>
+          </div>
+        </div>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search history..."
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:border-brand-accent transition-all"
+          />
+        </div>
+      </header>
+
+      <main className="flex-1 max-w-7xl mx-auto w-full p-8 md:p-12">
+        <div className="dash-card overflow-hidden">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-100">
+                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Date & Time</th>
+                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Agent</th>
+                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Task</th>
+                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Result</th>
+                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Duration</th>
+                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {filteredRows.map((item) => (
+                <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="text-sm font-bold text-slate-600">{item.date}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-slate-200 overflow-hidden">
+                        <img src={item.persona.avatar} alt={item.persona.name} referrerPolicy="no-referrer" />
+                      </div>
+                      <span className="text-sm font-bold text-brand-ink">{item.agent}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="text-sm font-bold text-slate-600">{item.task}</span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${item.result === "Success" ? "bg-brand-success" : "bg-brand-accent"}`} />
+                      <span className={`text-xs font-black uppercase tracking-widest ${item.result === "Success" ? "text-brand-success" : "text-brand-accent"}`}>{item.result}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="text-sm font-bold text-slate-600">{item.duration}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button onClick={() => onViewReport(item.id)} className="text-xs font-black text-brand-accent uppercase tracking-widest hover:underline">
+                      View Report
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function StarterFixDiagnosis({
+  point,
+  onClose
+}: {
+  point: { title: string; severity: string; description: string; recommended_fix?: string | null };
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const developerPrompt = `
+# Context: User Friction Point Found by AI Agent
+Friction Point: ${point.title}
+Severity: ${point.severity}
+Description: ${point.description}
+
+# Recommendation
+${point.recommended_fix || "Review the relevant interaction, tighten feedback, and remove the friction the agent found."}
+  `.trim();
+
+  async function handleCopyPrompt() {
+    await copyText(developerPrompt);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center bg-brand-ink/60 backdrop-blur-md p-4" onClick={onClose}>
+      <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="w-full max-w-5xl h-[85vh] bg-white rounded-[3rem] shadow-2xl flex flex-col overflow-hidden" onClick={(event) => event.stopPropagation()}>
+        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-brand-accent flex items-center justify-center text-white shadow-lg">
+              <Code className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-black tracking-tight">Fix Diagnosis</h2>
+              <p className="text-slate-500 font-bold text-sm">AI-Generated Solution for &quot;{point.title}&quot;</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-all">
+            <Plus className="w-6 h-6 rotate-45 text-slate-400" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-10 grid grid-cols-1 lg:grid-cols-2 gap-10">
+          <div className="space-y-8">
+            <section className="space-y-4">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Root Cause Analysis</h3>
+              <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
+                <p className="text-brand-ink font-bold leading-relaxed">{point.description}</p>
+              </div>
+            </section>
+
+            <section className="space-y-4">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Suggested Fix</h3>
+              <div className="space-y-4">
+                {(point.recommended_fix || "Review the UI state, simplify the action path, and add clearer feedback where the agent got stuck.")
+                  .split(/\.\s+/)
+                  .filter(Boolean)
+                  .slice(0, 3)
+                  .map((item) => (
+                    <div key={item} className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-brand-secondary/10 text-brand-secondary flex items-center justify-center shrink-0 mt-0.5">
+                        <Plus className="w-3.5 h-3.5" />
+                      </div>
+                      <p className="text-sm font-bold text-slate-600">{item.trim().replace(/\.$/, "")}.</p>
+                    </div>
+                  ))}
+              </div>
+            </section>
+
+            <section className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">AI Developer Prompt</h3>
+                <span className="text-[10px] font-black text-brand-accent uppercase tracking-widest">For Claude Code / Cursor</span>
+              </div>
+              <div className="p-6 bg-brand-ink rounded-2xl border border-white/10 relative group">
+                <div className="text-[10px] font-mono text-white/40 mb-4 whitespace-pre-wrap line-clamp-6">{developerPrompt}</div>
+                <button onClick={handleCopyPrompt} className="w-full bg-white/10 hover:bg-white/20 text-white py-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 border border-white/10">
+                  {copied ? (
+                    <>
+                      <Zap className="w-4 h-4 text-brand-secondary" />
+                      Copied to Clipboard!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      Copy Prompt for AI Dev
+                    </>
+                  )}
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <div className="space-y-4 flex flex-col h-full">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex justify-between items-center">
+              <span>Implementation Notes</span>
+              <span className="text-brand-secondary flex items-center gap-1">
+                <GitBranch className="w-3 h-3" />
+                Ready to Commit
+              </span>
+            </h3>
+            <div className="flex-1 bg-brand-ink rounded-3xl p-6 font-mono text-xs overflow-hidden relative shadow-inner">
+              <div className="space-y-1 relative z-10">
+                <div className="text-white/40">Severity: {point.severity}</div>
+                <div className="bg-brand-danger/20 text-brand-danger -mx-6 px-6 py-0.5 border-l-4 border-brand-danger">- Friction reproduced by AI agent</div>
+                <div className="bg-brand-secondary/20 text-brand-secondary -mx-6 px-6 py-0.5 border-l-4 border-brand-secondary">+ Apply the recommended fix and rerun the test</div>
+                <div className="text-white/40">Title: {point.title}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function StarterReportPage({
+  run,
+  report,
+  status,
+  shareKey,
+  loading,
+  error,
+  copyFeedback,
+  previousRunId,
+  nextRunId,
+  onBack,
+  onCopyShareLink,
+  onRunAgain,
+  onViewRun
+}: {
+  run: RunSummary | null;
+  report: QaReport | null;
+  status: StatusResponse | null;
+  shareKey: string;
+  loading: boolean;
+  error: string;
+  copyFeedback: string;
+  previousRunId: string | null;
+  nextRunId: string | null;
+  onBack: () => void;
+  onCopyShareLink: () => Promise<void>;
+  onRunAgain: () => Promise<void>;
+  onViewRun: (runId: string) => void;
+}) {
+  const [selectedFix, setSelectedFix] = useState<{ title: string; severity: string; description: string; recommended_fix?: string | null } | null>(null);
+  const evidenceIndexMap = buildEvidenceIndexMap(report, "screenshot");
+  const firstEvidence = Array.from(evidenceIndexMap.entries()).sort((left, right) => left[1] - right[1])[0];
+  const persona = getStarterPersona(run?.persona || report?.summary?.note || run?.run_id);
+  const effectiveStatus = String(status?.queue?.queue_status || status?.report_status || report?.status || run?.status || "completed").toLowerCase();
+  const score = deriveScoreFromReport(report, run);
+  const frictionPoints =
+    (report?.findings || []).map((finding, index) => ({
+      id: finding.id || `finding-${index}`,
+      title: finding.title || `Friction point ${index + 1}`,
+      description: getFindingSummary(finding),
+      severity: String(finding.severity || "medium").toLowerCase(),
+      recommended_fix: finding.recommended_fix || null
+    })) || [];
+  const replayLogs = (status?.run_log || []).slice(0, 8).map((entry, index) => ({
+    step: index + 1,
+    action: String(entry.event || entry.message || "Interaction").replaceAll("_", " "),
+    result: String(entry.message || entry.note || "Recorded"),
+    time: entry.ts ? formatDateTime(String(entry.ts)) : `0:${String(index * 8).padStart(2, "0")}`
+  }));
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col relative">
+      <AnimatePresence>
+        {selectedFix ? <StarterFixDiagnosis point={selectedFix} onClose={() => setSelectedFix(null)} /> : null}
+      </AnimatePresence>
+
+      <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-50">
+        <div className="flex items-center gap-6">
+          <button onClick={onBack} className="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-all group">
+            <ArrowRight className="w-5 h-5 rotate-180 text-slate-400 group-hover:text-brand-ink" />
+          </button>
+          <div className="h-8 w-[2px] bg-slate-100" />
+          <div>
+            <h1 className="text-xl font-black tracking-tight">Test Report: {formatDateTime(run?.delivered_at) || run?.run_id || report?.run_id || "Latest"}</h1>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dashboard</span>
+              <ChevronRight className="w-3 h-3 text-slate-300" />
+              <span className="text-[10px] font-black text-brand-accent uppercase tracking-widest">Report Detail</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={() => onCopyShareLink().catch(() => null)} className="handcrafted-card px-6 py-2.5 rounded-xl font-black text-sm flex items-center gap-2 hover:bg-slate-50 transition-all">
+            <Globe className="w-4 h-4 text-slate-400" />
+            {copyFeedback || "Share Link"}
+          </button>
+          <button onClick={() => window.print()} className="bg-brand-ink text-white px-8 py-2.5 rounded-xl font-black text-sm hover:bg-brand-accent transition-all shadow-sm">
+            Export PDF
+          </button>
+        </div>
+      </header>
+
+      <main className="flex-1 max-w-7xl mx-auto w-full p-8 md:p-12">
+        {loading ? (
+          <div className="dash-card p-10 text-sm font-bold text-slate-500">
+            <LoaderCircle className="inline h-4 w-4 mr-2 animate-spin" />
+            Loading report...
+          </div>
+        ) : error ? (
+          <div className="dash-card p-10 text-sm font-bold text-brand-danger">{error}</div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-12">
+            <aside className="lg:col-span-1 space-y-8">
+              <div className="dash-card p-8 text-center">
+                <div className={`w-24 h-24 rounded-[2rem] flex flex-col items-center justify-center border-4 border-white shadow-2xl mx-auto mb-6 ${score >= 90 ? "bg-brand-success text-white" : score > 0 ? "bg-brand-warning text-white" : "bg-brand-danger text-white"}`}>
+                  <div className="text-[10px] font-black uppercase tracking-widest opacity-80">Score</div>
+                  <div className="text-4xl font-black tracking-tighter">{score}</div>
+                </div>
+                <h3 className="text-xl font-black mb-1">{score >= 90 ? "Excellent" : score > 0 ? "Needs Work" : "Critical Failure"}</h3>
+                <p className="text-sm font-bold text-slate-400">Overall Satisfaction</p>
+              </div>
+
+              <div className="dash-card p-6 space-y-6">
+                <div>
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">Tested By</h4>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-12 h-12 rounded-xl overflow-hidden border-2 border-white shadow-md ${persona.color}`}>
+                      <img src={persona.avatar} alt={persona.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    </div>
+                    <div>
+                      <div className="font-black text-sm">{persona.name}</div>
+                      <div className="text-[10px] font-bold text-slate-400">{persona.role}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="pt-6 border-t border-slate-100">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Trait</h4>
+                  <div className="text-sm font-bold text-brand-ink">{persona.trait}</div>
+                </div>
+                <div className="pt-6 border-t border-slate-100">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Status</h4>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${effectiveStatus === "completed" ? "bg-brand-success" : ["queued", "processing", "retryable"].includes(effectiveStatus) ? "bg-brand-accent" : "bg-brand-danger"}`} />
+                    <span className="text-sm font-black uppercase tracking-widest">{formatStatusLabel(effectiveStatus)}</span>
+                  </div>
+                </div>
+              </div>
+            </aside>
+
+            <div className="lg:col-span-3 space-y-12">
+              <section className="dash-card p-10 bg-white">
+                <div className="flex items-center gap-3 mb-6">
+                  <Sparkles className="w-6 h-6 text-brand-accent" />
+                  <h3 className="text-xl font-black tracking-tight">Executive Summary</h3>
+                </div>
+                <p className="text-2xl font-bold text-brand-ink leading-relaxed">
+                  {report?.summary?.note || run?.summary_note || getReportSubhead(run, report)}
+                </p>
+              </section>
+
+              <section className="space-y-6">
+                <div className="flex justify-between items-end">
+                  <h3 className="text-xl font-black tracking-tight">Friction Points Found ({frictionPoints.length})</h3>
+                  <div className="flex gap-2">
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-danger/10 text-brand-danger border border-brand-danger/20 text-[10px] font-black uppercase tracking-widest">
+                      {frictionPoints.filter((point) => point.severity === "high" || point.severity === "critical").length} High
+                    </div>
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-warning/10 text-brand-warning border border-brand-warning/20 text-[10px] font-black uppercase tracking-widest">
+                      {frictionPoints.filter((point) => point.severity === "medium").length} Medium
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {(frictionPoints.length ? frictionPoints : [{ id: "none", title: "No structured findings", description: "This report does not have structured friction points yet.", severity: "low", recommended_fix: null }]).map((point, index) => (
+                    <motion.div key={point.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }} className="dash-card p-8 border-2 border-slate-100 hover:border-brand-accent transition-all group relative overflow-hidden">
+                      <div className="flex justify-between items-start mb-6">
+                        <div className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${
+                          point.severity === "high" || point.severity === "critical"
+                            ? "bg-brand-danger/10 text-brand-danger border-brand-danger/20"
+                            : point.severity === "medium"
+                              ? "bg-brand-warning/10 text-brand-warning border-brand-warning/20"
+                              : "bg-brand-secondary/10 text-brand-secondary border-brand-secondary/20"
+                        }`}>
+                          {point.severity} severity
+                        </div>
+                        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center group-hover:bg-brand-accent group-hover:text-white transition-all">
+                          <Zap className="w-5 h-5" />
+                        </div>
+                      </div>
+                      <h4 className="text-xl font-black mb-3">{point.title}</h4>
+                      <p className="text-base font-medium text-slate-500 mb-8 leading-relaxed">{point.description}</p>
+                      <button onClick={() => setSelectedFix(point)} className="w-full bg-brand-ink text-white py-4 rounded-2xl font-black text-sm hover:bg-brand-accent transition-all flex items-center justify-center gap-2 shadow-lg">
+                        <Sparkles className="w-5 h-5" />
+                        Generate Fix Diagnosis
+                      </button>
+                    </motion.div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="space-y-6">
+                <h3 className="text-xl font-black tracking-tight">Session Replay</h3>
+                <div className="aspect-video bg-brand-ink rounded-[3rem] flex items-center justify-center relative group cursor-pointer overflow-hidden shadow-2xl border-8 border-white">
+                  {firstEvidence ? (
+                    <img className="absolute inset-0 h-full w-full object-cover opacity-80" src={buildEvidenceAssetUrl(report?.run_id || run?.run_id || "", "screenshot", firstEvidence[1], shareKey)} alt="Session replay" />
+                  ) : null}
+                  <div className="absolute inset-0 bg-gradient-to-t from-brand-ink/90 via-brand-ink/20 to-transparent" />
+                  <div className="relative z-10 text-center">
+                    <div className="w-24 h-24 bg-white/10 backdrop-blur-xl rounded-full flex items-center justify-center mx-auto mb-6 border border-white/20 shadow-2xl">
+                      <Play className="w-10 h-10 text-white fill-white ml-1.5" />
+                    </div>
+                    <p className="text-white font-black uppercase tracking-widest text-lg">Watch {persona.name}&apos;s Session</p>
+                    <p className="text-white/40 text-sm mt-2 font-bold tracking-tight">{run?.target_url || run?.target || report?.target || "Real session proof"} • {frictionPoints.length} friction points</p>
+                  </div>
+                </div>
+              </section>
+
+              <section className="space-y-6">
+                <h3 className="text-xl font-black tracking-tight">Full Step-by-Step Log</h3>
+                <div className="dash-card overflow-hidden">
+                  <div className="divide-y border-slate-100">
+                    {(replayLogs.length ? replayLogs : [{ step: 1, action: "No run log yet", result: "Waiting for more structured playback data", time: "n/a" }]).map((log, index) => (
+                      <div key={`${log.step}-${index}`} className="flex items-center justify-between p-6 hover:bg-slate-50 transition-all">
+                        <div className="flex items-center gap-6">
+                          <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-xs font-black text-slate-400">{log.step}</div>
+                          <div>
+                            <div className="font-bold text-sm text-brand-ink">{log.action}</div>
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{log.time}</div>
+                          </div>
+                        </div>
+                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${String(log.result).toLowerCase().includes("fail") ? "bg-brand-danger/10 text-brand-danger border-brand-danger/20" : "bg-brand-success/10 text-brand-success border-brand-success/20"}`}>
+                          {String(log.result).slice(0, 48)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        )}
+      </main>
+
+      <footer className="bg-white border-t border-slate-200 p-6 sticky bottom-0 z-50">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <button disabled={!previousRunId} onClick={() => previousRunId && onViewRun(previousRunId)} className="handcrafted-card px-8 py-3 rounded-xl font-black text-sm hover:bg-slate-50 transition-all flex items-center gap-2 disabled:opacity-40">
+              <ArrowRight className="w-4 h-4 rotate-180" />
+              Previous Report
+            </button>
+            <button disabled={!nextRunId} onClick={() => nextRunId && onViewRun(nextRunId)} className="handcrafted-card px-8 py-3 rounded-xl font-black text-sm hover:bg-slate-50 transition-all flex items-center gap-2 disabled:opacity-40">
+              Next Report
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={onBack} className="bg-brand-muted/20 px-8 py-3 rounded-xl font-black text-sm hover:bg-brand-ink hover:text-white transition-all">
+              Archive Report
+            </button>
+            <button onClick={() => onRunAgain().catch(() => null)} className="bg-brand-accent text-white px-10 py-3 rounded-xl font-black text-sm hover:bg-brand-ink transition-all shadow-lg">
+              Approve Fixes
+            </button>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function StarterPersonaLab({
+  personas,
+  setPersonas,
+  onBack
+}: {
+  personas: StarterPersona[];
+  setPersonas: React.Dispatch<React.SetStateAction<StarterPersona[]>>;
+  onBack: () => void;
+}) {
+  const [isCreating, setIsCreating] = useState(false);
+  const [editingPersona, setEditingPersona] = useState<StarterPersona | null>(null);
+  const [formData, setFormData] = useState({
+    name: "",
+    trait: "Impatient & Fast",
+    quote: "",
+    avatar: "",
+    techSavviness: 50,
+    attentionSpan: 50,
+    patience: 50
+  });
+
+  function handleOpenCreate() {
+    setEditingPersona(null);
+    setFormData({
+      name: "",
+      trait: "Impatient & Fast",
+      quote: "I&apos;m a custom persona created for testing.",
+      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${Math.random()}`,
+      techSavviness: 50,
+      attentionSpan: 50,
+      patience: 50
+    });
+    setIsCreating(true);
+  }
+
+  function handleOpenEdit(persona: StarterPersona) {
+    setEditingPersona(persona);
+    setFormData({
+      name: persona.name,
+      trait: persona.trait,
+      quote: persona.quote,
+      avatar: persona.avatar,
+      techSavviness: persona.techSavviness,
+      attentionSpan: persona.attentionSpan,
+      patience: persona.patience
+    });
+    setIsCreating(true);
+  }
+
+  function handleSave() {
+    if (editingPersona) {
+      setPersonas((current) =>
+        current.map((persona) =>
+          persona.id === editingPersona.id
+            ? {
+                ...persona,
+                name: formData.name,
+                trait: formData.trait,
+                quote: formData.quote,
+                avatar: formData.avatar,
+                techSavviness: formData.techSavviness,
+                attentionSpan: formData.attentionSpan,
+                patience: formData.patience
+              }
+            : persona
+        )
+      );
+    } else {
+      setPersonas((current) => [
+        ...current,
+        {
+          id: Math.random().toString(36).slice(2, 9),
+          name: formData.name || "Custom Persona",
+          role: "Custom User",
+          trait: formData.trait,
+          quote: formData.quote,
+          avatar: formData.avatar,
+          color: "bg-slate-100",
+          techSavviness: formData.techSavviness,
+          attentionSpan: formData.attentionSpan,
+          patience: formData.patience
+        }
+      ]);
+    }
+    setIsCreating(false);
+  }
+
+  function generateNewAvatar() {
+    const seed = formData.name || Math.random().toString(36).slice(2, 9);
+    setFormData((current) => ({
+      ...current,
+      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}&random=${Math.random()}`
+    }));
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-50">
+        <div className="flex items-center gap-6">
+          <button onClick={onBack} className="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-all group">
+            <ArrowRight className="w-5 h-5 rotate-180 text-slate-400 group-hover:text-brand-ink" />
+          </button>
+          <div>
+            <h1 className="text-xl font-black tracking-tight">Persona Lab</h1>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Train & Manage Custom Agents</p>
+          </div>
+        </div>
+        <button onClick={handleOpenCreate} className="bg-brand-ink text-white px-8 py-2.5 rounded-xl font-black text-sm hover:bg-brand-accent transition-all shadow-sm flex items-center gap-2">
+          <Plus className="w-4 h-4" />
+          Create Custom Persona
+        </button>
+      </header>
+
+      <main className="flex-1 max-w-7xl mx-auto w-full p-8 md:p-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {personas.map((persona) => (
+            <div key={persona.id} className="dash-card p-8 bg-white">
+              <div className="flex items-start justify-between gap-4">
+                <div className={`w-20 h-20 rounded-[2rem] overflow-hidden border-4 border-white shadow-xl ${persona.color}`}>
+                  <img src={persona.avatar} alt={persona.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                </div>
+                <button onClick={() => handleOpenEdit(persona)} className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-brand-ink hover:text-white transition-all">
+                  <Settings className="w-4 h-4" />
+                </button>
+              </div>
+              <h3 className="text-2xl font-black mt-6 tracking-tight">{persona.name}</h3>
+              <div className="text-xs font-black uppercase tracking-widest text-brand-accent mt-1">{persona.role}</div>
+              <div className="mt-4 p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                <p className="text-sm font-bold text-slate-600 italic">&quot;{persona.quote}&quot;</p>
+              </div>
+              <div className="mt-6 grid grid-cols-3 gap-4">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Tech</div>
+                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full bg-brand-secondary" style={{ width: `${persona.techSavviness}%` }} />
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Attention</div>
+                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full bg-brand-accent" style={{ width: `${persona.attentionSpan}%` }} />
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Patience</div>
+                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full bg-brand-warning" style={{ width: `${persona.patience}%` }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </main>
+
+      <AnimatePresence>
+        {isCreating ? (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center bg-brand-ink/40 backdrop-blur-sm p-4" onClick={() => setIsCreating(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="w-full max-w-xl bg-white rounded-[3rem] shadow-2xl p-10 max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={(event) => event.stopPropagation()}>
+              <h2 className="text-3xl font-black tracking-tight mb-2">{editingPersona ? "Edit Persona" : "New Persona"}</h2>
+              <p className="text-slate-500 font-bold mb-8">{editingPersona ? "Update how this agent behaves." : "Create a custom test persona for your product."}</p>
+
+              <div className="space-y-6">
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Name</label>
+                  <input type="text" value={formData.name} onChange={(event) => setFormData((current) => ({ ...current, name: event.target.value }))} className="w-full p-4 rounded-xl border-2 border-slate-100 focus:border-brand-accent outline-none font-bold" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Trait</label>
+                  <input type="text" value={formData.trait} onChange={(event) => setFormData((current) => ({ ...current, trait: event.target.value }))} className="w-full p-4 rounded-xl border-2 border-slate-100 focus:border-brand-accent outline-none font-bold" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Quote</label>
+                  <textarea value={formData.quote} onChange={(event) => setFormData((current) => ({ ...current, quote: event.target.value }))} className="w-full p-4 rounded-xl border-2 border-slate-100 focus:border-brand-accent outline-none font-bold min-h-32" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Avatar</label>
+                  <div className="flex gap-3">
+                    <input type="text" value={formData.avatar} onChange={(event) => setFormData((current) => ({ ...current, avatar: event.target.value }))} className="flex-1 p-4 rounded-xl border-2 border-slate-100 focus:border-brand-accent outline-none font-bold" />
+                    <button onClick={generateNewAvatar} className="handcrafted-card px-4 rounded-xl font-black text-sm">Shuffle</button>
+                  </div>
+                </div>
+                <button onClick={handleSave} className="w-full bg-brand-ink text-white py-4 rounded-2xl font-black text-lg hover:bg-brand-accent transition-all shadow-lg mt-4">
+                  {editingPersona ? "Save Changes" : "Create Persona"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function StarterAutomationsPage({
+  personas,
+  activeBrand,
+  currentSchedule,
+  scheduleDraft,
+  setScheduleDraft,
+  scheduleSaving,
+  scheduleMessage,
+  scheduleTone,
+  repoConnection,
+  repoLoading,
+  repoError,
+  alerts,
+  onBack,
+  onSaveSchedule,
+  onRunScheduleNow,
+  onConnectGitHub,
+  onAcknowledgeAlert
+}: {
+  personas: StarterPersona[];
+  activeBrand: StarterBrand | null;
+  currentSchedule: ScheduleItem | null;
+  scheduleDraft: { frequency_hours: number; mission: string; persona: string };
+  setScheduleDraft: React.Dispatch<React.SetStateAction<{ frequency_hours: number; mission: string; persona: string }>>;
+  scheduleSaving: boolean;
+  scheduleMessage: string;
+  scheduleTone: "neutral" | "success" | "danger";
+  repoConnection: RepoConnection | null;
+  repoLoading: boolean;
+  repoError: string;
+  alerts: AlertItem[];
+  onBack: () => void;
+  onSaveSchedule: (override?: { name?: string; frequency_hours: number; mission: string; persona: string }) => Promise<void>;
+  onRunScheduleNow: (scheduleId: string) => Promise<void>;
+  onConnectGitHub: () => Promise<void>;
+  onAcknowledgeAlert: (alertId: string) => Promise<void>;
+}) {
+  const [isCreating, setIsCreating] = useState(false);
+  const [localMessage, setLocalMessage] = useState("");
+  const [formData, setFormData] = useState({
+    title: currentSchedule?.name || "",
+    triggerType: "Scheduled" as "Scheduled" | "GitHub Push",
+    frequency: currentSchedule?.frequency_hours === 168 ? "Weekly" : "Daily",
+    personaId: "all",
+    target: "Full Site"
+  });
+
+  function openEditor() {
+    setLocalMessage("");
+    setFormData({
+      title: currentSchedule?.name || "",
+      triggerType: "Scheduled",
+      frequency: currentSchedule?.frequency_hours === 168 ? "Weekly" : "Daily",
+      personaId: "all",
+      target: "Full Site"
+    });
+    setIsCreating(true);
+  }
+
+  async function handleSave() {
+    if (formData.triggerType === "GitHub Push") {
+      setLocalMessage("GitHub-triggered suites are not wired in this build yet. Use a scheduled trigger for now.");
+      return;
+    }
+
+    const selectedPersona = formData.personaId === "all"
+      ? scheduleDraft.persona || DEFAULT_PERSONA
+      : personas.find((persona) => persona.id === formData.personaId)?.quote || DEFAULT_PERSONA;
+    const mission = formData.target === "Full Site" ? DEFAULT_GOALS.join("\n") : `Focus on the ${formData.target} flow and record any friction.`;
+    const frequency_hours = formData.frequency === "Weekly" ? 168 : 24;
+
+    setScheduleDraft((current) => ({
+      ...current,
+      frequency_hours,
+      persona: selectedPersona,
+      mission
+    }));
+    await onSaveSchedule({
+      name: formData.title || currentSchedule?.name || "Scheduled QA",
+      frequency_hours,
+      persona: selectedPersona,
+      mission
+    });
+    setIsCreating(false);
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-50">
+        <div className="flex items-center gap-6">
+          <button onClick={onBack} className="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-all group">
+            <ArrowRight className="w-5 h-5 rotate-180 text-slate-400 group-hover:text-brand-ink" />
+          </button>
+          <div>
+            <h1 className="text-xl font-black tracking-tight">Automations</h1>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">CI/CD & Scheduled Testing</p>
+          </div>
+        </div>
+        <button onClick={openEditor} className="bg-brand-ink text-white px-8 py-2.5 rounded-xl font-black text-sm hover:bg-brand-accent transition-all shadow-sm flex items-center gap-2">
+          <Plus className="w-4 h-4" />
+          New Automation
+        </button>
+      </header>
+
+      <main className="flex-1 max-w-7xl mx-auto w-full p-8 md:p-12 space-y-12">
+        <div className="dash-card p-10 bg-white border-2 border-slate-100 flex flex-col md:flex-row items-center gap-12">
+          <div className="w-24 h-24 bg-slate-900 rounded-[2rem] flex items-center justify-center shrink-0 shadow-2xl">
+            <GitBranch className="w-12 h-12 text-white" />
+          </div>
+          <div className="flex-1 space-y-4">
+            <div className="flex items-center gap-3">
+              <h2 className="text-3xl font-black tracking-tight">GitHub Integration</h2>
+              <span className={`px-2 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-widest ${repoConnection?.connection_status === "connected" ? "bg-brand-secondary/10 text-brand-secondary border-brand-secondary/20" : "bg-brand-warning/10 text-brand-warning border-brand-warning/20"}`}>
+                {repoConnection?.connection_status === "connected" ? "Connected" : "Not Connected"}
+              </span>
+            </div>
+            <p className="text-slate-500 font-medium text-lg leading-relaxed max-w-2xl">
+              We automatically run a full regression suite on every Pull Request. If an agent finds a friction point, we&apos;ll comment directly on the PR with proof and a suggested fix.
+            </p>
+            {repoError ? <p className="text-sm font-bold text-brand-danger">{repoError}</p> : null}
+          </div>
+          <button onClick={() => onConnectGitHub().catch(() => null)} disabled={repoLoading} className="handcrafted-card px-8 py-4 rounded-2xl font-black text-sm hover:bg-slate-50 transition-all disabled:opacity-50">
+            {repoLoading ? "Loading..." : repoConnection?.connection_status === "connected" ? "Reconnect GitHub" : "Configure Webhooks"}
+          </button>
+        </div>
+
+        <div className="space-y-6">
+          <h3 className="text-xl font-black tracking-tight">Active Triggers</h3>
+          <div className="grid grid-cols-1 gap-4">
+            {currentSchedule ? (
+              <div className="dash-card p-6 flex items-center justify-between bg-white hover:border-brand-accent transition-all group">
+                <div className="flex items-center gap-6">
+                  <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-brand-accent group-hover:text-white transition-all">
+                    <Calendar className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-black tracking-tight">{currentSchedule.name || `${activeBrand?.name || "Brand"} Daily Check`}</h4>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-xs font-bold text-slate-400">Every {currentSchedule.frequency_hours || 24}h</span>
+                      <div className="w-1 h-1 rounded-full bg-slate-200" />
+                      <span className="text-xs font-bold text-brand-accent">Agent: {currentSchedule.persona || "Mix of Agents"}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-6">
+                  <button onClick={() => onRunScheduleNow(currentSchedule.id).catch(() => null)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition-all">
+                    <div className="w-2 h-2 rounded-full bg-brand-secondary" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Run Now</span>
+                  </button>
+                  <button onClick={openEditor} className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-brand-ink hover:text-white transition-all">
+                    <Settings className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="dash-card p-8 bg-white text-sm font-bold text-slate-500">No automation exists for this brand yet. Create one to keep the new UI under constant QA.</div>
+            )}
+          </div>
+        </div>
+
+        {alerts.length ? (
+          <div className="space-y-6">
+            <h3 className="text-xl font-black tracking-tight">Open Alerts</h3>
+            <div className="grid grid-cols-1 gap-4">
+              {alerts.map((alert) => (
+                <div key={alert.id} className="dash-card p-6 bg-white flex items-center justify-between gap-6">
+                  <div>
+                    <div className="text-lg font-black tracking-tight">{alert.title || "Alert"}</div>
+                    <div className="text-sm font-medium text-slate-500 mt-1">{alert.message || "A recent automation raised attention."}</div>
+                  </div>
+                  <button onClick={() => onAcknowledgeAlert(alert.id).catch(() => null)} className="handcrafted-card px-6 py-3 rounded-xl font-black text-sm">
+                    Acknowledge
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {scheduleMessage ? (
+          <div className={`rounded-2xl border px-4 py-3 text-sm font-bold ${scheduleTone === "success" ? "border-brand-secondary/20 bg-brand-secondary/10 text-brand-secondary" : scheduleTone === "danger" ? "border-brand-danger/20 bg-brand-danger/10 text-brand-danger" : "border-slate-200 bg-white text-slate-500"}`}>
+            {scheduleMessage}
+          </div>
+        ) : null}
+      </main>
+
+      <AnimatePresence>
+        {isCreating ? (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center bg-brand-ink/40 backdrop-blur-sm p-4" onClick={() => setIsCreating(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="w-full max-w-xl bg-white rounded-[3rem] shadow-2xl p-10 max-h-[90vh] overflow-y-auto custom-scrollbar" onClick={(event) => event.stopPropagation()}>
+              <h2 className="text-3xl font-black tracking-tight mb-2">{currentSchedule ? "Edit Automation" : "New Automation"}</h2>
+              <p className="text-slate-500 font-bold mb-8">{currentSchedule ? "Update your testing trigger settings." : "Set up a recurring or event-based test suite."}</p>
+
+              <div className="space-y-6">
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Automation Name</label>
+                  <input type="text" value={formData.title} onChange={(event) => setFormData((current) => ({ ...current, title: event.target.value }))} placeholder="e.g. Monthly Full Audit" className="w-full p-4 rounded-xl border-2 border-slate-100 focus:border-brand-accent outline-none font-bold" />
+                </div>
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Trigger Type</label>
+                    <select value={formData.triggerType} onChange={(event) => setFormData((current) => ({ ...current, triggerType: event.target.value as "Scheduled" | "GitHub Push" }))} className="w-full p-4 rounded-xl border-2 border-slate-100 focus:border-brand-accent outline-none font-bold bg-white">
+                      <option>Scheduled</option>
+                      <option>GitHub Push</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Frequency</label>
+                    <select value={formData.frequency} onChange={(event) => setFormData((current) => ({ ...current, frequency: event.target.value }))} className="w-full p-4 rounded-xl border-2 border-slate-100 focus:border-brand-accent outline-none font-bold bg-white">
+                      <option>Daily</option>
+                      <option>Weekly</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Agent Selection</label>
+                  <select value={formData.personaId} onChange={(event) => setFormData((current) => ({ ...current, personaId: event.target.value }))} className="w-full p-4 rounded-xl border-2 border-slate-100 focus:border-brand-accent outline-none font-bold bg-white">
+                    <option value="all">Mix of Agents (Recommended)</option>
+                    {personas.map((persona) => (
+                      <option key={persona.id} value={persona.id}>{persona.name} ({persona.trait})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Test Target</label>
+                  <select value={formData.target} onChange={(event) => setFormData((current) => ({ ...current, target: event.target.value }))} className="w-full p-4 rounded-xl border-2 border-slate-100 focus:border-brand-accent outline-none font-bold bg-white">
+                    <option>Full Site</option>
+                    <option>Checkout Flow</option>
+                    <option>Onboarding</option>
+                    <option>Pricing Page</option>
+                  </select>
+                </div>
+                {localMessage ? <div className="rounded-xl border border-brand-warning/20 bg-brand-warning/10 px-4 py-3 text-sm font-bold text-brand-warning">{localMessage}</div> : null}
+                <button onClick={() => handleSave().catch(() => null)} disabled={scheduleSaving} className="w-full bg-brand-ink text-white py-4 rounded-2xl font-black text-lg hover:bg-brand-accent transition-all shadow-lg mt-4 disabled:opacity-50">
+                  {scheduleSaving ? "Saving..." : currentSchedule ? "Save Changes" : "Create Automation"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function StarterHelpCenter({ onBack }: { onBack: () => void }) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const categories = [
+    {
+      title: "Getting Started",
+      icon: <Play className="w-6 h-6" />,
+      articles: ["How to connect your first brand", "Understanding Agent Personas", "Your first test run", "Interpreting Friction Points"]
+    },
+    {
+      title: "Agent Training",
+      icon: <Users className="w-6 h-6" />,
+      articles: ["Creating custom personas", "Uploading customer datasets", "Training on support tickets", "Fine-tuning agent behaviors"]
+    },
+    {
+      title: "Integrations",
+      icon: <GitBranch className="w-6 h-6" />,
+      articles: ["Connecting GitHub for Fix Diagnosis", "Setting up Slack notifications", "Jira & Linear workflows", "API & Webhook access"]
+    },
+    {
+      title: "Billing & Plans",
+      icon: <Shield className="w-6 h-6" />,
+      articles: ["Understanding Agent Hours", "Managing your subscription", "Team seats & permissions", "Usage limits & quotas"]
+    }
+  ];
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      <header className="bg-white border-b border-slate-200 px-8 py-6 flex justify-between items-center sticky top-0 z-50">
+        <div className="flex items-center gap-6">
+          <button onClick={onBack} className="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-all group">
+            <ArrowRight className="w-5 h-5 rotate-180 text-slate-400 group-hover:text-brand-ink" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-black tracking-tight">Help Center</h1>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Knowledge Base & Support</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <button className="handcrafted-card px-6 py-2.5 rounded-xl font-black text-sm hover:bg-slate-50 transition-all flex items-center gap-2">
+            <Mail className="w-4 h-4 text-slate-400" />
+            Contact Support
+          </button>
+          <button className="bg-brand-ink text-white px-8 py-2.5 rounded-xl font-black text-sm hover:bg-brand-accent transition-all shadow-sm">
+            Join Discord
+          </button>
+        </div>
+      </header>
+
+      <main className="flex-1 max-w-5xl mx-auto w-full p-8 md:p-12 space-y-16">
+        <section className="text-center space-y-8">
+          <h2 className="text-5xl font-black tracking-tighter leading-none">How can we help?</h2>
+          <div className="max-w-2xl mx-auto relative">
+            <div className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400">
+              <Search className="w-6 h-6" />
+            </div>
+            <input type="text" placeholder="Search for articles, guides, or features..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="w-full bg-white border-4 border-white shadow-2xl rounded-[2rem] py-6 pl-16 pr-8 text-lg font-bold outline-none focus:border-brand-accent/20 transition-all" />
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Popular:</span>
+            {["GitHub Setup", "Custom Personas", "Fix Diagnosis", "Billing"].map((tag) => (
+              <button key={tag} className="text-xs font-black text-brand-accent hover:underline">{tag}</button>
+            ))}
+          </div>
+        </section>
+
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {categories.map((category, index) => (
+            <motion.div key={index} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }} className="dash-card p-10 bg-white hover:border-brand-accent transition-all group">
+              <div className="w-14 h-14 rounded-2xl bg-slate-50 flex items-center justify-center text-brand-ink mb-8 group-hover:bg-brand-accent group-hover:text-white transition-all shadow-sm">{category.icon}</div>
+              <h3 className="text-2xl font-black mb-6 tracking-tight">{category.title}</h3>
+              <ul className="space-y-4">
+                {category.articles.map((article) => (
+                  <li key={article}>
+                    <button className="flex items-center justify-between w-full text-left group/item">
+                      <span className="text-slate-500 font-bold hover:text-brand-ink transition-colors">{article}</span>
+                      <ArrowRight className="w-4 h-4 text-slate-200 group-hover/item:text-brand-accent transition-all -translate-x-2 opacity-0 group-hover/item:translate-x-0 group-hover/item:opacity-100" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button className="mt-10 text-sm font-black text-brand-accent hover:underline flex items-center gap-2">
+                View all articles
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </motion.div>
+          ))}
+        </section>
+
+        <section className="dash-card p-12 bg-brand-ink text-white text-center space-y-6 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-brand-accent/20 blur-[100px] rounded-full -mr-32 -mt-32" />
+          <h3 className="text-3xl font-black tracking-tight relative z-10">Still need help?</h3>
+          <p className="text-white/60 font-medium text-lg max-w-xl mx-auto relative z-10">Our community of developers and product managers is active on Discord. Get real-time help from the team and other users.</p>
+          <div className="flex justify-center gap-4 relative z-10">
+            <button className="bg-white text-brand-ink px-10 py-4 rounded-2xl font-black text-sm hover:bg-brand-accent hover:text-white transition-all shadow-xl">Talk to a Human</button>
+            <button className="bg-white/10 text-white px-10 py-4 rounded-2xl font-black text-sm hover:bg-white/20 transition-all border border-white/10">Visit Community</button>
+          </div>
+        </section>
       </main>
     </div>
   );

@@ -346,6 +346,11 @@ export interface LaunchDraft {
   brandKey: string;
   brandName: string;
   runMode: "live_qa" | "controlled_ux";
+  validationTarget: "public_flow" | "login_signup" | "inside_product";
+  accessMethod: "none" | "app_url" | "auth_url" | "credentials";
+  authUrl: string;
+  authUsername: string;
+  authPassword: string;
   scopeMode: string;
   persona: string;
   goalsText: string;

@@ -177,9 +177,38 @@ test("buildTaskPrompt adds controlled UX instructions when qa_mode is controlled
   });
 
   assert.match(prompt, /Run mode: Controlled UX validation/);
+  assert.match(prompt, /Validation target: Public flow/);
+  assert.match(prompt, /Access method: No login needed/);
   assert.match(prompt, /Owned flow entry path: \/signup/);
   assert.match(prompt, /Planned route hints:\n- \/signup\n- \/onboarding\n- \/dashboard/);
   assert.match(prompt, /Do not spend the run on unrelated exploratory coverage/);
+});
+
+test("buildTaskPrompt adds inside-product instructions when validation target is authenticated", () => {
+  const prompt = buildTaskPrompt({
+    run_id: "run_inside_product_1",
+    target_url: "https://example.com",
+    scope_mode: "feature_targeted",
+    scenario_list: ["Reach the dashboard and create the first project"],
+    brand_persona: "Test user",
+    source: "qa_bot",
+    credentials: {
+      login_url: "https://example.com/login",
+      username: "tester@example.com",
+      password: "Secret123!",
+      otp_mode: "none"
+    },
+    metadata: {
+      validation_target: "inside_product",
+      access_method: "credentials",
+      auth_entry_url: "https://example.com/login"
+    }
+  });
+
+  assert.match(prompt, /Validation target: Inside the product/);
+  assert.match(prompt, /Access method: Use test login via https:\/\/example.com\/login/);
+  assert.match(prompt, /Inside-product rules:/);
+  assert.match(prompt, /Once authenticated, spend the run on the in-product workflow rather than public pages/);
 });
 
 test("buildPrimaryUserGoal prefers explicit metadata goal", () => {
