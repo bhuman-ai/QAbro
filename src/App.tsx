@@ -2581,7 +2581,25 @@ function WorkspacePage({
   }
 
   async function handleRepositorySelect(repoFullName: string) {
-    if (!currentBrandKey || !repoFullName) {
+    const existingAssociatedRepoFullNames = Array.isArray(repoConnection?.associated_repo_full_names)
+      ? repoConnection.associated_repo_full_names
+      : [];
+    await handleProjectRepositoriesSave({
+      primaryRepoFullName: repoFullName,
+      associatedRepoFullNames: existingAssociatedRepoFullNames.length
+        ? Array.from(new Set([repoFullName, ...existingAssociatedRepoFullNames]))
+        : [repoFullName]
+    });
+  }
+
+  async function handleProjectRepositoriesSave({
+    primaryRepoFullName,
+    associatedRepoFullNames
+  }: {
+    primaryRepoFullName: string;
+    associatedRepoFullNames: string[];
+  }) {
+    if (!currentBrandKey || !primaryRepoFullName) {
       return;
     }
     setRepoLoading(true);
@@ -2590,7 +2608,8 @@ function WorkspacePage({
         method: "POST",
         body: {
           brand_key: currentBrandKey,
-          repo_full_name: repoFullName
+          repo_full_name: primaryRepoFullName,
+          associated_repo_full_names: associatedRepoFullNames
         }
       });
       setRepoConnection({
@@ -2600,8 +2619,9 @@ function WorkspacePage({
       setLaunchDraft((current) => ({
         ...current,
         repoTriageEnabled: true,
-        selectedRepoFullName: repoFullName
+        selectedRepoFullName: primaryRepoFullName
       }));
+      setRepoError("");
     } catch (caught) {
       setRepoError(caught instanceof Error ? caught.message : "Could not save repository.");
     } finally {
@@ -2974,6 +2994,7 @@ function WorkspacePage({
         onSaveSchedule={handleSaveSchedule}
         onRunScheduleNow={handleRunScheduleNow}
         onConnectGitHub={handleGitHubInstall}
+        onSaveProjectRepos={handleProjectRepositoriesSave}
         onAcknowledgeAlert={handleAlertAcknowledge}
       />
     );
@@ -4066,7 +4087,12 @@ function LaunchComposer({
                     {repoConnection?.connection_status === "connected" ? (
                       <div className="mt-4 rounded-lg border border-brand-line bg-brand-panel px-3 py-3 text-sm">
                         <div className="font-medium text-brand-ink">{repoConnection.selected_repo_full_name}</div>
-                        <div className="mt-1 text-brand-muted">Connected and ready to supply route hints.</div>
+                        <div className="mt-1 text-brand-muted">
+                          Connected and ready to supply route hints.
+                          {repoConnection?.associated_repo_full_names && repoConnection.associated_repo_full_names.length > 1
+                            ? ` ${repoConnection.associated_repo_full_names.length} project repos are linked for diagnosis.`
+                            : ""}
+                        </div>
                       </div>
                     ) : (
                       <Button tone="secondary" className="mt-4" onClick={onStartGitHubInstall}>
@@ -4354,7 +4380,12 @@ function LaunchComposer({
               {repoConnection?.connection_status === "connected" ? (
                 <div className="rounded-lg border border-brand-line bg-brand-shell px-3 py-3 text-sm">
                   <div className="font-medium text-brand-ink">{repoConnection.selected_repo_full_name}</div>
-                  <div className="mt-1 text-brand-muted">Connected for route hints and post-run diagnosis.</div>
+                  <div className="mt-1 text-brand-muted">
+                    Connected for route hints and post-run diagnosis.
+                    {repoConnection?.associated_repo_full_names && repoConnection.associated_repo_full_names.length > 1
+                      ? ` ${repoConnection.associated_repo_full_names.length} project repos are linked.`
+                      : ""}
+                  </div>
                 </div>
               ) : (
                 <Button tone="secondary" onClick={onStartGitHubInstall}>
@@ -7638,6 +7669,7 @@ function StarterAutomationsPage({
   onSaveSchedule,
   onRunScheduleNow,
   onConnectGitHub,
+  onSaveProjectRepos,
   onAcknowledgeAlert
 }: {
   personas: StarterPersona[];
@@ -7656,10 +7688,17 @@ function StarterAutomationsPage({
   onSaveSchedule: (override?: { name?: string; frequency_hours: number; mission: string; persona: string }) => Promise<void>;
   onRunScheduleNow: (scheduleId: string) => Promise<void>;
   onConnectGitHub: () => Promise<void>;
+  onSaveProjectRepos: (input: { primaryRepoFullName: string; associatedRepoFullNames: string[] }) => Promise<void>;
   onAcknowledgeAlert: (alertId: string) => Promise<void>;
 }) {
   const [isCreating, setIsCreating] = useState(false);
   const [localMessage, setLocalMessage] = useState("");
+  const [repoPrimaryDraft, setRepoPrimaryDraft] = useState("");
+  const [repoAssociatedDraft, setRepoAssociatedDraft] = useState<string[]>([]);
+  const [repoAddDraft, setRepoAddDraft] = useState("");
+  const [repoSaving, setRepoSaving] = useState(false);
+  const [repoSaveMessage, setRepoSaveMessage] = useState("");
+  const [repoSaveTone, setRepoSaveTone] = useState<"neutral" | "success" | "danger">("neutral");
   const [formData, setFormData] = useState({
     title: currentSchedule?.name || "",
     triggerType: "Scheduled" as "Scheduled" | "GitHub Push",
@@ -7667,6 +7706,29 @@ function StarterAutomationsPage({
     personaId: "all",
     target: "Full Site"
   });
+  const availableRepos = Array.isArray(repoConnection?.repositories) ? repoConnection.repositories.filter((repo) => repo.full_name) : [];
+  const savedAssociatedRepos = Array.isArray(repoConnection?.associated_repo_full_names)
+    ? repoConnection.associated_repo_full_names.filter((repo) => repo && repo !== repoConnection?.selected_repo_full_name)
+    : [];
+  const remainingRepoOptions = availableRepos.filter((repo) => {
+    const fullName = String(repo.full_name || "");
+    return fullName && fullName !== repoPrimaryDraft && !repoAssociatedDraft.includes(fullName);
+  });
+  const repoSelectionDirty =
+    repoPrimaryDraft !== String(repoConnection?.selected_repo_full_name || "") ||
+    JSON.stringify([...repoAssociatedDraft].sort()) !== JSON.stringify([...savedAssociatedRepos].sort());
+
+  useEffect(() => {
+    const primaryRepoFullName = String(repoConnection?.selected_repo_full_name || "");
+    const associatedRepoFullNames = Array.isArray(repoConnection?.associated_repo_full_names)
+      ? repoConnection.associated_repo_full_names.filter((repo) => repo && repo !== primaryRepoFullName)
+      : [];
+    setRepoPrimaryDraft(primaryRepoFullName);
+    setRepoAssociatedDraft(associatedRepoFullNames);
+    setRepoAddDraft("");
+    setRepoSaveMessage("");
+    setRepoSaveTone("neutral");
+  }, [repoConnection?.associated_repo_full_names, repoConnection?.selected_repo_full_name]);
 
   function openEditor() {
     setLocalMessage("");
@@ -7678,6 +7740,37 @@ function StarterAutomationsPage({
       target: "Full Site"
     });
     setIsCreating(true);
+  }
+
+  function handleAddAssociatedRepo() {
+    if (!repoAddDraft || repoAddDraft === repoPrimaryDraft || repoAssociatedDraft.includes(repoAddDraft)) {
+      return;
+    }
+    setRepoAssociatedDraft((current) => [...current, repoAddDraft]);
+    setRepoAddDraft("");
+  }
+
+  async function handleSaveProjectRepos() {
+    if (!repoPrimaryDraft) {
+      setRepoSaveMessage("Pick a primary repo first.");
+      setRepoSaveTone("danger");
+      return;
+    }
+    setRepoSaving(true);
+    setRepoSaveMessage("");
+    try {
+      await onSaveProjectRepos({
+        primaryRepoFullName: repoPrimaryDraft,
+        associatedRepoFullNames: [repoPrimaryDraft, ...repoAssociatedDraft]
+      });
+      setRepoSaveMessage("Project repos saved.");
+      setRepoSaveTone("success");
+    } catch (error) {
+      setRepoSaveMessage(error instanceof Error ? error.message : "Could not save project repos.");
+      setRepoSaveTone("danger");
+    } finally {
+      setRepoSaving(false);
+    }
   }
 
   async function handleSave() {
@@ -7741,6 +7834,105 @@ function StarterAutomationsPage({
               We automatically run a full regression suite on every Pull Request. If an agent finds a friction point, we&apos;ll comment directly on the PR with proof and a suggested fix.
             </p>
             {repoError ? <p className="text-sm font-bold text-brand-danger">{repoError}</p> : null}
+            {repoConnection?.connection_status === "connected" ? (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                <div className="text-sm font-black tracking-tight text-brand-ink">Project repos</div>
+                <p className="mt-1 text-sm leading-6 text-slate-500">
+                  Pick one primary repo for route hints, then add any other repos this product depends on so diagnosis can search across the right codebases.
+                </p>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
+                  <div>
+                    <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-slate-400">Primary repo</label>
+                    <select
+                      value={repoPrimaryDraft}
+                      onChange={(event) => {
+                        const nextPrimary = event.target.value;
+                        setRepoPrimaryDraft(nextPrimary);
+                        setRepoAssociatedDraft((current) => current.filter((repo) => repo !== nextPrimary));
+                      }}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-brand-ink outline-none focus:border-brand-accent"
+                    >
+                      <option value="">Choose a repo</option>
+                      {availableRepos.map((repo) => (
+                        <option key={repo.full_name || repo.id} value={repo.full_name || ""}>
+                          {repo.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="self-end text-xs font-bold uppercase tracking-widest text-slate-400">
+                    {repoConnection?.associated_repo_full_names?.length || (repoConnection?.selected_repo_full_name ? 1 : 0)} linked
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-slate-400">Other repos for this project</label>
+                  <div className="flex flex-wrap gap-2">
+                    {repoAssociatedDraft.length ? (
+                      repoAssociatedDraft.map((repo) => (
+                        <button
+                          key={repo}
+                          type="button"
+                          onClick={() => setRepoAssociatedDraft((current) => current.filter((item) => item !== repo))}
+                          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-brand-ink hover:border-brand-accent"
+                        >
+                          {repo}
+                          <Plus className="h-3.5 w-3.5 rotate-45 text-slate-400" />
+                        </button>
+                      ))
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400">
+                        No extra repos linked yet.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+                  <select
+                    value={repoAddDraft}
+                    onChange={(event) => setRepoAddDraft(event.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-brand-ink outline-none focus:border-brand-accent"
+                  >
+                    <option value="">Add another repo</option>
+                    {remainingRepoOptions.map((repo) => (
+                      <option key={repo.full_name || repo.id} value={repo.full_name || ""}>
+                        {repo.full_name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleAddAssociatedRepo}
+                    disabled={!repoAddDraft}
+                    className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-brand-ink transition-all hover:border-brand-accent disabled:opacity-50"
+                  >
+                    Add repo
+                  </button>
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-sm text-slate-500">
+                    Diagnosis will search the primary repo first, then the linked repos.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleSaveProjectRepos().catch(() => null)}
+                    disabled={repoSaving || !repoPrimaryDraft || !repoSelectionDirty}
+                    className="rounded-xl bg-brand-ink px-5 py-3 text-sm font-black text-white transition-all hover:bg-brand-accent disabled:opacity-50"
+                  >
+                    {repoSaving ? "Saving..." : "Save project repos"}
+                  </button>
+                </div>
+
+                {repoSaveMessage ? (
+                  <div className={`mt-4 rounded-xl border px-4 py-3 text-sm font-bold ${repoSaveTone === "success" ? "border-brand-secondary/20 bg-brand-secondary/10 text-brand-secondary" : repoSaveTone === "danger" ? "border-brand-danger/20 bg-brand-danger/10 text-brand-danger" : "border-slate-200 bg-white text-slate-500"}`}>
+                    {repoSaveMessage}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <button onClick={() => onConnectGitHub().catch(() => null)} disabled={repoLoading} className="handcrafted-card px-8 py-4 rounded-2xl font-black text-sm hover:bg-slate-50 transition-all disabled:opacity-50">
             {repoLoading ? "Loading..." : repoConnection?.connection_status === "connected" ? "Reconnect GitHub" : "Configure Webhooks"}

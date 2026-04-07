@@ -225,6 +225,7 @@ test("github app connection handler returns saved connection with installation r
         assert.equal(res.statusCode, 200);
         assert.equal(res.body.ok, true);
         assert.equal(res.body.connection.selected_repo_full_name, "acme-org/web");
+        assert.deepEqual(res.body.connection.associated_repo_full_names, ["acme-org/web"]);
         assert.equal(res.body.repositories.length, 2);
         assert.equal(res.body.repositories[1].full_name, "acme-org/docs");
       }
@@ -446,6 +447,7 @@ test("github app connection handler saves the selected repo for a brand", async 
           body: {
             brand_key: "acme",
             repo_full_name: "acme-org/docs",
+            associated_repo_full_names: ["acme-org/web", "acme-org/docs"],
             path_allowlist: ["apps/docs"]
           },
           headers: {
@@ -460,9 +462,11 @@ test("github app connection handler saves the selected repo for a brand", async 
         assert.equal(res.statusCode, 200);
         assert.equal(res.body.ok, true);
         assert.equal(res.body.connection.selected_repo_full_name, "acme-org/docs");
+        assert.deepEqual(res.body.connection.associated_repo_full_names, ["acme-org/docs", "acme-org/web"]);
         assert.equal(upsertRows.length, 1);
         assert.equal(upsertRows[0].selected_repo_full_name, "acme-org/docs");
         assert.deepEqual(upsertRows[0].path_allowlist, ["apps/docs"]);
+        assert.deepEqual(upsertRows[0].connection.associated_repo_full_names, ["acme-org/docs", "acme-org/web"]);
       }
     );
   } finally {

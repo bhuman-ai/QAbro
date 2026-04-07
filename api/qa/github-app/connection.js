@@ -23,11 +23,43 @@ function buildConnectionSummary(row, repositories = []) {
     selected_repo_owner: safeRow?.selected_repo_owner || null,
     selected_repo_name: safeRow?.selected_repo_name || null,
     selected_repo_full_name: safeRow?.selected_repo_full_name || null,
+    associated_repo_full_names: Array.isArray(safeRow?.associated_repo_full_names)
+      ? safeRow.associated_repo_full_names
+      : safeRow?.selected_repo_full_name
+        ? [safeRow.selected_repo_full_name]
+        : [],
     default_branch: safeRow?.default_branch || null,
     path_allowlist: Array.isArray(safeRow?.path_allowlist) ? safeRow.path_allowlist : [],
     repositories: Array.isArray(repositories) ? repositories : [],
     updated_at: safeRow?.updated_at || null
   };
+}
+
+function sanitizeRepoList(value) {
+  const input = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/\r?\n|,/g)
+        .map((item) => item.trim())
+        .filter(Boolean);
+  const seen = new Set();
+  const repos = [];
+  for (const rawItem of input) {
+    const safeItem = sanitizeString(rawItem, 320);
+    if (!safeItem) {
+      continue;
+    }
+    const key = safeItem.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    repos.push(safeItem);
+    if (repos.length >= 8) {
+      break;
+    }
+  }
+  return repos;
 }
 
 module.exports = async (req, res) => {
@@ -120,15 +152,41 @@ module.exports = async (req, res) => {
       ]
         .filter(Boolean)
         .join("/");
-    if (!requestedFullName) {
+    const requestedAssociatedRepoFullNames = sanitizeRepoList(
+      body?.associated_repo_full_names || body?.associatedRepoFullNames || []
+    );
+    const effectivePrimaryRepoFullName =
+      requestedFullName ||
+      sanitizeString(loaded.row.selected_repo_full_name, 320) ||
+      requestedAssociatedRepoFullNames[0] ||
+      "";
+    if (!effectivePrimaryRepoFullName) {
       return res.status(400).json({ ok: false, error: "repo_full_name is required" });
     }
 
     const selectedRepo = listed.repositories.find(
-      (repo) => String(repo.full_name || "").toLowerCase() === requestedFullName.toLowerCase()
+      (repo) => String(repo.full_name || "").toLowerCase() === effectivePrimaryRepoFullName.toLowerCase()
     );
     if (!selectedRepo) {
       return res.status(404).json({ ok: false, error: "Selected repository is not available to this installation" });
+    }
+
+    const effectiveAssociatedRepoFullNames = Array.from(
+      new Set([selectedRepo.full_name, ...requestedAssociatedRepoFullNames].filter(Boolean))
+    );
+    const availableRepoMap = new Map(
+      listed.repositories
+        .filter((repo) => repo.full_name)
+        .map((repo) => [String(repo.full_name).toLowerCase(), repo])
+    );
+    const invalidAssociatedRepo = effectiveAssociatedRepoFullNames.find(
+      (repoFullName) => !availableRepoMap.has(String(repoFullName).toLowerCase())
+    );
+    if (invalidAssociatedRepo) {
+      return res.status(404).json({
+        ok: false,
+        error: `Repository ${invalidAssociatedRepo} is not available to this installation`
+      });
     }
 
     const saved = await upsertBrandRepoConnection(
@@ -148,8 +206,10 @@ module.exports = async (req, res) => {
         default_branch: selectedRepo.default_branch,
         path_allowlist: body?.path_allowlist || body?.pathAllowlist || loaded.row.path_allowlist,
         connection: {
+          ...(loaded.row.connection && typeof loaded.row.connection === "object" ? loaded.row.connection : {}),
           installed_via: "github_app"
-        }
+        },
+        associated_repo_full_names: effectiveAssociatedRepoFullNames
       },
       {
         owner_user_id: ownerUserId,

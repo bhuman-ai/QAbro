@@ -31,6 +31,7 @@ export interface RepoConnection {
   installation_account_type?: string | null;
   selected_repo_full_name?: string | null;
   selected_repo_name?: string | null;
+  associated_repo_full_names?: string[];
   default_branch?: string | null;
   path_allowlist?: string[];
   repositories?: RepoRepository[];

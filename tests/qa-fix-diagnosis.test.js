@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const { __private } = require("../lib/qa-fix-diagnosis");
 
 const {
+  buildDiagnosisRepoList,
   buildFallbackDiagnosis,
   inferBestRepositoryForBrand,
   selectCandidateFiles,
@@ -71,4 +72,13 @@ test("inferBestRepositoryForBrand matches the project repo from owner installati
   });
 
   assert.equal(matched.full_name, "bhuman-ai/clusterseo");
+});
+
+test("buildDiagnosisRepoList keeps the primary repo first and dedupes extras", () => {
+  const repoList = buildDiagnosisRepoList({
+    selected_repo_full_name: "bhuman-ai/clusterseo",
+    associated_repo_full_names: ["bhuman-ai/clusterseo", "bhuman-ai/clusterseo-api", "bhuman-ai/clusterseo"]
+  });
+
+  assert.deepEqual(repoList, ["bhuman-ai/clusterseo", "bhuman-ai/clusterseo-api"]);
 });
