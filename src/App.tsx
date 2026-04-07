@@ -5761,11 +5761,19 @@ function StarterTestHistory({
   );
 }
 
+type StarterFixPoint = {
+  id?: string;
+  title: string;
+  severity: string;
+  description: string;
+  recommended_fix?: string | null;
+};
+
 function StarterFixDiagnosis({
   point,
   onClose
 }: {
-  point: { title: string; severity: string; description: string; recommended_fix?: string | null };
+  point: StarterFixPoint;
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -6141,6 +6149,34 @@ function uniqueReadoutItems(values: unknown[], limit = 3) {
     items.push(text);
   });
   return items.slice(0, limit);
+}
+
+function isPlaceholderReadoutItem(text: string) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  return (
+    normalized.startsWith("no content-specific skepticism was captured") ||
+    normalized.startsWith("no major skepticism was captured") ||
+    normalized.startsWith("no customer-perspective takeaway was captured") ||
+    normalized.startsWith("no clear customer emotional state was captured")
+  );
+}
+
+function buildSkepticismFixPoints(items: string[]): StarterFixPoint[] {
+  return items
+    .map((item) => item.trim())
+    .filter((item) => item && !isPlaceholderReadoutItem(item))
+    .map((item, index) => ({
+      id: `skepticism-${index}`,
+      title: `Customer skepticism ${index + 1}`,
+      severity: "medium",
+      description: item,
+      recommended_fix:
+        `Answer this concern directly in the UI with clearer copy, proof, examples, or next-step guidance. ` +
+        `Specifically address: ${item}`
+    }));
 }
 
 function readReportSummaryText(report: QaReport | null | undefined, keys: string[]) {
@@ -6600,7 +6636,7 @@ function StarterReportPage({
   onRunAgain: () => Promise<void>;
   onViewRun: (runId: string) => void;
 }) {
-  const [selectedFix, setSelectedFix] = useState<{ title: string; severity: string; description: string; recommended_fix?: string | null } | null>(null);
+  const [selectedFix, setSelectedFix] = useState<StarterFixPoint | null>(null);
   const [replayOpen, setReplayOpen] = useState(false);
   const evidenceIndexMap = buildEvidenceIndexMap(report, "screenshot");
   const firstEvidence = Array.from(evidenceIndexMap.entries()).sort((left, right) => left[1] - right[1])[0];
@@ -6652,6 +6688,7 @@ function StarterReportPage({
     thoughts: replayOverlay.thoughts,
     frictionPoints
   });
+  const skepticismFixPoints = buildSkepticismFixPoints(personaReadout.skepticisms);
   const personaReadoutToneClass =
     personaReadout.emotionalTone === "negative"
       ? "border-brand-danger/20 bg-brand-danger/5 text-brand-danger"
@@ -7008,14 +7045,31 @@ function StarterReportPage({
 
                   <div className="rounded-2xl border border-slate-100 p-5">
                     <h4 className="text-sm font-black text-brand-ink">Skepticisms</h4>
-                    <ul className="mt-4 space-y-3">
-                      {personaReadout.skepticisms.map((item) => (
-                        <li key={item} className="flex gap-3 text-sm font-bold leading-6 text-slate-600">
-                          <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-brand-warning" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    {skepticismFixPoints.length ? (
+                      <div className="mt-4 space-y-3">
+                        {skepticismFixPoints.map((point) => (
+                          <div key={point.id} className="rounded-2xl border border-brand-warning/20 bg-brand-warning/5 p-4">
+                            <div className="flex gap-3">
+                              <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-brand-warning" />
+                              <p className="text-sm font-bold leading-6 text-slate-700">{point.description}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedFix(point)}
+                              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-brand-ink px-4 py-2.5 text-xs font-black text-white transition-all hover:bg-brand-accent"
+                            >
+                              <Sparkles className="h-4 w-4" />
+                              Generate Fix Diagnosis
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-4 flex gap-3 text-sm font-bold leading-6 text-slate-500">
+                        <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
+                        <span>No actionable skepticisms were captured in this run.</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </section>
@@ -7033,7 +7087,7 @@ function StarterReportPage({
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {(frictionPoints.length ? frictionPoints : [{ id: "none", title: "No structured findings", description: "This report does not have structured friction points yet.", severity: "low", recommended_fix: null }]).map((point, index) => (
+                  {frictionPoints.length ? frictionPoints.map((point, index) => (
                     <motion.div key={point.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }} className="dash-card p-8 border-2 border-slate-100 hover:border-brand-accent transition-all group relative overflow-hidden">
                       <div className="flex justify-between items-start mb-6">
                         <div className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${
@@ -7056,7 +7110,14 @@ function StarterReportPage({
                         Generate Fix Diagnosis
                       </button>
                     </motion.div>
-                  ))}
+                  )) : (
+                    <div className="dash-card p-8 border-2 border-slate-100 md:col-span-2">
+                      <h4 className="text-lg font-black text-brand-ink">No structured findings</h4>
+                      <p className="mt-3 text-sm font-bold leading-6 text-slate-500">
+                        This run did not record a concrete friction point to fix.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </section>
 
