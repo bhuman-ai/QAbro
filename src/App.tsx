@@ -4439,6 +4439,8 @@ function ReportReader({
       status?.artifacts?.live_stream_embed_url ||
       ""
   ).trim();
+  const isActiveRun = ["queued", "processing", "retryable"].includes(effectiveStatus);
+  const reportReady = Boolean(report || status?.report_ready || run?.report_ready);
 
   return (
     <section className="rounded-2xl border border-brand-line bg-brand-shell shadow-shell">
@@ -4500,6 +4502,14 @@ function ReportReader({
               <div className="mt-3 text-sm leading-6 text-brand-muted">
                 {status?.progress?.message || report?.summary?.note || run?.summary_note || "Waiting for updates."}
               </div>
+              {!isActiveRun && reportReady ? (
+                <div className="mt-4">
+                  <Button tone="primary" onClick={() => onChangeView("report")}>
+                    <FileText className="h-4 w-4" />
+                    View report
+                  </Button>
+                </div>
+              ) : null}
               {typeof status?.progress?.percent === "number" ? (
                 <div className="mt-4">
                   <div className="h-2 rounded-full bg-black/20">
@@ -4509,7 +4519,7 @@ function ReportReader({
               ) : null}
             </div>
 
-            {liveStreamEmbedUrl ? (
+            {isActiveRun && liveStreamEmbedUrl ? (
               <LiveSessionEmbed
                 embedUrl={liveStreamEmbedUrl}
                 viewerUrl={liveStreamViewerUrl}
@@ -6375,6 +6385,7 @@ function StarterReportPage({
     time: entry.ts ? formatDateTime(String(entry.ts)) : `0:${String(index * 8).padStart(2, "0")}`
   }));
   const isActiveRun = ["queued", "processing", "retryable"].includes(effectiveStatus);
+  const reportReady = Boolean(report || status?.report_ready || run?.report_ready);
   const liveSummary =
     status?.progress?.message ||
     run?.summary_note ||
@@ -6509,15 +6520,37 @@ function StarterReportPage({
                 <div className="flex items-center gap-3 mb-6">
                   <LoaderCircle className={`w-6 h-6 ${isActiveRun ? "animate-spin text-brand-accent" : "text-brand-accent"}`} />
                   <h3 className="text-xl font-black tracking-tight">
-                    {effectiveStatus === "queued" ? "Run queued" : effectiveStatus === "processing" ? "Run in progress" : "Run update"}
+                    {!isActiveRun && reportReady
+                      ? "Run complete"
+                      : effectiveStatus === "queued"
+                        ? "Run queued"
+                        : effectiveStatus === "processing"
+                          ? "Run in progress"
+                          : "Run update"}
                   </h3>
                 </div>
-                <p className="text-2xl font-bold text-brand-ink leading-relaxed">{liveSummary}</p>
+                <p className="text-2xl font-bold text-brand-ink leading-relaxed">
+                  {!isActiveRun && reportReady ? "The report is ready." : liveSummary}
+                </p>
                 <p className="mt-4 text-sm font-bold text-slate-400">
                   {isActiveRun
                     ? "This run has not finished yet. A full report will appear after the worker completes."
-                    : "Open the report tab once the run is complete."}
+                    : reportReady
+                      ? "Review the findings, proof, and next fix."
+                      : "The worker finished, but the report is still being finalized."}
                 </p>
+                {!isActiveRun && reportReady ? (
+                  <div className="mt-6">
+                    <button
+                      type="button"
+                      onClick={() => onChangeView("report")}
+                      className="inline-flex items-center gap-2 rounded-xl bg-brand-ink px-6 py-3 text-sm font-black text-white shadow-sm transition-all hover:bg-brand-accent"
+                    >
+                      <FileText className="h-4 w-4" />
+                      View report
+                    </button>
+                  </div>
+                ) : null}
               </section>
 
               <section className="space-y-6">
@@ -6582,24 +6615,26 @@ function StarterReportPage({
                 </div>
               </section>
 
-              <section className="space-y-6">
-                <h3 className="text-xl font-black tracking-tight">Session watch</h3>
-                {liveStreamEmbedUrl ? (
-                  <LiveSessionEmbed
-                    embedUrl={liveStreamEmbedUrl}
-                    viewerUrl={liveStreamViewerUrl}
-                    title="Live session"
-                    className="dash-card bg-white"
-                    frameClassName="h-[min(68vh,640px)] min-h-[420px]"
-                  />
-                ) : (
-                  <div className="dash-card p-8">
-                    <div className="text-sm font-bold text-slate-500">
-                      Live viewer is not attached yet. If the run stays queued here, the worker likely has not picked it up.
+              {isActiveRun ? (
+                <section className="space-y-6">
+                  <h3 className="text-xl font-black tracking-tight">Session watch</h3>
+                  {liveStreamEmbedUrl ? (
+                    <LiveSessionEmbed
+                      embedUrl={liveStreamEmbedUrl}
+                      viewerUrl={liveStreamViewerUrl}
+                      title="Live session"
+                      className="dash-card bg-white"
+                      frameClassName="h-[min(68vh,640px)] min-h-[420px]"
+                    />
+                  ) : (
+                    <div className="dash-card p-8">
+                      <div className="text-sm font-bold text-slate-500">
+                        Live viewer is not attached yet. If the run stays queued here, the worker likely has not picked it up.
+                      </div>
                     </div>
-                  </div>
-                )}
-              </section>
+                  )}
+                </section>
+              ) : null}
             </div>
           </div>
         ) : (
