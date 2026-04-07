@@ -444,6 +444,107 @@ test("normalizeReport unwraps nested local qa report envelopes", () => {
   assert.match(report.tested_journeys[0].summary, /Feature exploration ran/);
 });
 
+test("normalizeReport does not synthesize friction from normal partial summaries", () => {
+  const report = normalizeReport({
+    candidateReport: {
+      run_id: "run_normal_partial",
+      target: "https://example.com/app",
+      status: "partial",
+      summary: {
+        note: "Scrolled through the workspace and examined the visible content. No further interaction was needed."
+      },
+      tested_journeys: [
+        {
+          id: "journey_workspace_review",
+          name: "Workspace review",
+          status: "partial",
+          summary: "The tester reviewed the workspace without observing a blocker."
+        }
+      ],
+      findings: []
+    },
+    runRequest: {
+      run_id: "run_normal_partial",
+      target_url: "https://example.com/app",
+      scope_mode: "feature_targeted",
+      scenario_list: ["Review the workspace"],
+      brand_persona: "Test user",
+      source: "qa_bot"
+    },
+    artifacts: {
+      local_screenshots: ["https://cdn.example.com/normal-workspace.png"],
+      local_video_url: "https://cdn.example.com/normal-run.webm"
+    },
+    actions: {},
+    reportUrl: "https://swarmtester.com/api/qa/report?run_id=run_normal_partial"
+  });
+
+  assert.equal(report.status, "partial");
+  assert.equal(report.findings.length, 0);
+  assert.equal(report.summary.coverage.flows_blocked, 0);
+});
+
+test("normalizeReport removes stale generic synthetic findings when no blocker happened", () => {
+  const report = normalizeReport({
+    candidateReport: {
+      run_id: "run_stale_synthetic",
+      target: "https://example.com/app",
+      status: "partial",
+      summary: {
+        note: "Scrolled through the workspace and examined the visible content. No further interaction was needed."
+      },
+      tested_journeys: [
+        {
+          id: "journey_workspace_review",
+          name: "Workspace review",
+          status: "partial",
+          summary: "The tester reviewed the workspace without observing a blocker."
+        }
+      ],
+      findings: [
+        {
+          id: "finding_dead_end_1",
+          type: "dead_end",
+          severity: "high",
+          title: "The requested flow stopped before it finished",
+          expected_behavior: "The QA run should continue through the requested user flow without crashing or stalling.",
+          observed_behavior: "Scrolled through the workspace and examined the visible content. No further interaction was needed.",
+          emotional_reaction: { primary: "frustration", intensity: 4 },
+          evidence: {
+            screenshots: ["https://cdn.example.com/normal-workspace.png"]
+          },
+          diagnostic_details: {
+            page_loaded: true,
+            current_url: "https://example.com/app",
+            current_state: "The workspace remained usable.",
+            last_successful_step: "Reviewed the workspace.",
+            failure_reason: "No further interaction was needed.",
+            attempted_actions: []
+          }
+        }
+      ]
+    },
+    runRequest: {
+      run_id: "run_stale_synthetic",
+      target_url: "https://example.com/app",
+      scope_mode: "feature_targeted",
+      scenario_list: ["Review the workspace"],
+      brand_persona: "Test user",
+      source: "qa_bot"
+    },
+    artifacts: {
+      local_screenshots: ["https://cdn.example.com/normal-workspace.png"],
+      local_video_url: "https://cdn.example.com/normal-run.webm"
+    },
+    actions: {},
+    reportUrl: "https://swarmtester.com/api/qa/report?run_id=run_stale_synthetic"
+  });
+
+  assert.equal(report.status, "partial");
+  assert.equal(report.findings.length, 0);
+  assert.equal(report.summary.coverage.flows_blocked, 0);
+});
+
 test("normalizeReport preserves journey step clip metadata", () => {
   const report = normalizeReport({
     candidateReport: {
