@@ -5769,15 +5769,97 @@ type StarterFixPoint = {
   recommended_fix?: string | null;
 };
 
+type RepoFixDiagnosis = {
+  source?: string;
+  repo_full_name?: string | null;
+  repo_understanding?: string;
+  likely_fix_location?: string;
+  suspected_files?: string[];
+  suggested_fixes?: string[];
+  implementation_notes?: string[];
+  developer_prompt?: string;
+  confidence_note?: string;
+};
+
 function StarterFixDiagnosis({
   point,
+  runId,
+  brandKey,
   onClose
 }: {
   point: StarterFixPoint;
+  runId: string;
+  brandKey: string;
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const developerPrompt = `
+  const [loadingDiagnosis, setLoadingDiagnosis] = useState(false);
+  const [diagnosisError, setDiagnosisError] = useState("");
+  const [repoDiagnosis, setRepoDiagnosis] = useState<RepoFixDiagnosis | null>(null);
+  const pointKey = [point.id || "", point.title, point.severity, point.description, point.recommended_fix || ""].join("|");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDiagnosis() {
+      if (!runId || !brandKey) {
+        setDiagnosisError("Connect a project repo to get repo-aware fix diagnosis.");
+        setRepoDiagnosis(null);
+        setLoadingDiagnosis(false);
+        return;
+      }
+
+      setLoadingDiagnosis(true);
+      setDiagnosisError("");
+      try {
+        const response = await fetch("/api/qa/fix-diagnosis", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            run_id: runId,
+            brand_key: brandKey,
+            point
+          })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(String(payload?.error || "Could not load repo-aware diagnosis."));
+        }
+        if (!cancelled) {
+          setRepoDiagnosis((payload?.diagnosis as RepoFixDiagnosis) || null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setDiagnosisError(error instanceof Error ? error.message : "Could not load repo-aware diagnosis.");
+          setRepoDiagnosis(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingDiagnosis(false);
+        }
+      }
+    }
+
+    loadDiagnosis().catch(() => null);
+    return () => {
+      cancelled = true;
+    };
+  }, [brandKey, pointKey, runId]);
+
+  const suggestedFixes =
+    repoDiagnosis?.suggested_fixes && repoDiagnosis.suggested_fixes.length
+      ? repoDiagnosis.suggested_fixes
+      : (point.recommended_fix || "Review the UI state, simplify the action path, and add clearer feedback where the agent got stuck.")
+          .split(/\.\s+/)
+          .filter(Boolean)
+          .slice(0, 3)
+          .map((item) => `${item.trim().replace(/\.$/, "")}.`);
+  const developerPrompt =
+    repoDiagnosis?.developer_prompt ||
+    `
 # Context: User Friction Point Found by AI Agent
 Friction Point: ${point.title}
 Severity: ${point.severity}
@@ -5785,7 +5867,23 @@ Description: ${point.description}
 
 # Recommendation
 ${point.recommended_fix || "Review the relevant interaction, tighten feedback, and remove the friction the agent found."}
-  `.trim();
+    `.trim();
+  const suspectedFiles = Array.isArray(repoDiagnosis?.suspected_files) ? repoDiagnosis?.suspected_files || [] : [];
+  const implementationNotes =
+    repoDiagnosis?.implementation_notes && repoDiagnosis.implementation_notes.length
+      ? repoDiagnosis.implementation_notes
+      : [
+          "Inspect the UI copy and the component that owns this step.",
+          "Make the smallest visible change that answers the customer concern clearly.",
+          "Rerun the same test after the fix."
+        ];
+  const repoSummary =
+    repoDiagnosis?.repo_understanding ||
+    (loadingDiagnosis
+      ? "Checking the connected GitHub repository to understand which part of the product owns this issue."
+      : diagnosisError
+        ? ""
+        : "No repo-aware diagnosis is available yet for this issue.");
 
   async function handleCopyPrompt() {
     await copyText(developerPrompt);
@@ -5803,7 +5901,7 @@ ${point.recommended_fix || "Review the relevant interaction, tighten feedback, a
             </div>
             <div>
               <h2 className="text-2xl font-black tracking-tight">Fix Diagnosis</h2>
-              <p className="text-slate-500 font-bold text-sm">AI-Generated Solution for &quot;{point.title}&quot;</p>
+              <p className="text-slate-500 font-bold text-sm">Repo-aware diagnosis for &quot;{point.title}&quot;</p>
             </div>
           </div>
           <button onClick={onClose} className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-all">
@@ -5823,18 +5921,47 @@ ${point.recommended_fix || "Review the relevant interaction, tighten feedback, a
             <section className="space-y-4">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Suggested Fix</h3>
               <div className="space-y-4">
-                {(point.recommended_fix || "Review the UI state, simplify the action path, and add clearer feedback where the agent got stuck.")
-                  .split(/\.\s+/)
-                  .filter(Boolean)
-                  .slice(0, 3)
-                  .map((item) => (
-                    <div key={item} className="flex items-start gap-3">
+                {suggestedFixes.map((item) => (
+                  <div key={item} className="flex items-start gap-3">
                       <div className="w-6 h-6 rounded-full bg-brand-secondary/10 text-brand-secondary flex items-center justify-center shrink-0 mt-0.5">
                         <Plus className="w-3.5 h-3.5" />
                       </div>
                       <p className="text-sm font-bold text-slate-600">{item.trim().replace(/\.$/, "")}.</p>
-                    </div>
-                  ))}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="space-y-4">
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Repo Context</h3>
+              <div className="rounded-2xl border border-slate-200 bg-white p-6">
+                {loadingDiagnosis ? (
+                  <div className="flex items-start gap-3 text-sm font-semibold text-slate-600">
+                    <LoaderCircle className="mt-0.5 h-4 w-4 animate-spin text-brand-primary" />
+                    <span>Checking the connected GitHub repo and matching this issue to likely product files.</span>
+                  </div>
+                ) : diagnosisError ? (
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold text-brand-ink">Repo-aware diagnosis unavailable</div>
+                    <p className="text-sm leading-6 text-slate-500">{diagnosisError}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {repoDiagnosis?.repo_full_name ? (
+                      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+                        <GitBranch className="h-3.5 w-3.5" />
+                        {repoDiagnosis.repo_full_name}
+                      </div>
+                    ) : null}
+                    <p className="text-sm font-semibold leading-6 text-brand-ink">{repoSummary}</p>
+                    {repoDiagnosis?.likely_fix_location ? (
+                      <div className="rounded-xl bg-slate-50 px-4 py-3">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Likely fix location</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-700">{repoDiagnosis.likely_fix_location}</div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
             </section>
 
@@ -5845,7 +5972,7 @@ ${point.recommended_fix || "Review the relevant interaction, tighten feedback, a
               </div>
               <div className="p-6 bg-brand-ink rounded-2xl border border-white/10 relative group">
                 <div className="text-[10px] font-mono text-white/40 mb-4 whitespace-pre-wrap line-clamp-6">{developerPrompt}</div>
-                <button onClick={handleCopyPrompt} className="w-full bg-white/10 hover:bg-white/20 text-white py-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 border border-white/10">
+                <Button tone="secondary" onClick={handleCopyPrompt} className="w-full border-white/10 bg-white/10 py-3 text-xs font-black text-white hover:bg-white/20">
                   {copied ? (
                     <>
                       <Zap className="w-4 h-4 text-brand-secondary" />
@@ -5857,7 +5984,7 @@ ${point.recommended_fix || "Review the relevant interaction, tighten feedback, a
                       Copy Prompt for AI Dev
                     </>
                   )}
-                </button>
+                </Button>
               </div>
             </section>
           </div>
@@ -5867,15 +5994,64 @@ ${point.recommended_fix || "Review the relevant interaction, tighten feedback, a
               <span>Implementation Notes</span>
               <span className="text-brand-secondary flex items-center gap-1">
                 <GitBranch className="w-3 h-3" />
-                Ready to Commit
+                {repoDiagnosis?.repo_full_name ? "Repo connected" : "Diagnosis ready"}
               </span>
             </h3>
-            <div className="flex-1 bg-brand-ink rounded-3xl p-6 font-mono text-xs overflow-hidden relative shadow-inner">
-              <div className="space-y-1 relative z-10">
-                <div className="text-white/40">Severity: {point.severity}</div>
-                <div className="bg-brand-danger/20 text-brand-danger -mx-6 px-6 py-0.5 border-l-4 border-brand-danger">- Friction reproduced by AI agent</div>
-                <div className="bg-brand-secondary/20 text-brand-secondary -mx-6 px-6 py-0.5 border-l-4 border-brand-secondary">+ Apply the recommended fix and rerun the test</div>
-                <div className="text-white/40">Title: {point.title}</div>
+            <div className="flex-1 rounded-3xl border border-brand-line bg-brand-panel p-6 shadow-sm">
+              <div className="space-y-6">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-brand-line bg-brand-shell px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-brand-muted">
+                    Severity: {point.severity}
+                  </span>
+                  {repoDiagnosis?.source ? (
+                    <span className="rounded-full border border-brand-line bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-brand-muted">
+                      {repoDiagnosis.source === "github_repo_analysis"
+                        ? "GitHub analysis"
+                        : repoDiagnosis.source === "stored_engineering_triage"
+                          ? "Stored repo triage"
+                          : "Repo heuristic"}
+                    </span>
+                  ) : null}
+                </div>
+
+                {suspectedFiles.length ? (
+                  <div className="space-y-3">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Likely files</div>
+                    <div className="flex flex-wrap gap-2">
+                      {suspectedFiles.map((file) => (
+                        <span key={file} className="rounded-lg border border-brand-line bg-white px-3 py-2 text-xs font-semibold text-brand-ink">
+                          {file}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="space-y-3">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Next steps</div>
+                  <div className="space-y-3">
+                    {implementationNotes.map((item) => (
+                      <div key={item} className="flex items-start gap-3 rounded-2xl bg-white px-4 py-3">
+                        <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-secondary/10 text-brand-secondary">
+                          <Check className="h-3.5 w-3.5" />
+                        </div>
+                        <p className="text-sm font-semibold leading-6 text-slate-700">{item}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {repoDiagnosis?.confidence_note ? (
+                  <div className="rounded-2xl border border-brand-line bg-white px-4 py-4 text-sm leading-6 text-brand-muted">
+                    {repoDiagnosis.confidence_note}
+                  </div>
+                ) : null}
+
+                {diagnosisError && !loadingDiagnosis ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-900">
+                    {diagnosisError}
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
@@ -6736,7 +6912,14 @@ function StarterReportPage({
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col relative">
       <AnimatePresence>
-        {selectedFix ? <StarterFixDiagnosis point={selectedFix} onClose={() => setSelectedFix(null)} /> : null}
+        {selectedFix ? (
+          <StarterFixDiagnosis
+            point={selectedFix}
+            runId={report?.run_id || run?.run_id || ""}
+            brandKey={run?.brand_key || String(report?.metadata?.brand_key || "")}
+            onClose={() => setSelectedFix(null)}
+          />
+        ) : null}
         {replayOpen ? (
           <StarterSessionReplayModal
             title={`Watch ${persona.name}'s Session`}
