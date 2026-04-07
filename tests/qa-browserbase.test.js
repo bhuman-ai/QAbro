@@ -886,7 +886,7 @@ test("executeBrowserbaseQaRun supports vision_only mode with annotation-based cl
           return {
             action: "click",
             target: "Start Here",
-            think_aloud: "I think this starts the main flow.",
+            think_aloud: "I see a Start Here button, but I still want to know what happens after I click it.",
             emotion: "confidence",
             reason: "begin primary flow",
             success_criteria: "The app should open the next screen"
@@ -914,7 +914,7 @@ test("executeBrowserbaseQaRun supports vision_only mode with annotation-based cl
     result.runLog.some(
       (entry) =>
         entry.event === "persona_thought" &&
-        String(entry.details?.text || "").includes("starts the main flow")
+        String(entry.details?.text || "").includes("Start Here")
     )
   );
 });

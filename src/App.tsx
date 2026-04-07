@@ -5971,31 +5971,26 @@ function buildFallbackReplayThought(payload: Record<string, unknown>) {
   const target = String(payload.target || payload.describe || "").trim();
   const reason = String(payload.reason || payload.message || "").trim();
 
-  if (action === "scroll") {
-    return "I need to look around a bit more before I know what to do next.";
-  }
-  if (action === "wait") {
-    return "I'm waiting to see if the page changes before trying something else.";
-  }
-  if (action === "type") {
-    return target ? `This looks like the field I need to fill: ${target}.` : "This looks like the next field I need to fill.";
-  }
-  if (action === "click") {
-    return target ? `I see ${target}, so I'm going to try that next.` : "This looks like the next thing to click.";
-  }
-  if (action === "navigate" || action === "new_tab" || action === "switch_tab") {
-    return target ? `I think ${target} is where I need to go next.` : "I think I need to move to the next page.";
-  }
-  if (action === "done") {
-    return "This feels like enough to finish the task.";
-  }
   if (action === "fail") {
     return reason ? `I'm stuck here because ${reason}.` : "I'm stuck here and do not see a clear next step.";
   }
-  if (reason) {
-    return reason;
+  return target && /[A-Za-z0-9][A-Za-z0-9 -]{3,}/.test(target)
+    ? `I notice "${target}", but I need the page to make the value and next step clear.`
+    : "";
+}
+
+function isTaskCentricThought(text: string) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return true;
   }
-  return "";
+  return (
+    /\b(main flow|finish the task|next thing to click|next field|next page|step completed|objective reached)\b/.test(normalized) ||
+    /\bi need to look around\b/.test(normalized) ||
+    /\bi'?m waiting to see if the page changes\b/.test(normalized) ||
+    /\bthis feels like enough to finish\b/.test(normalized) ||
+    /\bthis starts the main flow\b/.test(normalized)
+  );
 }
 
 function buildReplayOverlayData(
@@ -6051,7 +6046,7 @@ function buildReplayOverlayData(
 
     if (event === "persona_thought") {
       const thoughtText = String(payload.text || payload.think_aloud || "").trim();
-      if (!thoughtText) {
+      if (!thoughtText || isTaskCentricThought(thoughtText)) {
         return;
       }
       hasPersonaThoughtEvent = true;
@@ -6078,7 +6073,7 @@ function buildReplayOverlayData(
       }
       const payload = getRunLogPayload(entry);
       const thoughtText = String(payload.think_aloud || buildFallbackReplayThought(payload)).trim();
-      if (!thoughtText) {
+      if (!thoughtText || isTaskCentricThought(thoughtText)) {
         return;
       }
       const atMs = getRunLogTimestampMs(entry);
@@ -6234,7 +6229,9 @@ function buildPersonaReadout({
         : `${persona.name} moved through the flow without a recorded blocker. The clearest thought was: "${latestThought}"`
       : frictionPoints.length
         ? `${persona.name} hit ${frictionPoints.length} recorded friction point${frictionPoints.length === 1 ? "" : "s"} during the run.`
-        : fallbackSummary || `${persona.name} completed the run without a recorded blocker.`);
+        : fallbackSummary
+          ? `${persona.name}'s customer-perspective reaction was not captured for this run. The run summary was: ${fallbackSummary}`
+          : `${persona.name}'s customer-perspective reaction was not captured for this run.`);
 
   const emotionCounts = new Map<string, number>();
   thoughts.forEach((thought) => {
@@ -6268,12 +6265,14 @@ function buildPersonaReadout({
     .filter((text) => !/\bi('|’)m stuck\b|not sure|don('|’)t know|confus|risk|trust|skeptic|distrust/i.test(text));
   const takeaways = explicitTakeaways.length
     ? explicitTakeaways
-    : uniqueReadoutItems(
+      : uniqueReadoutItems(
         [
           ...thoughtTakeaways.slice(-3),
           ...(frictionPoints.length
             ? frictionPoints.slice(0, 2).map((point) => point.title)
-            : ["The run did not record a blocker.", "The visible flow appeared usable enough to continue."])
+            : thoughts.length
+              ? []
+              : ["No customer-perspective takeaway was captured for this run."])
         ],
         3
       );
@@ -6292,7 +6291,11 @@ function buildPersonaReadout({
     : uniqueReadoutItems(
         [
           ...skepticalThoughts.slice(-3),
-          ...(frictionPoints.length ? frictionPoints.slice(0, 2).map((point) => point.description || point.title) : [])
+          ...(frictionPoints.length
+            ? frictionPoints.slice(0, 2).map((point) => point.description || point.title)
+            : thoughts.length
+              ? []
+              : ["No content-specific skepticism was captured for this run."])
         ],
         3
       );
@@ -6301,8 +6304,8 @@ function buildPersonaReadout({
     overall,
     emotionalState,
     emotionalTone: getPersonaReadoutTone(dominantEmotion, frictionPoints.length),
-    takeaways: takeaways.length ? takeaways : ["No strong takeaway was captured beyond the run summary."],
-    skepticisms: skepticisms.length ? skepticisms : ["No major skepticism was captured in this run."],
+    takeaways: takeaways.length ? takeaways : ["No customer-perspective takeaway was captured for this run."],
+    skepticisms: skepticisms.length ? skepticisms : ["No content-specific skepticism was captured for this run."],
     latestThought
   };
 }
