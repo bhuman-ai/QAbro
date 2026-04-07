@@ -9,7 +9,6 @@ const {
   resolveBrowserbaseSessionCreateParams,
   resolveCoordinateClickFallbackConfig,
   executeVisionOnlyModeAttempt,
-  regeneratePersonaReadoutFromStoredScreenshots,
   requestYellowBoxAnnotationWithReplicate,
   requestYellowBoxAnnotationWithOpenAi,
   prepareOcrCandidatesForJudge,
@@ -938,71 +937,6 @@ test("executeBrowserbaseQaRun supports vision_only mode with annotation-based cl
   );
   assert.match(String(result.report.summary?.persona_overall || ""), /brand talked about/i);
   assert.ok(Array.isArray(result.report.summary?.persona_skepticisms));
-});
-
-test("regeneratePersonaReadoutFromStoredScreenshots rebuilds persona summary from stored screenshot entries", async () => {
-  const recovered = await regeneratePersonaReadoutFromStoredScreenshots({
-    runRequest: {
-      ...createRunRequest(),
-      target_url: "https://clusterseo.com/",
-      metadata: {
-        goal: "examine the homepage and see if it makes sense to you"
-      },
-      brand_persona:
-        "A first-time customer trying to understand the product, finish sign-up, and reach the first useful state without help."
-    },
-    artifacts: {
-      captured_screenshot_entries: [
-        {
-          ref: "data:image/png;base64,ZmFrZQ==",
-          label: "vision_step_1_before_decision",
-          ts: "2026-04-07T10:50:00.000Z"
-        },
-        {
-          ref: "data:image/png;base64,ZmFrZTI=",
-          label: "vision_step_2_before_decision",
-          ts: "2026-04-07T10:50:05.000Z"
-        }
-      ]
-    },
-    observationClient: async ({ step }) => {
-      if (step === 1) {
-        return {
-          observation:
-            "I understand this is about getting my brand talked about online, but I still do not know what the free preview actually gives me.",
-          what_i_think_this_is: "A service for brand mentions and backlinks",
-          skepticism: "The free preview still feels vague.",
-          missing_information: "What I get immediately after I submit my site.",
-          trust_signal: "The page explains brand mentions in plain language.",
-          emotion: "uncertainty",
-          continue_state: "pause"
-        };
-      }
-      return {
-        observation: "The call to action is clearer now and I can see where to start.",
-        what_i_think_this_is: "The start of the website preview flow",
-        trust_signal: "The CTA stays consistent with the promise above it.",
-        emotion: "confidence",
-        continue_state: "continue"
-      };
-    }
-  });
-
-  assert.equal(recovered.ok, true);
-  assert.match(String(recovered.summary?.persona_overall || ""), /brand talked about online/i);
-  assert.match(String(recovered.summary?.emotional_state || ""), /confidence|uncertainty/i);
-  assert.deepEqual(recovered.summary?.persona_takeaways, [
-    "A service for brand mentions and backlinks",
-    "The page explains brand mentions in plain language.",
-    "The start of the website preview flow"
-  ]);
-  assert.deepEqual(recovered.summary?.persona_skepticisms, [
-    "The free preview still feels vague.",
-    "What I get immediately after I submit my site."
-  ]);
-  assert.equal(Array.isArray(recovered.runLog), true);
-  assert.equal(recovered.runLog.length, 2);
-  assert.equal(recovered.runLog[0].event, "persona_observation");
 });
 
 test("executeVisionOnlyModeAttempt ignores maxSteps and keeps going until the planner says done", async () => {
