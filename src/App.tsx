@@ -180,6 +180,102 @@ const BROWSER_MODE_OPTIONS = [
   }
 ] as const;
 
+type AdvancedBrowserRuntimeState = {
+  status: "ready" | "blocked" | "checking";
+  tone: "success" | "warning" | "danger" | "neutral";
+  title: string;
+  detail: string;
+  worker: WorkerInfo | null;
+};
+
+function readWorkerMetadata(worker: WorkerInfo | null | undefined) {
+  if (!worker || typeof worker !== "object") {
+    return {};
+  }
+  const metadata = worker.metadata;
+  return metadata && typeof metadata === "object" ? metadata : {};
+}
+
+function readWorkerString(worker: WorkerInfo | null | undefined, key: string) {
+  const value = readWorkerMetadata(worker)[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readWorkerBoolean(worker: WorkerInfo | null | undefined, key: string) {
+  return readWorkerMetadata(worker)[key] === true;
+}
+
+function isWorkerHealthy(worker: WorkerInfo | null | undefined) {
+  const heartbeatStatus = String(worker?.heartbeat_status || worker?.status || "").toLowerCase();
+  return heartbeatStatus === "healthy";
+}
+
+function describeAdvancedBrowserRuntime(
+  workers: WorkerInfo[],
+  workerSummary: WorkerSummary | null
+): AdvancedBrowserRuntimeState {
+  if (!workers.length && !workerSummary) {
+    return {
+      status: "checking",
+      tone: "neutral",
+      title: "Checking the advanced browser worker",
+      detail: "Loading the latest QA worker heartbeat from the DO runtime.",
+      worker: null
+    };
+  }
+
+  const healthyWorker = workers.find((worker) => isWorkerHealthy(worker)) || null;
+  if (!healthyWorker) {
+    return {
+      status: "blocked",
+      tone: "danger",
+      title: "Advanced browser is offline",
+      detail:
+        String(workerSummary?.detail || "").trim() ||
+        "No healthy QA worker heartbeat is available right now. Advanced browser runs would queue, but they may not start on the DO worker.",
+      worker: null
+    };
+  }
+
+  const hostname =
+    readWorkerString(healthyWorker, "hostname") ||
+    String(healthyWorker.worker_id || healthyWorker.current_run_id || "the active worker").trim();
+  const commit =
+    readWorkerString(healthyWorker, "git_commit_short") || readWorkerString(healthyWorker, "git_commit_sha");
+  const advancedSupported = readWorkerBoolean(healthyWorker, "advanced_browser_supported");
+  const browserbaseConfigured = readWorkerBoolean(healthyWorker, "browserbase_configured");
+
+  if (!advancedSupported) {
+    return {
+      status: "blocked",
+      tone: "warning",
+      title: "Worker restart required",
+      detail: commit
+        ? `${hostname} is healthy on commit ${commit}, but it does not advertise advanced browser support yet. Restart the DO worker on the latest main before using this mode.`
+        : `${hostname} is healthy, but it is running without advanced-browser capability metadata. Restart the DO worker on the latest main before using this mode.`,
+      worker: healthyWorker
+    };
+  }
+
+  if (!browserbaseConfigured) {
+    return {
+      status: "blocked",
+      tone: "warning",
+      title: "Browserbase is not configured on DO",
+      detail: `${hostname}${commit ? ` on ${commit}` : ""} is running the right worker build, but Browserbase credentials or model access are missing. Fix the DO worker env before using this mode.`,
+      worker: healthyWorker
+    };
+  }
+
+  return {
+    status: "ready",
+    tone: "success",
+    title: "Advanced browser is ready on DO",
+    detail: `${hostname}${commit ? ` on ${commit}` : ""} can run Browserbase with stronger stealth and supported captcha handling.`,
+    worker: healthyWorker
+  };
+}
+
 const VALIDATION_TARGET_OPTIONS = [
   {
     value: "public_flow",
@@ -1737,6 +1833,7 @@ function WorkspacePage({
     repoTriageEnabled: false,
     selectedRepoFullName: ""
   });
+  const advancedBrowserRuntime = describeAdvancedBrowserRuntime(workers, workerSummary);
 
   const projectCatalog = buildProjectCatalog(projects, reports);
   const currentBrandKey =
@@ -1999,6 +2096,13 @@ function WorkspacePage({
     repoConnection?.connection_status,
     repoConnection?.selected_repo_full_name
   ]);
+
+  useEffect(() => {
+    if (!composeOpen || isSharedView || !authState.authorized) {
+      return;
+    }
+    refreshWorkerHealth().catch(() => null);
+  }, [authState.authorized, composeOpen, isSharedView]);
 
   useEffect(() => {
     if (!requestedRunId) {
@@ -2293,6 +2397,16 @@ function WorkspacePage({
     setWorkerSummary(workersResponse.summary || null);
   }
 
+  async function refreshWorkerHealth() {
+    if (!authState.authorized || isSharedView) {
+      return null;
+    }
+    const response = await apiFetch<{ items: WorkerInfo[]; summary: WorkerSummary }>("/api/qa/workers");
+    setWorkers(response.items || []);
+    setWorkerSummary(response.summary || null);
+    return response;
+  }
+
   async function handleStarterOnboardingComplete(input: { name: string; website: string; connectGitHub: boolean }) {
     const targetUrl = input.website.startsWith("http") ? input.website : `https://${input.website}`;
     const brandKey = deriveBrandKeyFromUrl(targetUrl) || normalizeBrandKey(input.name) || `brand-${Date.now()}`;
@@ -2332,6 +2446,8 @@ function WorkspacePage({
       ...(payloadOverride || {})
     };
     const browserMode = normalizeBrowserMode(nextDraft.browserMode);
+    let nextWorkers = workers;
+    let nextWorkerSummary = workerSummary;
     const currentProjectMetadata =
       currentProject?.metadata && typeof currentProject.metadata === "object"
         ? { ...currentProject.metadata }
@@ -2345,6 +2461,29 @@ function WorkspacePage({
         ? (currentProject.metadata.qa_profile as Record<string, unknown>)
         : {};
     const savedSessionAvailable = projectQaProfile.available === true;
+    if (browserMode === "advanced_browser") {
+      try {
+        const refreshedWorkers = await refreshWorkerHealth();
+        if (refreshedWorkers) {
+          nextWorkers = refreshedWorkers.items || [];
+          nextWorkerSummary = refreshedWorkers.summary || null;
+        }
+      } catch (caught) {
+        setLaunchMessage(
+          caught instanceof Error
+            ? `Could not confirm the DO worker state before starting Advanced browser: ${caught.message}`
+            : "Could not confirm the DO worker state before starting Advanced browser."
+        );
+        setLaunchTone("danger");
+        return;
+      }
+      const runtime = describeAdvancedBrowserRuntime(nextWorkers, nextWorkerSummary);
+      if (runtime.status !== "ready") {
+        setLaunchMessage(runtime.detail);
+        setLaunchTone("danger");
+        return;
+      }
+    }
     if (browserMode === "advanced_browser" && nextDraft.validationTarget === "inside_product" && nextDraft.accessMethod === "saved_session") {
       setLaunchMessage("Advanced browser starts from a fresh remote session. Use a real test login instead of a saved session.");
       setLaunchTone("danger");
@@ -3144,6 +3283,7 @@ function WorkspacePage({
                 <LaunchComposer
                   draft={launchDraft}
                   currentProject={currentProject}
+                  advancedBrowserRuntime={advancedBrowserRuntime}
                   repoConnection={repoConnection}
                   repoRoutes={repoRoutes}
                   repoRoutesLoading={repoRoutesLoading}
@@ -3208,12 +3348,14 @@ function WorkspacePage({
                   }
                   onSaveRepository={handleRepositorySelect}
                   onStartGitHubInstall={handleGitHubInstall}
+                  onRefreshWorkerHealth={refreshWorkerHealth}
                   onSubmit={() => handleLaunchRun()}
                 />
               ) : (
                 <QuickLaunchModal
                   draft={launchDraft}
                   currentProject={currentProject}
+                  advancedBrowserRuntime={advancedBrowserRuntime}
                   busy={launchBusy}
                   message={launchMessage}
                   tone={launchTone}
@@ -3225,6 +3367,7 @@ function WorkspacePage({
                   }}
                   onChange={setLaunchDraft}
                   onOpenAdvanced={() => handleOpenComposer("advanced")}
+                  onRefreshWorkerHealth={refreshWorkerHealth}
                   onSubmit={() => handleLaunchRun()}
                 />
               )}
@@ -3236,25 +3379,72 @@ function WorkspacePage({
   );
 }
 
+function AdvancedBrowserReadinessCard({
+  runtime,
+  onRefresh
+}: {
+  runtime: AdvancedBrowserRuntimeState;
+  onRefresh: () => Promise<unknown>;
+}) {
+  const toneClasses =
+    runtime.tone === "success"
+      ? "border-brand-success/30 bg-brand-success/10 text-brand-success"
+      : runtime.tone === "warning"
+        ? "border-brand-warning/30 bg-brand-warning/10 text-brand-ink"
+        : runtime.tone === "danger"
+          ? "border-brand-danger/30 bg-brand-danger/10 text-brand-danger"
+          : "border-brand-line bg-brand-shell text-brand-muted";
+  const Icon = runtime.tone === "success" ? Check : runtime.tone === "neutral" ? LoaderCircle : TriangleAlert;
+
+  return (
+    <div className={`rounded-xl border px-4 py-4 ${toneClasses}`}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 rounded-full bg-white/70 p-1.5">
+            <Icon className={`h-4 w-4 ${runtime.status === "checking" ? "animate-spin" : ""}`} />
+          </div>
+          <div>
+            <div className="text-sm font-semibold">{runtime.title}</div>
+            <p className="mt-1 text-xs leading-5 opacity-90">{runtime.detail}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="shrink-0 rounded-full border border-current/20 px-3 py-1 text-[11px] font-semibold transition hover:bg-white/60"
+          onClick={() => {
+            void onRefresh();
+          }}
+        >
+          Refresh
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function QuickLaunchModal({
   draft,
   currentProject,
+  advancedBrowserRuntime,
   busy,
   message,
   tone,
   onCancel,
   onChange,
   onOpenAdvanced,
+  onRefreshWorkerHealth,
   onSubmit
 }: {
   draft: LaunchDraft;
   currentProject: ProjectSummary | null;
+  advancedBrowserRuntime: AdvancedBrowserRuntimeState;
   busy: boolean;
   message: string;
   tone: "neutral" | "success" | "danger";
   onCancel: () => void;
   onChange: React.Dispatch<React.SetStateAction<LaunchDraft>>;
   onOpenAdvanced: () => void;
+  onRefreshWorkerHealth: () => Promise<unknown>;
   onSubmit: () => Promise<void>;
 }) {
   const validationTarget = normalizeValidationTarget(draft.validationTarget);
@@ -3268,6 +3458,7 @@ function QuickLaunchModal({
   const canStart =
     Boolean(normalizeUrlInput(draft.targetUrl)) &&
     (draft.runMode !== "controlled_ux" || hasControlledUxFlowPlan(draft)) &&
+    (browserMode !== "advanced_browser" || advancedBrowserRuntime.status === "ready") &&
     (validationTarget !== "inside_product" ||
       (browserMode !== "advanced_browser" && accessMethod === "saved_session") ||
       Boolean(String(draft.authUsername || "").trim() && String(draft.authPassword || "").trim())) &&
@@ -3377,9 +3568,12 @@ function QuickLaunchModal({
             })}
           </div>
           {browserMode === "advanced_browser" ? (
-            <p className="mt-2 text-xs leading-5 text-brand-muted">
-              Best for aggressive anti-bot protection, remote browser runs, and supported captcha gates.
-            </p>
+            <div className="mt-3 space-y-3">
+              <p className="text-xs leading-5 text-brand-muted">
+                Best for aggressive anti-bot protection, remote browser runs, and supported captcha gates.
+              </p>
+              <AdvancedBrowserReadinessCard runtime={advancedBrowserRuntime} onRefresh={onRefreshWorkerHealth} />
+            </div>
           ) : null}
         </div>
 
@@ -3630,6 +3824,7 @@ function QuickLaunchModal({
 function LaunchComposer({
   draft,
   currentProject,
+  advancedBrowserRuntime,
   repoConnection,
   repoRoutes,
   repoRoutesLoading,
@@ -3646,10 +3841,12 @@ function LaunchComposer({
   onAddRouteHint,
   onSaveRepository,
   onStartGitHubInstall,
+  onRefreshWorkerHealth,
   onSubmit
 }: {
   draft: LaunchDraft;
   currentProject: ProjectSummary | null;
+  advancedBrowserRuntime: AdvancedBrowserRuntimeState;
   repoConnection: RepoConnection | null;
   repoRoutes: RepoRouteSuggestion[];
   repoRoutesLoading: boolean;
@@ -3666,6 +3863,7 @@ function LaunchComposer({
   onAddRouteHint: (routePath: string) => void;
   onSaveRepository: (repoFullName: string) => Promise<void>;
   onStartGitHubInstall: () => Promise<void>;
+  onRefreshWorkerHealth: () => Promise<unknown>;
   onSubmit: () => Promise<void>;
 }) {
   const [step, setStep] = useState(1);
@@ -3696,6 +3894,7 @@ function LaunchComposer({
     : SCOPE_OPTIONS.find((option) => option.value === draft.scopeMode)?.label || "Fast pass";
   const browserModeLabel =
     BROWSER_MODE_OPTIONS.find((option) => option.value === browserMode)?.label || "Standard browser";
+  const advancedBrowserBlocked = browserMode === "advanced_browser" && advancedBrowserRuntime.status !== "ready";
 
   useEffect(() => {
     setStep((current) => Math.max(1, Math.min(5, current)));
@@ -3754,12 +3953,12 @@ function LaunchComposer({
                 ? Boolean(normalizeUrlInput(draft.authUrl))
                 : accessMethod === "credentials"
                   ? Boolean(String(draft.authUsername || "").trim() && String(draft.authPassword || "").trim())
-                  : true
+            : true
           : step === 4
             ? isControlled
               ? hasControlledUxFlowPlan(draft)
               : Boolean(draft.persona)
-            : true;
+            : !advancedBrowserBlocked;
 
   const handleNext = async () => {
     if (step < 5) {
@@ -3912,9 +4111,12 @@ function LaunchComposer({
                   })}
                 </div>
                 {browserMode === "advanced_browser" ? (
-                  <p className="mt-3 text-sm leading-6 text-brand-muted">
-                    Use this when the site blocks normal automation, shows strict bot checks, or needs stronger captcha handling.
-                  </p>
+                  <div className="mt-3 space-y-3">
+                    <p className="text-sm leading-6 text-brand-muted">
+                      Use this when the site blocks normal automation, shows strict bot checks, or needs stronger captcha handling.
+                    </p>
+                    <AdvancedBrowserReadinessCard runtime={advancedBrowserRuntime} onRefresh={onRefreshWorkerHealth} />
+                  </div>
                 ) : null}
               </div>
             </div>
@@ -4450,6 +4652,13 @@ function LaunchComposer({
                   <dt className="text-brand-muted">Browser runtime</dt>
                   <dd className="mt-1 text-brand-ink">{browserModeLabel}</dd>
                 </div>
+                {browserMode === "advanced_browser" ? (
+                  <div>
+                    <dt className="text-brand-muted">DO runtime</dt>
+                    <dd className="mt-1 text-brand-ink">{advancedBrowserRuntime.title}</dd>
+                    <div className="mt-1 text-xs leading-5 text-brand-muted">{advancedBrowserRuntime.detail}</div>
+                  </div>
+                ) : null}
                 <div>
                   <dt className="text-brand-muted">What to test</dt>
                   <dd className="mt-1 text-brand-ink">{VALIDATION_TARGET_OPTIONS.find((option) => option.value === validationTarget)?.label || "Public flow"}</dd>
@@ -4563,6 +4772,11 @@ function LaunchComposer({
                     ? "We will start from the saved project session and focus on the product after login."
                     : "We will use the provided test login and focus on the product after login."}
             </div>
+            {browserMode === "advanced_browser" ? (
+              <div className="mt-3">
+                <AdvancedBrowserReadinessCard runtime={advancedBrowserRuntime} onRefresh={onRefreshWorkerHealth} />
+              </div>
+            ) : null}
             {isControlled ? (
               <div className="mt-3 text-sm leading-6 text-brand-muted">
                 Controlled UX keeps the run close to one owned flow and uses route hints when the repo is connected.

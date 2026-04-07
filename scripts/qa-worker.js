@@ -152,6 +152,7 @@ function resolveWorkerBuildMetadata(options = {}) {
     git_commit_sha:
       sanitizeString(env.QA_APP_COMMIT_SHA || env.VERCEL_GIT_COMMIT_SHA || env.GITHUB_SHA, 64) || null,
     git_commit_short: null,
+    advanced_browser_supported: true,
     browserbase_configured: Boolean(
       sanitizeString(env.BROWSERBASE_API_KEY, 32) &&
         sanitizeString(env.BROWSERBASE_PROJECT_ID, 128) &&
@@ -207,6 +208,7 @@ function createWorkerHeartbeat(workerId, options = {}) {
     app_version: buildInfo.app_version,
     git_commit_sha: buildInfo.git_commit_sha,
     git_commit_short: buildInfo.git_commit_short,
+    advanced_browser_supported: buildInfo.advanced_browser_supported,
     browserbase_configured: buildInfo.browserbase_configured,
     poll_interval_ms: Number.isFinite(Number(options.pollIntervalMs)) ? Number(options.pollIntervalMs) : null,
     heartbeat_interval_ms: heartbeatConfig.intervalMs,

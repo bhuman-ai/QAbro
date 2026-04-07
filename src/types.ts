@@ -285,8 +285,16 @@ export interface AlertItem {
 export interface WorkerInfo {
   worker_id?: string | null;
   status?: string | null;
+  worker_status?: string | null;
+  heartbeat_status?: string | null;
   active_run_id?: string | null;
+  current_run_id?: string | null;
+  current_phase?: string | null;
   last_heartbeat_at?: string | null;
+  last_seen_at?: string | null;
+  heartbeat_age_seconds?: number | null;
+  heartbeat_age_label?: string | null;
+  metadata?: Record<string, unknown> | null;
   [key: string]: unknown;
 }
 
@@ -298,6 +306,9 @@ export interface WorkerSummary {
   active?: number;
   overall_status?: string | null;
   label?: string | null;
+  detail?: string | null;
+  latest_seen_at?: string | null;
+  latest_heartbeat_age_seconds?: number | null;
 }
 
 export interface SubmissionBrandProfile {

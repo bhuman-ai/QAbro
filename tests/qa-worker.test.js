@@ -109,6 +109,7 @@ test("resolveWorkerBuildMetadata includes commit and browserbase capability", ()
   assert.equal(metadata.app_version, "1.0.0");
   assert.equal(metadata.git_commit_sha, "decec89abc1234567890");
   assert.equal(metadata.git_commit_short, "decec89");
+  assert.equal(metadata.advanced_browser_supported, true);
   assert.equal(metadata.browserbase_configured, true);
 });
 
