@@ -5898,6 +5898,15 @@ type ReplayCursorCue = {
   top: number;
 };
 
+type PersonaReadout = {
+  overall: string;
+  emotionalState: string;
+  emotionalTone: "positive" | "neutral" | "warning" | "negative";
+  takeaways: string[];
+  skepticisms: string[];
+  latestThought: string;
+};
+
 function getRunLogEvent(entry: RunLogEntry | Record<string, unknown> | null | undefined) {
   return String(entry && typeof entry === "object" ? entry.event || "" : "")
     .trim()
@@ -6117,6 +6126,184 @@ function buildReplayOverlayData(
     cursors: sortedCursors,
     viewportWidth,
     viewportHeight
+  };
+}
+
+function uniqueReadoutItems(values: unknown[], limit = 3) {
+  const seen = new Set<string>();
+  const items: string[] = [];
+  values.forEach((value) => {
+    const text = String(value || "").trim().replace(/\s+/g, " ");
+    if (!text) {
+      return;
+    }
+    const key = text.toLowerCase();
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    items.push(text);
+  });
+  return items.slice(0, limit);
+}
+
+function readReportSummaryText(report: QaReport | null | undefined, keys: string[]) {
+  const summary = report?.summary && typeof report.summary === "object" ? report.summary as Record<string, unknown> : {};
+  for (const key of keys) {
+    const value = summary[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+function readReportSummaryList(report: QaReport | null | undefined, keys: string[]) {
+  const summary = report?.summary && typeof report.summary === "object" ? report.summary as Record<string, unknown> : {};
+  for (const key of keys) {
+    const value = summary[key];
+    if (Array.isArray(value)) {
+      const list = uniqueReadoutItems(value, 4);
+      if (list.length) {
+        return list;
+      }
+    }
+    if (typeof value === "string" && value.trim()) {
+      return uniqueReadoutItems(value.split(/\n|;|•/g), 4);
+    }
+  }
+  return [];
+}
+
+function formatEmotionLabel(emotion: string) {
+  const normalized = emotion.trim().toLowerCase();
+  const labels: Record<string, string> = {
+    confidence: "Confident",
+    trust: "Trusting",
+    delight: "Positive",
+    uncertainty: "Uncertain",
+    confusion: "Confused",
+    frustration: "Frustrated",
+    distrust: "Skeptical"
+  };
+  return labels[normalized] || (normalized ? `${normalized[0].toUpperCase()}${normalized.slice(1)}` : "");
+}
+
+function getPersonaReadoutTone(emotion: string, frictionCount: number) {
+  const normalized = emotion.trim().toLowerCase();
+  if (normalized === "frustration" || normalized === "distrust" || frictionCount > 0) {
+    return "negative" as const;
+  }
+  if (normalized === "uncertainty" || normalized === "confusion") {
+    return "warning" as const;
+  }
+  if (normalized === "confidence" || normalized === "trust" || normalized === "delight") {
+    return "positive" as const;
+  }
+  return "neutral" as const;
+}
+
+function buildPersonaReadout({
+  persona,
+  report,
+  run,
+  thoughts,
+  frictionPoints
+}: {
+  persona: StarterPersona;
+  report: QaReport | null;
+  run: RunSummary | null;
+  thoughts: ReplayThoughtCue[];
+  frictionPoints: Array<{ title: string; description: string; severity: string }>;
+}): PersonaReadout {
+  const latestThought = thoughts.length ? thoughts[thoughts.length - 1]?.text || "" : "";
+  const explicitOverall = readReportSummaryText(report, [
+    "persona_readout",
+    "persona_overall",
+    "user_reaction",
+    "persona_reaction",
+    "overall_user_reaction",
+    "emotional_summary"
+  ]);
+  const fallbackSummary = report?.summary?.note || run?.summary_note || "";
+  const overall =
+    explicitOverall ||
+    (latestThought
+      ? frictionPoints.length
+        ? `${persona.name} understood enough to keep moving, but hit ${frictionPoints.length} recorded friction point${frictionPoints.length === 1 ? "" : "s"}. The clearest thought was: "${latestThought}"`
+        : `${persona.name} moved through the flow without a recorded blocker. The clearest thought was: "${latestThought}"`
+      : frictionPoints.length
+        ? `${persona.name} hit ${frictionPoints.length} recorded friction point${frictionPoints.length === 1 ? "" : "s"} during the run.`
+        : fallbackSummary || `${persona.name} completed the run without a recorded blocker.`);
+
+  const emotionCounts = new Map<string, number>();
+  thoughts.forEach((thought) => {
+    const emotion = thought.emotion.trim().toLowerCase();
+    if (emotion) {
+      emotionCounts.set(emotion, (emotionCounts.get(emotion) || 0) + 1);
+    }
+  });
+  (report?.findings || []).forEach((finding) => {
+    const reaction = finding as Record<string, unknown>;
+    const emotionalReaction = reaction.emotional_reaction && typeof reaction.emotional_reaction === "object"
+      ? reaction.emotional_reaction as Record<string, unknown>
+      : {};
+    const emotion = String(emotionalReaction.primary || "").trim().toLowerCase();
+    if (emotion) {
+      emotionCounts.set(emotion, (emotionCounts.get(emotion) || 0) + 2);
+    }
+  });
+  const dominantEmotion = Array.from(emotionCounts.entries()).sort((left, right) => right[1] - left[1])[0]?.[0] || "";
+  const emotionalState =
+    readReportSummaryText(report, ["emotional_state", "persona_emotional_state"]) ||
+    (dominantEmotion
+      ? `${formatEmotionLabel(dominantEmotion)}${frictionPoints.length ? " because the run recorded friction." : "."}`
+      : frictionPoints.length
+        ? "Concerned because the run recorded friction."
+        : "Calm; no strong negative emotional signal was captured.");
+
+  const explicitTakeaways = readReportSummaryList(report, ["persona_takeaways", "takeaways", "user_takeaways"]);
+  const thoughtTakeaways = thoughts
+    .map((thought) => thought.text)
+    .filter((text) => !/\bi('|’)m stuck\b|not sure|don('|’)t know|confus|risk|trust|skeptic|distrust/i.test(text));
+  const takeaways = explicitTakeaways.length
+    ? explicitTakeaways
+    : uniqueReadoutItems(
+        [
+          ...thoughtTakeaways.slice(-3),
+          ...(frictionPoints.length
+            ? frictionPoints.slice(0, 2).map((point) => point.title)
+            : ["The run did not record a blocker.", "The visible flow appeared usable enough to continue."])
+        ],
+        3
+      );
+
+  const explicitSkepticisms = readReportSummaryList(report, [
+    "skepticisms",
+    "persona_skepticisms",
+    "trust_concerns",
+    "user_skepticisms"
+  ]);
+  const skepticalThoughts = thoughts
+    .map((thought) => thought.text)
+    .filter((text) => /not sure|don('|’)t know|why|confus|risk|trust|skeptic|distrust|uncertain|missing|stuck/i.test(text));
+  const skepticisms = explicitSkepticisms.length
+    ? explicitSkepticisms
+    : uniqueReadoutItems(
+        [
+          ...skepticalThoughts.slice(-3),
+          ...(frictionPoints.length ? frictionPoints.slice(0, 2).map((point) => point.description || point.title) : [])
+        ],
+        3
+      );
+
+  return {
+    overall,
+    emotionalState,
+    emotionalTone: getPersonaReadoutTone(dominantEmotion, frictionPoints.length),
+    takeaways: takeaways.length ? takeaways : ["No strong takeaway was captured beyond the run summary."],
+    skepticisms: skepticisms.length ? skepticisms : ["No major skepticism was captured in this run."],
+    latestThought
   };
 }
 
@@ -6450,6 +6637,21 @@ function StarterReportPage({
       severity: String(finding.severity || "medium").toLowerCase(),
       recommended_fix: finding.recommended_fix || null
     })) || [];
+  const personaReadout = buildPersonaReadout({
+    persona,
+    report,
+    run,
+    thoughts: replayOverlay.thoughts,
+    frictionPoints
+  });
+  const personaReadoutToneClass =
+    personaReadout.emotionalTone === "negative"
+      ? "border-brand-danger/20 bg-brand-danger/5 text-brand-danger"
+      : personaReadout.emotionalTone === "warning"
+        ? "border-brand-warning/20 bg-brand-warning/5 text-brand-warning"
+        : personaReadout.emotionalTone === "positive"
+          ? "border-brand-success/20 bg-brand-success/5 text-brand-success"
+          : "border-slate-200 bg-slate-50 text-slate-600";
   const replayLogs = (status?.run_log || []).slice(0, 8).map((entry, index) => ({
     step: index + 1,
     action: String(entry.event || entry.message || "Interaction").replaceAll("_", " "),
@@ -6757,6 +6959,53 @@ function StarterReportPage({
                 <p className="text-2xl font-bold text-brand-ink leading-relaxed">
                   {report?.summary?.note || run?.summary_note || getReportSubhead(run, report)}
                 </p>
+              </section>
+
+              <section className="dash-card p-8 bg-white">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-xl font-black tracking-tight">Persona readout</h3>
+                    <p className="mt-2 text-sm font-bold text-slate-500">
+                      What {persona.name} likely felt, questioned, and took away from the run.
+                    </p>
+                  </div>
+                  <div className={`rounded-xl border px-4 py-3 text-sm font-black ${personaReadoutToneClass}`}>
+                    {personaReadout.emotionalState}
+                  </div>
+                </div>
+
+                <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4">
+                  <div className="flex items-start gap-3">
+                    <Quote className="mt-1 h-4 w-4 shrink-0 text-brand-accent" />
+                    <p className="text-base font-black leading-7 text-brand-ink">{personaReadout.overall}</p>
+                  </div>
+                </div>
+
+                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-100 p-5">
+                    <h4 className="text-sm font-black text-brand-ink">Takeaways</h4>
+                    <ul className="mt-4 space-y-3">
+                      {personaReadout.takeaways.map((item) => (
+                        <li key={item} className="flex gap-3 text-sm font-bold leading-6 text-slate-600">
+                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand-success" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-100 p-5">
+                    <h4 className="text-sm font-black text-brand-ink">Skepticisms</h4>
+                    <ul className="mt-4 space-y-3">
+                      {personaReadout.skepticisms.map((item) => (
+                        <li key={item} className="flex gap-3 text-sm font-bold leading-6 text-slate-600">
+                          <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-brand-warning" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
               </section>
 
               <section className="space-y-6">
