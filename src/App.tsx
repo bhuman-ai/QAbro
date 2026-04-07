@@ -4344,6 +4344,54 @@ function LaunchComposer({
   );
 }
 
+function LiveSessionEmbed({
+  embedUrl,
+  viewerUrl,
+  title = "Live session",
+  className = "",
+  frameClassName = ""
+}: {
+  embedUrl: string;
+  viewerUrl?: string;
+  title?: string;
+  className?: string;
+  frameClassName?: string;
+}) {
+  const safeEmbedUrl = String(embedUrl || "").trim();
+  const safeViewerUrl = String(viewerUrl || embedUrl || "").trim();
+  if (!safeEmbedUrl) {
+    return null;
+  }
+
+  return (
+    <div className={`overflow-hidden rounded-xl border border-brand-line bg-white ${className}`}>
+      <div className="flex items-center justify-between gap-3 border-b border-brand-line px-4 py-3">
+        <div className="text-sm font-black text-brand-ink">{title}</div>
+        {safeViewerUrl ? (
+          <a
+            href={safeViewerUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-xs font-black text-slate-500 hover:text-brand-ink"
+          >
+            Open in new tab
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        ) : null}
+      </div>
+      <div className={`h-[min(62vh,560px)] min-h-[320px] bg-brand-ink ${frameClassName}`}>
+        <iframe
+          title={title}
+          src={safeEmbedUrl}
+          className="h-full w-full border-0 bg-brand-ink"
+          allow="clipboard-read; clipboard-write; fullscreen"
+          loading="lazy"
+        />
+      </div>
+    </div>
+  );
+}
+
 function ReportReader({
   run,
   report,
@@ -4381,6 +4429,16 @@ function ReportReader({
   const screenshotValues = Array.from(evidenceIndexMap.entries())
     .sort((left, right) => left[1] - right[1])
     .slice(0, 8);
+  const liveStreamEmbedUrl = String(
+    status?.artifacts?.live_stream_embed_url ||
+      status?.artifacts?.live_stream_viewer_url ||
+      ""
+  ).trim();
+  const liveStreamViewerUrl = String(
+    status?.artifacts?.live_stream_viewer_url ||
+      status?.artifacts?.live_stream_embed_url ||
+      ""
+  ).trim();
 
   return (
     <section className="rounded-2xl border border-brand-line bg-brand-shell shadow-shell">
@@ -4451,21 +4509,13 @@ function ReportReader({
               ) : null}
             </div>
 
-            {status?.artifacts?.live_stream_viewer_url || status?.artifacts?.live_stream_embed_url ? (
-              <div className="rounded-xl border border-brand-line bg-brand-panel p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-brand-ink">Live watch</div>
-                  <a
-                    className="inline-flex items-center gap-1 text-sm text-brand-primary hover:underline"
-                    href={status.artifacts.live_stream_viewer_url || status.artifacts.live_stream_embed_url || "#"}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Open
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                </div>
-              </div>
+            {liveStreamEmbedUrl ? (
+              <LiveSessionEmbed
+                embedUrl={liveStreamEmbedUrl}
+                viewerUrl={liveStreamViewerUrl}
+                title="Live watch"
+                className="bg-brand-panel"
+              />
             ) : null}
 
             {(status?.run_log || []).length ? (
@@ -6294,6 +6344,16 @@ function StarterReportPage({
         status?.artifacts?.live_stream_embed_url ||
         ""
     ).trim();
+  const liveStreamEmbedUrl = String(
+    status?.artifacts?.live_stream_embed_url ||
+      status?.artifacts?.live_stream_viewer_url ||
+      ""
+  ).trim();
+  const liveStreamViewerUrl = String(
+    status?.artifacts?.live_stream_viewer_url ||
+      status?.artifacts?.live_stream_embed_url ||
+      ""
+  ).trim();
   const replayPosterUrl =
     firstEvidence && (report?.run_id || run?.run_id)
       ? buildEvidenceAssetUrl(report?.run_id || run?.run_id || "", "screenshot", firstEvidence[1], shareKey)
@@ -6524,31 +6584,21 @@ function StarterReportPage({
 
               <section className="space-y-6">
                 <h3 className="text-xl font-black tracking-tight">Session watch</h3>
-                <div className="dash-card p-8">
-                  {status?.artifacts?.live_stream_viewer_url || status?.artifacts?.live_stream_embed_url ? (
-                    <div className="flex flex-wrap items-center justify-between gap-4">
-                      <div>
-                        <div className="text-lg font-black text-brand-ink">Open the live viewer</div>
-                        <div className="mt-2 text-sm font-bold text-slate-500">
-                          Watch the worker as it moves through the flow.
-                        </div>
-                      </div>
-                      <a
-                        href={status?.artifacts?.live_stream_viewer_url || status?.artifacts?.live_stream_embed_url || "#"}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="bg-brand-ink text-white px-6 py-3 rounded-xl font-black text-sm hover:bg-brand-accent transition-all shadow-sm inline-flex items-center gap-2"
-                      >
-                        Open live viewer
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                    </div>
-                  ) : (
+                {liveStreamEmbedUrl ? (
+                  <LiveSessionEmbed
+                    embedUrl={liveStreamEmbedUrl}
+                    viewerUrl={liveStreamViewerUrl}
+                    title="Live session"
+                    className="dash-card bg-white"
+                    frameClassName="h-[min(68vh,640px)] min-h-[420px]"
+                  />
+                ) : (
+                  <div className="dash-card p-8">
                     <div className="text-sm font-bold text-slate-500">
                       Live viewer is not attached yet. If the run stays queued here, the worker likely has not picked it up.
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </section>
             </div>
           </div>
