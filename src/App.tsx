@@ -5957,6 +5957,38 @@ function resolveReplayCoordinates(payload: Record<string, unknown>) {
   return null;
 }
 
+function buildFallbackReplayThought(payload: Record<string, unknown>) {
+  const action = String(payload.action || "").trim().toLowerCase();
+  const target = String(payload.target || payload.describe || "").trim();
+  const reason = String(payload.reason || payload.message || "").trim();
+
+  if (action === "scroll") {
+    return "I need to look around a bit more before I know what to do next.";
+  }
+  if (action === "wait") {
+    return "I'm waiting to see if the page changes before trying something else.";
+  }
+  if (action === "type") {
+    return target ? `This looks like the field I need to fill: ${target}.` : "This looks like the next field I need to fill.";
+  }
+  if (action === "click") {
+    return target ? `I see ${target}, so I'm going to try that next.` : "This looks like the next thing to click.";
+  }
+  if (action === "navigate" || action === "new_tab" || action === "switch_tab") {
+    return target ? `I think ${target} is where I need to go next.` : "I think I need to move to the next page.";
+  }
+  if (action === "done") {
+    return "This feels like enough to finish the task.";
+  }
+  if (action === "fail") {
+    return reason ? `I'm stuck here because ${reason}.` : "I'm stuck here and do not see a clear next step.";
+  }
+  if (reason) {
+    return reason;
+  }
+  return "";
+}
+
 function buildReplayOverlayData(
   runLog: StatusResponse["run_log"] | null | undefined,
   reportArtifacts?: QaReport["artifacts"] | null,
@@ -6036,7 +6068,7 @@ function buildReplayOverlayData(
         return;
       }
       const payload = getRunLogPayload(entry);
-      const thoughtText = String(payload.think_aloud || "").trim();
+      const thoughtText = String(payload.think_aloud || buildFallbackReplayThought(payload)).trim();
       if (!thoughtText) {
         return;
       }

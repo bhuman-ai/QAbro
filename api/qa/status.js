@@ -76,7 +76,7 @@ module.exports = async (req, res) => {
           payload.report_json?.metadata?.repo_triage || payload.run_request?.metadata?.repo_triage
         )
       : null;
-  const runLog = Array.isArray(payload.run_log) ? payload.run_log.slice(-40) : [];
+  const runLog = Array.isArray(payload.run_log) ? payload.run_log.slice(-120) : [];
   const uiParams = new URLSearchParams({ view: "report", run_id: runId });
   if (brand) {
     uiParams.set("brand", brand);
