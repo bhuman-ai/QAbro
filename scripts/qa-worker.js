@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { execFileSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -136,11 +137,57 @@ function parseBooleanEnv(value) {
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
+let cachedWorkerBuildMetadata = null;
+
+function resolveWorkerBuildMetadata(options = {}) {
+  if (cachedWorkerBuildMetadata && options.forceRefresh !== true) {
+    return cachedWorkerBuildMetadata;
+  }
+
+  const env = isPlainObject(options.env) ? options.env : process.env;
+  const cwd = sanitizeString(options.cwd || process.cwd(), 4096) || process.cwd();
+  const execGit = typeof options.execFileSync === "function" ? options.execFileSync : execFileSync;
+  const metadata = {
+    app_version: sanitizeString(env.npm_package_version, 64) || null,
+    git_commit_sha:
+      sanitizeString(env.QA_APP_COMMIT_SHA || env.VERCEL_GIT_COMMIT_SHA || env.GITHUB_SHA, 64) || null,
+    git_commit_short: null,
+    browserbase_configured: Boolean(
+      sanitizeString(env.BROWSERBASE_API_KEY, 32) &&
+        sanitizeString(env.BROWSERBASE_PROJECT_ID, 128) &&
+        hasAnyModelApiKey(env)
+    )
+  };
+
+  if (!metadata.git_commit_sha) {
+    try {
+      metadata.git_commit_sha = sanitizeString(
+        execGit("git", ["rev-parse", "HEAD"], {
+          cwd,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"]
+        }),
+        64
+      );
+    } catch {
+      metadata.git_commit_sha = null;
+    }
+  }
+
+  metadata.git_commit_short = metadata.git_commit_sha ? metadata.git_commit_sha.slice(0, 7) : null;
+  cachedWorkerBuildMetadata = metadata;
+  return metadata;
+}
+
 function createWorkerHeartbeat(workerId, options = {}) {
   const heartbeatConfig = getWorkerHeartbeatThresholds(options);
   const workerHost =
     sanitizeString(process.env.QA_WORKER_HOSTNAME || options.hostname || os.hostname(), 256) || null;
   const startedAt = new Date().toISOString();
+  const buildInfo = resolveWorkerBuildMetadata({
+    env: isPlainObject(options.env) ? options.env : process.env,
+    cwd: options.cwd
+  });
   const state = {
     status: "starting",
     currentRunId: null,
@@ -153,11 +200,14 @@ function createWorkerHeartbeat(workerId, options = {}) {
   let pending = Promise.resolve();
   let stopped = false;
 
-  const buildMetadata = () => ({
+  const buildHeartbeatMetadata = () => ({
     hostname: workerHost,
     pid: process.pid,
     node_version: process.version,
-    app_version: sanitizeString(process.env.npm_package_version, 64) || null,
+    app_version: buildInfo.app_version,
+    git_commit_sha: buildInfo.git_commit_sha,
+    git_commit_short: buildInfo.git_commit_short,
+    browserbase_configured: buildInfo.browserbase_configured,
     poll_interval_ms: Number.isFinite(Number(options.pollIntervalMs)) ? Number(options.pollIntervalMs) : null,
     heartbeat_interval_ms: heartbeatConfig.intervalMs,
     once_mode: options.once === true,
@@ -178,7 +228,7 @@ function createWorkerHeartbeat(workerId, options = {}) {
       last_seen_at: new Date().toISOString(),
       last_job_claimed_at: state.lastJobClaimedAt,
       last_job_completed_at: state.lastJobCompletedAt,
-      metadata: buildMetadata()
+      metadata: buildHeartbeatMetadata()
     };
 
     pending = pending
@@ -1907,7 +1957,8 @@ module.exports = {
     collectExecutionScreenshotEvidence,
     collectExecutionVideoEvidence,
     assessExecutionEvidence,
-    createWorkerHeartbeat
+    createWorkerHeartbeat,
+    resolveWorkerBuildMetadata
   }
 };
 

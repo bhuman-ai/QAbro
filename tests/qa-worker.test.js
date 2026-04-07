@@ -90,6 +90,28 @@ test("buildExecutionPlan keeps explicit browserbase requests on the browserbase 
   assert.equal(plan.attempts[0].reason, "requested");
 });
 
+test("resolveWorkerBuildMetadata includes commit and browserbase capability", () => {
+  const metadata = __private.resolveWorkerBuildMetadata({
+    forceRefresh: true,
+    env: {
+      npm_package_version: "1.0.0",
+      BROWSERBASE_API_KEY: "browserbase-key",
+      BROWSERBASE_PROJECT_ID: "project-id",
+      OPENAI_API_KEY: "openai-key"
+    },
+    execFileSync(command, args) {
+      assert.equal(command, "git");
+      assert.deepEqual(args, ["rev-parse", "HEAD"]);
+      return "decec89abc1234567890\n";
+    }
+  });
+
+  assert.equal(metadata.app_version, "1.0.0");
+  assert.equal(metadata.git_commit_sha, "decec89abc1234567890");
+  assert.equal(metadata.git_commit_short, "decec89");
+  assert.equal(metadata.browserbase_configured, true);
+});
+
 test("shouldFallbackToNextEngine falls back after failed vision-only agent runs", () => {
   assert.equal(
     __private.shouldFallbackToNextEngine(
