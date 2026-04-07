@@ -3030,7 +3030,11 @@ function WorkspacePage({
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 24, opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="w-full max-w-6xl max-h-[92vh] overflow-y-auto rounded-[2rem]"
+              className={
+                composeMode === "advanced"
+                  ? "w-full max-w-6xl max-h-[92vh] overflow-y-auto rounded-2xl"
+                  : "w-full max-w-[520px] max-h-[88vh] rounded-2xl"
+              }
               onClick={(event) => event.stopPropagation()}
             >
               {composeMode === "advanced" ? (
@@ -3157,10 +3161,6 @@ function QuickLaunchModal({
     projectMetadata?.qa_profile && typeof projectMetadata.qa_profile === "object"
       ? (projectMetadata.qa_profile as Record<string, unknown>).available === true
       : false;
-  const firstGoal = draft.goalsText
-    .split(/\r?\n/g)
-    .map((item) => item.trim())
-    .filter(Boolean)[0] || "";
   const canStart =
     Boolean(normalizeUrlInput(draft.targetUrl)) &&
     (draft.runMode !== "controlled_ux" || hasControlledUxFlowPlan(draft)) &&
@@ -3172,21 +3172,18 @@ function QuickLaunchModal({
       Boolean(String(draft.authUsername || "").trim() && String(draft.authPassword || "").trim()));
 
   return (
-    <section className="w-full max-w-2xl rounded-[2rem] border border-brand-line bg-white shadow-2xl">
-      <div className="flex items-start justify-between gap-4 border-b border-brand-line px-6 py-5">
+    <section className="flex max-h-[88vh] w-full flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_18px_40px_-22px_rgba(15,23,42,0.55)]">
+      <div className="flex items-start justify-between gap-4 border-b border-brand-line px-5 py-4">
         <div>
-          <div className="text-sm font-semibold text-brand-muted">New test</div>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-brand-ink">Start one test</h1>
-          <p className="mt-2 text-sm leading-6 text-brand-muted">
-            Enter the site, choose what to validate, and start. Everything else stays hidden unless you ask for it.
-          </p>
+          <h1 className="text-xl font-black tracking-tight text-brand-ink">Start test</h1>
+          <p className="mt-1 text-sm leading-5 text-brand-muted">Choose the site and flow.</p>
         </div>
         <Button tone="ghost" onClick={onCancel}>
           Cancel
         </Button>
       </div>
 
-      <div className="space-y-5 px-6 py-6">
+      <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-5 py-4">
         <div>
           <FieldLabel>Environment URL</FieldLabel>
           <TextInput
@@ -3209,15 +3206,15 @@ function QuickLaunchModal({
 
         <div>
           <FieldLabel>Test mode</FieldLabel>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-2">
             {RUN_MODE_OPTIONS.map((option) => {
               const active = draft.runMode === option.value;
               return (
                 <button
                   key={option.value}
                   type="button"
-                  className={`rounded-xl border px-4 py-4 text-left transition ${
-                    active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:border-brand-primary/25 hover:bg-brand-bg"
+                  className={`rounded-xl border px-4 py-3 text-left transition ${
+                    active ? "border-brand-ink bg-slate-50" : "border-brand-line bg-brand-shell hover:border-slate-300 hover:bg-slate-50"
                   }`}
                   onClick={() =>
                     onChange((current) => ({
@@ -3236,7 +3233,7 @@ function QuickLaunchModal({
                     <div className="text-sm font-semibold text-brand-ink">{option.label}</div>
                     {active ? <Check className="h-4 w-4 text-brand-primary" /> : null}
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-brand-muted">{option.description}</p>
+                  <p className="mt-1 text-xs leading-5 text-brand-muted">{option.description}</p>
                 </button>
               );
             })}
@@ -3245,15 +3242,15 @@ function QuickLaunchModal({
 
         <div>
           <FieldLabel>What should we test?</FieldLabel>
-          <div className="grid gap-3">
+          <div className="grid gap-2">
             {VALIDATION_TARGET_OPTIONS.map((option) => {
               const active = validationTarget === option.value;
               return (
                 <button
                   key={option.value}
                   type="button"
-                  className={`rounded-xl border px-4 py-4 text-left transition ${
-                    active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:border-brand-primary/25 hover:bg-brand-bg"
+                  className={`rounded-xl border px-4 py-3 text-left transition ${
+                    active ? "border-brand-ink bg-slate-50" : "border-brand-line bg-brand-shell hover:border-slate-300 hover:bg-slate-50"
                   }`}
                   onClick={() =>
                     onChange((current) => ({
@@ -3274,7 +3271,7 @@ function QuickLaunchModal({
                     <div className="text-sm font-semibold text-brand-ink">{option.label}</div>
                     {active ? <Check className="h-4 w-4 text-brand-primary" /> : null}
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-brand-muted">{option.description}</p>
+                  <p className="mt-1 text-xs leading-5 text-brand-muted">{option.description}</p>
                 </button>
               );
             })}
@@ -3329,28 +3326,10 @@ function QuickLaunchModal({
               />
             </div>
           </div>
-        ) : (
-          <div>
-            <FieldLabel>Mission</FieldLabel>
-            <TextInput
-              value={firstGoal}
-              onChange={(event) =>
-                onChange((current) => ({
-                  ...current,
-                  goalsText: event.target.value
-                }))
-              }
-              placeholder="Understand the product and reach the main get-started flow."
-            />
-          </div>
-        )}
+        ) : null}
 
-        {validationTarget === "public_flow" ? (
-          <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
-            We will stay on public pages only. No login is needed here.
-          </div>
-        ) : validationTarget === "inside_product" && savedSessionAvailable && accessMethod === "saved_session" ? (
-          <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+        {validationTarget === "public_flow" ? null : validationTarget === "inside_product" && savedSessionAvailable && accessMethod === "saved_session" ? (
+          <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-3 text-sm leading-6 text-brand-muted">
             We will start from the saved session for this project and focus on the product after login.
             <button
               type="button"
@@ -3438,7 +3417,7 @@ function QuickLaunchModal({
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-brand-line px-6 py-5">
+      <div className="flex flex-shrink-0 flex-wrap items-center justify-between gap-3 border-t border-brand-line bg-slate-50/60 px-5 py-4">
         <button type="button" className="text-sm font-semibold text-brand-muted hover:text-brand-ink" onClick={onOpenAdvanced}>
           More options
         </button>
