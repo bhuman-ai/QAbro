@@ -7707,6 +7707,10 @@ function StarterAutomationsPage({
     target: "Full Site"
   });
   const availableRepos = Array.isArray(repoConnection?.repositories) ? repoConnection.repositories.filter((repo) => repo.full_name) : [];
+  const githubInstalled = Boolean(repoConnection?.installation_id);
+  const repoConnected = repoConnection?.connection_status === "connected";
+  const repoNeedsSelection = repoConnection?.connection_status === "awaiting_repo_selection";
+  const canChooseProjectRepos = repoConnected || repoNeedsSelection || availableRepos.length > 0;
   const savedAssociatedRepos = Array.isArray(repoConnection?.associated_repo_full_names)
     ? repoConnection.associated_repo_full_names.filter((repo) => repo && repo !== repoConnection?.selected_repo_full_name)
     : [];
@@ -7826,19 +7830,19 @@ function StarterAutomationsPage({
           <div className="flex-1 space-y-4">
             <div className="flex items-center gap-3">
               <h2 className="text-3xl font-black tracking-tight">GitHub Integration</h2>
-              <span className={`px-2 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-widest ${repoConnection?.connection_status === "connected" ? "bg-brand-secondary/10 text-brand-secondary border-brand-secondary/20" : "bg-brand-warning/10 text-brand-warning border-brand-warning/20"}`}>
-                {repoConnection?.connection_status === "connected" ? "Connected" : "Not Connected"}
+              <span className={`px-2 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-widest ${repoConnected ? "bg-brand-secondary/10 text-brand-secondary border-brand-secondary/20" : "bg-brand-warning/10 text-brand-warning border-brand-warning/20"}`}>
+                {repoConnected ? "Connected" : repoNeedsSelection ? "Pick Repo" : "Not Connected"}
               </span>
             </div>
             <p className="text-slate-500 font-medium text-lg leading-relaxed max-w-2xl">
               We automatically run a full regression suite on every Pull Request. If an agent finds a friction point, we&apos;ll comment directly on the PR with proof and a suggested fix.
             </p>
             {repoError ? <p className="text-sm font-bold text-brand-danger">{repoError}</p> : null}
-            {repoConnection?.connection_status === "connected" ? (
+            {canChooseProjectRepos ? (
               <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
                 <div className="text-sm font-black tracking-tight text-brand-ink">Project repos</div>
                 <p className="mt-1 text-sm leading-6 text-slate-500">
-                  Pick one primary repo for route hints, then add any other repos this product depends on so diagnosis can search across the right codebases.
+                  Pick one primary repo for this brand, then add any other repos this product depends on so diagnosis can search across the right codebases.
                 </p>
 
                 <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
@@ -7935,7 +7939,7 @@ function StarterAutomationsPage({
             ) : null}
           </div>
           <button onClick={() => onConnectGitHub().catch(() => null)} disabled={repoLoading} className="handcrafted-card px-8 py-4 rounded-2xl font-black text-sm hover:bg-slate-50 transition-all disabled:opacity-50">
-            {repoLoading ? "Loading..." : repoConnection?.connection_status === "connected" ? "Reconnect GitHub" : "Configure Webhooks"}
+            {repoLoading ? "Loading..." : githubInstalled ? "Reconnect GitHub" : "Connect GitHub"}
           </button>
         </div>
 
