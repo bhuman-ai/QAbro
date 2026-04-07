@@ -85,6 +85,7 @@ import type {
   LaunchDraft,
   ProjectSummary,
   QaReport,
+  ReportFinding,
   RepoConnection,
   RepoRouteSuggestion,
   RunLogEntry,
@@ -5797,7 +5798,15 @@ type StarterFixPoint = {
   title: string;
   severity: string;
   description: string;
+  expected_behavior?: string | null;
+  observed_behavior?: string | null;
   recommended_fix?: string | null;
+  page_url?: string | null;
+  element?: string | null;
+  repro_steps?: string[] | null;
+  evidence?: string[] | null;
+  acceptance_criteria?: string[] | null;
+  diagnostic_details?: Record<string, unknown> | null;
 };
 
 type RepoFixDiagnosis = {
@@ -5811,6 +5820,156 @@ type RepoFixDiagnosis = {
   developer_prompt?: string;
   confidence_note?: string;
 };
+
+function cleanPromptText(value: unknown, fallback = "") {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text || fallback;
+}
+
+function cleanPromptList(items: unknown, fallback: string[] = []) {
+  if (!Array.isArray(items)) {
+    return fallback;
+  }
+  const cleaned = items
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter(Boolean);
+  return cleaned.length ? cleaned : fallback;
+}
+
+function readDiagnosticString(details: StarterFixPoint["diagnostic_details"], keys: string[]) {
+  if (!details || typeof details !== "object") {
+    return "";
+  }
+  for (const key of keys) {
+    const value = details[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+function formatPromptList(items: string[]) {
+  return items.map((item) => `- ${item}`).join("\n");
+}
+
+function formatPromptObject(value: unknown) {
+  if (!value || typeof value !== "object") {
+    return "";
+  }
+  try {
+    return JSON.stringify(value, null, 2).slice(0, 4000);
+  } catch {
+    return "";
+  }
+}
+
+function buildCompleteFixPrompt({
+  point,
+  repoDiagnosis,
+  suggestedFixes,
+  implementationNotes,
+  suspectedFiles,
+  repoSummary
+}: {
+  point: StarterFixPoint;
+  repoDiagnosis: RepoFixDiagnosis | null;
+  suggestedFixes: string[];
+  implementationNotes: string[];
+  suspectedFiles: string[];
+  repoSummary: string;
+}) {
+  const observedOutcome = cleanPromptText(
+    point.observed_behavior,
+    cleanPromptText(point.description, "The QA run flagged this flow as confusing or blocked.")
+  );
+  const expectedOutcome = cleanPromptText(
+    point.expected_behavior,
+    "A real user should understand what to do next, complete the affected step, and reach the intended next state without confusion."
+  );
+  const proposedFix = cleanPromptText(
+    point.recommended_fix,
+    suggestedFixes.join(" ") || "Inspect the affected UI and remove the friction reported by the QA run."
+  );
+  const currentUrl =
+    cleanPromptText(point.page_url) ||
+    readDiagnosticString(point.diagnostic_details, ["current_url", "url", "page_url"]) ||
+    "Not captured";
+  const affectedElement =
+    cleanPromptText(point.element) ||
+    readDiagnosticString(point.diagnostic_details, ["element", "selector", "target"]) ||
+    "Not captured";
+  const failureReason = readDiagnosticString(point.diagnostic_details, ["failure_reason", "current_state", "last_successful_step"]);
+  const reproSteps = cleanPromptList(point.repro_steps, [
+    currentUrl !== "Not captured" ? `Open ${currentUrl}.` : "Open the affected page or flow from the QA report.",
+    "Follow the same persona/task path that produced this finding.",
+    "Compare the observed outcome against the expected outcome below."
+  ]);
+  const evidence = cleanPromptList(point.evidence, failureReason ? [failureReason] : ["Use the QA report screenshots/replay and the details below as the source of truth."]);
+  const diagnosticDetails = formatPromptObject(point.diagnostic_details);
+  const acceptanceCriteria = cleanPromptList(point.acceptance_criteria, [
+    "The observed outcome no longer happens in the same flow.",
+    "The expected outcome is reachable and obvious to the user.",
+    "The proposed fix is visible near the affected action or decision point.",
+    "The same QA scenario can be rerun without this finding reappearing."
+  ]);
+  const repoNotes = [
+    repoDiagnosis?.repo_full_name ? `Repo: ${repoDiagnosis.repo_full_name}` : "",
+    repoSummary ? `Repo understanding: ${repoSummary}` : "",
+    repoDiagnosis?.likely_fix_location ? `Likely fix location: ${repoDiagnosis.likely_fix_location}` : "",
+    suspectedFiles.length ? `Likely files:\n${formatPromptList(suspectedFiles)}` : "",
+    implementationNotes.length ? `Implementation notes:\n${formatPromptList(implementationNotes)}` : "",
+    repoDiagnosis?.confidence_note ? `Confidence note: ${repoDiagnosis.confidence_note}` : ""
+  ].filter(Boolean).join("\n\n");
+  const repoGeneratedPrompt = repoDiagnosis?.source === "github_repo_analysis"
+    ? cleanPromptText(repoDiagnosis.developer_prompt)
+    : "";
+
+  return [
+    "# Bug Report / Fix Request",
+    "",
+    "## Summary",
+    `Fix this UX issue: ${point.title}`,
+    "",
+    "## Severity",
+    point.severity,
+    "",
+    "## Expected outcome",
+    expectedOutcome,
+    "",
+    "## Observed outcome",
+    observedOutcome,
+    "",
+    "## Repro steps",
+    formatPromptList(reproSteps),
+    "",
+    "## Affected area",
+    `- URL/page: ${currentUrl}`,
+    `- Element/interaction: ${affectedElement}`,
+    "",
+    "## Proposed fix",
+    proposedFix,
+    "",
+    "## Acceptance criteria",
+    formatPromptList(acceptanceCriteria),
+    "",
+    "## Evidence and context",
+    formatPromptList(evidence),
+    "",
+    diagnosticDetails ? "## Raw diagnostic details\n" + diagnosticDetails : "",
+    "",
+    "## Repo context",
+    repoNotes || "No repo-specific diagnosis was available. Inspect the UI owner for the affected flow.",
+    repoGeneratedPrompt ? "\n## Additional repo-generated diagnosis\n" + repoGeneratedPrompt : "",
+    "",
+    "## Instructions",
+    "Make the smallest product change that satisfies the acceptance criteria. Do not treat this as complete until the expected outcome is visible in the same user flow and the QA scenario can be rerun cleanly."
+  ]
+    .filter((part) => part !== null && part !== undefined)
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 function StarterFixDiagnosis({
   point,
@@ -5827,7 +5986,17 @@ function StarterFixDiagnosis({
   const [loadingDiagnosis, setLoadingDiagnosis] = useState(false);
   const [diagnosisError, setDiagnosisError] = useState("");
   const [repoDiagnosis, setRepoDiagnosis] = useState<RepoFixDiagnosis | null>(null);
-  const pointKey = [point.id || "", point.title, point.severity, point.description, point.recommended_fix || ""].join("|");
+  const pointKey = [
+    point.id || "",
+    point.title,
+    point.severity,
+    point.description,
+    point.expected_behavior || "",
+    point.observed_behavior || "",
+    point.recommended_fix || "",
+    point.page_url || "",
+    point.element || ""
+  ].join("|");
 
   useEffect(() => {
     let cancelled = false;
@@ -5888,17 +6057,6 @@ function StarterFixDiagnosis({
           .filter(Boolean)
           .slice(0, 3)
           .map((item) => `${item.trim().replace(/\.$/, "")}.`);
-  const developerPrompt =
-    repoDiagnosis?.developer_prompt ||
-    `
-# Context: User Friction Point Found by AI Agent
-Friction Point: ${point.title}
-Severity: ${point.severity}
-Description: ${point.description}
-
-# Recommendation
-${point.recommended_fix || "Review the relevant interaction, tighten feedback, and remove the friction the agent found."}
-    `.trim();
   const suspectedFiles = Array.isArray(repoDiagnosis?.suspected_files) ? repoDiagnosis?.suspected_files || [] : [];
   const implementationNotes =
     repoDiagnosis?.implementation_notes && repoDiagnosis.implementation_notes.length
@@ -5915,6 +6073,20 @@ ${point.recommended_fix || "Review the relevant interaction, tighten feedback, a
       : diagnosisError
         ? ""
         : "No repo-aware diagnosis is available yet for this issue.");
+  const expectedOutcome = cleanPromptText(
+    point.expected_behavior,
+    "A real user should understand the next step and reach the intended next state without confusion."
+  );
+  const observedOutcome = cleanPromptText(point.observed_behavior, cleanPromptText(point.description));
+  const proposedFix = cleanPromptText(point.recommended_fix, suggestedFixes.join(" "));
+  const developerPrompt = buildCompleteFixPrompt({
+    point,
+    repoDiagnosis,
+    suggestedFixes,
+    implementationNotes,
+    suspectedFiles,
+    repoSummary
+  });
 
   async function handleCopyPrompt() {
     await copyText(developerPrompt);
@@ -5943,23 +6115,20 @@ ${point.recommended_fix || "Review the relevant interaction, tighten feedback, a
         <div className="flex-1 overflow-y-auto p-10 grid grid-cols-1 lg:grid-cols-2 gap-10">
           <div className="space-y-8">
             <section className="space-y-4">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Root Cause Analysis</h3>
-              <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100">
-                <p className="text-brand-ink font-bold leading-relaxed">{point.description}</p>
-              </div>
-            </section>
-
-            <section className="space-y-4">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Suggested Fix</h3>
-              <div className="space-y-4">
-                {suggestedFixes.map((item) => (
-                  <div key={item} className="flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-brand-secondary/10 text-brand-secondary flex items-center justify-center shrink-0 mt-0.5">
-                        <Plus className="w-3.5 h-3.5" />
-                      </div>
-                      <p className="text-sm font-bold text-slate-600">{item.trim().replace(/\.$/, "")}.</p>
-                  </div>
-                ))}
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Problem Report</h3>
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-brand-line bg-white p-5">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Observed outcome</div>
+                  <p className="mt-2 text-sm font-bold leading-6 text-brand-ink">{observedOutcome}</p>
+                </div>
+                <div className="rounded-2xl border border-brand-line bg-white p-5">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-brand-muted">Expected outcome</div>
+                  <p className="mt-2 text-sm font-bold leading-6 text-brand-ink">{expectedOutcome}</p>
+                </div>
+                <div className="rounded-2xl border border-brand-secondary/20 bg-brand-secondary/5 p-5">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-brand-secondary">Fix to make</div>
+                  <p className="mt-2 text-sm font-bold leading-6 text-brand-ink">{proposedFix}</p>
+                </div>
               </div>
             </section>
 
@@ -5996,93 +6165,56 @@ ${point.recommended_fix || "Review the relevant interaction, tighten feedback, a
               </div>
             </section>
 
-            <section className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">AI Developer Prompt</h3>
-                <span className="text-[10px] font-black text-brand-accent uppercase tracking-widest">For Claude Code / Cursor</span>
-              </div>
-              <div className="p-6 bg-brand-ink rounded-2xl border border-white/10 relative group">
-                <div className="text-[10px] font-mono text-white/40 mb-4 whitespace-pre-wrap line-clamp-6">{developerPrompt}</div>
-                <Button tone="secondary" onClick={handleCopyPrompt} className="w-full border-white/10 bg-white/10 py-3 text-xs font-black text-white hover:bg-white/20">
-                  {copied ? (
-                    <>
-                      <Zap className="w-4 h-4 text-brand-secondary" />
-                      Copied to Clipboard!
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4" />
-                      Copy Prompt for AI Dev
-                    </>
-                  )}
-                </Button>
-              </div>
-            </section>
           </div>
 
-          <div className="space-y-4 flex flex-col h-full">
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex justify-between items-center">
-              <span>Implementation Notes</span>
-              <span className="text-brand-secondary flex items-center gap-1">
-                <GitBranch className="w-3 h-3" />
-                {repoDiagnosis?.repo_full_name ? "Repo connected" : "Diagnosis ready"}
+          <div className="flex h-full flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Complete AI Dev Prompt</h3>
+                <p className="mt-1 text-sm font-bold text-brand-ink">Includes expected, observed, repro, fix, repo context, and acceptance criteria.</p>
+              </div>
+              <span className="rounded-full border border-brand-line bg-brand-shell px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-brand-muted">
+                {repoDiagnosis?.repo_full_name ? "Repo-aware" : "Bug report"}
               </span>
-            </h3>
-            <div className="flex-1 rounded-3xl border border-brand-line bg-brand-panel p-6 shadow-sm">
-              <div className="space-y-6">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-brand-line bg-brand-shell px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-brand-muted">
-                    Severity: {point.severity}
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col rounded-3xl border border-brand-line bg-brand-ink p-5 shadow-sm">
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/70">
+                  Severity: {point.severity}
+                </span>
+                {repoDiagnosis?.source ? (
+                  <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-white/70">
+                    {repoDiagnosis.source === "github_repo_analysis"
+                      ? "GitHub analysis"
+                      : repoDiagnosis.source === "stored_engineering_triage"
+                        ? "Stored repo triage"
+                        : "Repo heuristic"}
                   </span>
-                  {repoDiagnosis?.source ? (
-                    <span className="rounded-full border border-brand-line bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-brand-muted">
-                      {repoDiagnosis.source === "github_repo_analysis"
-                        ? "GitHub analysis"
-                        : repoDiagnosis.source === "stored_engineering_triage"
-                          ? "Stored repo triage"
-                          : "Repo heuristic"}
-                    </span>
-                  ) : null}
+                ) : null}
+              </div>
+              <pre className="min-h-[360px] flex-1 overflow-auto whitespace-pre-wrap rounded-2xl border border-white/10 bg-black/20 p-5 font-mono text-[11px] leading-5 text-white/75">{developerPrompt}</pre>
+              <Button tone="secondary" onClick={handleCopyPrompt} className="mt-4 w-full border-white/10 bg-white py-3 text-xs font-black text-brand-ink hover:bg-white/90">
+                {copied ? (
+                  <>
+                    <Zap className="w-4 h-4 text-brand-secondary" />
+                    Copied complete bug report
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    Copy complete bug report
+                  </>
+                )}
+              </Button>
+            </div>
+            <div className="rounded-2xl border border-brand-line bg-brand-panel px-5 py-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-secondary/10 text-brand-secondary">
+                  <Check className="h-3.5 w-3.5" />
                 </div>
-
-                {suspectedFiles.length ? (
-                  <div className="space-y-3">
-                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Likely files</div>
-                    <div className="flex flex-wrap gap-2">
-                      {suspectedFiles.map((file) => (
-                        <span key={file} className="rounded-lg border border-brand-line bg-white px-3 py-2 text-xs font-semibold text-brand-ink">
-                          {file}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="space-y-3">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Next steps</div>
-                  <div className="space-y-3">
-                    {implementationNotes.map((item) => (
-                      <div key={item} className="flex items-start gap-3 rounded-2xl bg-white px-4 py-3">
-                        <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-secondary/10 text-brand-secondary">
-                          <Check className="h-3.5 w-3.5" />
-                        </div>
-                        <p className="text-sm font-semibold leading-6 text-slate-700">{item}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {repoDiagnosis?.confidence_note ? (
-                  <div className="rounded-2xl border border-brand-line bg-white px-4 py-4 text-sm leading-6 text-brand-muted">
-                    {repoDiagnosis.confidence_note}
-                  </div>
-                ) : null}
-
-                {diagnosisError && !loadingDiagnosis ? (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-900">
-                    {diagnosisError}
-                  </div>
-                ) : null}
+                <p className="text-sm font-semibold leading-6 text-brand-muted">
+                  The copied prompt is the source of truth. Repo notes are included inside it so the developer gets the full problem report instead of a partial snippet.
+                </p>
               </div>
             </div>
           </div>
@@ -6380,9 +6512,16 @@ function buildSkepticismFixPoints(items: string[]): StarterFixPoint[] {
       title: `Customer skepticism ${index + 1}`,
       severity: "medium",
       description: item,
+      expected_behavior: "The UI should answer this concern at the point of hesitation and make the next step obvious.",
+      observed_behavior: `The simulated customer hesitated because: ${item}`,
       recommended_fix:
         `Answer this concern directly in the UI with clearer copy, proof, examples, or next-step guidance. ` +
-        `Specifically address: ${item}`
+        `Specifically address: ${item}`,
+      acceptance_criteria: [
+        "The concern is answered in visible UI copy near the relevant CTA or decision point.",
+        "The user can understand what happens next without leaving the flow.",
+        "The same persona walkthrough no longer reports this skepticism as a blocker."
+      ]
     }));
 }
 
@@ -6881,13 +7020,32 @@ function StarterReportPage({
   const replayOverlay = buildReplayOverlayData(status?.run_log, report?.artifacts, status?.artifacts);
   const hasReplay = Boolean(replayVideoUrl || replaySessionUrl);
   const frictionPoints =
-    (report?.findings || []).map((finding, index) => ({
-      id: finding.id || `finding-${index}`,
-      title: finding.title || `Friction point ${index + 1}`,
-      description: getFindingSummary(finding),
-      severity: String(finding.severity || "medium").toLowerCase(),
-      recommended_fix: finding.recommended_fix || null
-    })) || [];
+    (report?.findings || []).map((finding, index) => {
+      const detailedFinding = finding as ReportFinding & {
+        element?: string | null;
+        repro_steps?: string[] | null;
+        fix_hint?: string | null;
+        acceptance_criteria?: string[] | null;
+      };
+      const diagnosticDetails =
+        detailedFinding.diagnostic_details && typeof detailedFinding.diagnostic_details === "object"
+          ? detailedFinding.diagnostic_details as Record<string, unknown>
+          : null;
+      return {
+        id: detailedFinding.id || `finding-${index}`,
+        title: detailedFinding.title || `Friction point ${index + 1}`,
+        description: getFindingSummary(detailedFinding),
+        severity: String(detailedFinding.severity || "medium").toLowerCase(),
+        expected_behavior: detailedFinding.expected_behavior || null,
+        observed_behavior: detailedFinding.observed_behavior || null,
+        recommended_fix: detailedFinding.recommended_fix || detailedFinding.fix_hint || null,
+        page_url: detailedFinding.page?.url || (diagnosticDetails && typeof diagnosticDetails.current_url === "string" ? diagnosticDetails.current_url : null),
+        element: detailedFinding.element || (diagnosticDetails && typeof diagnosticDetails.element === "string" ? diagnosticDetails.element : null),
+        repro_steps: Array.isArray(detailedFinding.repro_steps) ? detailedFinding.repro_steps : null,
+        acceptance_criteria: Array.isArray(detailedFinding.acceptance_criteria) ? detailedFinding.acceptance_criteria : null,
+        diagnostic_details: diagnosticDetails
+      };
+    }) || [];
   const personaReadout = buildPersonaReadout({
     persona,
     report,

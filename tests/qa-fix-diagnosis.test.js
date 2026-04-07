@@ -39,6 +39,8 @@ test("buildFallbackDiagnosis produces repo-aware fix guidance with likely files"
       title: "Customer skepticism 1",
       severity: "medium",
       description: "I want proof this works and clearer first steps.",
+      expected_behavior: "The landing page should explain proof and first steps before the customer commits.",
+      observed_behavior: "The customer could not tell what proof existed or what the first step would do.",
       recommended_fix: null
     },
     repoFullName: "owner/product",
@@ -57,6 +59,9 @@ test("buildFallbackDiagnosis produces repo-aware fix guidance with likely files"
     "src/app/page.tsx",
     "src/components/marketing/hero.tsx"
   ]);
+  assert.match(diagnosis.developer_prompt, /## Expected outcome\nThe landing page should explain proof and first steps/);
+  assert.match(diagnosis.developer_prompt, /## Observed outcome\nThe customer could not tell what proof existed/);
+  assert.match(diagnosis.developer_prompt, /## Acceptance criteria/);
   assert.match(diagnosis.developer_prompt, /Likely files to inspect: src\/app\/page\.tsx, src\/components\/marketing\/hero\.tsx/);
 });
 
