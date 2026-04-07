@@ -2054,6 +2054,46 @@ function WorkspacePage({
   }, [isSharedView, requestedRunId, selectedStatus, shareKey]);
 
   useEffect(() => {
+    if (isSharedView || currentPanel !== "report" || currentView !== "live" || !requestedRunId) {
+      return;
+    }
+    const status = String(
+      selectedStatus?.queue?.queue_status ||
+        selectedStatus?.report_status ||
+        selectedReport?.status ||
+        selectedRun?.status ||
+        ""
+    ).toLowerCase();
+    const runIsActive = ["queued", "processing", "retryable"].includes(status);
+    const reportIsReady = Boolean(selectedReport || selectedStatus?.report_ready || selectedRun?.report_ready);
+    if (runIsActive || !reportIsReady) {
+      return;
+    }
+    const next = new URLSearchParams(route.search);
+    next.set("panel", "report");
+    next.set("view", "report");
+    next.set("run_id", requestedRunId);
+    if (currentBrandKey) {
+      next.set("brand", currentBrandKey);
+    }
+    navigate("/dashboard", next, true);
+  }, [
+    currentBrandKey,
+    currentPanel,
+    currentView,
+    isSharedView,
+    navigate,
+    requestedRunId,
+    route.search,
+    selectedReport,
+    selectedRun?.report_ready,
+    selectedRun?.status,
+    selectedStatus?.queue?.queue_status,
+    selectedStatus?.report_ready,
+    selectedStatus?.report_status
+  ]);
+
+  useEffect(() => {
     if (!selectedRun && !currentBrandKey) {
       return;
     }
