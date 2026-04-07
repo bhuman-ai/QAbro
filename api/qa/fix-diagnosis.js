@@ -7,8 +7,16 @@ const {
   sanitizeString
 } = require("../../lib/qa-core");
 const { extractBrandKey, extractOwnerUserId } = require("../../lib/qa-queue");
-const { loadBrandRepoConnection } = require("../../lib/qa-brand-repo-connections");
-const { generateRepoAwareFixDiagnosis } = require("../../lib/qa-fix-diagnosis");
+const {
+  loadBrandRepoConnection,
+  listOwnerBrandRepoConnections,
+  upsertBrandRepoConnection
+} = require("../../lib/qa-brand-repo-connections");
+const { listGitHubInstallationRepositories } = require("../../lib/github-app");
+const {
+  generateRepoAwareFixDiagnosis,
+  __private: { inferBestRepositoryForBrand }
+} = require("../../lib/qa-fix-diagnosis");
 
 function sanitizeFixPoint(value) {
   const point = isPlainObject(value) ? value : {};
@@ -103,6 +111,126 @@ function buildStoredEngineeringDiagnosis(point, reportJson) {
   };
 }
 
+async function resolveEffectiveRepoConnection({
+  brandKey,
+  requestedOwnerUserId,
+  ownerEmail,
+  existingConnection,
+  runRequest
+}) {
+  const baseConnection = existingConnection && typeof existingConnection === "object" ? existingConnection : {};
+  if (baseConnection.installation_id && baseConnection.selected_repo_full_name) {
+    return { ok: true, connection: baseConnection };
+  }
+
+  const ownerConnections = await listOwnerBrandRepoConnections(requestedOwnerUserId, {
+    ownerUserId: requestedOwnerUserId
+  });
+  if (!ownerConnections.ok) {
+    return ownerConnections;
+  }
+
+  const reusableConnection =
+    ownerConnections.rows.find((row) => row.brand_key === brandKey && row.installation_id) ||
+    ownerConnections.rows.find((row) => row.installation_id);
+  if (!reusableConnection?.installation_id) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Connect the GitHub App to your account before using repo-aware fix diagnosis."
+    };
+  }
+
+  const listed = await listGitHubInstallationRepositories(reusableConnection.installation_id);
+  if (!listed.ok) {
+    return listed;
+  }
+
+  const inferredRepo = inferBestRepositoryForBrand({
+    brandKey,
+    targetUrl: sanitizeString(runRequest?.target_url, 4096),
+    repositories: listed.repositories
+  });
+  if (!inferredRepo?.full_name) {
+    const savedAwaiting = await upsertBrandRepoConnection(
+      {
+        brand_key: brandKey,
+        provider: "github",
+        connection_status: "awaiting_repo_selection",
+        installation_id: reusableConnection.installation_id,
+        installation_account_login: reusableConnection.installation_account_login,
+        installation_account_type: reusableConnection.installation_account_type,
+        installation_target_type: reusableConnection.installation_target_type,
+        installation_target_id: reusableConnection.installation_target_id,
+        path_allowlist:
+          Array.isArray(baseConnection.path_allowlist) && baseConnection.path_allowlist.length
+            ? baseConnection.path_allowlist
+            : reusableConnection.path_allowlist,
+        connection: {
+          installed_via: "github_app",
+          inherited_installation_brand_key: reusableConnection.brand_key || null
+        }
+      },
+      {
+        owner_user_id: requestedOwnerUserId,
+        owner_email: ownerEmail
+      }
+    );
+    if (savedAwaiting.ok) {
+      return {
+        ok: false,
+        status: 409,
+        error: "GitHub App access is available, but no matching repository could be inferred for this project yet. Pick the repo once in project settings."
+      };
+    }
+    return {
+      ok: false,
+      status: 409,
+      error: "GitHub App access is available, but no matching repository could be inferred for this project yet."
+    };
+  }
+
+  const saved = await upsertBrandRepoConnection(
+    {
+      brand_key: brandKey,
+      provider: "github",
+      connection_status: "connected",
+      installation_id: reusableConnection.installation_id,
+      installation_account_login: reusableConnection.installation_account_login,
+      installation_account_type: reusableConnection.installation_account_type,
+      installation_target_type: reusableConnection.installation_target_type,
+      installation_target_id: reusableConnection.installation_target_id,
+      selected_repo_id: inferredRepo.id,
+      selected_repo_owner: inferredRepo.owner,
+      selected_repo_name: inferredRepo.name,
+      selected_repo_full_name: inferredRepo.full_name,
+      default_branch: inferredRepo.default_branch,
+      path_allowlist:
+        Array.isArray(baseConnection.path_allowlist) && baseConnection.path_allowlist.length
+          ? baseConnection.path_allowlist
+          : reusableConnection.path_allowlist,
+      connection: {
+        installed_via: "github_app",
+        inherited_installation_brand_key: reusableConnection.brand_key || null,
+        auto_selected_repo: true,
+        auto_selected_reason: "brand_key_repo_match"
+      }
+    },
+    {
+      owner_user_id: requestedOwnerUserId,
+      owner_email: ownerEmail
+    }
+  );
+  if (!saved.ok) {
+    return saved;
+  }
+
+  return {
+    ok: true,
+    connection: saved.row
+  };
+}
+
 module.exports = async (req, res) => {
   const auth = await requireDashboardOrServiceAuth(req, res);
   if (!auth.ok) {
@@ -138,6 +266,7 @@ module.exports = async (req, res) => {
   const row = loaded.row;
   const rowOwnerUserId = extractOwnerUserId(row);
   const requestedOwnerUserId = sanitizeString(auth.user?.id, 128);
+  const ownerEmail = sanitizeString(auth.user?.email, 320).toLowerCase();
   if (rowOwnerUserId && requestedOwnerUserId && rowOwnerUserId !== requestedOwnerUserId) {
     return res.status(404).json({ ok: false, error: "Run not found" });
   }
@@ -167,13 +296,20 @@ module.exports = async (req, res) => {
     return res.status(connectionLoaded.status || 500).json({ ok: false, error: connectionLoaded.error });
   }
 
-  const connection = connectionLoaded.row || {};
-  if (!connection.installation_id || !connection.selected_repo_full_name) {
-    return res.status(409).json({
+  const resolvedConnection = await resolveEffectiveRepoConnection({
+    brandKey,
+    requestedOwnerUserId,
+    ownerEmail,
+    existingConnection: connectionLoaded.row || {},
+    runRequest
+  });
+  if (!resolvedConnection.ok) {
+    return res.status(resolvedConnection.status || 409).json({
       ok: false,
-      error: "Connect a GitHub repository for this project before using repo-aware fix diagnosis."
+      error: resolvedConnection.error || "Connect a GitHub repository for this project before using repo-aware fix diagnosis."
     });
   }
+  const connection = resolvedConnection.connection || {};
 
   const diagnosisResult = await generateRepoAwareFixDiagnosis({
     connection,

@@ -5,6 +5,7 @@ const { __private } = require("../lib/qa-fix-diagnosis");
 
 const {
   buildFallbackDiagnosis,
+  inferBestRepositoryForBrand,
   selectCandidateFiles,
   tokenizeText
 } = __private;
@@ -56,4 +57,18 @@ test("buildFallbackDiagnosis produces repo-aware fix guidance with likely files"
     "src/components/marketing/hero.tsx"
   ]);
   assert.match(diagnosis.developer_prompt, /Likely files to inspect: src\/app\/page\.tsx, src\/components\/marketing\/hero\.tsx/);
+});
+
+test("inferBestRepositoryForBrand matches the project repo from owner installation access", () => {
+  const matched = inferBestRepositoryForBrand({
+    brandKey: "clusterseo.com",
+    targetUrl: "https://www.clusterseo.com/",
+    repositories: [
+      { full_name: "bhuman-ai/QAbro", name: "QAbro" },
+      { full_name: "bhuman-ai/clusterseo", name: "clusterseo" },
+      { full_name: "bhuman-ai/shared-marketing", name: "shared-marketing" }
+    ]
+  });
+
+  assert.equal(matched.full_name, "bhuman-ai/clusterseo");
 });
