@@ -73,6 +73,7 @@ import {
   inferBrandName,
   hasControlledUxFlowPlan,
   normalizeAccessMethod,
+  normalizeBrowserMode,
   normalizeEntryPath,
   normalizeBrandKey,
   normalizeUrlInput,
@@ -163,6 +164,19 @@ const RUN_MODE_OPTIONS = [
     value: "controlled_ux",
     label: "Controlled UX",
     description: "Validate one owned flow with repo route hints before full live QA."
+  }
+] as const;
+
+const BROWSER_MODE_OPTIONS = [
+  {
+    value: "standard_browser",
+    label: "Standard browser",
+    description: "Use the normal local browser path. Best when the site is not fighting automation."
+  },
+  {
+    value: "advanced_browser",
+    label: "Advanced browser",
+    description: "Use a fresh Browserbase session with stronger stealth and captcha solving for harder sites."
   }
 ] as const;
 
@@ -458,6 +472,9 @@ function buildDraftFromRun(run?: RunSummary | null, report?: QaReport | null, re
     brandKey: run?.brand_key || deriveBrandKeyFromUrl(run?.target_url || ""),
     brandName: run?.brand_name || inferBrandName(run?.brand_key || ""),
     runMode,
+    browserMode: normalizeBrowserMode(
+      String(metadata?.browser_mode || metadata?.browserMode || metadata?.execution_engine || metadata?.executionEngine || "")
+    ),
     validationTarget,
     accessMethod,
     authUrl: String(metadata?.auth_entry_url || metadata?.authEntryUrl || "").trim(),
@@ -517,6 +534,15 @@ function buildDraftFromProject(project?: ProjectSummary | null, repoConnection?:
         .toLowerCase() === "controlled_ux"
         ? "controlled_ux"
         : "live_qa",
+    browserMode: normalizeBrowserMode(
+      String(
+        launchDefaults.browser_mode ||
+          launchDefaults.browserMode ||
+          launchDefaults.execution_engine ||
+          launchDefaults.executionEngine ||
+          ""
+      ).trim()
+    ),
     validationTarget,
     accessMethod,
     authUrl: String(launchDefaults.auth_entry_url || launchDefaults.authEntryUrl || "").trim(),
@@ -552,6 +578,7 @@ function launchDraftsMatch(left: LaunchDraft, right: LaunchDraft) {
     left.brandKey === right.brandKey &&
     left.brandName === right.brandName &&
     left.runMode === right.runMode &&
+    left.browserMode === right.browserMode &&
     left.validationTarget === right.validationTarget &&
     left.accessMethod === right.accessMethod &&
     left.authUrl === right.authUrl &&
@@ -711,6 +738,7 @@ function buildStarterLiveAgents(runs: RunSummary[]) {
 
 function buildOptimisticRunSummary(payload: ReturnType<typeof buildLaunchPayload>): RunSummary {
   const qaMode = String(payload.metadata?.qa_mode || "live_qa").toLowerCase();
+  const browserMode = normalizeBrowserMode(String(payload.metadata?.browser_mode || ""));
   return {
     run_id: payload.run_id,
     brand_key: payload.metadata.brand_key,
@@ -728,7 +756,9 @@ function buildOptimisticRunSummary(payload: ReturnType<typeof buildLaunchPayload
     source: payload.source,
     report_ready: false,
     summary_note:
-      qaMode === "controlled_ux"
+      browserMode === "advanced_browser"
+        ? "Advanced browser run queued. Using stronger anti-bot and captcha handling."
+        : qaMode === "controlled_ux"
         ? "Controlled UX run queued. Validating the owned flow before broad live QA."
         : "Run queued and waiting for worker pickup.",
     findings_count: 0,
@@ -1691,6 +1721,7 @@ function WorkspacePage({
     brandKey: selectedBrandFilter || "",
     brandName: inferBrandName(selectedBrandFilter || ""),
     runMode: "live_qa",
+    browserMode: "standard_browser",
     validationTarget: "public_flow",
     accessMethod: "none",
     authUrl: "",
@@ -2300,6 +2331,7 @@ function WorkspacePage({
       ...launchDraft,
       ...(payloadOverride || {})
     };
+    const browserMode = normalizeBrowserMode(nextDraft.browserMode);
     const currentProjectMetadata =
       currentProject?.metadata && typeof currentProject.metadata === "object"
         ? { ...currentProject.metadata }
@@ -2313,6 +2345,11 @@ function WorkspacePage({
         ? (currentProject.metadata.qa_profile as Record<string, unknown>)
         : {};
     const savedSessionAvailable = projectQaProfile.available === true;
+    if (browserMode === "advanced_browser" && nextDraft.validationTarget === "inside_product" && nextDraft.accessMethod === "saved_session") {
+      setLaunchMessage("Advanced browser starts from a fresh remote session. Use a real test login instead of a saved session.");
+      setLaunchTone("danger");
+      return;
+    }
     if (nextDraft.validationTarget === "inside_product") {
       if (
         nextDraft.accessMethod === "saved_session" &&
@@ -2388,9 +2425,13 @@ function WorkspacePage({
                 },
                 launch_defaults: {
                   qa_mode: payload.metadata.qa_mode,
+                  browser_mode: browserMode,
+                  execution_engine: payload.metadata.execution_engine,
                   validation_target: payload.metadata.validation_target,
                   access_method:
-                    nextDraft.validationTarget === "inside_product" && nextDraft.accessMethod === "credentials"
+                    browserMode !== "advanced_browser" &&
+                    nextDraft.validationTarget === "inside_product" &&
+                    nextDraft.accessMethod === "credentials"
                       ? "saved_session"
                       : payload.metadata.access_method,
                   auth_entry_url: payload.metadata.auth_entry_url || null,
@@ -3217,6 +3258,7 @@ function QuickLaunchModal({
   onSubmit: () => Promise<void>;
 }) {
   const validationTarget = normalizeValidationTarget(draft.validationTarget);
+  const browserMode = normalizeBrowserMode(draft.browserMode);
   const accessMethod = normalizeAccessMethod(draft.accessMethod, validationTarget);
   const projectMetadata = currentProject?.metadata && typeof currentProject.metadata === "object" ? currentProject.metadata : {};
   const savedSessionAvailable =
@@ -3227,7 +3269,7 @@ function QuickLaunchModal({
     Boolean(normalizeUrlInput(draft.targetUrl)) &&
     (draft.runMode !== "controlled_ux" || hasControlledUxFlowPlan(draft)) &&
     (validationTarget !== "inside_product" ||
-      accessMethod === "saved_session" ||
+      (browserMode !== "advanced_browser" && accessMethod === "saved_session") ||
       Boolean(String(draft.authUsername || "").trim() && String(draft.authPassword || "").trim())) &&
     (accessMethod !== "auth_url" || Boolean(normalizeUrlInput(draft.authUrl))) &&
     (accessMethod !== "credentials" ||
@@ -3303,6 +3345,45 @@ function QuickLaunchModal({
         </div>
 
         <div>
+          <FieldLabel>Browser runtime</FieldLabel>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {BROWSER_MODE_OPTIONS.map((option) => {
+              const active = browserMode === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`rounded-xl border px-4 py-3 text-left transition ${
+                    active ? "border-brand-ink bg-slate-50" : "border-brand-line bg-brand-shell hover:border-slate-300 hover:bg-slate-50"
+                  }`}
+                  onClick={() =>
+                    onChange((current) => ({
+                      ...current,
+                      browserMode: option.value,
+                      accessMethod:
+                        option.value === "advanced_browser" && current.validationTarget === "inside_product"
+                          ? "credentials"
+                          : current.accessMethod
+                    }))
+                  }
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-brand-ink">{option.label}</div>
+                    {active ? <Check className="h-4 w-4 text-brand-primary" /> : null}
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-brand-muted">{option.description}</p>
+                </button>
+              );
+            })}
+          </div>
+          {browserMode === "advanced_browser" ? (
+            <p className="mt-2 text-xs leading-5 text-brand-muted">
+              Best for aggressive anti-bot protection, remote browser runs, and supported captcha gates.
+            </p>
+          ) : null}
+        </div>
+
+        <div>
           <FieldLabel>What should we test?</FieldLabel>
           <div className="grid gap-2">
             {VALIDATION_TARGET_OPTIONS.map((option) => {
@@ -3322,7 +3403,7 @@ function QuickLaunchModal({
                         option.value === "public_flow"
                           ? "none"
                           : option.value === "inside_product"
-                            ? savedSessionAvailable
+                            ? browserMode !== "advanced_browser" && savedSessionAvailable
                               ? "saved_session"
                               : "credentials"
                             : normalizeAccessMethod(current.accessMethod, option.value)
@@ -3390,7 +3471,56 @@ function QuickLaunchModal({
           </div>
         ) : null}
 
-        {validationTarget === "public_flow" ? null : validationTarget === "inside_product" && savedSessionAvailable && accessMethod === "saved_session" ? (
+        {validationTarget === "public_flow" ? null : validationTarget === "inside_product" && browserMode === "advanced_browser" ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2 rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+              Advanced browser starts fresh each run, so saved project sessions are disabled here. Use a real test login and the captcha assist path instead.
+            </div>
+            <div className="sm:col-span-2">
+              <FieldLabel>Optional login URL</FieldLabel>
+              <TextInput
+                value={draft.authUrl}
+                onChange={(event) =>
+                  onChange((current) => ({
+                    ...current,
+                    authUrl: event.target.value,
+                    accessMethod: "credentials"
+                  }))
+                }
+                placeholder="https://staging.example.com/login"
+              />
+            </div>
+            <div>
+              <FieldLabel>Test login email</FieldLabel>
+              <TextInput
+                value={draft.authUsername}
+                onChange={(event) =>
+                  onChange((current) => ({
+                    ...current,
+                    authUsername: event.target.value,
+                    accessMethod: "credentials"
+                  }))
+                }
+                placeholder="tester@example.com"
+              />
+            </div>
+            <div>
+              <FieldLabel>Test login password</FieldLabel>
+              <TextInput
+                type="password"
+                value={draft.authPassword}
+                onChange={(event) =>
+                  onChange((current) => ({
+                    ...current,
+                    authPassword: event.target.value,
+                    accessMethod: "credentials"
+                  }))
+                }
+                placeholder="••••••••"
+              />
+            </div>
+          </div>
+        ) : validationTarget === "inside_product" && savedSessionAvailable && accessMethod === "saved_session" ? (
           <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-3 text-sm leading-6 text-brand-muted">
             We will start from the saved session for this project and focus on the product after login.
             <button
@@ -3540,6 +3670,7 @@ function LaunchComposer({
 }) {
   const [step, setStep] = useState(1);
   const isControlled = draft.runMode === "controlled_ux";
+  const browserMode = normalizeBrowserMode(draft.browserMode);
   const validationTarget = draft.validationTarget;
   const accessMethod = normalizeAccessMethod(draft.accessMethod, validationTarget);
   const projectMetadata = currentProject?.metadata && typeof currentProject.metadata === "object" ? currentProject.metadata : {};
@@ -3563,6 +3694,8 @@ function LaunchComposer({
   const effectiveScopeLabel = isControlled
     ? "Focused owned flow"
     : SCOPE_OPTIONS.find((option) => option.value === draft.scopeMode)?.label || "Fast pass";
+  const browserModeLabel =
+    BROWSER_MODE_OPTIONS.find((option) => option.value === browserMode)?.label || "Standard browser";
 
   useEffect(() => {
     setStep((current) => Math.max(1, Math.min(5, current)));
@@ -3577,6 +3710,16 @@ function LaunchComposer({
       accessMethod: "credentials"
     }));
   }, [accessMethod, draft.validationTarget, onChange, savedSessionAvailable]);
+
+  useEffect(() => {
+    if (browserMode !== "advanced_browser" || draft.validationTarget !== "inside_product" || accessMethod !== "saved_session") {
+      return;
+    }
+    onChange((current) => ({
+      ...current,
+      accessMethod: "credentials"
+    }));
+  }, [accessMethod, browserMode, draft.validationTarget, onChange]);
 
   const reviewAccessLabel =
     validationTarget === "public_flow"
@@ -3604,7 +3747,7 @@ function LaunchComposer({
           ? validationTarget === "public_flow"
             ? true
             : validationTarget === "inside_product"
-              ? accessMethod === "saved_session"
+              ? browserMode !== "advanced_browser" && accessMethod === "saved_session"
                 ? savedSessionAvailable
                 : Boolean(String(draft.authUsername || "").trim() && String(draft.authPassword || "").trim())
               : accessMethod === "auth_url"
@@ -3735,6 +3878,45 @@ function LaunchComposer({
                   })}
                 </div>
               </div>
+
+              <div>
+                <div className="mb-3 text-sm font-medium text-brand-muted">Browser runtime</div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {BROWSER_MODE_OPTIONS.map((option) => {
+                    const active = browserMode === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        className={`rounded-xl border px-4 py-4 text-left transition ${
+                          active ? "border-brand-primary/60 bg-brand-primary/12" : "border-brand-line bg-brand-shell hover:border-brand-primary/25 hover:bg-brand-bg"
+                        }`}
+                        type="button"
+                        onClick={() =>
+                          onChange((current) => ({
+                            ...current,
+                            browserMode: option.value,
+                            accessMethod:
+                              option.value === "advanced_browser" && current.validationTarget === "inside_product"
+                                ? "credentials"
+                                : current.accessMethod
+                          }))
+                        }
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-semibold text-brand-ink">{option.label}</div>
+                          {active ? <Check className="h-4 w-4 text-brand-primary" /> : null}
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-brand-muted">{option.description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+                {browserMode === "advanced_browser" ? (
+                  <p className="mt-3 text-sm leading-6 text-brand-muted">
+                    Use this when the site blocks normal automation, shows strict bot checks, or needs stronger captcha handling.
+                  </p>
+                ) : null}
+              </div>
             </div>
           ) : null}
 
@@ -3764,7 +3946,7 @@ function LaunchComposer({
                             ...current,
                             validationTarget: nextValidationTarget,
                             accessMethod:
-                              nextValidationTarget === "inside_product" && savedSessionAvailable
+                              nextValidationTarget === "inside_product" && browserMode !== "advanced_browser" && savedSessionAvailable
                                 ? "saved_session"
                                 : normalizeAccessMethod(current.accessMethod, nextValidationTarget),
                             authUrl: nextValidationTarget === "public_flow" ? "" : current.authUrl
@@ -3792,8 +3974,12 @@ function LaunchComposer({
                   {validationTarget === "public_flow"
                     ? "No login is needed here."
                     : validationTarget === "login_signup"
-                      ? "Choose how we should enter the auth flow."
-                      : savedSessionAvailable
+                      ? browserMode === "advanced_browser"
+                        ? "Choose how we should enter the auth flow. Advanced browser will use stronger anti-bot and captcha handling."
+                        : "Choose how we should enter the auth flow."
+                      : browserMode === "advanced_browser"
+                        ? "Advanced browser starts fresh each run, so use a real test login."
+                        : savedSessionAvailable
                         ? "Reuse the saved project session or refresh it with a test login."
                         : "Add one working test login. We will save that session for next time."}
                 </p>
@@ -3887,7 +4073,7 @@ function LaunchComposer({
               ) : (
                 <div className="space-y-4">
                   <div className="grid gap-3">
-                    {(savedSessionAvailable
+                    {(browserMode !== "advanced_browser" && savedSessionAvailable
                       ? INSIDE_PRODUCT_ACCESS_OPTIONS
                       : INSIDE_PRODUCT_ACCESS_OPTIONS.filter((option) => option.value === "credentials")
                     ).map((option) => {
@@ -3916,7 +4102,13 @@ function LaunchComposer({
                     })}
                   </div>
 
-                  {savedSessionAvailable && accessMethod === "saved_session" ? (
+                  {browserMode === "advanced_browser" ? (
+                    <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+                      This path uses a fresh remote browser with stronger stealth and captcha solving. Saved project sessions only work on the standard browser.
+                    </div>
+                  ) : null}
+
+                  {browserMode !== "advanced_browser" && savedSessionAvailable && accessMethod === "saved_session" ? (
                     <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
                       We will open the project with the last saved browser session. If that session has expired, rerun this step with a test login to refresh it.
                     </div>
@@ -3969,9 +4161,15 @@ function LaunchComposer({
                           />
                         </div>
                       </div>
-                      <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
-                        After one successful run, this project can start from the saved session instead of asking for the login again.
-                      </div>
+                      {browserMode !== "advanced_browser" ? (
+                        <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+                          After one successful run, this project can start from the saved session instead of asking for the login again.
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+                          Advanced browser will start a fresh Browserbase session, turn on stronger stealth, and use supported captcha solving when the worker is configured for it.
+                        </div>
+                      )}
                     </>
                   ) : null}
                 </div>
@@ -4249,6 +4447,10 @@ function LaunchComposer({
                   <dd className="mt-1 text-brand-ink">{RUN_MODE_OPTIONS.find((option) => option.value === draft.runMode)?.label || "Live QA"}</dd>
                 </div>
                 <div>
+                  <dt className="text-brand-muted">Browser runtime</dt>
+                  <dd className="mt-1 text-brand-ink">{browserModeLabel}</dd>
+                </div>
+                <div>
                   <dt className="text-brand-muted">What to test</dt>
                   <dd className="mt-1 text-brand-ink">{VALIDATION_TARGET_OPTIONS.find((option) => option.value === validationTarget)?.label || "Public flow"}</dd>
                 </div>
@@ -4323,6 +4525,10 @@ function LaunchComposer({
                 <div className="mt-1 text-brand-ink">{RUN_MODE_OPTIONS.find((option) => option.value === draft.runMode)?.label || "Live QA"}</div>
               </div>
               <div>
+                <div className="text-brand-muted">Browser runtime</div>
+                <div className="mt-1 text-brand-ink">{browserModeLabel}</div>
+              </div>
+              <div>
                 <div className="text-brand-muted">What to test</div>
                 <div className="mt-1 text-brand-ink">{VALIDATION_TARGET_OPTIONS.find((option) => option.value === validationTarget)?.label || "Public flow"}</div>
               </div>
@@ -4347,7 +4553,9 @@ function LaunchComposer({
           <div className="rounded-2xl border border-brand-line bg-brand-panel p-5">
             <div className="text-sm font-semibold text-brand-ink">What happens next</div>
             <div className="mt-2 text-sm leading-6 text-brand-muted">
-              {validationTarget === "public_flow"
+              {browserMode === "advanced_browser"
+                ? "We will use a fresh remote browser with stronger stealth and supported captcha handling."
+                : validationTarget === "public_flow"
                 ? "We will stay on public pages only."
                 : validationTarget === "login_signup"
                   ? "We will judge the auth experience itself and avoid bypasses."

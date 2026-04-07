@@ -11,6 +11,24 @@ export const DEFAULT_GOALS = [
 
 export const DEFAULT_CONTROLLED_UX_JOB = "Example: Create an account and reach the first dashboard screen.";
 
+export function normalizeBrowserMode(value: string) {
+  const safe = String(value || "").trim().toLowerCase();
+  if (
+    [
+      "advanced_browser",
+      "advanced-browser",
+      "advanced",
+      "browserbase",
+      "stagehand",
+      "captcha_assist",
+      "captcha-assist"
+    ].includes(safe)
+  ) {
+    return "advanced_browser";
+  }
+  return "standard_browser";
+}
+
 export function normalizeValidationTarget(value: string) {
   const safe = String(value || "").trim().toLowerCase();
   if (safe === "login_signup" || safe === "login-signup" || safe === "auth" || safe === "login") {
@@ -183,6 +201,7 @@ export function buildLaunchPayload(draft: LaunchDraft, options: { retryOfRunId?:
   const brandKey = normalizeBrandKey(draft.brandKey || deriveBrandKeyFromUrl(targetUrl));
   const brandName = String(draft.brandName || inferBrandName(brandKey)).trim() || null;
   const qaMode = draft.runMode === "controlled_ux" ? "controlled_ux" : "live_qa";
+  const browserMode = normalizeBrowserMode(draft.browserMode);
   const validationTarget = normalizeValidationTarget(draft.validationTarget);
   const accessMethod = normalizeAccessMethod(draft.accessMethod, validationTarget);
   const authUrl = normalizeUrlInput(draft.authUrl);
@@ -190,6 +209,7 @@ export function buildLaunchPayload(draft: LaunchDraft, options: { retryOfRunId?:
   const goals = qaMode === "controlled_ux" ? controlled.scenarios : parseGoalsText(draft.goalsText);
   const effectiveScopeMode = qaMode === "controlled_ux" ? "feature_targeted" : draft.scopeMode || "core_20m";
   const runId = `${brandKey || "swarm"}_${Date.now()}`;
+  const requestedExecutionEngine = browserMode === "advanced_browser" ? "browserbase" : "auto";
   const shouldAttachCredentials =
     accessMethod === "credentials" &&
     String(draft.authUsername || "").trim() &&
@@ -207,6 +227,7 @@ export function buildLaunchPayload(draft: LaunchDraft, options: { retryOfRunId?:
     run_id: runId,
     target_url: targetUrl,
     scope_mode: effectiveScopeMode,
+    execution_engine: requestedExecutionEngine,
     scenario_list: goals,
     brand_persona: String(draft.persona || DEFAULT_PERSONA).trim().slice(0, 500),
     credentials: shouldAttachCredentials
@@ -222,6 +243,15 @@ export function buildLaunchPayload(draft: LaunchDraft, options: { retryOfRunId?:
       brand_key: brandKey || null,
       brand_name: brandName,
       qa_mode: qaMode,
+      browser_mode: browserMode,
+      execution_engine: requestedExecutionEngine,
+      browserbase_advanced_stealth: browserMode === "advanced_browser",
+      browserbase_solve_captchas: browserMode === "advanced_browser",
+      ...(browserMode === "advanced_browser"
+        ? {
+            submission_captcha_strategy: "built_in"
+          }
+        : {}),
       validation_target: validationTarget,
       access_method: accessMethod,
       auth_entry_url: authUrl || null,

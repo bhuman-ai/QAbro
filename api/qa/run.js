@@ -78,11 +78,16 @@ function extractRequestedOwner(req, runRequest) {
 
 function resolveRequestedExecutionEngine(body) {
   const metadata = isPlainObject(body?.metadata) ? body.metadata : {};
+  const browserMode = sanitizeString(
+    metadata.browser_mode || metadata.browserMode || metadata.browser_runtime || metadata.browserRuntime,
+    64
+  ).toLowerCase();
   return normalizeExecutionEngine(
     body?.execution_engine ||
       body?.executionEngine ||
       metadata.execution_engine ||
       metadata.executionEngine ||
+      (browserMode === "advanced_browser" ? "browserbase" : "") ||
       process.env.QA_EXECUTION_ENGINE,
     DEFAULT_EXECUTION_ENGINE
   );

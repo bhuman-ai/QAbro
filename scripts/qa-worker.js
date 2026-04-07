@@ -11,6 +11,7 @@ const {
   normalizeFinding,
   normalizeExecutionEngine,
   normalizeReport,
+  parseBoolean,
   resolveRunWebhookConfig,
   sanitizeArtifactsForCallback,
   sanitizeOptionalString,
@@ -40,6 +41,7 @@ const {
   upsertQaWorkerHeartbeat
 } = require("../lib/qa-workers");
 const { executeLocalAgentQaRun } = require("../lib/qa-local-agent");
+const { executeBrowserbaseQaRun } = require("../lib/qa-browserbase");
 const repoTriageWorker = require("./qa-repo-triage-worker");
 const {
   buildEmbeddedEvidenceMedia,
@@ -325,8 +327,15 @@ function getLocalAgentAvailability(env = process.env) {
 
 function resolveRequestedExecutionEngine(runRequest, env = process.env) {
   const metadata = isPlainObject(runRequest?.metadata) ? runRequest.metadata : {};
+  const browserMode = sanitizeString(
+    metadata.browser_mode || metadata.browserMode || metadata.browser_runtime || metadata.browserRuntime,
+    64
+  ).toLowerCase();
   return normalizeExecutionEngine(
-    metadata.execution_engine || metadata.executionEngine || env.QA_EXECUTION_ENGINE,
+    metadata.execution_engine ||
+      metadata.executionEngine ||
+      (browserMode === "advanced_browser" ? "browserbase" : "") ||
+      env.QA_EXECUTION_ENGINE,
     DEFAULT_EXECUTION_ENGINE
   );
 }
@@ -334,6 +343,19 @@ function resolveRequestedExecutionEngine(runRequest, env = process.env) {
 function buildExecutionPlan(runRequest, env = process.env) {
   const requestedEngine = resolveRequestedExecutionEngine(runRequest, env);
   const localAgent = getLocalAgentAvailability(env);
+
+  if (requestedEngine === "browserbase") {
+    return {
+      requestedEngine,
+      localAgent,
+      attempts: [
+        {
+          engine: "browserbase",
+          reason: "requested"
+        }
+      ]
+    };
+  }
 
   if (requestedEngine === "local_vision_agent") {
     return {
@@ -405,10 +427,32 @@ function shouldFallbackToNextEngine(execution, attempt) {
 }
 
 function resolveRunnerForEngine(engine) {
-  if (engine !== "local_vision_agent") {
-    throw new Error(`Unsupported execution engine: ${engine}`);
+  if (engine === "local_vision_agent") {
+    return executeLocalAgentQaRun;
   }
-  return executeLocalAgentQaRun;
+  if (engine === "browserbase") {
+    return executeBrowserbaseQaRun;
+  }
+  throw new Error(`Unsupported execution engine: ${engine}`);
+}
+
+function buildRunnerOptions(runRequest, engine, liveProgress, reportUrl) {
+  const metadata = isPlainObject(runRequest?.metadata) ? runRequest.metadata : {};
+  const options = {
+    reportUrl,
+    skipCallbackPublication: true,
+    onRunLog: liveProgress.onRunLog,
+    onCandidateReport: liveProgress.onCandidateReport
+  };
+
+  if (engine === "browserbase") {
+    options.browserbaseAdvancedStealth =
+      parseBoolean(metadata.browserbase_advanced_stealth ?? metadata.browserbaseAdvancedStealth ?? true) !== false;
+    options.browserbaseSolveCaptchas =
+      parseBoolean(metadata.browserbase_solve_captchas ?? metadata.browserbaseSolveCaptchas ?? true) !== false;
+  }
+
+  return options;
 }
 
 async function executeRunWithPlan(claimed, workerId, liveProgress) {
@@ -443,12 +487,10 @@ async function executeRunWithPlan(claimed, workerId, liveProgress) {
     });
 
     try {
-      const execution = await runner(executionRunRequest, {
-        reportUrl: claimed.row.report_url,
-        skipCallbackPublication: true,
-        onRunLog: liveProgress.onRunLog,
-        onCandidateReport: liveProgress.onCandidateReport
-      });
+      const execution = await runner(
+        executionRunRequest,
+        buildRunnerOptions(executionRunRequest, attempt.engine, liveProgress, claimed.row.report_url)
+      );
 
       if (index < plan.attempts.length - 1 && shouldFallbackToNextEngine(execution, attempt)) {
         liveProgress.onRunLog({

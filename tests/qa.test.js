@@ -284,7 +284,8 @@ test("buildPrimaryUserGoal prefers explicit metadata goal", () => {
 test("normalizeExecutionEngine canonicalizes aliases and falls back to auto", () => {
   assert.equal(normalizeExecutionEngine("local"), "local_vision_agent");
   assert.equal(normalizeExecutionEngine("local_playwright"), "local_vision_agent");
-  assert.equal(normalizeExecutionEngine("stagehand"), "local_vision_agent");
+  assert.equal(normalizeExecutionEngine("stagehand"), "browserbase");
+  assert.equal(normalizeExecutionEngine("browserbase"), "browserbase");
   assert.equal(normalizeExecutionEngine("agentic"), "local_vision_agent");
   assert.equal(normalizeExecutionEngine("unknown-engine"), "auto");
 });
@@ -303,6 +304,14 @@ test("api run helper resolves requested execution engine from body and metadata"
       }
     }),
     "local_vision_agent"
+  );
+  assert.equal(
+    runHandler.__private.resolveRequestedExecutionEngine({
+      metadata: {
+        browser_mode: "advanced_browser"
+      }
+    }),
+    "browserbase"
   );
   assert.equal(runHandler.__private.resolveRequestedExecutionEngine({}), "auto");
 });

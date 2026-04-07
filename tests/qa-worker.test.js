@@ -68,6 +68,28 @@ test("buildExecutionPlan rewrites explicit local_playwright requests onto local 
   assert.equal(plan.attempts[0].reason, "requested");
 });
 
+test("buildExecutionPlan keeps explicit browserbase requests on the browserbase runner", () => {
+  const plan = __private.buildExecutionPlan(
+    {
+      metadata: {
+        execution_engine: "browserbase"
+      }
+    },
+    {
+      BROWSERBASE_API_KEY: "browserbase-key",
+      BROWSERBASE_PROJECT_ID: "project-id",
+      OPENAI_API_KEY: "openai-key"
+    }
+  );
+
+  assert.equal(plan.requestedEngine, "browserbase");
+  assert.deepEqual(
+    plan.attempts.map((attempt) => attempt.engine),
+    ["browserbase"]
+  );
+  assert.equal(plan.attempts[0].reason, "requested");
+});
+
 test("shouldFallbackToNextEngine falls back after failed vision-only agent runs", () => {
   assert.equal(
     __private.shouldFallbackToNextEngine(

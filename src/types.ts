@@ -368,6 +368,7 @@ export interface LaunchDraft {
   brandKey: string;
   brandName: string;
   runMode: "live_qa" | "controlled_ux";
+  browserMode: "standard_browser" | "advanced_browser";
   validationTarget: "public_flow" | "login_signup" | "inside_product";
   accessMethod: "none" | "app_url" | "auth_url" | "credentials" | "saved_session";
   authUrl: string;
