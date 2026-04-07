@@ -545,6 +545,29 @@ function buildDraftFromProject(project?: ProjectSummary | null, repoConnection?:
   };
 }
 
+function launchDraftsMatch(left: LaunchDraft, right: LaunchDraft) {
+  return (
+    left.targetUrl === right.targetUrl &&
+    left.brandKey === right.brandKey &&
+    left.brandName === right.brandName &&
+    left.runMode === right.runMode &&
+    left.validationTarget === right.validationTarget &&
+    left.accessMethod === right.accessMethod &&
+    left.authUrl === right.authUrl &&
+    left.authUsername === right.authUsername &&
+    left.authPassword === right.authPassword &&
+    left.scopeMode === right.scopeMode &&
+    left.persona === right.persona &&
+    left.goalsText === right.goalsText &&
+    left.userJob === right.userJob &&
+    left.entryPath === right.entryPath &&
+    left.routeHintsText === right.routeHintsText &&
+    left.successSignalsText === right.successSignalsText &&
+    left.repoTriageEnabled === right.repoTriageEnabled &&
+    left.selectedRepoFullName === right.selectedRepoFullName
+  );
+}
+
 function getStarterPersonaIndex(seed?: string | null) {
   const value = String(seed || "").toLowerCase();
   if (!value) {
@@ -2040,7 +2063,7 @@ function WorkspacePage({
       }
       const projectDefaults = buildDraftFromProject(currentProject, repoConnection);
       const next = buildDraftFromRun(selectedRun, selectedReport, repoConnection);
-      return {
+      const nextDraft = {
         ...current,
         ...projectDefaults,
         ...next,
@@ -2050,12 +2073,20 @@ function WorkspacePage({
           projectDefaults.brandName ||
           inferBrandName(currentBrandKey || current.brandKey || "")
       };
+      return launchDraftsMatch(current, nextDraft) ? current : nextDraft;
     });
     if (currentSchedule) {
-      setScheduleDraft({
-        frequency_hours: currentSchedule.frequency_hours || 24,
-        mission: currentSchedule.mission || DEFAULT_GOALS.join("\n"),
-        persona: currentSchedule.persona || DEFAULT_PERSONA
+      setScheduleDraft((current) => {
+        const nextScheduleDraft = {
+          frequency_hours: currentSchedule.frequency_hours || 24,
+          mission: currentSchedule.mission || DEFAULT_GOALS.join("\n"),
+          persona: currentSchedule.persona || DEFAULT_PERSONA
+        };
+        return current.frequency_hours === nextScheduleDraft.frequency_hours &&
+          current.mission === nextScheduleDraft.mission &&
+          current.persona === nextScheduleDraft.persona
+          ? current
+          : nextScheduleDraft;
       });
     }
   }, [composeOpen, currentBrandKey, currentProject, currentSchedule, repoConnection, selectedReport, selectedRun]);
