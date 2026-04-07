@@ -880,14 +880,32 @@ test("executeBrowserbaseQaRun supports vision_only mode with annotation-based cl
         if (buffer === annotatedBuffer) return annotatedImage;
         throw new Error("Unexpected image buffer");
       },
+      visionObservationClient: async ({ step }) => {
+        if (step === 1) {
+          return {
+            observation: "I can tell this is about getting my brand talked about, but I still do not know what the free preview actually includes.",
+            what_i_think_this_is: "A service that helps brands earn mentions and backlinks",
+            skepticism: "The free preview outcome is still vague.",
+            missing_information: "What I get right after I submit my site.",
+            trust_signal: "The page makes a concrete promise about brand mentions.",
+            emotion: "uncertainty",
+            continue_state: "continue"
+          };
+        }
+        return {
+          observation: "The next step is visible enough for me to keep going.",
+          what_i_think_this_is: "The start of the site preview flow",
+          trust_signal: "The page stays consistent after I move forward.",
+          emotion: "confidence",
+          continue_state: "continue"
+        };
+      },
       visionPlannerClient: async ({ step }) => {
         plannerCalls.push(step);
         if (step === 1) {
           return {
             action: "click",
             target: "Start Here",
-            think_aloud: "I see a Start Here button, but I still want to know what happens after I click it.",
-            emotion: "confidence",
             reason: "begin primary flow",
             success_criteria: "The app should open the next screen"
           };
@@ -913,10 +931,12 @@ test("executeBrowserbaseQaRun supports vision_only mode with annotation-based cl
   assert.ok(
     result.runLog.some(
       (entry) =>
-        entry.event === "persona_thought" &&
-        String(entry.details?.text || "").includes("Start Here")
+        entry.event === "persona_observation" &&
+        String(entry.details?.observation || "").includes("free preview")
     )
   );
+  assert.match(String(result.report.summary?.persona_overall || ""), /brand talked about/i);
+  assert.ok(Array.isArray(result.report.summary?.persona_skepticisms));
 });
 
 test("executeVisionOnlyModeAttempt ignores maxSteps and keeps going until the planner says done", async () => {

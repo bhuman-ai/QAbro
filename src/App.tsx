@@ -5883,6 +5883,13 @@ type ReplayThoughtCue = {
   target: string;
   emotion: string;
   text: string;
+  whatThisIs: string;
+  noticed: string[];
+  skepticism: string;
+  missingInformation: string;
+  trustSignal: string;
+  continueState: string;
+  currentUrl: string;
   timestampLabel: string;
   progress: number;
   left: number;
@@ -5966,19 +5973,6 @@ function resolveReplayCoordinates(payload: Record<string, unknown>) {
   return null;
 }
 
-function buildFallbackReplayThought(payload: Record<string, unknown>) {
-  const action = String(payload.action || "").trim().toLowerCase();
-  const target = String(payload.target || payload.describe || "").trim();
-  const reason = String(payload.reason || payload.message || "").trim();
-
-  if (action === "fail") {
-    return reason ? `I'm stuck here because ${reason}.` : "I'm stuck here and do not see a clear next step.";
-  }
-  return target && /[A-Za-z0-9][A-Za-z0-9 -]{3,}/.test(target)
-    ? `I notice "${target}", but I need the page to make the value and next step clear.`
-    : "";
-}
-
 function isTaskCentricThought(text: string) {
   const normalized = text.trim().toLowerCase();
   if (!normalized) {
@@ -5991,6 +5985,37 @@ function isTaskCentricThought(text: string) {
     /\bthis feels like enough to finish\b/.test(normalized) ||
     /\bthis starts the main flow\b/.test(normalized)
   );
+}
+
+function readObservationList(value: unknown, maxItems = 3) {
+  const source = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/\n|;|•/g)
+      : [];
+  const items: string[] = [];
+  const seen = new Set<string>();
+  source.forEach((rawItem) => {
+    const item = String(rawItem || "").trim().replace(/\s+/g, " ");
+    if (!item) {
+      return;
+    }
+    const key = item.toLowerCase();
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    items.push(item);
+  });
+  return items.slice(0, maxItems);
+}
+
+function lowercaseFirst(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return "";
+  }
+  return `${trimmed[0].toLowerCase()}${trimmed.slice(1)}`;
 }
 
 function buildReplayOverlayData(
@@ -6021,7 +6046,6 @@ function buildReplayOverlayData(
   const thoughtCandidates: Array<
     Omit<ReplayThoughtCue, "left" | "top" | "align"> & { atMs: number }
   > = [];
-  let hasPersonaThoughtEvent = false;
 
   safeRunLog.forEach((entry, index) => {
     const event = getRunLogEvent(entry);
@@ -6044,18 +6068,24 @@ function buildReplayOverlayData(
       }
     }
 
-    if (event === "persona_thought") {
-      const thoughtText = String(payload.text || payload.think_aloud || "").trim();
+    if (event === "persona_observation") {
+      const thoughtText = String(payload.observation || payload.text || "").trim();
       if (!thoughtText || isTaskCentricThought(thoughtText)) {
         return;
       }
-      hasPersonaThoughtEvent = true;
       thoughtCandidates.push({
         id: `thought-${index}`,
-        action: String(payload.action || "").trim(),
-        target: String(payload.target || "").trim(),
+        action: "",
+        target: "",
         emotion: String(payload.emotion || "").trim(),
         text: thoughtText,
+        whatThisIs: String(payload.what_i_think_this_is || payload.what_this_page_is || "").trim(),
+        noticed: readObservationList(payload.noticed),
+        skepticism: String(payload.skepticism || "").trim(),
+        missingInformation: String(payload.missing_information || "").trim(),
+        trustSignal: String(payload.trust_signal || "").trim(),
+        continueState: String(payload.continue_state || "").trim(),
+        currentUrl: String(payload.current_url || "").trim(),
         timestampLabel:
           entry && typeof entry === "object" && (entry.ts || entry.timestamp)
             ? formatDateTime(String(entry.ts || entry.timestamp))
@@ -6065,35 +6095,6 @@ function buildReplayOverlayData(
       });
     }
   });
-
-  if (!hasPersonaThoughtEvent) {
-    safeRunLog.forEach((entry, index) => {
-      if (getRunLogEvent(entry) !== "vision_only_step_decision") {
-        return;
-      }
-      const payload = getRunLogPayload(entry);
-      const thoughtText = String(payload.think_aloud || buildFallbackReplayThought(payload)).trim();
-      if (!thoughtText || isTaskCentricThought(thoughtText)) {
-        return;
-      }
-      const atMs = getRunLogTimestampMs(entry);
-      const normalizedProgress =
-        hasWindow && Number.isFinite(atMs) ? clampReplayPercent((atMs - startMs) / totalMs, 0, 1) : 0;
-      thoughtCandidates.push({
-        id: `thought-fallback-${index}`,
-        action: String(payload.action || "").trim(),
-        target: String(payload.target || "").trim(),
-        emotion: String(payload.emotion || "").trim(),
-        text: thoughtText,
-        timestampLabel:
-          entry && typeof entry === "object" && (entry.ts || entry.timestamp)
-            ? formatDateTime(String(entry.ts || entry.timestamp))
-            : "",
-        progress: normalizedProgress,
-        atMs: Number.isFinite(atMs) ? atMs : startMs || 0
-      });
-    });
-  }
 
   const sortedCursors = cursorCues.slice().sort((left, right) => left.atMs - right.atMs);
   const thoughts = thoughtCandidates
@@ -6212,6 +6213,7 @@ function buildPersonaReadout({
   frictionPoints: Array<{ title: string; description: string; severity: string }>;
 }): PersonaReadout {
   const latestThought = thoughts.length ? thoughts[thoughts.length - 1]?.text || "" : "";
+  const latestObservation = thoughts.length ? thoughts[thoughts.length - 1] : null;
   const explicitOverall = readReportSummaryText(report, [
     "persona_readout",
     "persona_overall",
@@ -6223,15 +6225,10 @@ function buildPersonaReadout({
   const fallbackSummary = report?.summary?.note || run?.summary_note || "";
   const overall =
     explicitOverall ||
-    (latestThought
-      ? frictionPoints.length
-        ? `${persona.name} understood enough to keep moving, but hit ${frictionPoints.length} recorded friction point${frictionPoints.length === 1 ? "" : "s"}. The clearest thought was: "${latestThought}"`
-        : `${persona.name} moved through the flow without a recorded blocker. The clearest thought was: "${latestThought}"`
-      : frictionPoints.length
-        ? `${persona.name} hit ${frictionPoints.length} recorded friction point${frictionPoints.length === 1 ? "" : "s"} during the run.`
-        : fallbackSummary
-          ? `${persona.name}'s customer-perspective reaction was not captured for this run. The run summary was: ${fallbackSummary}`
-          : `${persona.name}'s customer-perspective reaction was not captured for this run.`);
+    (latestThought ||
+      (fallbackSummary
+        ? `${persona.name}'s customer-perspective reaction was not captured for this run. The run summary was: ${fallbackSummary}`
+        : `${persona.name}'s customer-perspective reaction was not captured for this run.`));
 
   const emotionCounts = new Map<string, number>();
   thoughts.forEach((thought) => {
@@ -6253,26 +6250,36 @@ function buildPersonaReadout({
   const dominantEmotion = Array.from(emotionCounts.entries()).sort((left, right) => right[1] - left[1])[0]?.[0] || "";
   const emotionalState =
     readReportSummaryText(report, ["emotional_state", "persona_emotional_state"]) ||
-    (dominantEmotion
-      ? `${formatEmotionLabel(dominantEmotion)}${frictionPoints.length ? " because the run recorded friction." : "."}`
+    (latestObservation
+      ? (() => {
+          const baseEmotion = formatEmotionLabel(latestObservation.emotion || dominantEmotion);
+          const hesitation = latestObservation.skepticism || latestObservation.missingInformation;
+          if (baseEmotion && hesitation) {
+            return `${baseEmotion}; still unsure because ${lowercaseFirst(hesitation)}`;
+          }
+          if (baseEmotion && latestObservation.continueState === "abandon") {
+            return `${baseEmotion}; likely to stop here.`;
+          }
+          if (baseEmotion && latestObservation.continueState === "pause") {
+            return `${baseEmotion}; would pause before continuing.`;
+          }
+          if (baseEmotion && latestObservation.continueState === "continue") {
+            return `${baseEmotion}; willing to keep going.`;
+          }
+          return baseEmotion || "No clear customer emotional state was captured.";
+        })()
       : frictionPoints.length
         ? "Concerned because the run recorded friction."
-        : "Calm; no strong negative emotional signal was captured.");
+        : "No clear customer emotional state was captured.");
 
   const explicitTakeaways = readReportSummaryList(report, ["persona_takeaways", "takeaways", "user_takeaways"]);
-  const thoughtTakeaways = thoughts
-    .map((thought) => thought.text)
-    .filter((text) => !/\bi('|’)m stuck\b|not sure|don('|’)t know|confus|risk|trust|skeptic|distrust/i.test(text));
+  const thoughtTakeaways = thoughts.flatMap((thought) => [thought.whatThisIs, thought.trustSignal]).filter(Boolean);
   const takeaways = explicitTakeaways.length
     ? explicitTakeaways
       : uniqueReadoutItems(
         [
           ...thoughtTakeaways.slice(-3),
-          ...(frictionPoints.length
-            ? frictionPoints.slice(0, 2).map((point) => point.title)
-            : thoughts.length
-              ? []
-              : ["No customer-perspective takeaway was captured for this run."])
+          ...(thoughts.length ? [] : ["No customer-perspective takeaway was captured for this run."])
         ],
         3
       );
@@ -6283,19 +6290,13 @@ function buildPersonaReadout({
     "trust_concerns",
     "user_skepticisms"
   ]);
-  const skepticalThoughts = thoughts
-    .map((thought) => thought.text)
-    .filter((text) => /not sure|don('|’)t know|why|confus|risk|trust|skeptic|distrust|uncertain|missing|stuck/i.test(text));
+  const skepticalThoughts = thoughts.flatMap((thought) => [thought.skepticism, thought.missingInformation]).filter(Boolean);
   const skepticisms = explicitSkepticisms.length
     ? explicitSkepticisms
     : uniqueReadoutItems(
         [
           ...skepticalThoughts.slice(-3),
-          ...(frictionPoints.length
-            ? frictionPoints.slice(0, 2).map((point) => point.description || point.title)
-            : thoughts.length
-              ? []
-              : ["No content-specific skepticism was captured for this run."])
+          ...(thoughts.length ? [] : ["No content-specific skepticism was captured for this run."])
         ],
         3
       );
@@ -6406,14 +6407,16 @@ function ReplayVideoWithOverlay({
             <div className="rounded-[1.4rem] border border-white/20 bg-white/92 px-4 py-3 shadow-[0_20px_60px_rgba(15,23,42,0.34)] backdrop-blur-xl">
               <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
                 <Quote className="h-3.5 w-3.5 text-brand-accent" />
-                User thought
+                Customer reaction
                 {activeThought.emotion ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] text-slate-500">{activeThought.emotion}</span> : null}
               </div>
               <div className="mt-2 text-sm font-black leading-6 text-brand-ink">{activeThought.text}</div>
-              {activeThought.target ? (
-                <div className="mt-2 text-[11px] font-bold text-slate-500">
-                  {activeThought.action ? `${activeThought.action} -> ` : ""}
-                  {activeThought.target}
+              {activeThought.whatThisIs ? (
+                <div className="mt-2 text-[11px] font-bold text-slate-500">Read as: {activeThought.whatThisIs}</div>
+              ) : null}
+              {activeThought.skepticism || activeThought.missingInformation ? (
+                <div className="mt-1 text-[11px] font-bold text-slate-500">
+                  Still unclear: {activeThought.skepticism || activeThought.missingInformation}
                 </div>
               ) : null}
             </div>
@@ -6423,7 +6426,7 @@ function ReplayVideoWithOverlay({
 
       {!thoughtCues.length ? (
         <div className="pointer-events-none absolute inset-x-6 bottom-6 z-10 rounded-2xl border border-white/10 bg-brand-ink/55 px-4 py-3 text-xs font-bold text-white/75 backdrop-blur">
-          No thought cues were captured for this replay yet.
+          No customer observations were captured for this replay yet.
         </div>
       ) : null}
     </div>
@@ -6507,7 +6510,7 @@ function StarterSessionReplayModal({
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="text-sm font-black text-brand-ink">Thought timeline</div>
-                <div className="mt-1 text-xs font-bold text-slate-500">Short first-person reactions captured during the run.</div>
+                <div className="mt-1 text-xs font-bold text-slate-500">Customer reactions tied to what was visibly on screen.</div>
               </div>
               <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">{thoughtCues.length} cues</div>
             </div>
@@ -6519,10 +6522,12 @@ function StarterSessionReplayModal({
                     {thought.timestampLabel || "Thought"}
                   </div>
                   <div className="mt-2 text-sm font-black leading-6 text-brand-ink">{thought.text}</div>
-                  {thought.target ? (
-                    <div className="mt-2 text-[11px] font-bold text-slate-500">
-                      {thought.action ? `${thought.action} -> ` : ""}
-                      {thought.target}
+                  {thought.whatThisIs ? (
+                    <div className="mt-2 text-[11px] font-bold text-slate-500">Read as: {thought.whatThisIs}</div>
+                  ) : null}
+                  {thought.skepticism || thought.missingInformation ? (
+                    <div className="mt-1 text-[11px] font-bold text-slate-500">
+                      Still unclear: {thought.skepticism || thought.missingInformation}
                     </div>
                   ) : null}
                 </div>
@@ -6534,7 +6539,7 @@ function StarterSessionReplayModal({
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-5 bg-white">
           <div className="text-sm font-bold text-slate-500">
             {videoUrl
-              ? "Scrub the replay to see the user thoughts and cursor markers at each recorded interaction."
+              ? "Scrub the replay to see customer reactions and cursor markers at each recorded interaction."
               : "If a hosted session exists, open it from the button on the right."}
           </div>
           <div className="flex flex-wrap gap-3">
@@ -6834,7 +6839,7 @@ function StarterReportPage({
                 {liveThoughtRows.length ? (
                   <div className="space-y-6">
                     <div className="flex items-center justify-between gap-4">
-                      <h3 className="text-xl font-black tracking-tight">What the user is thinking</h3>
+                      <h3 className="text-xl font-black tracking-tight">What the customer is thinking</h3>
                       <div className="text-xs font-black uppercase tracking-widest text-slate-400">
                         {liveThoughtRows.length} cues
                       </div>
@@ -6844,14 +6849,18 @@ function StarterReportPage({
                         <div key={thought.id} className="dash-card p-6 border border-slate-100 bg-white">
                           <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
                             <Quote className="h-3.5 w-3.5 text-brand-accent" />
-                            User thought
+                            Customer reaction
                             {thought.emotion ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] text-slate-500">{thought.emotion}</span> : null}
                           </div>
                           <div className="mt-3 text-base font-black leading-7 text-brand-ink">{thought.text}</div>
-                          {thought.target ? (
+                          {thought.whatThisIs ? (
                             <div className="mt-3 text-xs font-black uppercase tracking-widest text-slate-400">
-                              {thought.action ? `${thought.action} -> ` : ""}
-                              {thought.target}
+                              Read as: {thought.whatThisIs}
+                            </div>
+                          ) : null}
+                          {thought.skepticism || thought.missingInformation ? (
+                            <div className="mt-2 text-sm font-bold text-slate-500">
+                              Still unclear: {thought.skepticism || thought.missingInformation}
                             </div>
                           ) : null}
                         </div>
@@ -6969,7 +6978,7 @@ function StarterReportPage({
                   <div>
                     <h3 className="text-xl font-black tracking-tight">Persona readout</h3>
                     <p className="mt-2 text-sm font-bold text-slate-500">
-                      What {persona.name} likely felt, questioned, and took away from the run.
+                      What {persona.name} thought this was, what felt trustworthy, and what still felt unclear.
                     </p>
                   </div>
                   <div className={`rounded-xl border px-4 py-3 text-sm font-black ${personaReadoutToneClass}`}>
@@ -7092,7 +7101,7 @@ function StarterReportPage({
               {replayOverlay.thoughts.length ? (
                 <section className="space-y-6">
                   <div className="flex items-center justify-between gap-4">
-                    <h3 className="text-xl font-black tracking-tight">What the user was thinking</h3>
+                    <h3 className="text-xl font-black tracking-tight">What the customer was thinking</h3>
                     <div className="text-xs font-black uppercase tracking-widest text-slate-400">
                       {replayOverlay.thoughts.length} excerpts
                     </div>
@@ -7102,14 +7111,18 @@ function StarterReportPage({
                       <div key={thought.id} className="dash-card p-6 border-2 border-slate-100 bg-white">
                         <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
                           <Quote className="h-3.5 w-3.5 text-brand-accent" />
-                          {thought.timestampLabel || "User thought"}
+                          {thought.timestampLabel || "Customer reaction"}
                           {thought.emotion ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] text-slate-500">{thought.emotion}</span> : null}
                         </div>
                         <div className="mt-3 text-base font-black leading-7 text-brand-ink">{thought.text}</div>
-                        {thought.target ? (
+                        {thought.whatThisIs ? (
                           <div className="mt-3 text-xs font-black uppercase tracking-widest text-slate-400">
-                            {thought.action ? `${thought.action} -> ` : ""}
-                            {thought.target}
+                            Read as: {thought.whatThisIs}
+                          </div>
+                        ) : null}
+                        {thought.skepticism || thought.missingInformation ? (
+                          <div className="mt-2 text-sm font-bold text-slate-500">
+                            Still unclear: {thought.skepticism || thought.missingInformation}
                           </div>
                         ) : null}
                       </div>

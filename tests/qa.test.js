@@ -398,6 +398,56 @@ test("normalizeReport preserves explicit inline screenshot proof on findings", (
   assert.equal(validateReport(report).ok, true);
 });
 
+test("normalizeReport preserves persona summary fields when provided", () => {
+  const report = normalizeReport({
+    candidateReport: {
+      run_id: "persona_summary_run",
+      target: "example.com",
+      status: "completed",
+      summary: {
+        note: "The flow completed.",
+        persona_overall: "I understand the offer, but I still want to know what happens after sign-up.",
+        emotional_state: "Uncertain because the post-signup outcome is not explained.",
+        persona_takeaways: [
+          "This looks like a service for getting a brand talked about online.",
+          "The headline makes a concrete promise."
+        ],
+        persona_skepticisms: [
+          "What the free preview includes is still vague."
+        ],
+        coverage: {
+          pages_visited: 1,
+          flows_tested: 1,
+          flows_blocked: 0,
+          untested_areas: []
+        }
+      },
+      findings: []
+    },
+    runRequest: {
+      run_id: "persona_summary_run",
+      target_url: "https://example.com"
+    },
+    rawAgentMessage: "Completed."
+  });
+
+  assert.equal(
+    report.summary.persona_overall,
+    "I understand the offer, but I still want to know what happens after sign-up."
+  );
+  assert.equal(
+    report.summary.emotional_state,
+    "Uncertain because the post-signup outcome is not explained."
+  );
+  assert.deepEqual(report.summary.persona_takeaways, [
+    "This looks like a service for getting a brand talked about online.",
+    "The headline makes a concrete promise."
+  ]);
+  assert.deepEqual(report.summary.persona_skepticisms, [
+    "What the free preview includes is still vague."
+  ]);
+});
+
 test("normalizeReport unwraps nested local qa report envelopes", () => {
   const report = normalizeReport({
     candidateReport: {
