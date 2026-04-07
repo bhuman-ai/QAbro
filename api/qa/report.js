@@ -5,9 +5,12 @@ const {
   normalizeReport,
   sanitizeString
 } = require("../../lib/qa-core");
-const { extractBrandKey, resolveQaReportReadAccess, readQaShareKey } = require("../../lib/qa-queue");
+const { extractBrandKey, resolveQaReportReadAccess, readQaShareKey, updateQueueRow } = require("../../lib/qa-queue");
 const { buildLiveStreamArtifacts } = require("../../lib/qa-live-stream");
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
+const {
+  __private: { regeneratePersonaReadoutFromStoredScreenshots }
+} = require("../../lib/qa-browserbase");
 
 const FALLBACK_BRAND_PERSONA =
   "General non-developer business user with moderate technical comfort.";
@@ -127,6 +130,42 @@ function buildFallbackMarkdown(report, runRequest, row) {
   return `${lines.join("\n")}\n`;
 }
 
+function reportHasPersonaReadout(report) {
+  const summary = report && typeof report.summary === "object" ? report.summary : {};
+  return Boolean(
+    sanitizeString(
+      summary.persona_overall ||
+        summary.persona_readout ||
+        summary.user_reaction ||
+        summary.persona_reaction ||
+        summary.emotional_state ||
+        summary.persona_emotional_state,
+      1600
+    ) ||
+      (Array.isArray(summary.persona_takeaways) && summary.persona_takeaways.length) ||
+      (Array.isArray(summary.persona_skepticisms) && summary.persona_skepticisms.length)
+  );
+}
+
+function mergeRecoveredPersonaRunLog(existingRunLog, recoveredRunLog) {
+  const currentEntries = Array.isArray(existingRunLog) ? existingRunLog.slice() : [];
+  const recoveredEntries = Array.isArray(recoveredRunLog) ? recoveredRunLog : [];
+  if (!recoveredEntries.length) {
+    return currentEntries;
+  }
+
+  const hasPersonaEntries = currentEntries.some((entry) => String(entry?.event || "").trim().toLowerCase() === "persona_observation");
+  if (hasPersonaEntries) {
+    return currentEntries;
+  }
+
+  return currentEntries
+    .concat(recoveredEntries)
+    .sort((left, right) => {
+      return Date.parse(String(left?.ts || left?.timestamp || "")) - Date.parse(String(right?.ts || right?.timestamp || ""));
+    });
+}
+
 module.exports = async (req, res) => {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -192,6 +231,43 @@ module.exports = async (req, res) => {
     });
     if (access.access_type !== "owner") {
       reportJson = redactEngineeringTriage(reportJson);
+    }
+  }
+
+  if (reportJson && !reportHasPersonaReadout(reportJson)) {
+    const recoveredPersona = await regeneratePersonaReadoutFromStoredScreenshots({
+      runRequest,
+      artifacts: mergedArtifacts
+    }).catch(() => ({ ok: false }));
+
+    if (recoveredPersona?.ok) {
+      reportJson = {
+        ...reportJson,
+        summary: {
+          ...(reportJson.summary && typeof reportJson.summary === "object" ? reportJson.summary : {}),
+          ...recoveredPersona.summary
+        },
+        metadata: {
+          ...(reportJson.metadata && typeof reportJson.metadata === "object" ? reportJson.metadata : {}),
+          persona_readout_regenerated: true
+        }
+      };
+
+      if (access.access_type === "owner") {
+        const nextPayload = {
+          ...payload,
+          report_json: reportJson,
+          run_log: mergeRecoveredPersonaRunLog(payload.run_log, recoveredPersona.runLog)
+        };
+        await updateQueueRow(runId, {
+          status: sanitizeString(row?.status, 64) || "completed",
+          findings: Array.isArray(reportJson.findings) ? reportJson.findings : [],
+          summary: reportJson.summary,
+          report_url: row?.report_url || null,
+          delivered_at: row?.delivered_at || null,
+          payload: nextPayload
+        }).catch(() => null);
+      }
     }
   }
 
