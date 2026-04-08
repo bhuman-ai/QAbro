@@ -6686,6 +6686,15 @@ type ReplayCursorCue = {
   top: number;
 };
 
+type ReplayExperienceTone = "positive" | "warning" | "negative" | "neutral";
+
+type ReplayExperienceSegment = {
+  id: string;
+  start: number;
+  end: number;
+  tone: ReplayExperienceTone;
+};
+
 type PersonaReadout = {
   overall: string;
   emotionalState: string;
@@ -7449,6 +7458,127 @@ function getActiveReplayCue<T extends { progress: number }>(cues: T[], duration:
   return active;
 }
 
+function getReplayExperienceTone(thought: Pick<ReplayThoughtCue, "emotion" | "continueState" | "skepticism" | "missingInformation"> | null | undefined): ReplayExperienceTone {
+  const emotion = String(thought?.emotion || "").trim().toLowerCase();
+  const continueState = String(thought?.continueState || "").trim().toLowerCase();
+  const hasHesitation = Boolean(String(thought?.skepticism || "").trim() || String(thought?.missingInformation || "").trim());
+
+  if (
+    continueState === "abandon" ||
+    continueState === "blocker" ||
+    emotion === "frustration" ||
+    emotion === "distrust"
+  ) {
+    return "negative";
+  }
+
+  if (
+    continueState === "pause" ||
+    emotion === "uncertainty" ||
+    emotion === "confusion" ||
+    hasHesitation
+  ) {
+    return "warning";
+  }
+
+  if (
+    continueState === "continue" ||
+    emotion === "confidence" ||
+    emotion === "trust" ||
+    emotion === "delight"
+  ) {
+    return "positive";
+  }
+
+  return "neutral";
+}
+
+function buildReplayExperienceSegments(thoughtCues: ReplayThoughtCue[]) {
+  const sorted = (Array.isArray(thoughtCues) ? thoughtCues : [])
+    .filter((cue) => Number.isFinite(cue.progress))
+    .slice()
+    .sort((left, right) => left.progress - right.progress);
+
+  if (!sorted.length) {
+    return [
+      {
+        id: "experience-neutral",
+        start: 0,
+        end: 1,
+        tone: "neutral" as ReplayExperienceTone
+      }
+    ];
+  }
+
+  const segments = sorted.map((cue, index) => {
+    const previous = sorted[index - 1];
+    const next = sorted[index + 1];
+    const start = index === 0 ? 0 : clampReplayPercent((previous.progress + cue.progress) / 2, 0, 1);
+    const end = index === sorted.length - 1 ? 1 : clampReplayPercent((cue.progress + next.progress) / 2, 0, 1);
+    return {
+      id: `experience-${cue.id}`,
+      start,
+      end: Math.max(end, start + 0.01),
+      tone: getReplayExperienceTone(cue)
+    };
+  });
+
+  return segments.reduce<ReplayExperienceSegment[]>((merged, segment) => {
+    const previous = merged[merged.length - 1];
+    if (previous && previous.tone === segment.tone && segment.start <= previous.end + 0.01) {
+      previous.end = Math.max(previous.end, segment.end);
+      return merged;
+    }
+    merged.push({ ...segment });
+    return merged;
+  }, []);
+}
+
+function getReplayExperienceMeta(tone: ReplayExperienceTone) {
+  if (tone === "positive") {
+    return {
+      label: "Smooth",
+      segmentClass: "bg-brand-success/90",
+      pillClass: "border-brand-success/40 bg-brand-success/18 text-emerald-50",
+      markerClass: "bg-brand-success border-emerald-50/70"
+    };
+  }
+  if (tone === "warning") {
+    return {
+      label: "Hesitation",
+      segmentClass: "bg-brand-warning/90",
+      pillClass: "border-brand-warning/40 bg-brand-warning/20 text-amber-50",
+      markerClass: "bg-brand-warning border-amber-50/70"
+    };
+  }
+  if (tone === "negative") {
+    return {
+      label: "Blocked",
+      segmentClass: "bg-brand-danger/90",
+      pillClass: "border-brand-danger/40 bg-brand-danger/20 text-rose-50",
+      markerClass: "bg-brand-danger border-rose-50/70"
+    };
+  }
+  return {
+    label: "Neutral",
+    segmentClass: "bg-white/35",
+    pillClass: "border-white/20 bg-white/12 text-white/75",
+    markerClass: "bg-white/70 border-white/80"
+  };
+}
+
+function getActiveReplayExperienceSegment(segments: ReplayExperienceSegment[], progress: number) {
+  if (!Array.isArray(segments) || !segments.length) {
+    return null;
+  }
+  const normalizedProgress = clampReplayPercent(progress, 0, 1);
+  return (
+    segments.find((segment) => normalizedProgress >= segment.start && normalizedProgress <= segment.end) ||
+    segments[segments.length - 1] ||
+    null
+  );
+}
+
 function ReplayVideoWithOverlay({
   title,
   videoUrl,
@@ -7466,6 +7596,17 @@ function ReplayVideoWithOverlay({
   const [currentTime, setCurrentTime] = useState(0);
   const activeThought = getActiveReplayCue(thoughtCues, duration, currentTime, 4200);
   const activeCursor = getActiveReplayCue(cursorCues, duration, currentTime, 2200);
+  const experienceSegments = buildReplayExperienceSegments(thoughtCues);
+  const currentProgress =
+    Number.isFinite(duration) && duration > 0
+      ? clampReplayPercent(currentTime / duration, 0, 1)
+      : 0;
+  const activeExperience = activeThought
+    ? {
+        tone: getReplayExperienceTone(activeThought)
+      }
+    : getActiveReplayExperienceSegment(experienceSegments, currentProgress);
+  const activeExperienceMeta = getReplayExperienceMeta(activeExperience?.tone || "neutral");
 
   return (
     <div className="relative overflow-hidden rounded-[1.5rem] bg-black">
@@ -7491,6 +7632,50 @@ function ReplayVideoWithOverlay({
       >
         Your browser could not play this replay.
       </video>
+
+      <div className="pointer-events-none absolute inset-x-4 bottom-[3.1rem] z-20 md:inset-x-6 md:bottom-[3.35rem]">
+        <div className="rounded-[1.25rem] border border-white/12 bg-brand-ink/68 px-3 py-2.5 shadow-[0_16px_40px_rgba(15,23,42,0.28)] backdrop-blur-md">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-[10px] font-black uppercase tracking-[0.22em] text-white/65">User experience</div>
+            <div className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${activeExperienceMeta.pillClass}`}>
+              {activeExperienceMeta.label}
+            </div>
+          </div>
+          <div className="relative mt-2 h-2.5 overflow-hidden rounded-full bg-white/12">
+            {experienceSegments.map((segment) => {
+              const segmentMeta = getReplayExperienceMeta(segment.tone);
+              return (
+                <div
+                  key={segment.id}
+                  className={`absolute inset-y-0 ${segmentMeta.segmentClass}`}
+                  style={{
+                    left: `${segment.start * 100}%`,
+                    width: `${Math.max((segment.end - segment.start) * 100, 1.2)}%`
+                  }}
+                />
+              );
+            })}
+            {thoughtCues.map((thought) => {
+              const markerMeta = getReplayExperienceMeta(getReplayExperienceTone(thought));
+              return (
+                <div
+                  key={`marker-${thought.id}`}
+                  className={`absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full border-2 shadow-[0_0_0_3px_rgba(15,23,42,0.28)] ${markerMeta.markerClass}`}
+                  style={{
+                    left: `calc(${clampReplayPercent(thought.progress, 0.02, 0.98) * 100}% - 0.4375rem)`
+                  }}
+                />
+              );
+            })}
+            <div
+              className="absolute inset-y-[-2px] w-0.5 rounded-full bg-white shadow-[0_0_0_2px_rgba(15,23,42,0.35)]"
+              style={{
+                left: `calc(${currentProgress * 100}% - 1px)`
+              }}
+            />
+          </div>
+        </div>
+      </div>
 
       <AnimatePresence>
         {activeCursor ? (
