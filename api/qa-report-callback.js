@@ -198,7 +198,9 @@ function collectPortableEvidenceEntries(report, artifacts, evidenceMedia, kind =
       safeArtifacts.local_video_url,
       safeArtifacts.blocker_clip_path,
       safeArtifacts.local_video_path,
-      safeArtifacts.video
+      safeArtifacts.video,
+      safeArtifacts.browserbase_session_url,
+      safeArtifacts.browserbase_debug_url
     ]);
   }
 
@@ -210,10 +212,12 @@ function collectPortableEvidenceEntries(report, artifacts, evidenceMedia, kind =
 }
 
 function validateEvidenceCoverage(report, artifacts, evidenceMedia) {
-  const requiredScreenshots = Math.max(
-    1,
-    Number(process.env.QA_REQUIRED_SCREENSHOT_COUNT) || 4
+  const hasBrowserbaseEvidence = Boolean(
+    artifacts && (artifacts.browserbase_session_url || artifacts.browserbase_debug_url)
   );
+  const requiredScreenshots = hasBrowserbaseEvidence
+    ? 0
+    : Math.max(1, Number(process.env.QA_REQUIRED_SCREENSHOT_COUNT) || 4);
   const requiredVideos = Math.max(
     0,
     Number(process.env.QA_REQUIRED_VIDEO_COUNT) || 1

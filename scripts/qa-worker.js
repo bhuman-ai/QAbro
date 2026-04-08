@@ -1341,17 +1341,20 @@ function collectExecutionVideoEvidence(finalReport, execution = {}) {
       artifacts.blocker_clip_url,
       artifacts.local_video_url,
       artifacts.blocker_clip_path,
-      artifacts.local_video_path
+      artifacts.local_video_path,
+      artifacts.browserbase_session_url,
+      artifacts.browserbase_debug_url
     ]
   ].flat();
   return uniqueEvidenceItems(videos);
 }
 
 function assessExecutionEvidence(finalReport, execution = {}, options = {}) {
-  const requiredScreenshots = Math.max(
-    1,
-    Number(options.requiredScreenshots || process.env.QA_REQUIRED_SCREENSHOT_COUNT) || 4
-  );
+  const artifacts = execution.artifacts && typeof execution.artifacts === "object" ? execution.artifacts : {};
+  const hasBrowserbaseEvidence = Boolean(artifacts.browserbase_session_url || artifacts.browserbase_debug_url);
+  const requiredScreenshots = hasBrowserbaseEvidence
+    ? 0
+    : Math.max(1, Number(options.requiredScreenshots || process.env.QA_REQUIRED_SCREENSHOT_COUNT) || 4);
   const requiredVideos = Math.max(
     0,
     Number(options.requiredVideos || process.env.QA_REQUIRED_VIDEO_COUNT) || 1
