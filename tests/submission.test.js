@@ -3,6 +3,7 @@ const os = require("os");
 const path = require("path");
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { chromium } = require("playwright");
 
 const {
   validateBrandProfileInput,
@@ -558,6 +559,30 @@ test("submission runner 2Captcha client creates and polls task tokens", async ()
   assert.equal(calls.length, 2);
   assert.match(String(calls[0].body), /method=userrecaptcha/);
   assert.match(String(calls[0].body), /googlekey=site-key-123/);
+});
+
+test("submission runner detects invisible recaptcha iframe challenges", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.goto("https://example.com", { waitUntil: "domcontentloaded" });
+    await page.setContent(`
+      <html>
+        <body>
+          <iframe
+            src="https://www.google.com/recaptcha/api2/anchor?ar=1&k=site-key-123&co=aHR0cHM6Ly9leGFtcGxlLmNvbTo0NDM.&hl=en&v=test&size=invisible&cb=abc123"
+          ></iframe>
+        </body>
+      </html>
+    `);
+
+    const challenge = await __private.detectSupportedCaptchaChallenge(page);
+    assert.equal(challenge?.type, "recaptcha");
+    assert.equal(challenge?.sitekey, "site-key-123");
+    assert.equal(challenge?.invisible, true);
+  } finally {
+    await browser.close();
+  }
 });
 
 test("submission runner overlay planner prefers explicit country and cookie actions", () => {
