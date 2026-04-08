@@ -3264,11 +3264,8 @@ function WorkspacePage({
 
       <AnimatePresence>
         {composeOpen ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[120] flex items-center justify-center bg-brand-ink/50 backdrop-blur-md p-4"
+          <div
+            className="fixed inset-0 isolate z-[120] flex items-center justify-center bg-brand-ink/65 backdrop-blur-md p-4"
             onClick={() => {
               const next = new URLSearchParams(route.search);
               next.delete("compose");
@@ -3277,14 +3274,14 @@ function WorkspacePage({
             }}
           >
             <motion.div
-              initial={{ y: 24, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 24, opacity: 0 }}
+              initial={{ y: 24 }}
+              animate={{ y: 0 }}
+              exit={{ y: 24 }}
               transition={{ duration: 0.2 }}
               className={
                 composeMode === "advanced"
-                  ? "w-full max-w-6xl max-h-[92vh] overflow-y-auto rounded-2xl"
-                  : "w-full max-w-[520px] max-h-[88vh] rounded-2xl"
+                  ? "relative z-[1] w-full max-w-6xl max-h-[92vh] overflow-y-auto rounded-2xl"
+                  : "relative z-[1] w-full max-w-[520px] max-h-[88vh] overflow-y-auto rounded-2xl"
               }
               onClick={(event) => event.stopPropagation()}
             >
@@ -3381,7 +3378,7 @@ function WorkspacePage({
                 />
               )}
             </motion.div>
-          </motion.div>
+          </div>
         ) : null}
       </AnimatePresence>
     </div>
