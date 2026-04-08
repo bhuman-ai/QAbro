@@ -336,3 +336,74 @@ test("evidence handler allows shared-link video read by run_id", async () => {
     global.fetch = originalFetch;
   }
 });
+
+test("evidence handler supports byte-range requests for inline video replays", async () => {
+  const originalFetch = global.fetch;
+  const inlineVideo = Buffer.from("abcdefghij").toString("base64");
+  global.fetch = async (url) => {
+    if (String(url).includes("/rest/v1/swarmtest_reports")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return [
+            {
+              id: "row_range_video_1",
+              run_id: "run_range_video_1",
+              payload: {
+                run_request: {
+                  metadata: {
+                    owner_user_id: "user_range_1"
+                  }
+                },
+                report_json: {
+                  evidence_gallery: {
+                    videos: ["data:video/webm;base64," + inlineVideo]
+                  }
+                }
+              }
+            }
+          ];
+        }
+      };
+    }
+    throw new Error(`Unexpected fetch: ${url}`);
+  };
+
+  try {
+    await withEnv(
+      {
+        QA_SERVICE_TOKEN: "service-token",
+        SUPABASE_URL: "https://supabase.example",
+        SUPABASE_SERVICE_KEY: "service-key"
+      },
+      async () => {
+        const req = {
+          method: "GET",
+          query: {
+            run_id: "run_range_video_1",
+            kind: "video",
+            index: "0"
+          },
+          headers: {
+            "x-qa-service-token": "service-token",
+            "x-owner-user-id": "user_range_1",
+            range: "bytes=2-5"
+          }
+        };
+        const res = createRes();
+
+        await evidenceHandler(req, res);
+
+        assert.equal(res.statusCode, 206);
+        assert.equal(res.headers["Content-Type"], "video/webm");
+        assert.equal(res.headers["Accept-Ranges"], "bytes");
+        assert.equal(res.headers["Content-Range"], "bytes 2-5/10");
+        assert.equal(res.headers["Content-Length"], "4");
+        assert.equal(Buffer.from(res.body).toString(), "cdef");
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

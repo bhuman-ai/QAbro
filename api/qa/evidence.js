@@ -282,6 +282,72 @@ function decodeDataUrl(value, maxLength = 2000000) {
   }
 }
 
+function parseByteRange(rangeHeader, totalLength) {
+  const header = sanitizeString(rangeHeader, 256);
+  if (!header || !Number.isFinite(totalLength) || totalLength <= 0) {
+    return null;
+  }
+
+  const match = header.match(/^bytes=(\d*)-(\d*)$/i);
+  if (!match) {
+    return { invalid: true };
+  }
+
+  const [, rawStart, rawEnd] = match;
+  if (!rawStart && !rawEnd) {
+    return { invalid: true };
+  }
+
+  let start = Number.NaN;
+  let end = Number.NaN;
+
+  if (!rawStart) {
+    const suffixLength = Number(rawEnd);
+    if (!Number.isFinite(suffixLength) || suffixLength <= 0) {
+      return { invalid: true };
+    }
+    start = Math.max(0, totalLength - suffixLength);
+    end = totalLength - 1;
+  } else {
+    start = Number(rawStart);
+    end = rawEnd ? Number(rawEnd) : totalLength - 1;
+  }
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end < start || start >= totalLength) {
+    return { invalid: true };
+  }
+
+  return {
+    start,
+    end: Math.min(totalLength - 1, end)
+  };
+}
+
+function sendMediaBuffer(req, res, buffer, contentType, cacheControl) {
+  const data = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || []);
+  const totalLength = data.length;
+  res.setHeader("Content-Type", contentType || "application/octet-stream");
+  res.setHeader("Cache-Control", cacheControl);
+  res.setHeader("Accept-Ranges", "bytes");
+
+  const range = parseByteRange(req?.headers?.range, totalLength);
+  if (range?.invalid) {
+    res.setHeader("Content-Range", `bytes */${totalLength}`);
+    res.setHeader("Content-Length", "0");
+    return res.status(416).send(Buffer.alloc(0));
+  }
+
+  if (range) {
+    const chunk = data.subarray(range.start, range.end + 1);
+    res.setHeader("Content-Range", `bytes ${range.start}-${range.end}/${totalLength}`);
+    res.setHeader("Content-Length", String(chunk.length));
+    return res.status(206).send(chunk);
+  }
+
+  res.setHeader("Content-Length", String(totalLength));
+  return res.status(200).send(data);
+}
+
 async function handler(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -341,9 +407,7 @@ async function handler(req, res) {
       return res.status(415).json({ ok: false, error: "Evidence item is not embeddable media" });
     }
 
-    res.setHeader("Content-Type", dataUrlPayload.contentType);
-    res.setHeader("Cache-Control", "private, max-age=3600");
-    return res.status(200).send(dataUrlPayload.data);
+    return sendMediaBuffer(req, res, dataUrlPayload.data, dataUrlPayload.contentType, "private, max-age=3600");
   }
 
   const evidenceEntry = readEvidenceMediaEntry(payload, kind, source);
@@ -358,9 +422,7 @@ async function handler(req, res) {
         return res.status(415).json({ ok: false, error: "Evidence item is not image media" });
       }
 
-      res.setHeader("Content-Type", storedObject.contentType);
-      res.setHeader("Cache-Control", "private, max-age=3600");
-      return res.status(200).send(storedObject.data);
+      return sendMediaBuffer(req, res, storedObject.data, storedObject.contentType, "private, max-age=3600");
     }
   }
 
@@ -379,9 +441,7 @@ async function handler(req, res) {
 
     try {
       const data = fs.readFileSync(localPath);
-      res.setHeader("Content-Type", contentType);
-      res.setHeader("Cache-Control", "private, max-age=300");
-      return res.status(200).send(data);
+      return sendMediaBuffer(req, res, data, contentType, "private, max-age=300");
     } catch (error) {
       return res.status(500).json({ ok: false, error: error.message || "Failed to read local evidence file" });
     }
@@ -422,9 +482,13 @@ async function handler(req, res) {
   }
 
   const arrayBuffer = await upstreamResponse.arrayBuffer();
-  res.setHeader("Content-Type", contentType || headerContentType || "application/octet-stream");
-  res.setHeader("Cache-Control", "private, max-age=600");
-  return res.status(200).send(Buffer.from(arrayBuffer));
+  return sendMediaBuffer(
+    req,
+    res,
+    Buffer.from(arrayBuffer),
+    contentType || headerContentType || "application/octet-stream",
+    "private, max-age=600"
+  );
 }
 
 module.exports = handler;
@@ -432,7 +496,9 @@ module.exports.__private = {
   fetchStoredEvidenceObject,
   getEmbeddedEvidenceMaxLength,
   normalizeEvidenceSource,
+  parseByteRange,
   readEvidenceMediaEntry,
   readEmbeddedEvidenceSource,
-  readEvidenceList
+  readEvidenceList,
+  sendMediaBuffer
 };

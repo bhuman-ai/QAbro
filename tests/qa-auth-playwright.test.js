@@ -1110,6 +1110,161 @@ test("performCredentialedLogin fills separate email, username, and confirmation 
   );
 });
 
+test("performCredentialedLogin fills separate first and last name fields on signup forms", async () => {
+  await withServer(
+    {
+      "/": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <a href="/register">Create account</a>
+            </body>
+          </html>`);
+      },
+      "/register": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <form id="signup-form">
+                <label>First name <input type="text" name="first_name" autocomplete="given-name" required /></label>
+                <label>Last name <input type="text" name="last_name" autocomplete="family-name" required /></label>
+                <label>Email <input type="email" name="email" autocomplete="email" required /></label>
+                <label>Password <input type="password" name="password" autocomplete="new-password" required /></label>
+                <label>Confirm password <input type="password" name="password_confirmation" autocomplete="new-password" required /></label>
+                <button type="submit">Create account</button>
+              </form>
+              <script>
+                document.getElementById("signup-form").addEventListener("submit", (event) => {
+                  event.preventDefault();
+                  const first = document.querySelector('input[name="first_name"]').value;
+                  const last = document.querySelector('input[name="last_name"]').value;
+                  const email = document.querySelector('input[name="email"]').value;
+                  const password = document.querySelector('input[name="password"]').value;
+                  const confirmation = document.querySelector('input[name="password_confirmation"]').value;
+                  if (first && last && email && password && confirmation && password === confirmation) {
+                    window.location.href = "/app?first=" + encodeURIComponent(first) + "&last=" + encodeURIComponent(last);
+                  }
+                });
+              </script>
+            </body>
+          </html>`);
+      },
+      "/app": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html><html><body><main><h1>Registered</h1></main></body></html>`);
+      }
+    },
+    async (baseUrl) => {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage();
+        const runLog = [];
+        const result = await performCredentialedLogin(
+          page,
+          {
+            run_id: "signup_split_name_fields_test",
+            target_url: `${baseUrl}/`,
+            scope_mode: "feature_targeted",
+            metadata: {
+              otp_provider: "none",
+              auto_create_account: true
+            }
+          },
+          { runLog }
+        );
+
+        const currentUrl = new URL(page.url());
+        assert.equal(result.attempted, true);
+        assert.equal(result.success, true);
+        assert.equal(result.autoCreatedAccount, true);
+        assert.equal(currentUrl.pathname, "/app");
+        assert.equal(currentUrl.searchParams.get("first"), "Swarm");
+        assert.equal(currentUrl.searchParams.get("last"), "Tester");
+        assert.match(JSON.stringify(runLog), /auth_flow_completed/);
+      } finally {
+        await browser.close();
+      }
+    }
+  );
+});
+
+test("performCredentialedLogin fills separate first and last name fields on signup forms even with provided credentials", async () => {
+  await withServer(
+    {
+      "/register": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <form id="signup-form">
+                <label>First name <input type="text" name="firstname" required /></label>
+                <label>Last name <input type="text" name="lastname" required /></label>
+                <label>Email <input type="email" name="email" autocomplete="username" required /></label>
+                <label>Password <input type="password" name="password" autocomplete="new-password" required /></label>
+                <label>Confirm your password <input type="password" name="retypePassword" autocomplete="new-password" required /></label>
+                <button type="submit">Sign up</button>
+              </form>
+              <script>
+                document.getElementById("signup-form").addEventListener("submit", (event) => {
+                  event.preventDefault();
+                  const first = document.querySelector('input[name="firstname"]').value;
+                  const last = document.querySelector('input[name="lastname"]').value;
+                  const email = document.querySelector('input[name="email"]').value;
+                  const password = document.querySelector('input[name="password"]').value;
+                  const confirmation = document.querySelector('input[name="retypePassword"]').value;
+                  if (first && last && email && password && confirmation && password === confirmation) {
+                    window.location.href = "/app?first=" + encodeURIComponent(first) + "&last=" + encodeURIComponent(last) + "&email=" + encodeURIComponent(email);
+                  }
+                });
+              </script>
+            </body>
+          </html>`);
+      },
+      "/app": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html><html><body><main><h1>Registered</h1></main></body></html>`);
+      }
+    },
+    async (baseUrl) => {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage();
+        const runLog = [];
+        const result = await performCredentialedLogin(
+          page,
+          {
+            run_id: "signup_split_name_fields_with_credentials_test",
+            target_url: `${baseUrl}/register`,
+            credentials: {
+              login_url: `${baseUrl}/register`,
+              username: "qa+icypeas@example.com",
+              password: "Secret123!"
+            },
+            metadata: {
+              otp_provider: "none"
+            }
+          },
+          { runLog }
+        );
+
+        const currentUrl = new URL(page.url());
+        assert.equal(result.attempted, true);
+        assert.equal(result.success, true);
+        assert.equal(result.autoCreatedAccount, false);
+        assert.equal(currentUrl.pathname, "/app");
+        assert.equal(currentUrl.searchParams.get("first"), "Swarm");
+        assert.equal(currentUrl.searchParams.get("last"), "Tester");
+        assert.equal(currentUrl.searchParams.get("email"), "qa+icypeas@example.com");
+        assert.match(JSON.stringify(runLog), /"mode":"signup"/);
+      } finally {
+        await browser.close();
+      }
+    }
+  );
+});
+
 test("performCredentialedLogin prefers explicit auth nav before hero CTA during auto-create flows", async () => {
   await withServer(
     {

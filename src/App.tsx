@@ -6675,6 +6675,7 @@ type ReplayThoughtCue = {
   left: number;
   top: number;
   align: "left" | "right";
+  source?: "captured" | "derived";
 };
 
 type ReplayCursorCue = {
@@ -6798,28 +6799,308 @@ function lowercaseFirst(text: string) {
   return `${trimmed[0].toLowerCase()}${trimmed.slice(1)}`;
 }
 
+function normalizeReplayText(value: unknown, maxLength = 320) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, maxLength)
+    .trim();
+}
+
+function toCustomerVoice(text: string) {
+  const normalized = normalizeReplayText(text, 500);
+  if (!normalized) {
+    return "";
+  }
+  return normalized
+    .replace(/^the tester\b/i, "I")
+    .replace(/\bthe tester\b/gi, "I")
+    .replace(/\bthe user\b/gi, "I")
+    .replace(/\bthe visitor\b/gi, "I");
+}
+
+function getReplayTimestampLabel(entry: RunLogEntry | Record<string, unknown> | null | undefined) {
+  const raw = String((entry && typeof entry === "object" ? entry.ts || entry.timestamp : "") || "").trim();
+  return raw ? formatDateTime(raw) : "";
+}
+
+function readReportFailureDiagnostics(report: QaReport | null | undefined) {
+  const direct = report && typeof report === "object"
+    ? ((report as unknown as Record<string, unknown>).failure_diagnostics as Record<string, unknown> | null | undefined)
+    : null;
+  if (direct && typeof direct === "object") {
+    return direct;
+  }
+  const finding = Array.isArray(report?.findings)
+    ? report.findings.find((item) => item?.diagnostic_details && typeof item.diagnostic_details === "object")
+    : null;
+  return finding?.diagnostic_details && typeof finding.diagnostic_details === "object"
+    ? finding.diagnostic_details as Record<string, unknown>
+    : null;
+}
+
+function buildDerivedReplayThoughtCandidates(
+  runLog: StatusResponse["run_log"] | null | undefined,
+  report: QaReport | null | undefined,
+  startMs: number,
+  totalMs: number,
+  hasWindow: boolean
+) {
+  const safeRunLog = Array.isArray(runLog) ? runLog : [];
+  const candidates: Array<Omit<ReplayThoughtCue, "left" | "top" | "align"> & { atMs: number }> = [];
+  const seen = new Set<string>();
+  const primaryFinding = Array.isArray(report?.findings) ? report.findings[0] : null;
+  const failureDiagnostics = readReportFailureDiagnostics(report);
+  const fallbackSummary = normalizeReplayText(report?.summary?.note, 320);
+  const failureReason = normalizeReplayText(
+    failureDiagnostics?.failure_reason || primaryFinding?.observed_behavior || fallbackSummary,
+    320
+  );
+  const lastSuccessfulStep = normalizeReplayText(failureDiagnostics?.last_successful_step, 220);
+  const fallbackCurrentUrl = normalizeReplayText(
+    failureDiagnostics?.current_url || primaryFinding?.page?.url || "",
+    4096
+  );
+
+  const pushCandidate = (
+    candidate: Partial<Omit<ReplayThoughtCue, "left" | "top" | "align">> & {
+      atMs?: number;
+      progress?: number;
+    } | null,
+    fallbackProgress: number,
+    id: string
+  ) => {
+    if (!candidate) {
+      return;
+    }
+    const text = normalizeReplayText(candidate.text, 320);
+    if (!text) {
+      return;
+    }
+    const key = text.toLowerCase();
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    const atMs = Number.isFinite(Number(candidate.atMs)) ? Number(candidate.atMs) : startMs || 0;
+    const progress = Number.isFinite(Number(candidate.progress))
+      ? clampReplayPercent(Number(candidate.progress), 0.04, 0.96)
+      : clampReplayPercent(fallbackProgress, 0.04, 0.96);
+    candidates.push({
+      id,
+      action: normalizeReplayText(candidate.action, 120),
+      target: normalizeReplayText(candidate.target, 220),
+      emotion: normalizeReplayText(candidate.emotion, 48),
+      text,
+      whatThisIs: normalizeReplayText(candidate.whatThisIs, 220),
+      noticed: readObservationList(candidate.noticed),
+      skepticism: normalizeReplayText(candidate.skepticism, 220),
+      missingInformation: normalizeReplayText(candidate.missingInformation, 220),
+      trustSignal: normalizeReplayText(candidate.trustSignal, 220),
+      continueState: normalizeReplayText(candidate.continueState, 32),
+      currentUrl: normalizeReplayText(candidate.currentUrl, 4096),
+      timestampLabel: normalizeReplayText(candidate.timestampLabel, 80),
+      progress,
+      atMs,
+      source: "derived"
+    });
+  };
+
+  safeRunLog.forEach((entry, index) => {
+    const event = getRunLogEvent(entry);
+    const payload = getRunLogPayload(entry);
+    const atMs = getRunLogTimestampMs(entry);
+    const normalizedProgress =
+      hasWindow && Number.isFinite(atMs)
+        ? clampReplayPercent((atMs - startMs) / totalMs, 0.04, 0.96)
+        : clampReplayPercent(0.16 + index * 0.18, 0.04, 0.96);
+    const mode = normalizeReplayText(payload.mode, 32).toLowerCase();
+    const currentUrl = normalizeReplayText(payload.url || payload.current_url || fallbackCurrentUrl, 4096);
+    const timestampLabel = getReplayTimestampLabel(entry);
+
+    if (event === "auth_surface_ready") {
+      pushCandidate(
+        {
+          atMs,
+          progress: normalizedProgress,
+          emotion: "confidence",
+          text:
+            mode === "signup"
+              ? "I found the sign-up form and know where to start."
+              : "I found the login form and know where to start.",
+          whatThisIs: mode === "signup" ? "Account creation flow" : "Login flow",
+          trustSignal: "The next step is visible on the page.",
+          continueState: "continue",
+          currentUrl,
+          timestampLabel
+        },
+        normalizedProgress,
+        `derived-auth-surface-${index}`
+      );
+      return;
+    }
+
+    if (event === "auth_form_filled") {
+      pushCandidate(
+        {
+          atMs,
+          progress: normalizedProgress,
+          emotion: "confidence",
+          text:
+            mode === "signup"
+              ? "The sign-up form was clear enough for me to fill out."
+              : "The login form was clear enough for me to fill out.",
+          whatThisIs: mode === "signup" ? "Account creation flow" : "Login flow",
+          trustSignal: "The labels made the next step understandable.",
+          continueState: "continue",
+          currentUrl,
+          timestampLabel
+        },
+        normalizedProgress,
+        `derived-auth-filled-${index}`
+      );
+      return;
+    }
+
+    if (event === "auth_submit_attempted") {
+      pushCandidate(
+        {
+          atMs,
+          progress: normalizedProgress,
+          emotion: "uncertainty",
+          text:
+            mode === "signup"
+              ? "I clicked sign up and expected the product to move me forward next."
+              : "I clicked log in and expected the product to move me forward next.",
+          whatThisIs: mode === "signup" ? "The account creation step" : "The login step",
+          missingInformation: "What should happen immediately after I submit this form.",
+          continueState: "continue",
+          currentUrl,
+          timestampLabel
+        },
+        normalizedProgress,
+        `derived-auth-submit-${index}`
+      );
+      return;
+    }
+
+    if (event === "auth_flow_failed" || event === "local_agent_failed") {
+      pushCandidate(
+        {
+          atMs,
+          progress: normalizedProgress,
+          emotion: "frustration",
+          text:
+            toCustomerVoice(fallbackSummary) ||
+            "I expected this step to move me forward, but I still feel stuck on the same screen.",
+          skepticism:
+            "I cannot tell whether the account was created or why the page did not move me forward.",
+          missingInformation:
+            "Whether the action succeeded and what I am supposed to do next.",
+          trustSignal: lastSuccessfulStep ? `I got as far as: ${lastSuccessfulStep}` : "",
+          continueState: "abandon",
+          currentUrl: normalizeReplayText(payload.current_url || currentUrl, 4096),
+          timestampLabel
+        },
+        normalizedProgress,
+        `derived-auth-failed-${index}`
+      );
+    }
+  });
+
+  const experienceTimeline =
+    report && typeof report === "object"
+      ? ((report as unknown as Record<string, unknown>).experience_timeline as Record<string, unknown> | null | undefined)
+      : null;
+  const timelineSummary =
+    experienceTimeline && typeof experienceTimeline.summary === "object"
+      ? experienceTimeline.summary as Record<string, unknown>
+      : null;
+  const timelineDurationMs = Number(experienceTimeline?.video_duration_ms || timelineSummary?.video_duration_ms);
+  const spans = Array.isArray(experienceTimeline?.spans) ? experienceTimeline.spans : [];
+  if (candidates.length < 2) {
+    spans
+      .filter((span) => span && typeof span === "object")
+      .slice(0, 6)
+      .forEach((span, index) => {
+        if (candidates.length >= 4) {
+          return;
+        }
+        const safeSpan = span as Record<string, unknown>;
+        const spanSummary = toCustomerVoice(normalizeReplayText(safeSpan.summary, 320));
+        const level = normalizeReplayText(safeSpan.level, 32).toLowerCase();
+        const jumpMs = Number(safeSpan.jump_ts_ms || safeSpan.start_ms || safeSpan.end_ms);
+        const spanProgress =
+          Number.isFinite(timelineDurationMs) && timelineDurationMs > 0 && Number.isFinite(jumpMs)
+            ? clampReplayPercent(jumpMs / timelineDurationMs, 0.04, 0.96)
+            : clampReplayPercent(0.22 + index * 0.18, 0.04, 0.96);
+        pushCandidate(
+          {
+            progress: spanProgress,
+            emotion:
+              level === "blocker" ? "frustration" : level === "friction" ? "uncertainty" : "confidence",
+            text: spanSummary,
+            whatThisIs: normalizeReplayText(safeSpan.label, 220),
+            skepticism: level === "good" ? "" : failureReason,
+            trustSignal: level === "good" ? lastSuccessfulStep : "",
+            continueState:
+              level === "blocker" ? "abandon" : level === "friction" ? "pause" : "continue",
+            currentUrl: normalizeReplayText(
+              safeSpan.page && typeof safeSpan.page === "object"
+                ? (safeSpan.page as Record<string, unknown>).url
+                : fallbackCurrentUrl,
+              4096
+            )
+          },
+          spanProgress,
+          `derived-span-${index}`
+        );
+      });
+  }
+
+  if (!candidates.length && failureReason) {
+    pushCandidate(
+      {
+        progress: 0.82,
+        emotion: "frustration",
+        text: toCustomerVoice(failureReason),
+        skepticism:
+          "I cannot tell whether the action worked or what should happen next.",
+        missingInformation: "A clear success state or next step after I submit.",
+        trustSignal: lastSuccessfulStep ? `I got as far as: ${lastSuccessfulStep}` : "",
+        continueState: "abandon",
+        currentUrl: fallbackCurrentUrl
+      },
+      0.82,
+      "derived-fallback-summary"
+    );
+  }
+
+  return candidates.slice(0, 4);
+}
+
 function buildReplayOverlayData(
   runLog: StatusResponse["run_log"] | null | undefined,
-  reportArtifacts?: QaReport["artifacts"] | null,
+  report?: QaReport | null,
   statusArtifacts?: StatusResponse["artifacts"] | null
 ) {
   const safeRunLog = Array.isArray(runLog) ? runLog : [];
   const timestamps = safeRunLog
     .map((entry) => getRunLogTimestampMs(entry))
     .filter((value) => Number.isFinite(value));
-  const startedAtMs = Date.parse(String(reportArtifacts?.started_at || statusArtifacts?.started_at || ""));
-  const finishedAtMs = Date.parse(String(reportArtifacts?.finished_at || statusArtifacts?.finished_at || ""));
+  const startedAtMs = Date.parse(String(report?.artifacts?.started_at || statusArtifacts?.started_at || ""));
+  const finishedAtMs = Date.parse(String(report?.artifacts?.finished_at || statusArtifacts?.finished_at || ""));
   const startMs = Number.isFinite(startedAtMs) ? startedAtMs : timestamps[0];
   const endMs = Number.isFinite(finishedAtMs) ? finishedAtMs : timestamps[timestamps.length - 1];
   const hasWindow = Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs;
   const totalMs = hasWindow ? Math.max(1000, endMs - startMs) : 1000;
   const viewportWidth =
-    Number(reportArtifacts?.viewport_width || statusArtifacts?.viewport_width) > 0
-      ? Number(reportArtifacts?.viewport_width || statusArtifacts?.viewport_width)
+    Number(report?.artifacts?.viewport_width || statusArtifacts?.viewport_width) > 0
+      ? Number(report?.artifacts?.viewport_width || statusArtifacts?.viewport_width)
       : 1440;
   const viewportHeight =
-    Number(reportArtifacts?.viewport_height || statusArtifacts?.viewport_height) > 0
-      ? Number(reportArtifacts?.viewport_height || statusArtifacts?.viewport_height)
+    Number(report?.artifacts?.viewport_height || statusArtifacts?.viewport_height) > 0
+      ? Number(report?.artifacts?.viewport_height || statusArtifacts?.viewport_height)
       : 900;
 
   const cursorCues: Array<ReplayCursorCue & { atMs: number }> = [];
@@ -6866,15 +7147,19 @@ function buildReplayOverlayData(
         trustSignal: String(payload.trust_signal || "").trim(),
         continueState: String(payload.continue_state || "").trim(),
         currentUrl: String(payload.current_url || "").trim(),
-        timestampLabel:
-          entry && typeof entry === "object" && (entry.ts || entry.timestamp)
-            ? formatDateTime(String(entry.ts || entry.timestamp))
-            : "",
+        timestampLabel: getReplayTimestampLabel(entry),
         progress: normalizedProgress,
-        atMs: Number.isFinite(atMs) ? atMs : startMs || 0
+        atMs: Number.isFinite(atMs) ? atMs : startMs || 0,
+        source: "captured"
       });
     }
   });
+
+  if (!thoughtCandidates.length) {
+    thoughtCandidates.push(
+      ...buildDerivedReplayThoughtCandidates(safeRunLog, report, startMs, totalMs, hasWindow)
+    );
+  }
 
   const sortedCursors = cursorCues.slice().sort((left, right) => left.atMs - right.atMs);
   const thoughts = thoughtCandidates
@@ -6887,8 +7172,14 @@ function buildReplayOverlayData(
       if (!anchor) {
         anchor = sortedCursors.find((cursor) => cursor.atMs >= thought.atMs && cursor.atMs - thought.atMs <= 1800);
       }
-      const left = anchor ? clampReplayPercent(anchor.left, 12, 78) : 14;
-      const top = anchor ? clampReplayPercent(anchor.top - 13, 10, 76) : 72;
+      const left = anchor
+        ? clampReplayPercent(anchor.left, 12, 78)
+        : thought.progress > 0.62
+          ? 52
+          : 14;
+      const top = anchor
+        ? clampReplayPercent(anchor.top - 13, 10, 76)
+        : clampReplayPercent(74 - thought.progress * 26, 24, 74);
       return {
         ...thought,
         left,
@@ -7040,10 +7331,9 @@ function buildPersonaReadout({
   const fallbackSummary = report?.summary?.note || run?.summary_note || "";
   const overall =
     explicitOverall ||
-    (latestThought ||
-      (fallbackSummary
-        ? `${persona.name}'s customer-perspective reaction was not captured for this run. The run summary was: ${fallbackSummary}`
-        : `${persona.name}'s customer-perspective reaction was not captured for this run.`));
+    latestThought ||
+    fallbackSummary ||
+    `${persona.name}'s customer-perspective reaction was not captured for this run.`;
 
   const emotionCounts = new Map<string, number>();
   thoughts.forEach((thought) => {
@@ -7089,12 +7379,22 @@ function buildPersonaReadout({
 
   const explicitTakeaways = readReportSummaryList(report, ["persona_takeaways", "takeaways", "user_takeaways"]);
   const thoughtTakeaways = thoughts.flatMap((thought) => [thought.whatThisIs, thought.trustSignal]).filter(Boolean);
+  const fallbackTakeawayCandidates = uniqueReadoutItems(
+    [
+      normalizeReplayText(readReportFailureDiagnostics(report)?.last_successful_step, 220),
+      ...((report?.tested_journeys || []) as Array<Record<string, unknown>>).flatMap((journey) =>
+        readObservationList(journey?.observations)
+      )
+    ],
+    3
+  );
   const takeaways = explicitTakeaways.length
     ? explicitTakeaways
       : uniqueReadoutItems(
         [
           ...thoughtTakeaways.slice(-3),
-          ...(thoughts.length ? [] : ["No customer-perspective takeaway was captured for this run."])
+          ...fallbackTakeawayCandidates,
+          ...(thoughts.length || fallbackTakeawayCandidates.length ? [] : ["No customer-perspective takeaway was captured for this run."])
         ],
         3
       );
@@ -7106,12 +7406,20 @@ function buildPersonaReadout({
     "user_skepticisms"
   ]);
   const skepticalThoughts = thoughts.flatMap((thought) => [thought.skepticism, thought.missingInformation]).filter(Boolean);
+  const fallbackSkepticismCandidates = uniqueReadoutItems(
+    [
+      normalizeReplayText(readReportFailureDiagnostics(report)?.failure_reason, 220),
+      ...frictionPoints.map((point) => point.description)
+    ],
+    3
+  );
   const skepticisms = explicitSkepticisms.length
     ? explicitSkepticisms
     : uniqueReadoutItems(
         [
           ...skepticalThoughts.slice(-3),
-          ...(thoughts.length ? [] : ["No content-specific skepticism was captured for this run."])
+          ...fallbackSkepticismCandidates,
+          ...(thoughts.length || fallbackSkepticismCandidates.length ? [] : ["No content-specific skepticism was captured for this run."])
         ],
         3
       );
@@ -7164,6 +7472,7 @@ function ReplayVideoWithOverlay({
       <video
         controls
         autoPlay
+        preload="metadata"
         playsInline
         poster={posterUrl || undefined}
         className="w-full max-h-[72vh] bg-black object-contain"
@@ -7223,6 +7532,9 @@ function ReplayVideoWithOverlay({
               <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
                 <Quote className="h-3.5 w-3.5 text-brand-accent" />
                 Customer reaction
+                {activeThought.source === "derived" ? (
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] text-slate-500">Derived</span>
+                ) : null}
                 {activeThought.emotion ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] text-slate-500">{activeThought.emotion}</span> : null}
               </div>
               <div className="mt-2 text-sm font-black leading-6 text-brand-ink">{activeThought.text}</div>
@@ -7241,7 +7553,7 @@ function ReplayVideoWithOverlay({
 
       {!thoughtCues.length ? (
         <div className="pointer-events-none absolute inset-x-6 bottom-6 z-10 rounded-2xl border border-white/10 bg-brand-ink/55 px-4 py-3 text-xs font-bold text-white/75 backdrop-blur">
-          No customer observations were captured for this replay yet.
+          This replay has proof, but no structured customer reactions were saved for it yet.
         </div>
       ) : null}
     </div>
@@ -7335,6 +7647,9 @@ function StarterSessionReplayModal({
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
                     <Quote className="h-3.5 w-3.5 text-brand-accent" />
                     {thought.timestampLabel || "Thought"}
+                    {thought.source === "derived" ? (
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] text-slate-500">Derived</span>
+                    ) : null}
                   </div>
                   <div className="mt-2 text-sm font-black leading-6 text-brand-ink">{thought.text}</div>
                   {thought.whatThisIs ? (
@@ -7420,13 +7735,17 @@ function StarterReportPage({
   const evidenceIndexMap = buildEvidenceIndexMap(report, "screenshot");
   const firstEvidence = Array.from(evidenceIndexMap.entries()).sort((left, right) => left[1] - right[1])[0];
   const videoEvidence = collectEvidenceValues(report, "video");
-  const firstVideoValue = videoEvidence[0] || "";
+  const preferredVideoIndex = (() => {
+    const localIndex = videoEvidence.findIndex((value) => !/^https?:\/\//i.test(String(value || "").trim()));
+    return localIndex >= 0 ? localIndex : 0;
+  })();
+  const firstVideoValue = videoEvidence[preferredVideoIndex] || "";
   const persona = getStarterPersona(run?.persona || report?.summary?.note || run?.run_id);
   const effectiveStatus = String(status?.queue?.queue_status || status?.report_status || report?.status || run?.status || "completed").toLowerCase();
   const score = deriveScoreFromReport(report, run);
   const replayVideoUrl =
     firstVideoValue && (report?.run_id || run?.run_id)
-      ? buildEvidenceAssetUrl(report?.run_id || run?.run_id || "", "video", 0, shareKey)
+      ? buildEvidenceAssetUrl(report?.run_id || run?.run_id || "", "video", preferredVideoIndex, shareKey)
       : "";
   const replaySessionUrl =
     String(
@@ -7450,7 +7769,7 @@ function StarterReportPage({
     firstEvidence && (report?.run_id || run?.run_id)
       ? buildEvidenceAssetUrl(report?.run_id || run?.run_id || "", "screenshot", firstEvidence[1], shareKey)
       : "";
-  const replayOverlay = buildReplayOverlayData(status?.run_log, report?.artifacts, status?.artifacts);
+  const replayOverlay = buildReplayOverlayData(status?.run_log, report, status?.artifacts);
   const hasReplay = Boolean(replayVideoUrl || replaySessionUrl);
   const frictionPoints =
     (report?.findings || []).map((finding, index) => {
