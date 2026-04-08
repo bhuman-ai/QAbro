@@ -3281,7 +3281,7 @@ function WorkspacePage({
               className={
                 composeMode === "advanced"
                   ? "relative z-[1] w-full max-w-6xl max-h-[92vh] overflow-y-auto rounded-2xl"
-                  : "relative z-[1] w-full max-w-[520px] max-h-[88vh] overflow-y-auto rounded-2xl"
+                  : "relative z-[1] w-full max-w-[520px] max-h-[88vh] overflow-hidden rounded-2xl"
               }
               onClick={(event) => event.stopPropagation()}
             >
@@ -3456,6 +3456,7 @@ function QuickLaunchModal({
   const validationTarget = normalizeValidationTarget(draft.validationTarget);
   const browserMode = normalizeBrowserMode(draft.browserMode);
   const accessMethod = normalizeAccessMethod(draft.accessMethod, validationTarget);
+  const scrollBodyRef = useRef<HTMLDivElement | null>(null);
   const projectMetadata = currentProject?.metadata && typeof currentProject.metadata === "object" ? currentProject.metadata : {};
   const savedSessionAvailable =
     projectMetadata?.qa_profile && typeof projectMetadata.qa_profile === "object"
@@ -3472,6 +3473,10 @@ function QuickLaunchModal({
     (accessMethod !== "credentials" ||
       Boolean(String(draft.authUsername || "").trim() && String(draft.authPassword || "").trim()));
 
+  useEffect(() => {
+    scrollBodyRef.current?.scrollTo({ top: 0 });
+  }, [browserMode]);
+
   return (
     <section className="flex max-h-[88vh] w-full flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_18px_40px_-22px_rgba(15,23,42,0.55)]">
       <div className="flex items-start justify-between gap-4 border-b border-brand-line px-5 py-4">
@@ -3484,7 +3489,7 @@ function QuickLaunchModal({
         </Button>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-5 py-4">
+      <div ref={scrollBodyRef} className="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-5 py-4 [overflow-anchor:none]">
         <div>
           <FieldLabel>Environment URL</FieldLabel>
           <TextInput
