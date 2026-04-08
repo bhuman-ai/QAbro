@@ -209,7 +209,7 @@ export function buildLaunchPayload(draft: LaunchDraft, options: { retryOfRunId?:
   const goals = qaMode === "controlled_ux" ? controlled.scenarios : parseGoalsText(draft.goalsText);
   const effectiveScopeMode = qaMode === "controlled_ux" ? "feature_targeted" : draft.scopeMode || "core_20m";
   const runId = `${brandKey || "swarm"}_${Date.now()}`;
-  const requestedExecutionEngine = browserMode === "advanced_browser" ? "browserbase" : "auto";
+  const requestedExecutionEngine = browserMode === "advanced_browser" ? "local_vision_agent" : "auto";
   const shouldAttachCredentials =
     accessMethod === "credentials" &&
     String(draft.authUsername || "").trim() &&
@@ -245,8 +245,7 @@ export function buildLaunchPayload(draft: LaunchDraft, options: { retryOfRunId?:
       qa_mode: qaMode,
       browser_mode: browserMode,
       execution_engine: requestedExecutionEngine,
-      browserbase_advanced_stealth: browserMode === "advanced_browser",
-      browserbase_solve_captchas: browserMode === "advanced_browser",
+      enable_captcha_solver: browserMode === "advanced_browser",
       ...(browserMode === "advanced_browser"
         ? {
             submission_captcha_strategy: "built_in"

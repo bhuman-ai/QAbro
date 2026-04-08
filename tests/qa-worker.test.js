@@ -90,7 +90,27 @@ test("buildExecutionPlan keeps explicit browserbase requests on the browserbase 
   assert.equal(plan.attempts[0].reason, "requested");
 });
 
-test("resolveWorkerBuildMetadata includes commit and browserbase capability", () => {
+test("buildExecutionPlan routes advanced browser through the local DO worker agent", () => {
+  const plan = __private.buildExecutionPlan(
+    {
+      metadata: {
+        browser_mode: "advanced_browser"
+      }
+    },
+    {
+      OPENAI_API_KEY: "openai-key"
+    }
+  );
+
+  assert.equal(plan.requestedEngine, "local_vision_agent");
+  assert.deepEqual(
+    plan.attempts.map((attempt) => attempt.engine),
+    ["local_vision_agent"]
+  );
+  assert.equal(plan.attempts[0].reason, "requested");
+});
+
+test("resolveWorkerBuildMetadata includes commit and local advanced browser capability", () => {
   const metadata = __private.resolveWorkerBuildMetadata({
     forceRefresh: true,
     env: {
@@ -110,7 +130,8 @@ test("resolveWorkerBuildMetadata includes commit and browserbase capability", ()
   assert.equal(metadata.git_commit_sha, "decec89abc1234567890");
   assert.equal(metadata.git_commit_short, "decec89");
   assert.equal(metadata.advanced_browser_supported, true);
-  assert.equal(metadata.browserbase_configured, true);
+  assert.equal(metadata.advanced_browser_configured, true);
+  assert.equal(metadata.browserbase_configured, false);
 });
 
 test("shouldFallbackToNextEngine falls back after failed vision-only agent runs", () => {

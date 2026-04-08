@@ -87,7 +87,7 @@ function resolveRequestedExecutionEngine(body) {
       body?.executionEngine ||
       metadata.execution_engine ||
       metadata.executionEngine ||
-      (browserMode === "advanced_browser" ? "browserbase" : "") ||
+      (browserMode === "advanced_browser" ? "local_vision_agent" : "") ||
       process.env.QA_EXECUTION_ENGINE,
     DEFAULT_EXECUTION_ENGINE
   );

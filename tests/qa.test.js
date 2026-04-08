@@ -311,7 +311,7 @@ test("api run helper resolves requested execution engine from body and metadata"
         browser_mode: "advanced_browser"
       }
     }),
-    "browserbase"
+    "local_vision_agent"
   );
   assert.equal(runHandler.__private.resolveRequestedExecutionEngine({}), "auto");
 });

@@ -176,7 +176,7 @@ const BROWSER_MODE_OPTIONS = [
   {
     value: "advanced_browser",
     label: "Advanced browser",
-    description: "Use a fresh Browserbase session with stronger stealth and captcha solving for harder sites."
+    description: "Use the DO worker's fresh local browser with stronger captcha handling for harder sites."
   }
 ] as const;
 
@@ -243,7 +243,10 @@ function describeAdvancedBrowserRuntime(
   const commit =
     readWorkerString(healthyWorker, "git_commit_short") || readWorkerString(healthyWorker, "git_commit_sha");
   const advancedSupported = readWorkerBoolean(healthyWorker, "advanced_browser_supported");
-  const browserbaseConfigured = readWorkerBoolean(healthyWorker, "browserbase_configured");
+  const advancedConfigured =
+    readWorkerBoolean(healthyWorker, "advanced_browser_configured") ||
+    (readWorkerBoolean(healthyWorker, "advanced_browser_supported") &&
+      !Object.prototype.hasOwnProperty.call(healthyWorker, "advanced_browser_configured"));
 
   if (!advancedSupported) {
     return {
@@ -257,12 +260,12 @@ function describeAdvancedBrowserRuntime(
     };
   }
 
-  if (!browserbaseConfigured) {
+  if (!advancedConfigured) {
     return {
       status: "blocked",
       tone: "warning",
-      title: "Browserbase is not configured on DO",
-      detail: `${hostname}${commit ? ` on ${commit}` : ""} is running the right worker build, but Browserbase credentials or model access are missing. Fix the DO worker env before using this mode.`,
+      title: "Advanced browser is not configured on DO",
+      detail: `${hostname}${commit ? ` on ${commit}` : ""} is running the right worker build, but the local browser agent or model access is missing. Fix the DO worker env before using this mode.`,
       worker: healthyWorker
     };
   }
@@ -271,7 +274,7 @@ function describeAdvancedBrowserRuntime(
     status: "ready",
     tone: "success",
     title: "Advanced browser is ready on DO",
-    detail: `${hostname}${commit ? ` on ${commit}` : ""} can run Browserbase with stronger stealth and supported captcha handling.`,
+    detail: `${hostname}${commit ? ` on ${commit}` : ""} can run the DO worker browser with stronger captcha handling.`,
     worker: healthyWorker
   };
 }
@@ -2491,7 +2494,7 @@ function WorkspacePage({
       }
     }
     if (browserMode === "advanced_browser" && nextDraft.validationTarget === "inside_product" && nextDraft.accessMethod === "saved_session") {
-      setLaunchMessage("Advanced browser starts from a fresh remote session. Use a real test login instead of a saved session.");
+      setLaunchMessage("Advanced browser starts from a fresh DO worker session. Use a real test login instead of a saved session.");
       setLaunchTone("danger");
       return;
     }
@@ -3576,7 +3579,7 @@ function QuickLaunchModal({
           {browserMode === "advanced_browser" ? (
             <div className="mt-3 space-y-3">
               <p className="text-xs leading-5 text-brand-muted">
-                Best for aggressive anti-bot protection, remote browser runs, and supported captcha gates.
+                Best for harder sites that need the DO worker browser and supported captcha gates.
               </p>
               <AdvancedBrowserReadinessCard runtime={advancedBrowserRuntime} onRefresh={onRefreshWorkerHealth} />
             </div>
@@ -4312,7 +4315,7 @@ function LaunchComposer({
 
                   {browserMode === "advanced_browser" ? (
                     <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
-                      This path uses a fresh remote browser with stronger stealth and captcha solving. Saved project sessions only work on the standard browser.
+                      This path uses a fresh DO worker browser with stronger captcha handling. Saved project sessions only work on the standard browser.
                     </div>
                   ) : null}
 
@@ -4375,7 +4378,7 @@ function LaunchComposer({
                         </div>
                       ) : (
                         <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
-                          Advanced browser will start a fresh Browserbase session, turn on stronger stealth, and use supported captcha solving when the worker is configured for it.
+                          Advanced browser will start a fresh DO worker browser and use supported captcha solving when the worker is configured for it.
                         </div>
                       )}
                     </>
@@ -4769,7 +4772,7 @@ function LaunchComposer({
             <div className="text-sm font-semibold text-brand-ink">What happens next</div>
             <div className="mt-2 text-sm leading-6 text-brand-muted">
               {browserMode === "advanced_browser"
-                ? "We will use a fresh remote browser with stronger stealth and supported captcha handling."
+                ? "We will use a fresh DO worker browser with supported captcha handling."
                 : validationTarget === "public_flow"
                 ? "We will stay on public pages only."
                 : validationTarget === "login_signup"

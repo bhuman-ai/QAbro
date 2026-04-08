@@ -153,11 +153,8 @@ function resolveWorkerBuildMetadata(options = {}) {
       sanitizeString(env.QA_APP_COMMIT_SHA || env.VERCEL_GIT_COMMIT_SHA || env.GITHUB_SHA, 64) || null,
     git_commit_short: null,
     advanced_browser_supported: true,
-    browserbase_configured: Boolean(
-      sanitizeString(env.BROWSERBASE_API_KEY, 32) &&
-        sanitizeString(env.BROWSERBASE_PROJECT_ID, 128) &&
-        hasAnyModelApiKey(env)
-    )
+    advanced_browser_configured: getLocalAgentAvailability(env).ok,
+    browserbase_configured: false
   };
 
   if (!metadata.git_commit_sha) {
@@ -209,6 +206,7 @@ function createWorkerHeartbeat(workerId, options = {}) {
     git_commit_sha: buildInfo.git_commit_sha,
     git_commit_short: buildInfo.git_commit_short,
     advanced_browser_supported: buildInfo.advanced_browser_supported,
+    advanced_browser_configured: buildInfo.advanced_browser_configured,
     browserbase_configured: buildInfo.browserbase_configured,
     poll_interval_ms: Number.isFinite(Number(options.pollIntervalMs)) ? Number(options.pollIntervalMs) : null,
     heartbeat_interval_ms: heartbeatConfig.intervalMs,
@@ -386,7 +384,7 @@ function resolveRequestedExecutionEngine(runRequest, env = process.env) {
   return normalizeExecutionEngine(
     metadata.execution_engine ||
       metadata.executionEngine ||
-      (browserMode === "advanced_browser" ? "browserbase" : "") ||
+      (browserMode === "advanced_browser" ? "local_vision_agent" : "") ||
       env.QA_EXECUTION_ENGINE,
     DEFAULT_EXECUTION_ENGINE
   );
