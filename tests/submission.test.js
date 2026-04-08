@@ -29,6 +29,8 @@ test("validateReconRequest carries self-hosted runtime metadata", () => {
     captcha_builtin_wait_ms: 30000,
     twocaptcha_api_key: "two-secret",
     twocaptcha_timeout_ms: 240000,
+    twocaptcha_max_attempts: 3,
+    twocaptcha_retry_backoff_ms: 1500,
     twocaptcha_recaptcha_v3_min_score: 0.3,
     twocaptcha_recaptcha_v3_action: "signup",
     captcha_hook_url: "https://hooks.example.com/captcha",
@@ -45,6 +47,8 @@ test("validateReconRequest carries self-hosted runtime metadata", () => {
   assert.equal(result.data.metadata.captcha_builtin_wait_ms, 30000);
   assert.equal(result.data.metadata.twocaptcha_api_key, "two-secret");
   assert.equal(result.data.metadata.twocaptcha_timeout_ms, 240000);
+  assert.equal(result.data.metadata.twocaptcha_max_attempts, 3);
+  assert.equal(result.data.metadata.twocaptcha_retry_backoff_ms, 1500);
   assert.equal(result.data.metadata.twocaptcha_recaptcha_v3_min_score, 0.3);
   assert.equal(result.data.metadata.twocaptcha_recaptcha_v3_action, "signup");
   assert.equal(result.data.metadata.captcha_hook_url, "https://hooks.example.com/captcha");
@@ -397,7 +401,9 @@ test("submission runner runtime config picks up 2Captcha settings", () => {
       twocaptcha_api_key: "two-secret",
       twocaptcha_timeout_ms: 240000,
       twocaptcha_poll_interval_ms: 6000,
-      twocaptcha_post_inject_wait_ms: 9000
+      twocaptcha_post_inject_wait_ms: 9000,
+      twocaptcha_max_attempts: 3,
+      twocaptcha_retry_backoff_ms: 1500
     }
   });
 
@@ -406,6 +412,8 @@ test("submission runner runtime config picks up 2Captcha settings", () => {
   assert.equal(runtime.twoCaptcha.timeoutMs, 240000);
   assert.equal(runtime.twoCaptcha.pollIntervalMs, 6000);
   assert.equal(runtime.twoCaptcha.postInjectWaitMs, 9000);
+  assert.equal(runtime.twoCaptcha.maxAttempts, 3);
+  assert.equal(runtime.twoCaptcha.retryBackoffMs, 1500);
 });
 
 test("submission runner runtime config applies connector overrides for BetaList", () => {
@@ -665,6 +673,92 @@ test("submission runner detects script-only recaptcha v3 challenges", async () =
     assert.equal(challenge?.version, "v3");
     assert.equal(challenge?.action, "signup");
     assert.equal(challenge?.min_score, 0.3);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("submission runner retries unsolvable recaptcha challenges before succeeding", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.goto("https://example.com", { waitUntil: "domcontentloaded" });
+    await page.setContent(`
+      <html>
+        <body>
+          <form></form>
+          <iframe
+            src="https://www.google.com/recaptcha/api2/anchor?ar=1&k=site-key-123&co=aHR0cHM6Ly9leGFtcGxlLmNvbTo0NDM.&hl=en&v=test&size=invisible&cb=abc123"
+          ></iframe>
+          <script>
+            window.__resetCount = 0;
+            window.grecaptcha = {
+              reset() {
+                window.__resetCount += 1;
+              }
+            };
+            window.___grecaptcha_cfg = {
+              clients: {
+                0: {
+                  callback(token) {
+                    window.__solvedToken = token;
+                    const frame = document.querySelector('iframe');
+                    if (frame) frame.remove();
+                  }
+                }
+              }
+            };
+          </script>
+        </body>
+      </html>
+    `);
+
+    const calls = [];
+    const fetchImpl = async (url, init = {}) => {
+      calls.push({ url: String(url), body: String(init.body || "") });
+      const createCalls = calls.filter((entry) => entry.url.includes("/in.php")).length;
+      if (String(url).includes("/in.php")) {
+        return {
+          ok: true,
+          text: async () => JSON.stringify({ status: 1, request: `captcha-task-${createCalls}` })
+        };
+      }
+      if (createCalls === 1) {
+        return {
+          ok: true,
+          text: async () => JSON.stringify({ status: 0, request: "ERROR_CAPTCHA_UNSOLVABLE" })
+        };
+      }
+      return {
+        ok: true,
+        text: async () => JSON.stringify({ status: 1, request: "captcha-token-xyz" })
+      };
+    };
+
+    const runLog = [];
+    const result = await __private.attemptTwoCaptchaSolve(
+      page,
+      {
+        twoCaptcha: {
+          apiKey: "two-secret",
+          apiBaseUrl: "https://2captcha.com",
+          timeoutMs: 20000,
+          pollIntervalMs: 1,
+          postInjectWaitMs: 1,
+          maxAttempts: 2,
+          retryBackoffMs: 1
+        }
+      },
+      runLog,
+      { fetchImpl }
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.resolved, true);
+    assert.equal(await page.evaluate(() => window.__resetCount), 1);
+    assert.equal(await page.evaluate(() => window.__solvedToken), "captcha-token-xyz");
+    assert.equal(calls.filter((entry) => entry.url.includes("/in.php")).length, 2);
+    assert.ok(runLog.some((entry) => entry.event === "twocaptcha_retry_scheduled"));
   } finally {
     await browser.close();
   }
