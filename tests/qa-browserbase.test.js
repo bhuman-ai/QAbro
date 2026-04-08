@@ -552,7 +552,7 @@ test("clickWithVisionLocalization retries with yellow-box annotation after OCR c
   assert.equal(successEvent.details.strategy, "yellow_box_diff");
 });
 
-test("resolveBrowserbaseSessionCreateParams enables advanced stealth by default", async () => {
+test("resolveBrowserbaseSessionCreateParams enables advanced stealth without proxies by default", async () => {
   await withEnv(
     {
       QA_BROWSERBASE_ADVANCED_STEALTH: undefined,
@@ -565,7 +565,7 @@ test("resolveBrowserbaseSessionCreateParams enables advanced stealth by default"
       assert.equal(params.browserSettings.advancedStealth, true);
       assert.equal(params.browserSettings.solveCaptchas, true);
       assert.equal(params.browserSettings.blockAds, undefined);
-      assert.equal(params.proxies, true);
+      assert.equal(params.proxies, false);
     }
   );
 });
@@ -623,6 +623,69 @@ test("resolveBrowserbaseSessionCreateParams builds browserbase geolocated proxy 
       ]);
     }
   );
+});
+
+test("executeBrowserbaseQaRun strips plan-restricted Browserbase features on fallback", async () => {
+  const sessionParams = [];
+
+  class FakeStagehand {
+    constructor(config) {
+      this.browserbaseSessionID = "session_plan_fallback";
+      this.browserbaseSessionURL = "https://browserbase.example/session";
+      this.browserbaseDebugURL = "https://browserbase.example/debug";
+      this.bus = { on() {} };
+      this.sessionCreateParams = config.browserbaseSessionCreateParams;
+      sessionParams.push(this.sessionCreateParams);
+    }
+
+    async init() {
+      if (this.sessionCreateParams?.browserSettings?.advancedStealth) {
+        throw new Error("403 Advanced stealth mode is only available on the Enterprise plan");
+      }
+    }
+
+    async close() {}
+
+    async agent() {
+      return {
+        execute: async () => ({
+          output: {
+            status: "completed",
+            findings: [],
+            summary: {
+              coverage: {
+                pages_visited: 1,
+                flows_tested: 1,
+                flows_blocked: 0,
+                untested_areas: []
+              }
+            }
+          }
+        })
+      };
+    }
+  }
+
+  const result = await withEnv(
+    {
+      ...REQUIRED_ENV,
+      QA_BROWSERBASE_USE_PROXIES: "true",
+      QA_BROWSERBASE_PROXY_COUNTRY: undefined,
+      QA_BROWSERBASE_PROXY_STATE: undefined,
+      QA_BROWSERBASE_PROXY_CITY: undefined
+    },
+    async () =>
+      executeBrowserbaseQaRun(createRunRequest(), {
+        stagehandModule: { Stagehand: FakeStagehand }
+      })
+  );
+
+  assert.equal(sessionParams[0].browserSettings.advancedStealth, true);
+  assert.equal(sessionParams[0].proxies, true);
+  assert.equal(sessionParams[1].browserSettings.advancedStealth, false);
+  assert.equal(sessionParams[1].proxies, false);
+  assert.equal(result.report.status, "completed");
+  assert.ok(result.runLog.some((entry) => entry.event === "browserbase_advanced_stealth_unavailable"));
 });
 
 test("executeBrowserbaseQaRun falls back from dom to hybrid and stops", async () => {
