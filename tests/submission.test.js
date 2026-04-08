@@ -29,6 +29,8 @@ test("validateReconRequest carries self-hosted runtime metadata", () => {
     captcha_builtin_wait_ms: 30000,
     twocaptcha_api_key: "two-secret",
     twocaptcha_timeout_ms: 240000,
+    twocaptcha_recaptcha_v3_min_score: 0.3,
+    twocaptcha_recaptcha_v3_action: "signup",
     captcha_hook_url: "https://hooks.example.com/captcha",
     captcha_hook_wait_ms: 45000
   });
@@ -43,6 +45,8 @@ test("validateReconRequest carries self-hosted runtime metadata", () => {
   assert.equal(result.data.metadata.captcha_builtin_wait_ms, 30000);
   assert.equal(result.data.metadata.twocaptcha_api_key, "two-secret");
   assert.equal(result.data.metadata.twocaptcha_timeout_ms, 240000);
+  assert.equal(result.data.metadata.twocaptcha_recaptcha_v3_min_score, 0.3);
+  assert.equal(result.data.metadata.twocaptcha_recaptcha_v3_action, "signup");
   assert.equal(result.data.metadata.captcha_hook_url, "https://hooks.example.com/captcha");
   assert.equal(result.data.metadata.captcha_hook_wait_ms, 45000);
 });
@@ -561,6 +565,59 @@ test("submission runner 2Captcha client creates and polls task tokens", async ()
   assert.match(String(calls[0].body), /googlekey=site-key-123/);
 });
 
+test("submission runner 2Captcha client sends recaptcha v3 parameters", async () => {
+  const calls = [];
+  const fetchImpl = async (url, init = {}) => {
+    calls.push({
+      url,
+      method: init.method || "GET",
+      body: init.body || null
+    });
+    if (String(url).includes("/in.php")) {
+      return {
+        ok: true,
+        text: async () => JSON.stringify({ status: 1, request: "captcha-task-v3" })
+      };
+    }
+    return {
+      ok: true,
+      text: async () => JSON.stringify({ status: 1, request: "captcha-token-v3" })
+    };
+  };
+
+  const result = await __private.requestTwoCaptchaToken(
+    {
+      type: "recaptcha",
+      version: "v3",
+      sitekey: "site-key-v3",
+      pageurl: "https://example.com/form",
+      action: "signup"
+    },
+    {
+      twoCaptcha: {
+        apiKey: "two-secret",
+        apiBaseUrl: "https://2captcha.com",
+        timeoutMs: 20000,
+        pollIntervalMs: 1,
+        recaptchaV3MinScore: 0.3
+      }
+    },
+    {
+      fetchImpl
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.taskId, "captcha-task-v3");
+  assert.equal(result.token, "captcha-token-v3");
+  assert.equal(calls.length, 2);
+  assert.match(String(calls[0].body), /method=userrecaptcha/);
+  assert.match(String(calls[0].body), /googlekey=site-key-v3/);
+  assert.match(String(calls[0].body), /version=v3/);
+  assert.match(String(calls[0].body), /action=signup/);
+  assert.match(String(calls[0].body), /min_score=0.3/);
+});
+
 test("submission runner detects invisible recaptcha iframe challenges", async () => {
   const browser = await chromium.launch({ headless: true });
   try {
@@ -580,6 +637,34 @@ test("submission runner detects invisible recaptcha iframe challenges", async ()
     assert.equal(challenge?.type, "recaptcha");
     assert.equal(challenge?.sitekey, "site-key-123");
     assert.equal(challenge?.invisible, true);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("submission runner detects script-only recaptcha v3 challenges", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.goto("https://example.com", { waitUntil: "domcontentloaded" });
+    await page.setContent(`
+      <html>
+        <head>
+          <script src="https://www.google.com/recaptcha/api.js?render=site-key-v3"></script>
+          <script>
+            grecaptcha.execute("site-key-v3", { action: "signup" });
+          </script>
+        </head>
+        <body></body>
+      </html>
+    `);
+
+    const challenge = await __private.detectSupportedCaptchaChallenge(page);
+    assert.equal(challenge?.type, "recaptcha");
+    assert.equal(challenge?.sitekey, "site-key-v3");
+    assert.equal(challenge?.version, "v3");
+    assert.equal(challenge?.action, "signup");
+    assert.equal(challenge?.min_score, 0.3);
   } finally {
     await browser.close();
   }
