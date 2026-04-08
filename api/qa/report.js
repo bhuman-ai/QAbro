@@ -5,7 +5,12 @@ const {
   normalizeReport,
   sanitizeString
 } = require("../../lib/qa-core");
-const { extractBrandKey, resolveQaReportReadAccess, readQaShareKey } = require("../../lib/qa-queue");
+const {
+  extractBrandKey,
+  normalizeQueueLifecycleStatus,
+  resolveQaReportReadAccess,
+  readQaShareKey
+} = require("../../lib/qa-queue");
 const { buildLiveStreamArtifacts } = require("../../lib/qa-live-stream");
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
 
@@ -164,6 +169,38 @@ module.exports = async (req, res) => {
   }
 
   const payload = row && row.payload && typeof row.payload === "object" ? row.payload : {};
+  const queueStatus = normalizeQueueLifecycleStatus(
+    sanitizeString(payload.queue?.queue_status || payload.queue?.status || row.status, 64)
+  );
+  const hasStoredReport = payload.report_json && typeof payload.report_json === "object";
+  if (!hasStoredReport && ["queued", "processing", "retryable"].includes(queueStatus)) {
+    const publicBaseUrl = getPublicBaseUrl(req);
+    const brand = sanitizeString(extractBrandKey(row), 256);
+    const uiParams = new URLSearchParams({ view: "report", run_id: runId });
+    if (brand) {
+      uiParams.set("brand", brand);
+    }
+    const shareKey = readQaShareKey(req);
+    if (shareKey) {
+      uiParams.set("share_key", shareKey);
+    }
+
+    return res.status(200).json({
+      ok: true,
+      run_id: runId,
+      report_ready: false,
+      queue_status: queueStatus,
+      report: null,
+      markdown: null,
+      ui_report_url: `${publicBaseUrl}/dashboard?${uiParams.toString()}`,
+      row: {
+        id: row.id || null,
+        delivered_at: row.delivered_at || null,
+        created_at: row.created_at || null,
+        updated_at: row.updated_at || null
+      }
+    });
+  }
   const storedArtifacts = payload.artifacts && typeof payload.artifacts === "object" ? payload.artifacts : {};
   const mergedArtifacts = {
     ...storedArtifacts,
