@@ -1638,3 +1638,80 @@ test("performCredentialedLogin treats a generic continue form as sign-up when th
     }
   );
 });
+
+test("performCredentialedLogin resolves invisible captcha challenges via the captcha probe", async () => {
+  await withServer(
+    {
+      "/": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <form id="signup-form">
+                <h1>Create account</h1>
+                <label>Email <input type="email" name="email" autocomplete="email" /></label>
+                <label>Password <input type="password" name="password" autocomplete="new-password" /></label>
+                <button type="submit">Sign up</button>
+              </form>
+              <script>
+                window.__captchaResolved = false;
+                window.__submitCount = 0;
+                document.getElementById("signup-form").addEventListener("submit", (event) => {
+                  event.preventDefault();
+                  window.__submitCount += 1;
+                  if (!window.__captchaResolved) {
+                    return;
+                  }
+                  window.location.href = "/app";
+                });
+              </script>
+            </body>
+          </html>`);
+      },
+      "/app": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html><html><body><main><h1>Signed up</h1></main></body></html>`);
+      }
+    },
+    async (baseUrl) => {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage();
+        const runLog = [];
+        const result = await performCredentialedLogin(
+          page,
+          {
+            run_id: "signup_invisible_captcha_probe",
+            target_url: `${baseUrl}/`,
+            scope_mode: "feature_targeted",
+            metadata: {
+              otp_provider: "none",
+              auto_create_account: true
+            }
+          },
+          {
+            runLog,
+            captchaPostWaitMs: 1,
+            hasCaptchaChallenge: async (authPage) =>
+              authPage.evaluate(() => window.__submitCount >= 1 && window.__captchaResolved !== true),
+            resolveCaptcha: async (authPage) => {
+              await authPage.evaluate(() => {
+                window.__captchaResolved = true;
+              });
+              return { ok: true, resolved: true };
+            }
+          }
+        );
+
+        assert.equal(result.attempted, true);
+        assert.equal(result.success, true);
+        assert.equal(page.url().startsWith(`${baseUrl}/app`), true);
+        assert.match(JSON.stringify(runLog), /auth_captcha_detected/);
+        assert.match(JSON.stringify(runLog), /challenge_probe/);
+        assert.match(JSON.stringify(runLog), /post_captcha_submit/);
+      } finally {
+        await browser.close();
+      }
+    }
+  );
+});
