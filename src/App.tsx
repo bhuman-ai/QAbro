@@ -1833,6 +1833,7 @@ function WorkspacePage({
     repoTriageEnabled: false,
     selectedRepoFullName: ""
   });
+  const launchDraftSeededRef = useRef(false);
   const advancedBrowserRuntime = describeAdvancedBrowserRuntime(workers, workerSummary);
 
   const projectCatalog = buildProjectCatalog(projects, reports);
@@ -2234,8 +2235,13 @@ function WorkspacePage({
       return;
     }
     setLaunchDraft((current) => {
-      if (composeOpen && current.targetUrl) {
-        return current;
+      if (composeOpen) {
+        if (launchDraftSeededRef.current) {
+          return current;
+        }
+        launchDraftSeededRef.current = true;
+      } else {
+        launchDraftSeededRef.current = false;
       }
       const projectDefaults = buildDraftFromProject(currentProject, repoConnection);
       const next = buildDraftFromRun(selectedRun, selectedReport, repoConnection);
