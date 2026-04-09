@@ -2390,14 +2390,21 @@ function WorkspacePage({
       }
 
       const [projectsResult, reportsResult, schedulesResult, alertsResult, workersResult] = results;
+      const nextWorkspaceErrors: string[] = [];
 
       if (projectsResult.status === "fulfilled") {
         setProjects(projectsResult.value.items || []);
+      } else {
+        nextWorkspaceErrors.push(
+          projectsResult.reason instanceof Error ? projectsResult.reason.message : "Could not load brands."
+        );
       }
       if (reportsResult.status === "fulfilled") {
         setReports(reportsResult.value.items || []);
       } else {
-        setRunsError(reportsResult.reason instanceof Error ? reportsResult.reason.message : "Could not load tests.");
+        nextWorkspaceErrors.push(
+          reportsResult.reason instanceof Error ? reportsResult.reason.message : "Could not load tests."
+        );
       }
       if (schedulesResult.status === "fulfilled") {
         setSchedules(schedulesResult.value.items || []);
@@ -2410,6 +2417,7 @@ function WorkspacePage({
         setWorkerSummary(workersResult.value.summary || null);
       }
 
+      setRunsError(nextWorkspaceErrors[0] || "");
       setRunsLoading(false);
       setWorkspaceBootstrapped(true);
     }
@@ -2849,14 +2857,20 @@ function WorkspacePage({
       apiFetch<{ items: AlertItem[] }>("/api/qa/alerts", { params: { status: "open" } }),
       apiFetch<{ items: WorkerInfo[]; summary: WorkerSummary }>("/api/qa/workers")
     ]);
+    const nextWorkspaceErrors: string[] = [];
     if (projectsResponse.status === "fulfilled") {
       setProjects(projectsResponse.value.items || []);
+    } else {
+      nextWorkspaceErrors.push(
+        projectsResponse.reason instanceof Error ? projectsResponse.reason.message : "Could not load brands."
+      );
     }
     if (reportsResponse.status === "fulfilled") {
       setReports(reportsResponse.value.items || []);
-      setRunsError("");
     } else {
-      setRunsError(reportsResponse.reason instanceof Error ? reportsResponse.reason.message : "Could not load tests.");
+      nextWorkspaceErrors.push(
+        reportsResponse.reason instanceof Error ? reportsResponse.reason.message : "Could not load tests."
+      );
     }
     if (schedulesResponse.status === "fulfilled") {
       setSchedules(schedulesResponse.value.items || []);
@@ -2868,6 +2882,7 @@ function WorkspacePage({
       setWorkers(workersResponse.value.items || []);
       setWorkerSummary(workersResponse.value.summary || null);
     }
+    setRunsError(nextWorkspaceErrors[0] || "");
   }
 
   async function refreshWorkerHealth() {
@@ -3861,6 +3876,8 @@ function WorkspacePage({
       <StarterDashboard
         brands={starterBrands}
         activeBrand={activeStarterBrand}
+        ownerEmail={authState.user?.email || ""}
+        workspaceError={runsError}
         personas={starterPersonas}
         historyRows={historyRows}
         liveAgents={liveAgents}
@@ -3878,6 +3895,7 @@ function WorkspacePage({
         onOpenSettings={() => openPanel("settings", { brand: activeDashboardBrandKey })}
         onRunNewTest={handleQuickRun}
         onScheduleTest={() => openPanel("automations", { brand: activeDashboardBrandKey })}
+        onRetryWorkspace={refreshWorkspaceLists}
       />
     );
   }
@@ -6269,6 +6287,8 @@ function StarterOnboardingFlow({
 function StarterDashboard({
   brands,
   activeBrand,
+  ownerEmail,
+  workspaceError,
   personas,
   historyRows,
   liveAgents,
@@ -6285,10 +6305,13 @@ function StarterDashboard({
   onViewHelp,
   onOpenSettings,
   onRunNewTest,
-  onScheduleTest
+  onScheduleTest,
+  onRetryWorkspace
 }: {
   brands: StarterBrand[];
   activeBrand: StarterBrand | null;
+  ownerEmail: string;
+  workspaceError: string;
   personas: StarterPersona[];
   historyRows: StarterHistoryRow[];
   liveAgents: StarterLiveAgent[];
@@ -6306,11 +6329,13 @@ function StarterDashboard({
   onOpenSettings: () => void;
   onRunNewTest: () => void;
   onScheduleTest: () => void;
+  onRetryWorkspace: () => void | Promise<void>;
 }) {
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   const [selectedLiveAgent, setSelectedLiveAgent] = useState<StarterLiveAgent | null>(null);
   const latestScore = trendData[trendData.length - 1]?.score || 0;
   const openBugCount = frictionRows.filter((item) => item.severity === "high").length;
+  const showBrandLoadNotice = Boolean(workspaceError) || !brands.length;
 
   return (
     <div className="min-h-screen bg-slate-50 flex relative">
@@ -6376,6 +6401,32 @@ function StarterDashboard({
                 </button>
               </div>
             </motion.div>
+          ) : null}
+
+          {showBrandLoadNotice ? (
+            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                {workspaceError ? "Brand load issue" : "No brands loaded"}
+              </p>
+              <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-600">
+                {workspaceError
+                  ? workspaceError
+                  : ownerEmail
+                    ? `No brands are attached to ${ownerEmail}. If this is the wrong account, sign out and use the right email.`
+                    : "We could not find any brands for this account."}
+              </p>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <span className="min-w-0 truncate text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  {ownerEmail || "Signed-in account unavailable"}
+                </span>
+                <button
+                  onClick={() => void onRetryWorkspace()}
+                  className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-black text-brand-ink transition-all hover:bg-slate-100"
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
           ) : null}
         </div>
 

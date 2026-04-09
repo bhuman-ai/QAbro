@@ -14,6 +14,7 @@ module.exports = async (req, res) => {
   }
 
   const ownerUserId = sanitizeString(auth.user?.id, 128);
+  const ownerEmail = sanitizeString(auth.user?.email, 320).toLowerCase();
   if (auth.is_service_token && !ownerUserId) {
     return res.status(400).json({
       ok: false,
@@ -23,6 +24,7 @@ module.exports = async (req, res) => {
 
   const filters = {
     owner_user_id: ownerUserId,
+    owner_email: ownerEmail,
     brand: sanitizeString(
       req.query?.brand ||
         req.query?.brand_key ||

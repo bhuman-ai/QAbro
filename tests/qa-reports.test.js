@@ -225,6 +225,63 @@ test("listQaReports filters by owner_user_id", async () => {
   assert.match(decodeURIComponent(capturedUrls[0]), /owner_user_id=eq\.user_alpha/);
 });
 
+test("listQaReports falls back to owner_email when owner_user_id returns no rows", async () => {
+  const rows = [
+    {
+      run_id: "run_owner_email",
+      target: "a.example",
+      status: "completed",
+      delivered_at: "2026-03-04T00:00:00.000Z",
+      payload: {
+        queue: { status: "completed" },
+        run_request: { metadata: { owner_user_id: "user_old", owner_email: "owner@example.com" } },
+        report_json: { findings: [], tested_journeys: [], recommendations: [], summary: {} }
+      }
+    }
+  ];
+  const capturedUrls = [];
+  let requestCount = 0;
+
+  const result = await listQaReports(
+    { owner_user_id: "user_new", owner_email: "owner@example.com", limit: "50", offset: "0" },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async (url) => {
+        capturedUrls.push(String(url));
+        requestCount += 1;
+        if (requestCount === 1) {
+          return {
+            ok: true,
+            status: 200,
+            async json() {
+              return [];
+            }
+          };
+        }
+
+        return {
+          ok: true,
+          status: 200,
+          async json() {
+            return rows;
+          }
+        };
+      }
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.total, 1);
+  assert.equal(result.items[0].run_id, "run_owner_email");
+  assert.equal(capturedUrls.length, 2);
+  assert.match(decodeURIComponent(capturedUrls[0]), /owner_user_id=eq\.user_new/);
+  assert.match(
+    decodeURIComponent(capturedUrls[1]),
+    /payload=cs\.\{"run_request":\{"metadata":\{"owner_email":"owner@example\.com"\}\}\}/
+  );
+});
+
 test("listQaReports falls back to legacy payload filter before computed columns exist", async () => {
   const rows = [
     {

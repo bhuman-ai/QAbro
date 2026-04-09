@@ -238,6 +238,93 @@ test("projects handler returns the canonical project catalog even when bootstrap
   }
 });
 
+test("projects handler falls back to owner_email when owner_user_id has no saved brands", async () => {
+  const originalFetch = global.fetch;
+  const capturedUrls = [];
+
+  global.fetch = async (url) => {
+    const requestUrl = String(url);
+    capturedUrls.push(requestUrl);
+
+    if (requestUrl.includes("/rest/v1/swarmtest_projects") && requestUrl.includes("owner_user_id=eq.user_new")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return [];
+        }
+      };
+    }
+
+    if (requestUrl.includes("/rest/v1/swarmtest_projects") && requestUrl.includes("owner_email=eq.owner%40example.com")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return [
+            {
+              brand_key: "acme",
+              brand_name: "Acme",
+              target_url: "https://acme.example",
+              owner_user_id: "user_old",
+              owner_email: "owner@example.com",
+              last_used_at: "2026-03-16T10:20:00.000Z",
+              created_at: "2026-03-15T10:20:00.000Z",
+              updated_at: "2026-03-16T10:20:00.000Z",
+              metadata: { source: "dashboard" }
+            }
+          ];
+        }
+      };
+    }
+
+    if (requestUrl.includes("/rest/v1/swarmtest_reports")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return [];
+        }
+      };
+    }
+
+    throw new Error(`Unexpected fetch: ${requestUrl}`);
+  };
+
+  try {
+    await withEnv(
+      {
+        QA_SERVICE_TOKEN: "service-token",
+        SUPABASE_URL: "https://supabase.example",
+        SUPABASE_SERVICE_KEY: "service-key"
+      },
+      async () => {
+        const req = {
+          method: "GET",
+          headers: {
+            "x-qa-service-token": "service-token",
+            "x-owner-user-id": "user_new",
+            "x-owner-email": "owner@example.com"
+          }
+        };
+        const res = createRes();
+
+        await projectsHandler(req, res);
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.body.ok, true);
+        assert.equal(res.body.source, "canonical_email_fallback");
+        assert.equal(res.body.total, 1);
+        assert.equal(res.body.items[0].brand_key, "acme");
+        assert.match(capturedUrls[0], /owner_user_id=eq\.user_new/);
+        assert.ok(capturedUrls.some((url) => /owner_email=eq\.owner%40example\.com/.test(url)));
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test("projects handler reports saved session availability from the QA profile directory", async () => {
   const originalFetch = global.fetch;
   const profileRoot = fs.mkdtempSync(path.join(os.tmpdir(), "qa-project-profiles-"));
@@ -341,11 +428,12 @@ test("projects handler backfills report-only projects into saved projects", asyn
                 run_request: {
                   target_url: "https://beta.example/app",
                   metadata: {
-                    brand_id: "beta",
-                    brand_name: "Beta",
-                    owner_user_id: "user_123"
-                  }
-                },
+                  brand_id: "beta",
+                  brand_name: "Beta",
+                  owner_user_id: "user_123",
+                  owner_email: "owner@example.com"
+                }
+              },
                 report_json: { findings: [], tested_journeys: [], recommendations: [], summary: {} }
               }
             }
@@ -536,7 +624,8 @@ test("projects handler falls back to report-derived projects when saved projects
                 metadata: {
                   brand_id: "fallback",
                   brand_name: "Fallback",
-                  owner_user_id: "user_123"
+                  owner_user_id: "user_123",
+                  owner_email: "owner@example.com"
                 }
               },
               report_json: { findings: [], tested_journeys: [], recommendations: [], summary: {} }
@@ -573,7 +662,7 @@ test("projects handler falls back to report-derived projects when saved projects
         assert.equal(res.body.items[0].brand_key, "fallback");
         assert.equal(res.body.items[0].brand_name, "Fallback");
         assert.equal(res.body.items[0].run_count, 1);
-        assert.equal(calls.length, 2);
+        assert.equal(calls.length, 3);
         assert.ok(!calls.some((call) => call.url.includes("/rest/v1/swarmtest_projects?on_conflict=")));
       }
     );
