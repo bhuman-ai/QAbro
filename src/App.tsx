@@ -430,6 +430,186 @@ type StarterBrand = {
   githubConnected: boolean;
 };
 
+const PERSONA_COLOR_SWATCHES = [
+  "bg-[#FFE8E8]",
+  "bg-[#E8EEFF]",
+  "bg-[#FFF0F3]",
+  "bg-[#F3E8FF]",
+  "bg-[#E8FFF3]",
+  "bg-[#FFF6E8]"
+] as const;
+
+function hashPersonaSeed(value?: string | null) {
+  const input = String(value || "");
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function buildPersonaColor(seed?: string | null) {
+  return PERSONA_COLOR_SWATCHES[hashPersonaSeed(seed) % PERSONA_COLOR_SWATCHES.length];
+}
+
+function formatPersonaLabel(value: string) {
+  return String(value || "")
+    .trim()
+    .split(/\s+/g)
+    .filter(Boolean)
+    .map((part) => {
+      if (/^[A-Z]{2,4}$/.test(part)) {
+        return part;
+      }
+      if (/^\d/.test(part)) {
+        return part.replace(/grandma/gi, "Grandma").replace(/grandpa/gi, "Grandpa");
+      }
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    })
+    .join(" ");
+}
+
+function buildPersonaAvatarDescriptor(input: Pick<StarterPersona, "name" | "role" | "trait" | "quote"> | string) {
+  const value =
+    typeof input === "string"
+      ? input
+      : [input.name, input.role, input.trait, input.quote].filter(Boolean).join(". ");
+  return value.replace(/\s+/g, " ").trim().slice(0, 240) || "General customer";
+}
+
+function buildPersonaAvatarUrl(input: Pick<StarterPersona, "name" | "role" | "trait" | "quote"> | string) {
+  const params = new URLSearchParams({
+    persona: buildPersonaAvatarDescriptor(input)
+  });
+  return `/api/qa/persona-avatar?${params.toString()}`;
+}
+
+function shouldAutoReplacePersonaAvatar(avatar?: string | null) {
+  const value = String(avatar || "").trim();
+  return !value || /api\.dicebear\.com\/7\.x\/avataaars/i.test(value);
+}
+
+function resolvePersonaAvatar(
+  personaLike: Pick<StarterPersona, "name" | "role" | "trait" | "quote">,
+  currentAvatar?: string | null
+) {
+  return shouldAutoReplacePersonaAvatar(currentAvatar) ? buildPersonaAvatarUrl(personaLike) : String(currentAvatar || "").trim();
+}
+
+function derivePersonaName(seed?: string | null) {
+  const value = String(seed || "").trim();
+  if (!value) {
+    return "Customer";
+  }
+  if (/grandma|grandmother/i.test(value)) {
+    return "Grandma";
+  }
+  if (/grandpa|grandfather/i.test(value)) {
+    return "Grandpa";
+  }
+  if (/\bmom\b|mother/i.test(value)) {
+    return "Mom";
+  }
+  if (/\bdad\b|father/i.test(value)) {
+    return "Dad";
+  }
+  if (/student/i.test(value)) {
+    return "Student";
+  }
+  if (/director/i.test(value)) {
+    return "Director";
+  }
+  if (/manager/i.test(value)) {
+    return "Manager";
+  }
+  if (/founder/i.test(value)) {
+    return "Founder";
+  }
+  if (/developer|engineer/i.test(value)) {
+    return "Builder";
+  }
+  if (/marketer|growth/i.test(value)) {
+    return "Marketer";
+  }
+  if (/buyer|shopper|customer/i.test(value)) {
+    return "Customer";
+  }
+  const firstNamedWord = value.match(/\b([A-Z][a-z]{2,})\b/);
+  return firstNamedWord?.[1] || "Customer";
+}
+
+function derivePersonaRole(seed?: string | null) {
+  const value = String(seed || "").replace(/\s+/g, " ").trim();
+  if (!value) {
+    return "Generated customer";
+  }
+  const explicitAge = value.match(/(\d{1,3}\s*(?:[-\s]?(?:year|yr)s?\s*[-\s]?old))/i)?.[1] || "";
+  const ageRoleKeyword =
+    value.match(/\b(grandma|grandmother|grandpa|grandfather|mom|mother|dad|father|hr director|cs student|product manager|student|buyer|shopper|parent|director|manager|founder|marketer|developer|engineer|customer)\b/i)?.[1] ||
+    "";
+  if (explicitAge && ageRoleKeyword) {
+    return formatPersonaLabel(`${explicitAge} ${ageRoleKeyword}`);
+  }
+  if (explicitAge) {
+    return formatPersonaLabel(explicitAge);
+  }
+  const keywordRole =
+    value.match(/\b(busy parent|first-time customer|speed-focused buyer|product manager|hr director|cs student|founder|marketer|developer|engineer|director|manager|student|buyer|shopper|parent|grandma|grandpa|mom|dad)\b/i)?.[1] ||
+    "";
+  if (keywordRole) {
+    return formatPersonaLabel(keywordRole);
+  }
+  return "Generated customer";
+}
+
+function derivePersonaTrait(seed?: string | null) {
+  const value = String(seed || "").toLowerCase();
+  if (/distracted|busy|multitask|overwhelmed/.test(value)) {
+    return "Distracted & Busy";
+  }
+  if (/speed|fast|efficiency|commission|quick/.test(value)) {
+    return "Speed Focused";
+  }
+  if (/skeptic|hesitant|uncertain|doubt/.test(value)) {
+    return "Skeptical";
+  }
+  if (/clarity|accessibility|labels|jargon/.test(value)) {
+    return "Clarity Seeker";
+  }
+  if (/break|chaos|edge case|student/.test(value)) {
+    return "Chaos Tester";
+  }
+  if (/strict|serious|frustrated|annoyed/.test(value)) {
+    return "Hard To Please";
+  }
+  return "First-time user";
+}
+
+function buildGeneratedPersona(seed?: string | null): StarterPersona {
+  const descriptor = String(seed || "").trim();
+  const name = derivePersonaName(descriptor);
+  const role = derivePersonaRole(descriptor);
+  const trait = derivePersonaTrait(descriptor);
+  const quote = descriptor || "A generated customer perspective for this run.";
+  const base = {
+    name,
+    role,
+    trait,
+    quote
+  };
+
+  return {
+    id: `generated-${hashPersonaSeed(descriptor).toString(36)}`,
+    ...base,
+    avatar: buildPersonaAvatarUrl(base),
+    color: buildPersonaColor(descriptor),
+    techSavviness: /student|developer|engineer|technical|power user/i.test(descriptor) ? 85 : 55,
+    attentionSpan: /busy|distracted|multitask/i.test(descriptor) ? 35 : 65,
+    patience: /impatient|speed|commission|frustrated/i.test(descriptor) ? 30 : 60
+  };
+}
+
 const STARTER_PERSONAS: StarterPersona[] = [
   {
     id: "sarah",
@@ -437,7 +617,7 @@ const STARTER_PERSONAS: StarterPersona[] = [
     role: "31yr old Mom",
     trait: "Distracted & Busy",
     quote: "I'm usually holding a toddler while trying to buy groceries. If I can't do it with one thumb, I'm out.",
-    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah",
+    avatar: buildPersonaAvatarUrl("Sarah. 31yr old Mom. Distracted & Busy. Usually holding a toddler while trying to buy groceries."),
     color: "bg-[#FFE8E8]",
     techSavviness: 45,
     attentionSpan: 30,
@@ -449,7 +629,7 @@ const STARTER_PERSONAS: StarterPersona[] = [
     role: "27yr old SDR",
     trait: "Efficiency Obsessed",
     quote: "I live in my CRM. If your integration is clunky, it's costing me commission. I need speed.",
-    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Marcus",
+    avatar: buildPersonaAvatarUrl("Marcus. 27yr old SDR. Efficiency Obsessed. Lives in a CRM and cares about speed."),
     color: "bg-[#E8EEFF]",
     techSavviness: 90,
     attentionSpan: 85,
@@ -461,7 +641,7 @@ const STARTER_PERSONAS: StarterPersona[] = [
     role: "58yr old HR Director",
     trait: "Clarity Seeker",
     quote: "I care about accessibility and clear labels. Don't use jargon I have to look up.",
-    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Linda",
+    avatar: buildPersonaAvatarUrl("Linda. 58yr old HR Director. Clarity Seeker. Cares about accessibility and clear labels."),
     color: "bg-[#FFF0F3]",
     techSavviness: 60,
     attentionSpan: 95,
@@ -473,7 +653,7 @@ const STARTER_PERSONAS: StarterPersona[] = [
     role: "19yr old CS Student",
     trait: "The Chaos Tester",
     quote: "I'll find every edge case. I try to break things for fun. Your error messages better be helpful.",
-    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Leo",
+    avatar: buildPersonaAvatarUrl("Leo. 19yr old CS Student. Chaos Tester. Likes breaking edge cases for fun."),
     color: "bg-[#F3E8FF]",
     techSavviness: 98,
     attentionSpan: 70,
@@ -855,24 +1035,22 @@ function launchDraftsMatch(left: LaunchDraft, right: LaunchDraft) {
   );
 }
 
-function getStarterPersonaIndex(seed?: string | null) {
-  const value = String(seed || "").toLowerCase();
-  if (!value) {
-    return 0;
-  }
-  const matched = STARTER_PERSONAS.findIndex((persona) => value.includes(persona.name.toLowerCase()));
-  if (matched >= 0) {
-    return matched;
-  }
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) % STARTER_PERSONAS.length;
-  }
-  return Math.abs(hash) % STARTER_PERSONAS.length;
-}
-
 function getStarterPersona(seed?: string | null) {
-  return STARTER_PERSONAS[getStarterPersonaIndex(seed)];
+  const value = String(seed || "").trim();
+  if (!value) {
+    return STARTER_PERSONAS[0];
+  }
+  const matched = STARTER_PERSONAS.find((persona) => {
+    const haystack = `${persona.name} ${persona.role} ${persona.trait} ${persona.quote}`.toLowerCase();
+    return haystack.includes(value.toLowerCase()) || value.toLowerCase().includes(persona.name.toLowerCase());
+  });
+  if (matched) {
+    return {
+      ...matched,
+      avatar: resolvePersonaAvatar(matched, matched.avatar)
+    };
+  }
+  return buildGeneratedPersona(value);
 }
 
 function buildStarterBrands(projects: ProjectSummary[], runs: RunSummary[], repoConnection?: RepoConnection | null): StarterBrand[] {
@@ -9173,11 +9351,17 @@ function StarterPersonaLab({
 
   function handleOpenCreate() {
     setEditingPersona(null);
-    setFormData({
+    const base = {
       name: "",
+      role: "Custom User",
       trait: "Impatient & Fast",
-      quote: "I&apos;m a custom persona created for testing.",
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${Math.random()}`,
+      quote: "I&apos;m a custom persona created for testing."
+    };
+    setFormData({
+      name: base.name,
+      trait: base.trait,
+      quote: base.quote,
+      avatar: buildPersonaAvatarUrl(base),
       techSavviness: 50,
       attentionSpan: 50,
       patience: 50
@@ -9186,12 +9370,13 @@ function StarterPersonaLab({
   }
 
   function handleOpenEdit(persona: StarterPersona) {
+    const resolvedAvatar = resolvePersonaAvatar(persona, persona.avatar);
     setEditingPersona(persona);
     setFormData({
       name: persona.name,
       trait: persona.trait,
       quote: persona.quote,
-      avatar: persona.avatar,
+      avatar: resolvedAvatar,
       techSavviness: persona.techSavviness,
       attentionSpan: persona.attentionSpan,
       patience: persona.patience
@@ -9200,6 +9385,16 @@ function StarterPersonaLab({
   }
 
   function handleSave() {
+    const role = editingPersona?.role || "Custom User";
+    const resolvedAvatar = resolvePersonaAvatar(
+      {
+        name: formData.name || editingPersona?.name || "Custom Persona",
+        role,
+        trait: formData.trait,
+        quote: formData.quote
+      },
+      formData.avatar
+    );
     if (editingPersona) {
       setPersonas((current) =>
         current.map((persona) =>
@@ -9209,7 +9404,7 @@ function StarterPersonaLab({
                 name: formData.name,
                 trait: formData.trait,
                 quote: formData.quote,
-                avatar: formData.avatar,
+                avatar: resolvedAvatar,
                 techSavviness: formData.techSavviness,
                 attentionSpan: formData.attentionSpan,
                 patience: formData.patience
@@ -9223,11 +9418,11 @@ function StarterPersonaLab({
         {
           id: Math.random().toString(36).slice(2, 9),
           name: formData.name || "Custom Persona",
-          role: "Custom User",
+          role,
           trait: formData.trait,
           quote: formData.quote,
-          avatar: formData.avatar,
-          color: "bg-slate-100",
+          avatar: resolvedAvatar,
+          color: buildPersonaColor(formData.name || formData.quote || formData.trait),
           techSavviness: formData.techSavviness,
           attentionSpan: formData.attentionSpan,
           patience: formData.patience
@@ -9238,10 +9433,15 @@ function StarterPersonaLab({
   }
 
   function generateNewAvatar() {
-    const seed = formData.name || Math.random().toString(36).slice(2, 9);
+    const descriptor = {
+      name: formData.name || editingPersona?.name || "Custom Persona",
+      role: editingPersona?.role || "Custom User",
+      trait: formData.trait,
+      quote: formData.quote
+    };
     setFormData((current) => ({
       ...current,
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}&random=${Math.random()}`
+      avatar: `${buildPersonaAvatarUrl(descriptor)}&refresh=${Date.now()}`
     }));
   }
 
@@ -9265,43 +9465,46 @@ function StarterPersonaLab({
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-8 md:p-12">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {personas.map((persona) => (
-            <div key={persona.id} className="dash-card p-8 bg-white">
-              <div className="flex items-start justify-between gap-4">
-                <div className={`w-20 h-20 rounded-[2rem] overflow-hidden border-4 border-white shadow-xl ${persona.color}`}>
-                  <img src={persona.avatar} alt={persona.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          {personas.map((persona) => {
+            const displayAvatar = resolvePersonaAvatar(persona, persona.avatar);
+            return (
+              <div key={persona.id} className="dash-card p-8 bg-white">
+                <div className="flex items-start justify-between gap-4">
+                  <div className={`w-20 h-20 rounded-[2rem] overflow-hidden border-4 border-white shadow-xl ${persona.color}`}>
+                    <img src={displayAvatar} alt={persona.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  </div>
+                  <button onClick={() => handleOpenEdit(persona)} className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-brand-ink hover:text-white transition-all">
+                    <Settings className="w-4 h-4" />
+                  </button>
                 </div>
-                <button onClick={() => handleOpenEdit(persona)} className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-brand-ink hover:text-white transition-all">
-                  <Settings className="w-4 h-4" />
-                </button>
-              </div>
-              <h3 className="text-2xl font-black mt-6 tracking-tight">{persona.name}</h3>
-              <div className="text-xs font-black uppercase tracking-widest text-brand-accent mt-1">{persona.role}</div>
-              <div className="mt-4 p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                <p className="text-sm font-bold text-slate-600 italic">&quot;{persona.quote}&quot;</p>
-              </div>
-              <div className="mt-6 grid grid-cols-3 gap-4">
-                <div>
-                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Tech</div>
-                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                    <div className="h-full bg-brand-secondary" style={{ width: `${persona.techSavviness}%` }} />
+                <h3 className="text-2xl font-black mt-6 tracking-tight">{persona.name}</h3>
+                <div className="text-xs font-black uppercase tracking-widest text-brand-accent mt-1">{persona.role}</div>
+                <div className="mt-4 p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                  <p className="text-sm font-bold text-slate-600 italic">&quot;{persona.quote}&quot;</p>
+                </div>
+                <div className="mt-6 grid grid-cols-3 gap-4">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Tech</div>
+                    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full bg-brand-secondary" style={{ width: `${persona.techSavviness}%` }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Attention</div>
+                    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full bg-brand-accent" style={{ width: `${persona.attentionSpan}%` }} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Patience</div>
+                    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full bg-brand-warning" style={{ width: `${persona.patience}%` }} />
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Attention</div>
-                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                    <div className="h-full bg-brand-accent" style={{ width: `${persona.attentionSpan}%` }} />
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Patience</div>
-                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                    <div className="h-full bg-brand-warning" style={{ width: `${persona.patience}%` }} />
-                  </div>
-                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </main>
 
@@ -9329,7 +9532,7 @@ function StarterPersonaLab({
                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Avatar</label>
                   <div className="flex gap-3">
                     <input type="text" value={formData.avatar} onChange={(event) => setFormData((current) => ({ ...current, avatar: event.target.value }))} className="flex-1 p-4 rounded-xl border-2 border-slate-100 focus:border-brand-accent outline-none font-bold" />
-                    <button onClick={generateNewAvatar} className="handcrafted-card px-4 rounded-xl font-black text-sm">Shuffle</button>
+                    <button onClick={generateNewAvatar} className="handcrafted-card px-4 rounded-xl font-black text-sm">Refresh</button>
                   </div>
                 </div>
                 <button onClick={handleSave} className="w-full bg-brand-ink text-white py-4 rounded-2xl font-black text-lg hover:bg-brand-accent transition-all shadow-lg mt-4">
