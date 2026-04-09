@@ -9557,7 +9557,6 @@ function StarterBrandSettingsPage({
   const [settingsTone, setSettingsTone] = useState<"neutral" | "success" | "danger">("neutral");
   const [repoPrimaryDraft, setRepoPrimaryDraft] = useState("");
   const [repoAssociatedDraft, setRepoAssociatedDraft] = useState<string[]>([]);
-  const [repoAddDraft, setRepoAddDraft] = useState("");
   const [repoSaving, setRepoSaving] = useState(false);
   const [repoSaveMessage, setRepoSaveMessage] = useState("");
   const [repoSaveTone, setRepoSaveTone] = useState<"neutral" | "success" | "danger">("neutral");
@@ -9581,6 +9580,9 @@ function StarterBrandSettingsPage({
     brandNameDraft.trim() !== savedBrandName.trim() ||
     websiteDraft.trim() !== savedWebsite.trim() ||
     JSON.stringify([...teamMembersDraft].sort()) !== JSON.stringify([...savedTeamMembers].sort());
+  const linkedRepoCount = (repoPrimaryDraft ? 1 : 0) + repoAssociatedDraft.length;
+  const repoStatusTone = repoConnected ? "success" : repoNeedsSelection ? "warning" : repoPendingInstall ? "neutral" : "neutral";
+  const repoStatusLabel = repoConnected ? "Connected" : repoNeedsSelection ? "Pick repos" : repoPendingInstall ? "Waiting for GitHub" : "Not connected";
 
   useEffect(() => {
     setBrandNameDraft(savedBrandName);
@@ -9598,7 +9600,6 @@ function StarterBrandSettingsPage({
       : [];
     setRepoPrimaryDraft(primaryRepoFullName);
     setRepoAssociatedDraft(associatedRepoFullNames);
-    setRepoAddDraft("");
     setRepoSaveMessage("");
     setRepoSaveTone("neutral");
   }, [repoConnection?.associated_repo_full_names, repoConnection?.selected_repo_full_name]);
@@ -9621,14 +9622,6 @@ function StarterBrandSettingsPage({
     setTeamMemberInput("");
     setSettingsMessage("");
     setSettingsTone("neutral");
-  }
-
-  function handleAddAssociatedRepo() {
-    if (!repoAddDraft || repoAddDraft === repoPrimaryDraft || repoAssociatedDraft.includes(repoAddDraft)) {
-      return;
-    }
-    setRepoAssociatedDraft((current) => [...current, repoAddDraft]);
-    setRepoAddDraft("");
   }
 
   async function handleSaveSettings() {
@@ -9887,34 +9880,22 @@ function StarterBrandSettingsPage({
 
         <section className="dash-card rounded-[2rem] border border-slate-200 bg-white p-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-[1.5rem] bg-slate-900 text-white shadow-xl">
-                <GitBranch className="h-8 w-8" />
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-[1.25rem] bg-slate-900 text-white shadow-xl">
+                <GitBranch className="h-7 w-7" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-3">
                   <h2 className="text-2xl font-black tracking-tight text-brand-ink">Connected repos</h2>
-                  <span
-                    className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${
-                      repoConnected
-                        ? "bg-brand-secondary/10 text-brand-secondary border-brand-secondary/20"
-                        : repoNeedsSelection
-                          ? "bg-brand-warning/10 text-brand-warning border-brand-warning/20"
-                          : repoPendingInstall
-                            ? "bg-brand-accent/10 text-brand-accent border-brand-accent/20"
-                            : "bg-slate-100 text-slate-500 border-slate-200"
-                    }`}
-                  >
-                    {repoConnected ? "Connected" : repoNeedsSelection ? "Pick repos" : repoPendingInstall ? "Waiting for GitHub" : "Not connected"}
-                  </span>
+                  <StatusPill label={repoStatusLabel} tone={repoStatusTone} />
                 </div>
                 <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-500">
-                  Choose the primary codebase for this brand, add any supporting repos, or reconnect GitHub if the install changed.
+                  Pick one main repo for this brand. Add supporting repos only if the product spans more than one codebase.
                 </p>
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
               <Button
                 type="button"
                 onClick={() => {
@@ -9930,9 +9911,16 @@ function StarterBrandSettingsPage({
                 {repoLoading ? "Loading..." : repoPendingInstall ? "Refresh GitHub" : githubInstalled ? "Reconnect GitHub" : "Connect GitHub"}
               </Button>
               {githubInstalled && !repoPendingInstall ? (
-                <Button type="button" tone="danger" onClick={() => handleDisconnectRepos().catch(() => null)} disabled={repoSaving || repoLoading} className="rounded-xl px-5 py-2.5 font-black">
-                  Disconnect GitHub
-                </Button>
+                <details className="group">
+                  <summary className="cursor-pointer list-none text-right text-xs font-black uppercase tracking-widest text-slate-400 transition group-open:text-slate-500">
+                    More options
+                  </summary>
+                  <div className="mt-2 flex justify-end">
+                    <Button type="button" tone="danger" onClick={() => handleDisconnectRepos().catch(() => null)} disabled={repoSaving || repoLoading} className="rounded-xl px-4 py-2 font-black">
+                      Disconnect GitHub
+                    </Button>
+                  </div>
+                </details>
               ) : null}
             </div>
           </div>
@@ -9940,7 +9928,7 @@ function StarterBrandSettingsPage({
           {repoError ? <div className="mt-6 rounded-xl border border-brand-danger/20 bg-brand-danger/10 px-4 py-3 text-sm font-bold text-brand-danger">{repoError}</div> : null}
 
           {repoPendingInstall ? (
-            <div className="mt-6 rounded-2xl border border-brand-accent/20 bg-brand-accent/5 p-5">
+            <div className="mt-6 rounded-2xl border border-brand-accent/20 bg-brand-accent/5 p-4">
               <div className="text-sm font-black tracking-tight text-brand-ink">
                 GitHub is already installed. This brand still needs to attach to it.
               </div>
@@ -9951,96 +9939,130 @@ function StarterBrandSettingsPage({
           ) : null}
 
           {repoNeedsSelection ? (
-            <div className="mt-6 rounded-2xl border border-brand-warning/20 bg-brand-warning/10 p-5">
+            <div className="mt-6 rounded-2xl border border-brand-warning/20 bg-brand-warning/10 p-4">
               <div className="text-sm font-black tracking-tight text-brand-ink">
                 Choose the repos for {activeBrand?.name || "this brand"}
               </div>
               <p className="mt-1 text-sm leading-6 text-brand-muted">
-                GitHub is connected. Now pick the main repo and any supporting repos that belong to this product so diagnosis searches the right codebase.
+                GitHub is connected. Start with the main repo, then add supporting repos only if you need them.
               </p>
             </div>
           ) : null}
 
           {canChooseProjectRepos ? (
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <div className="text-sm font-black tracking-tight text-brand-ink">Project repos</div>
-              <p className="mt-1 text-sm leading-6 text-slate-500">
-                The main repo is searched first. Extra repos stay attached for shared components, APIs, or supporting apps.
-              </p>
-
-              <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="mt-6 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-slate-400">Primary repo</label>
-                  <Select
-                    value={repoPrimaryDraft}
-                    onChange={(event) => {
-                      const nextPrimary = event.target.value;
-                      setRepoPrimaryDraft(nextPrimary);
-                      setRepoAssociatedDraft((current) => current.filter((repo) => repo !== nextPrimary));
-                    }}
-                  >
-                    <option value="">Choose a repo</option>
-                    {availableRepos.map((repo) => (
-                      <option key={repo.full_name || repo.id} value={repo.full_name || ""}>
-                        {repo.full_name}
-                      </option>
-                    ))}
-                  </Select>
+                  <div className="text-base font-black tracking-tight text-brand-ink">Choose repos</div>
+                  <p className="mt-1 text-sm text-slate-500">
+                    The main repo is required. Supporting repos are optional.
+                  </p>
                 </div>
-                <div className="self-end text-xs font-bold uppercase tracking-widest text-slate-400">
-                  {repoConnection?.associated_repo_full_names?.length || (repoConnection?.selected_repo_full_name ? 1 : 0)} linked
+                <div className="text-xs font-black uppercase tracking-widest text-slate-400">
+                  {linkedRepoCount} linked
                 </div>
               </div>
 
-              <div className="mt-4">
-                <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-slate-400">Other repos for this project</label>
-                <div className="flex flex-wrap gap-2">
-                  {repoAssociatedDraft.length ? (
-                    repoAssociatedDraft.map((repo) => (
-                      <button
-                        key={repo}
-                        type="button"
-                        onClick={() => setRepoAssociatedDraft((current) => current.filter((item) => item !== repo))}
-                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-brand-ink hover:border-brand-accent"
-                      >
-                        {repo}
-                        <Plus className="h-3.5 w-3.5 rotate-45 text-slate-400" />
-                      </button>
-                    ))
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400">
-                      No extra repos linked yet.
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-                <Select value={repoAddDraft} onChange={(event) => setRepoAddDraft(event.target.value)}>
-                  <option value="">Add another repo</option>
-                  {remainingRepoOptions.map((repo) => (
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+                <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-slate-400">Main repo</label>
+                <Select
+                  value={repoPrimaryDraft}
+                  onChange={(event) => {
+                    const nextPrimary = event.target.value;
+                    setRepoPrimaryDraft(nextPrimary);
+                    setRepoAssociatedDraft((current) => current.filter((repo) => repo !== nextPrimary));
+                  }}
+                >
+                  <option value="">Choose the main repo</option>
+                  {availableRepos.map((repo) => (
                     <option key={repo.full_name || repo.id} value={repo.full_name || ""}>
                       {repo.full_name}
                     </option>
                   ))}
                 </Select>
-                <Button type="button" onClick={handleAddAssociatedRepo} disabled={!repoAddDraft} className="rounded-xl px-5 py-2.5 font-black">
-                  Add repo
-                </Button>
-              </div>
 
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                <div className="text-sm text-slate-500">Diagnosis searches the primary repo first, then the linked repos.</div>
-                <Button type="button" tone="primary" onClick={() => handleSaveRepos().catch(() => null)} disabled={repoSaving || !repoPrimaryDraft || !repoSelectionDirty} className="rounded-xl px-5 py-2.5 font-black">
-                  {repoSaving ? "Saving..." : "Save project repos"}
-                </Button>
-              </div>
+                <div className="mt-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400">Supporting repos</label>
+                    {repoAssociatedDraft.length ? (
+                      <button
+                        type="button"
+                        onClick={() => setRepoAssociatedDraft([])}
+                        className="text-xs font-bold text-slate-400 transition hover:text-brand-ink"
+                      >
+                        Clear all
+                      </button>
+                    ) : null}
+                  </div>
 
-              {repoSaveMessage ? (
-                <div className={`mt-4 rounded-xl border px-4 py-3 text-sm font-bold ${repoSaveTone === "success" ? "border-brand-secondary/20 bg-brand-secondary/10 text-brand-secondary" : repoSaveTone === "danger" ? "border-brand-danger/20 bg-brand-danger/10 text-brand-danger" : "border-slate-200 bg-white text-slate-500"}`}>
-                  {repoSaveMessage}
+                  <p className="mt-2 text-sm text-slate-500">
+                    Add these only if this product depends on multiple repos.
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {repoAssociatedDraft.length ? (
+                      repoAssociatedDraft.map((repo) => (
+                        <button
+                          key={repo}
+                          type="button"
+                          onClick={() => setRepoAssociatedDraft((current) => current.filter((item) => item !== repo))}
+                          className="inline-flex items-center gap-2 rounded-full border border-brand-line bg-brand-shell px-3 py-2 text-xs font-semibold text-brand-ink transition hover:border-brand-accent"
+                        >
+                          {repo}
+                          <Plus className="h-3.5 w-3.5 rotate-45 text-slate-400" />
+                        </button>
+                      ))
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-400">
+                        No supporting repos selected.
+                      </div>
+                    )}
+                  </div>
+
+                  {remainingRepoOptions.length ? (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {remainingRepoOptions.map((repo) => {
+                        const fullName = String(repo.full_name || "");
+                        return (
+                          <button
+                            key={fullName || repo.id}
+                            type="button"
+                            onClick={() => setRepoAssociatedDraft((current) => [...current, fullName])}
+                            className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-500 transition hover:border-brand-accent hover:text-brand-ink"
+                          >
+                            + {fullName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : repoPrimaryDraft ? (
+                    <div className="mt-4 text-sm text-slate-400">No other repos are available for this GitHub install.</div>
+                  ) : null}
                 </div>
-              ) : null}
+
+                <div className="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-4 md:flex-row md:items-center md:justify-between">
+                  <div className="text-sm text-slate-500">
+                    {repoPrimaryDraft
+                      ? `Diagnosis will search ${repoPrimaryDraft} first.`
+                      : "Pick the main repo first."}
+                  </div>
+                  <Button
+                    type="button"
+                    tone="primary"
+                    onClick={() => handleSaveRepos().catch(() => null)}
+                    disabled={repoSaving || !repoPrimaryDraft || !repoSelectionDirty}
+                    className="w-full rounded-xl px-5 py-2.5 font-black md:w-auto"
+                  >
+                    {repoSaving ? "Saving..." : "Save repos"}
+                  </Button>
+                </div>
+
+                {repoSaveMessage ? (
+                  <div className={`mt-4 rounded-xl border px-4 py-3 text-sm font-bold ${repoSaveTone === "success" ? "border-brand-secondary/20 bg-brand-secondary/10 text-brand-secondary" : repoSaveTone === "danger" ? "border-brand-danger/20 bg-brand-danger/10 text-brand-danger" : "border-slate-200 bg-white text-slate-500"}`}>
+                    {repoSaveMessage}
+                  </div>
+                ) : null}
+              </div>
             </div>
           ) : (
             <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm leading-7 text-slate-500">
