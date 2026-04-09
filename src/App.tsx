@@ -529,6 +529,33 @@ function buildProjectCatalog(projects: ProjectSummary[], runs: RunSummary[]) {
   });
 }
 
+function upsertProjectSummary(projects: ProjectSummary[], project?: ProjectSummary | null) {
+  const brandKey = normalizeBrandKey(project?.brand_key || "");
+  if (!brandKey) {
+    return projects;
+  }
+
+  const current = projects.find((item) => normalizeBrandKey(item.brand_key) === brandKey) || null;
+  const merged: ProjectSummary = {
+    ...(current || {}),
+    ...(project || {}),
+    brand_key: brandKey,
+    brand_name: project?.brand_name || current?.brand_name || inferBrandName(brandKey),
+    target_url: project?.target_url || current?.target_url || null,
+    run_count: Number(project?.run_count ?? current?.run_count ?? 0) || 0,
+    latest_run_at: project?.latest_run_at ?? current?.latest_run_at ?? null,
+    metadata:
+      project?.metadata && typeof project.metadata === "object"
+        ? project.metadata
+        : current?.metadata && typeof current.metadata === "object"
+          ? current.metadata
+          : {}
+  };
+
+  const remaining = projects.filter((item) => normalizeBrandKey(item.brand_key) !== brandKey);
+  return buildProjectCatalog([merged, ...remaining], []);
+}
+
 function buildDraftFromRun(run?: RunSummary | null, report?: QaReport | null, repoConnection?: RepoConnection | null): LaunchDraft {
   const metadata = report?.metadata && typeof report.metadata === "object" ? report.metadata : {};
   const controlledRaw =
@@ -2391,19 +2418,32 @@ function WorkspacePage({
     if (!authState.authorized || isSharedView) {
       return;
     }
-    const [projectsResponse, reportsResponse, schedulesResponse, alertsResponse, workersResponse] = await Promise.all([
+    const [projectsResponse, reportsResponse, schedulesResponse, alertsResponse, workersResponse] = await Promise.allSettled([
       apiFetch<{ items: ProjectSummary[] }>("/api/qa/projects"),
       apiFetch<{ items: RunSummary[] }>("/api/qa/reports", { params: { limit: 120, offset: 0 } }),
       apiFetch<{ items: ScheduleItem[] }>("/api/qa/schedules"),
       apiFetch<{ items: AlertItem[] }>("/api/qa/alerts", { params: { status: "open" } }),
       apiFetch<{ items: WorkerInfo[]; summary: WorkerSummary }>("/api/qa/workers")
     ]);
-    setProjects(projectsResponse.items || []);
-    setReports(reportsResponse.items || []);
-    setSchedules(schedulesResponse.items || []);
-    setAlerts(alertsResponse.items || []);
-    setWorkers(workersResponse.items || []);
-    setWorkerSummary(workersResponse.summary || null);
+    if (projectsResponse.status === "fulfilled") {
+      setProjects(projectsResponse.value.items || []);
+    }
+    if (reportsResponse.status === "fulfilled") {
+      setReports(reportsResponse.value.items || []);
+      setRunsError("");
+    } else {
+      setRunsError(reportsResponse.reason instanceof Error ? reportsResponse.reason.message : "Could not load tests.");
+    }
+    if (schedulesResponse.status === "fulfilled") {
+      setSchedules(schedulesResponse.value.items || []);
+    }
+    if (alertsResponse.status === "fulfilled") {
+      setAlerts(alertsResponse.value.items || []);
+    }
+    if (workersResponse.status === "fulfilled") {
+      setWorkers(workersResponse.value.items || []);
+      setWorkerSummary(workersResponse.value.summary || null);
+    }
   }
 
   async function refreshWorkerHealth() {
@@ -2420,7 +2460,7 @@ function WorkspacePage({
     const targetUrl = input.website.startsWith("http") ? input.website : `https://${input.website}`;
     const brandKey = deriveBrandKeyFromUrl(targetUrl) || normalizeBrandKey(input.name) || `brand-${Date.now()}`;
 
-    await apiFetch("/api/qa/projects", {
+    const response = await apiFetch<{ items?: ProjectSummary[] }>("/api/qa/projects", {
       method: "POST",
       body: {
         brand_key: brandKey,
@@ -2432,7 +2472,24 @@ function WorkspacePage({
       }
     });
 
-    await refreshWorkspaceLists();
+    const savedProject =
+      (response.items || []).find((item) => normalizeBrandKey(item.brand_key) === brandKey) ||
+      response.items?.[0] ||
+      ({
+        brand_key: brandKey,
+        brand_name: input.name,
+        target_url: targetUrl,
+        metadata: {
+          source: "beforeusersdo_ui_starter"
+        }
+      } satisfies ProjectSummary);
+    setProjects((current) => upsertProjectSummary(current, savedProject));
+    setLaunchDraft((current) => ({
+      ...current,
+      targetUrl,
+      brandKey,
+      brandName: input.name
+    }));
 
     const next = new URLSearchParams(route.search);
     next.set("brand", brandKey);
@@ -2444,7 +2501,7 @@ function WorkspacePage({
 
     if (input.connectGitHub) {
       window.setTimeout(() => {
-        handleGitHubInstall().catch(() => null);
+        handleGitHubInstallForBrand(brandKey).catch(() => null);
       }, 0);
     }
   }
@@ -2751,8 +2808,9 @@ function WorkspacePage({
     }
   }
 
-  async function handleGitHubInstall() {
-    if (!currentBrandKey) {
+  async function handleGitHubInstallForBrand(brandKey: string) {
+    const normalizedBrandKey = normalizeBrandKey(brandKey);
+    if (!normalizedBrandKey) {
       setRepoError("Pick or create a project first.");
       return;
     }
@@ -2761,13 +2819,17 @@ function WorkspacePage({
       const response = await apiFetch<{ install_url: string }>("/api/qa/github-app/install-url", {
         method: "POST",
         body: {
-          brand_key: currentBrandKey
+          brand_key: normalizedBrandKey
         }
       });
       window.location.href = response.install_url;
     } catch (caught) {
       setRepoError(caught instanceof Error ? caught.message : "Could not start GitHub setup.");
     }
+  }
+
+  async function handleGitHubInstall() {
+    await handleGitHubInstallForBrand(currentBrandKey);
   }
 
   async function handleRepositorySelect(repoFullName: string) {
@@ -5356,11 +5418,13 @@ function StarterOnboardingFlow({
   const [name, setName] = useState("");
   const [website, setWebsite] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   async function finish(connectGitHub: boolean) {
-    if (!name || !website) {
+    if (!name || !website || submitting) {
       return;
     }
+    setSubmitError("");
     setSubmitting(true);
     try {
       await onComplete({
@@ -5368,6 +5432,8 @@ function StarterOnboardingFlow({
         website: website.startsWith("http") ? website : `https://${website}`,
         connectGitHub
       });
+    } catch (caught) {
+      setSubmitError(caught instanceof Error ? caught.message : "Could not finish setup.");
     } finally {
       setSubmitting(false);
     }
@@ -5484,6 +5550,7 @@ function StarterOnboardingFlow({
             >
               Skip for now (I&apos;ll do it later)
             </button>
+            {submitError ? <p className="mt-4 text-center text-sm font-bold text-rose-500">{submitError}</p> : null}
           </motion.div>
         )}
       </motion.div>
