@@ -9000,6 +9000,16 @@ function StarterAutomationsPage({
               We automatically run a full regression suite on every Pull Request. If an agent finds a friction point, we&apos;ll comment directly on the PR with proof and a suggested fix.
             </p>
             {repoError ? <p className="text-sm font-bold text-brand-danger">{repoError}</p> : null}
+            {repoNeedsSelection ? (
+              <div className="mt-4 rounded-2xl border border-brand-warning/20 bg-brand-warning/10 p-5">
+                <div className="text-sm font-black tracking-tight text-brand-ink">
+                  Choose the repos for {activeBrand?.name || "this brand"}
+                </div>
+                <p className="mt-1 text-sm leading-6 text-brand-muted">
+                  GitHub is connected. Now pick the primary repo and any related repos that belong to this product so route hints and fix diagnosis search the right codebase.
+                </p>
+              </div>
+            ) : null}
             {canChooseProjectRepos ? (
               <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
                 <div className="text-sm font-black tracking-tight text-brand-ink">Project repos</div>

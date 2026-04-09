@@ -599,12 +599,161 @@ test("github app setup handler finalizes the installation and redirects back to 
         await setupHandler(req, res);
 
         assert.equal(res.statusCode, 302);
+        assert.match(String(res.headers.Location || ""), /panel=overview/);
+        assert.match(String(res.headers.Location || ""), /brand=acme/);
         assert.match(String(res.headers.Location || ""), /github_app_status=connected/);
         assert.match(String(res.headers.Location || ""), /github_app_brand=acme/);
         assert.equal(upsertRows.length, 1);
         assert.equal(upsertRows[0].connection_status, "connected");
         assert.equal(upsertRows[0].selected_repo_full_name, "acme-org/web");
         assert.equal(upsertRows[0].pending_state_token, null);
+      }
+    );
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("github app setup handler redirects multi-repo installs to repo selection", async () => {
+  const originalFetch = global.fetch;
+  const upsertRows = [];
+
+  global.fetch = async (url, options = {}) => {
+    const requestUrl = String(url);
+    if (
+      requestUrl.includes("/rest/v1/swarmtest_brand_repo_connections") &&
+      requestUrl.includes("pending_state_token=eq.state_multi")
+    ) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return [
+            {
+              owner_user_id: "user_123",
+              owner_email: "owner@example.com",
+              brand_key: "acme",
+              provider: "github",
+              pending_state_token: "state_multi",
+              pending_state_expires_at: "2099-04-01T12:00:00.000Z"
+            }
+          ];
+        }
+      };
+    }
+    if (requestUrl === "https://api.github.com/app/installations/789") {
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        async json() {
+          return {
+            id: 789,
+            account: {
+              login: "acme-org",
+              type: "Organization"
+            },
+            target_type: "Organization",
+            target_id: 45
+          };
+        }
+      };
+    }
+    if (requestUrl === "https://api.github.com/app/installations/789/access_tokens") {
+      return {
+        ok: true,
+        status: 201,
+        headers: new Headers({ "content-type": "application/json" }),
+        async json() {
+          return {
+            token: "inst_token_123",
+            expires_at: "2026-04-01T13:00:00.000Z"
+          };
+        }
+      };
+    }
+    if (requestUrl === "https://api.github.com/installation/repositories?per_page=100&page=1") {
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        async json() {
+          return {
+            total_count: 2,
+            repositories: [
+              {
+                id: 10,
+                name: "web",
+                full_name: "acme-org/web",
+                default_branch: "main",
+                private: true,
+                owner: { login: "acme-org" }
+              },
+              {
+                id: 11,
+                name: "docs",
+                full_name: "acme-org/docs",
+                default_branch: "main",
+                private: true,
+                owner: { login: "acme-org" }
+              }
+            ]
+          };
+        }
+      };
+    }
+    if (requestUrl.includes("/rest/v1/swarmtest_brand_repo_connections") && options.method === "POST") {
+      const rows = JSON.parse(options.body || "[]");
+      upsertRows.push(rows[0]);
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return rows;
+        }
+      };
+    }
+    throw new Error(`Unexpected fetch: ${requestUrl}`);
+  };
+
+  try {
+    await withEnv(
+      {
+        QA_SERVICE_TOKEN: "service-token",
+        SUPABASE_URL: "https://supabase.example",
+        SUPABASE_SERVICE_KEY: "service-key",
+        GITHUB_APP_ID: "12345",
+        GITHUB_APP_SLUG: "swarmtester-qa",
+        GITHUB_APP_PRIVATE_KEY: TEST_GITHUB_PRIVATE_KEY,
+        QA_PUBLIC_APP_URL: "https://swarmtester.com"
+      },
+      async () => {
+        const req = {
+          method: "GET",
+          query: {
+            installation_id: "789",
+            state: "state_multi",
+            setup_action: "install"
+          },
+          headers: {
+            host: "swarmtester.com",
+            "x-forwarded-proto": "https",
+            "x-qa-service-token": "service-token",
+            "x-owner-user-id": "user_123"
+          }
+        };
+        const res = createRes();
+
+        await setupHandler(req, res);
+
+        assert.equal(res.statusCode, 302);
+        assert.match(String(res.headers.Location || ""), /panel=automations/);
+        assert.match(String(res.headers.Location || ""), /brand=acme/);
+        assert.match(String(res.headers.Location || ""), /github_app_status=repo_selection_required/);
+        assert.match(String(res.headers.Location || ""), /github_app_brand=acme/);
+        assert.equal(upsertRows.length, 1);
+        assert.equal(upsertRows[0].connection_status, "awaiting_repo_selection");
+        assert.equal(upsertRows[0].selected_repo_full_name, null);
       }
     );
   } finally {

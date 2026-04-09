@@ -27,6 +27,18 @@ function buildDashboardRedirect(req, params = {}) {
   return url.toString();
 }
 
+function buildBrandRedirectParams(brandKey, params = {}) {
+  const safeBrandKey = sanitizeString(brandKey, 256).toLowerCase();
+  if (!safeBrandKey) {
+    return { ...params };
+  }
+  return {
+    brand: safeBrandKey,
+    github_app_brand: safeBrandKey,
+    ...params
+  };
+}
+
 module.exports = async (req, res) => {
   const auth = await requireDashboardOrServiceAuth(req, res);
   if (!auth.ok) {
@@ -74,20 +86,18 @@ module.exports = async (req, res) => {
   if (loaded.row.owner_user_id !== ownerUserId) {
     return redirect(
       res,
-      buildDashboardRedirect(req, {
+      buildDashboardRedirect(req, buildBrandRedirectParams(loaded.row.brand_key, {
         github_app_error: "state_owner_mismatch",
-        github_app_brand: loaded.row.brand_key
-      })
+      }))
     );
   }
 
   if (isPendingStateExpired(loaded.row)) {
     return redirect(
       res,
-      buildDashboardRedirect(req, {
+      buildDashboardRedirect(req, buildBrandRedirectParams(loaded.row.brand_key, {
         github_app_error: "expired_state",
-        github_app_brand: loaded.row.brand_key
-      })
+      }))
     );
   }
 
@@ -95,10 +105,9 @@ module.exports = async (req, res) => {
   if (!installation.ok) {
     return redirect(
       res,
-      buildDashboardRedirect(req, {
+      buildDashboardRedirect(req, buildBrandRedirectParams(loaded.row.brand_key, {
         github_app_error: "installation_lookup_failed",
-        github_app_brand: loaded.row.brand_key
-      })
+      }))
     );
   }
 
@@ -106,10 +115,9 @@ module.exports = async (req, res) => {
   if (!listed.ok) {
     return redirect(
       res,
-      buildDashboardRedirect(req, {
+      buildDashboardRedirect(req, buildBrandRedirectParams(loaded.row.brand_key, {
         github_app_error: "repository_lookup_failed",
-        github_app_brand: loaded.row.brand_key
-      })
+      }))
     );
   }
 
@@ -146,18 +154,17 @@ module.exports = async (req, res) => {
   if (!saved.ok) {
     return redirect(
       res,
-      buildDashboardRedirect(req, {
+      buildDashboardRedirect(req, buildBrandRedirectParams(loaded.row.brand_key, {
         github_app_error: "connection_save_failed",
-        github_app_brand: loaded.row.brand_key
-      })
+      }))
     );
   }
 
   return redirect(
     res,
-    buildDashboardRedirect(req, {
+    buildDashboardRedirect(req, buildBrandRedirectParams(loaded.row.brand_key, {
+      panel: autoSelectedRepo ? "overview" : "automations",
       github_app_status: autoSelectedRepo ? "connected" : "repo_selection_required",
-      github_app_brand: loaded.row.brand_key
-    })
+    }))
   );
 };
