@@ -180,6 +180,8 @@ const BROWSER_MODE_OPTIONS = [
   }
 ] as const;
 
+const GITHUB_APP_POPUP_MESSAGE = "swarmtester:github-app";
+
 type AdvancedBrowserRuntimeState = {
   status: "ready" | "blocked" | "checking";
   tone: "success" | "warning" | "danger" | "neutral";
@@ -194,6 +196,28 @@ function readWorkerMetadata(worker: WorkerInfo | null | undefined) {
   }
   const metadata = worker.metadata;
   return metadata && typeof metadata === "object" ? metadata : {};
+}
+
+function buildGitHubPopupFeatures() {
+  const width = 720;
+  const height = 820;
+  const screenLeft = typeof window.screenLeft === "number" ? window.screenLeft : window.screenX || 0;
+  const screenTop = typeof window.screenTop === "number" ? window.screenTop : window.screenY || 0;
+  const outerWidth = typeof window.outerWidth === "number" && window.outerWidth > 0 ? window.outerWidth : 1440;
+  const outerHeight = typeof window.outerHeight === "number" && window.outerHeight > 0 ? window.outerHeight : 900;
+  const left = Math.max(0, Math.round(screenLeft + (outerWidth - width) / 2));
+  const top = Math.max(0, Math.round(screenTop + (outerHeight - height) / 2));
+  return `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`;
+}
+
+function paintGitHubPopupShell(popup: Window) {
+  try {
+    popup.document.title = "Connect GitHub";
+    popup.document.body.innerHTML =
+      '<div style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f8fafc;color:#0f172a;font:600 16px/1.5 Inter,system-ui,sans-serif;"><div style="padding:24px 28px;border:1px solid #e2e8f0;border-radius:20px;background:white;box-shadow:0 20px 45px rgba(15,23,42,.08);">Opening GitHub…</div></div>';
+  } catch {
+    // Ignore popup paint failures and continue with the navigation.
+  }
 }
 
 function readWorkerString(worker: WorkerInfo | null | undefined, key: string) {
@@ -1762,6 +1786,9 @@ function WorkspacePage({
   const requestedRunId = String(params.get("run_id") || "").trim();
   const selectedBrandFilter = normalizeBrandKey(params.get("brand") || "");
   const currentPanel = String(params.get("panel") || (requestedRunId ? "report" : "overview")).toLowerCase();
+  const githubAppStatus = String(params.get("github_app_status") || "").trim().toLowerCase();
+  const githubAppError = String(params.get("github_app_error") || "").trim().toLowerCase();
+  const githubAppBrand = normalizeBrandKey(params.get("github_app_brand") || params.get("brand") || "");
 
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -1790,6 +1817,7 @@ function WorkspacePage({
   const [repoRoutes, setRepoRoutes] = useState<RepoRouteSuggestion[]>([]);
   const [repoRoutesLoading, setRepoRoutesLoading] = useState(false);
   const [repoRoutesError, setRepoRoutesError] = useState("");
+  const githubInstallPopupRef = useRef<Window | null>(null);
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleMessage, setScheduleMessage] = useState("");
   const [scheduleTone, setScheduleTone] = useState<"neutral" | "success" | "danger">("neutral");
@@ -1935,6 +1963,83 @@ function WorkspacePage({
     }
     setWorkspaceBootstrapped(false);
   }, [authState.authorized, isSharedView]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (!window.opener || window.opener === window) {
+      return;
+    }
+    if (!githubAppStatus && !githubAppError) {
+      return;
+    }
+
+    try {
+      window.opener.postMessage(
+        {
+          type: GITHUB_APP_POPUP_MESSAGE,
+          status: githubAppStatus || null,
+          error: githubAppError || null,
+          brand_key: githubAppBrand || null
+        },
+        window.location.origin
+      );
+    } catch {
+      // Ignore message failures and still try to close the popup.
+    }
+
+    const closeTimer = window.setTimeout(() => {
+      window.close();
+    }, 40);
+
+    return () => {
+      window.clearTimeout(closeTimer);
+    };
+  }, [githubAppBrand, githubAppError, githubAppStatus]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    function handleGitHubPopupMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+      const payload = event.data && typeof event.data === "object" ? (event.data as Record<string, unknown>) : null;
+      if (!payload || payload.type !== GITHUB_APP_POPUP_MESSAGE) {
+        return;
+      }
+
+      if (githubInstallPopupRef.current && !githubInstallPopupRef.current.closed) {
+        githubInstallPopupRef.current.close();
+      }
+      githubInstallPopupRef.current = null;
+
+      const brandKey = normalizeBrandKey(String(payload.brand_key || ""));
+      const status = String(payload.status || "").trim().toLowerCase();
+      const error = String(payload.error || "").trim();
+
+      const next = new URLSearchParams(route.search);
+      if (brandKey) {
+        next.set("brand", brandKey);
+      }
+      next.set("panel", status === "repo_selection_required" ? "automations" : "overview");
+      next.delete("github_app_status");
+      next.delete("github_app_error");
+      next.delete("github_app_brand");
+      navigate("/dashboard", next, true);
+
+      refreshWorkspaceLists().catch(() => null);
+      setRepoError(error ? `GitHub setup failed: ${error.replace(/_/g, " ")}` : "");
+    }
+
+    window.addEventListener("message", handleGitHubPopupMessage);
+    return () => {
+      window.removeEventListener("message", handleGitHubPopupMessage);
+    };
+  }, [navigate, route.search]);
 
   useEffect(() => {
     if (isSharedView) {
@@ -2815,6 +2920,13 @@ function WorkspacePage({
       return;
     }
 
+    const popup =
+      typeof window !== "undefined" ? window.open("", "swarmtester-github-connect", buildGitHubPopupFeatures()) : null;
+    if (popup) {
+      githubInstallPopupRef.current = popup;
+      paintGitHubPopupShell(popup);
+    }
+
     try {
       const response = await apiFetch<{ install_url: string }>("/api/qa/github-app/install-url", {
         method: "POST",
@@ -2822,8 +2934,27 @@ function WorkspacePage({
           brand_key: normalizedBrandKey
         }
       });
+
+      if (popup && !popup.closed) {
+        popup.location.href = response.install_url;
+        popup.focus();
+        setRepoError("");
+        return;
+      }
+
+      const opened =
+        typeof window !== "undefined" ? window.open(response.install_url, "_blank", "noopener,noreferrer") : null;
+      if (opened) {
+        setRepoError("");
+        return;
+      }
+
       window.location.href = response.install_url;
     } catch (caught) {
+      if (popup && !popup.closed) {
+        popup.close();
+      }
+      githubInstallPopupRef.current = null;
       setRepoError(caught instanceof Error ? caught.message : "Could not start GitHub setup.");
     }
   }
