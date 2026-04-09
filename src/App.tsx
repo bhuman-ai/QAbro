@@ -7591,6 +7591,81 @@ function normalizeReplayText(value: unknown, maxLength = 320) {
     .trim();
 }
 
+function ensureSentencePunctuation(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return "";
+  }
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+function looksLikeInternalRunLabel(text: string) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return (
+    /^progress through [a-z0-9]+(?:[-_][a-z0-9]+)+$/.test(normalized) ||
+    /^[a-z0-9]+(?:[-_][a-z0-9]+)+$/.test(normalized)
+  );
+}
+
+function normalizeSkepticismText(value: unknown, maxLength = 220) {
+  let normalized = normalizeReplayText(value, maxLength);
+  if (!normalized || looksLikeInternalRunLabel(normalized)) {
+    return "";
+  }
+
+  normalized = normalized
+    .replace(/\bI am supposed to\b/gi, "I was supposed to")
+    .replace(/\bI'm supposed to\b/gi, "I was supposed to");
+
+  if (/^i cannot tell whether\b/i.test(normalized)) {
+    normalized = normalized.replace(/^i cannot tell whether\b/i, "It was unclear whether");
+  } else if (/^i cannot tell\b/i.test(normalized)) {
+    normalized = normalized.replace(/^i cannot tell\b/i, "I couldn't tell");
+  } else if (/^whether\b/i.test(normalized)) {
+    normalized = `It was unclear ${lowercaseFirst(normalized)}`;
+  } else if (/^(what|why|how|where|which|who|if)\b/i.test(normalized)) {
+    normalized = `I couldn't tell ${lowercaseFirst(normalized)}`;
+  }
+
+  return ensureSentencePunctuation(normalized);
+}
+
+function isGenericSkepticismText(text: string) {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  return (
+    normalized.includes("it was unclear whether the action succeeded") ||
+    normalized.includes("i couldn't tell whether the action worked") ||
+    normalized.includes("i couldn't tell what should happen") ||
+    normalized.includes("the page did not confirm whether this worked") ||
+    normalized.includes("what should happen next") ||
+    normalized.includes("what i was supposed to do next")
+  );
+}
+
+function buildCleanTakeawayItems(values: unknown[], limit = 3) {
+  return uniqueReadoutItems(
+    values
+      .map((value) => normalizeReplayText(value, 220))
+      .filter((item) => item && !looksLikeInternalRunLabel(item)),
+    limit
+  );
+}
+
+function buildCleanSkepticismItems(values: unknown[], limit = 3) {
+  const normalizedItems = uniqueReadoutItems(values.map((value) => normalizeSkepticismText(value, 220)), limit * 2);
+  const concreteItems = normalizedItems.filter((item) => !isGenericSkepticismText(item) && !isPlaceholderReadoutItem(item));
+  if (concreteItems.length) {
+    return concreteItems.slice(0, limit);
+  }
+  return normalizedItems.slice(0, Math.min(limit, 1));
+}
+
 function toCustomerVoice(text: string) {
   const normalized = normalizeReplayText(text, 500);
   if (!normalized) {
@@ -7757,7 +7832,7 @@ function buildDerivedReplayThoughtCandidates(
               ? "I clicked sign up and expected the product to move me forward next."
               : "I clicked log in and expected the product to move me forward next.",
           whatThisIs: mode === "signup" ? "The account creation step" : "The login step",
-          missingInformation: "What should happen immediately after I submit this form.",
+          missingInformation: "I couldn't tell what should happen immediately after I submit this form.",
           continueState: "continue",
           currentUrl,
           timestampLabel
@@ -7777,10 +7852,9 @@ function buildDerivedReplayThoughtCandidates(
           text:
             toCustomerVoice(fallbackSummary) ||
             "I expected this step to move me forward, but I still feel stuck on the same screen.",
-          skepticism:
-            "I cannot tell whether the account was created or why the page did not move me forward.",
+          skepticism: "",
           missingInformation:
-            "Whether the action succeeded and what I am supposed to do next.",
+            "The page did not confirm whether this worked or what I was supposed to do next.",
           trustSignal: lastSuccessfulStep ? `I got as far as: ${lastSuccessfulStep}` : "",
           continueState: "abandon",
           currentUrl: normalizeReplayText(payload.current_url || currentUrl, 4096),
@@ -7848,9 +7922,8 @@ function buildDerivedReplayThoughtCandidates(
         progress: 0.82,
         emotion: "frustration",
         text: toCustomerVoice(failureReason),
-        skepticism:
-          "I cannot tell whether the action worked or what should happen next.",
-        missingInformation: "A clear success state or next step after I submit.",
+        skepticism: "",
+        missingInformation: "The page did not show a clear success state or next step after I submitted.",
         trustSignal: lastSuccessfulStep ? `I got as far as: ${lastSuccessfulStep}` : "",
         continueState: "abandon",
         currentUrl: fallbackCurrentUrl
@@ -8161,9 +8234,11 @@ function buildPersonaReadout({
         ? "Concerned because the run recorded friction."
         : "No clear customer emotional state was captured.");
 
-  const explicitTakeaways = readReportSummaryList(report, ["persona_takeaways", "takeaways", "user_takeaways"]);
+  const explicitTakeaways = buildCleanTakeawayItems(
+    readReportSummaryList(report, ["persona_takeaways", "takeaways", "user_takeaways"])
+  );
   const thoughtTakeaways = thoughts.flatMap((thought) => [thought.whatThisIs, thought.trustSignal]).filter(Boolean);
-  const fallbackTakeawayCandidates = uniqueReadoutItems(
+  const fallbackTakeawayCandidates = buildCleanTakeawayItems(
     [
       normalizeReplayText(readReportFailureDiagnostics(report)?.last_successful_step, 220),
       ...((report?.tested_journeys || []) as Array<Record<string, unknown>>).flatMap((journey) =>
@@ -8174,7 +8249,7 @@ function buildPersonaReadout({
   );
   const takeaways = explicitTakeaways.length
     ? explicitTakeaways
-      : uniqueReadoutItems(
+      : buildCleanTakeawayItems(
         [
           ...thoughtTakeaways.slice(-3),
           ...fallbackTakeawayCandidates,
@@ -8183,14 +8258,16 @@ function buildPersonaReadout({
         3
       );
 
-  const explicitSkepticisms = readReportSummaryList(report, [
-    "skepticisms",
-    "persona_skepticisms",
-    "trust_concerns",
-    "user_skepticisms"
-  ]);
+  const explicitSkepticisms = buildCleanSkepticismItems(
+    readReportSummaryList(report, [
+      "skepticisms",
+      "persona_skepticisms",
+      "trust_concerns",
+      "user_skepticisms"
+    ])
+  );
   const skepticalThoughts = thoughts.flatMap((thought) => [thought.skepticism, thought.missingInformation]).filter(Boolean);
-  const fallbackSkepticismCandidates = uniqueReadoutItems(
+  const fallbackSkepticismCandidates = buildCleanSkepticismItems(
     [
       normalizeReplayText(readReportFailureDiagnostics(report)?.failure_reason, 220),
       ...frictionPoints.map((point) => point.description)
@@ -8199,7 +8276,7 @@ function buildPersonaReadout({
   );
   const skepticisms = explicitSkepticisms.length
     ? explicitSkepticisms
-    : uniqueReadoutItems(
+    : buildCleanSkepticismItems(
         [
           ...skepticalThoughts.slice(-3),
           ...fallbackSkepticismCandidates,
