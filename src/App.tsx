@@ -1964,7 +1964,6 @@ function WorkspacePage({
   const starterBrands = buildStarterBrands(projects, reports, repoConnection);
   const activeStarterBrand =
     starterBrands.find((brand) => normalizeBrandKey(brand.id) === currentBrandKey) ||
-    starterBrands[0] ||
     (currentBrandKey
       ? {
           id: currentBrandKey,
@@ -1972,7 +1971,9 @@ function WorkspacePage({
           website: selectedRun?.target_url || projectCatalog.find((project) => normalizeBrandKey(project.brand_key) === currentBrandKey)?.target_url || `https://${currentBrandKey}.com`,
           githubConnected: Boolean(repoConnection?.selected_repo_full_name)
         }
-      : null);
+      : null) ||
+    starterBrands[0] ||
+    null;
   const historyRows = buildStarterHistoryRows(sameBrandRuns.length ? sameBrandRuns : reports);
   const liveAgents = buildStarterLiveAgents(sameBrandRuns.length ? sameBrandRuns : reports);
   const frictionRows = buildStarterFrictionRows(selectedReport, sameBrandRuns.length ? sameBrandRuns : reports);
@@ -2177,7 +2178,8 @@ function WorkspacePage({
         }>("/api/qa/github-app/connection", {
           params: {
             brand_key: currentBrandKey,
-            include_repositories: 1
+            include_repositories: 1,
+            reconcile: 1
           }
         });
         if (!cancelled) {
@@ -3005,6 +3007,10 @@ function WorkspacePage({
     await handleGitHubInstallForBrand(currentBrandKey);
   }
 
+  function handleRefreshGitHubConnection() {
+    setRepoConnectionReloadKey((current) => current + 1);
+  }
+
   async function handleRepositorySelect(repoFullName: string) {
     const existingAssociatedRepoFullNames = Array.isArray(repoConnection?.associated_repo_full_names)
       ? repoConnection.associated_repo_full_names
@@ -3525,6 +3531,7 @@ function WorkspacePage({
         onBack={() => openPanel(activeStarterBrand ? "overview" : "onboarding", { brand: activeDashboardBrandKey })}
         onSaveBrandSettings={handleSaveBrandSettings}
         onConnectGitHub={handleGitHubInstall}
+        onRefreshGitHubConnection={handleRefreshGitHubConnection}
         onSaveProjectRepos={handleProjectRepositoriesSave}
         onDisconnectGitHub={handleDisconnectGitHubConnection}
       />
@@ -9522,6 +9529,7 @@ function StarterBrandSettingsPage({
   onBack,
   onSaveBrandSettings,
   onConnectGitHub,
+  onRefreshGitHubConnection,
   onSaveProjectRepos,
   onDisconnectGitHub
 }: {
@@ -9533,6 +9541,7 @@ function StarterBrandSettingsPage({
   onBack: () => void;
   onSaveBrandSettings: (input: { brandName: string; website: string; teamMembers: string[] }) => Promise<ProjectSummary>;
   onConnectGitHub: () => Promise<void>;
+  onRefreshGitHubConnection: () => void;
   onSaveProjectRepos: (input: { primaryRepoFullName: string; associatedRepoFullNames: string[] }) => Promise<void>;
   onDisconnectGitHub: () => Promise<void>;
 }) {
@@ -9553,7 +9562,8 @@ function StarterBrandSettingsPage({
   const [repoSaveMessage, setRepoSaveMessage] = useState("");
   const [repoSaveTone, setRepoSaveTone] = useState<"neutral" | "success" | "danger">("neutral");
   const availableRepos = Array.isArray(repoConnection?.repositories) ? repoConnection.repositories.filter((repo) => repo.full_name) : [];
-  const githubInstalled = Boolean(repoConnection?.installation_id);
+  const repoPendingInstall = repoConnection?.connection_status === "pending_install";
+  const githubInstalled = Boolean(repoConnection?.installation_id) || repoPendingInstall;
   const repoConnected = repoConnection?.connection_status === "connected";
   const repoNeedsSelection = repoConnection?.connection_status === "awaiting_repo_selection";
   const canChooseProjectRepos = repoConnected || repoNeedsSelection || availableRepos.length > 0;
@@ -9856,7 +9866,15 @@ function StarterBrandSettingsPage({
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">GitHub</div>
                 <div className="mt-2 text-sm font-bold text-brand-ink">
-                  {repoConnected ? repoConnection?.selected_repo_full_name || "Connected" : githubInstalled ? "Connected, repo still needs selection" : "Not connected"}
+                  {repoConnected
+                    ? repoConnection?.selected_repo_full_name || "Connected"
+                    : repoNeedsSelection
+                      ? "Connected, repo still needs selection"
+                      : repoPendingInstall
+                        ? "GitHub install started. Refresh to finish linking this brand."
+                        : githubInstalled
+                          ? "Connected"
+                          : "Not connected"}
                 </div>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -9876,8 +9894,18 @@ function StarterBrandSettingsPage({
               <div>
                 <div className="flex items-center gap-3">
                   <h2 className="text-2xl font-black tracking-tight text-brand-ink">Connected repos</h2>
-                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${repoConnected ? "bg-brand-secondary/10 text-brand-secondary border-brand-secondary/20" : repoNeedsSelection ? "bg-brand-warning/10 text-brand-warning border-brand-warning/20" : "bg-slate-100 text-slate-500 border-slate-200"}`}>
-                    {repoConnected ? "Connected" : repoNeedsSelection ? "Pick repos" : "Not connected"}
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${
+                      repoConnected
+                        ? "bg-brand-secondary/10 text-brand-secondary border-brand-secondary/20"
+                        : repoNeedsSelection
+                          ? "bg-brand-warning/10 text-brand-warning border-brand-warning/20"
+                          : repoPendingInstall
+                            ? "bg-brand-accent/10 text-brand-accent border-brand-accent/20"
+                            : "bg-slate-100 text-slate-500 border-slate-200"
+                    }`}
+                  >
+                    {repoConnected ? "Connected" : repoNeedsSelection ? "Pick repos" : repoPendingInstall ? "Waiting for GitHub" : "Not connected"}
                   </span>
                 </div>
                 <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-500">
@@ -9887,10 +9915,21 @@ function StarterBrandSettingsPage({
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <Button type="button" onClick={() => onConnectGitHub().catch(() => null)} disabled={repoLoading} className="rounded-xl px-5 py-2.5 font-black">
-                {repoLoading ? "Loading..." : githubInstalled ? "Reconnect GitHub" : "Connect GitHub"}
+              <Button
+                type="button"
+                onClick={() => {
+                  if (repoPendingInstall) {
+                    onRefreshGitHubConnection();
+                    return;
+                  }
+                  onConnectGitHub().catch(() => null);
+                }}
+                disabled={repoLoading}
+                className="rounded-xl px-5 py-2.5 font-black"
+              >
+                {repoLoading ? "Loading..." : repoPendingInstall ? "Refresh GitHub" : githubInstalled ? "Reconnect GitHub" : "Connect GitHub"}
               </Button>
-              {githubInstalled ? (
+              {githubInstalled && !repoPendingInstall ? (
                 <Button type="button" tone="danger" onClick={() => handleDisconnectRepos().catch(() => null)} disabled={repoSaving || repoLoading} className="rounded-xl px-5 py-2.5 font-black">
                   Disconnect GitHub
                 </Button>
@@ -9899,6 +9938,17 @@ function StarterBrandSettingsPage({
           </div>
 
           {repoError ? <div className="mt-6 rounded-xl border border-brand-danger/20 bg-brand-danger/10 px-4 py-3 text-sm font-bold text-brand-danger">{repoError}</div> : null}
+
+          {repoPendingInstall ? (
+            <div className="mt-6 rounded-2xl border border-brand-accent/20 bg-brand-accent/5 p-5">
+              <div className="text-sm font-black tracking-tight text-brand-ink">
+                GitHub is already installed. This brand still needs to attach to it.
+              </div>
+              <p className="mt-1 text-sm leading-6 text-brand-muted">
+                GitHub sometimes leaves the popup on the installation settings page instead of sending us back. Use Refresh GitHub to reuse the existing installation for this brand, then pick the repos that belong to it.
+              </p>
+            </div>
+          ) : null}
 
           {repoNeedsSelection ? (
             <div className="mt-6 rounded-2xl border border-brand-warning/20 bg-brand-warning/10 p-5">
@@ -9994,7 +10044,9 @@ function StarterBrandSettingsPage({
             </div>
           ) : (
             <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm leading-7 text-slate-500">
-              Connect the GitHub App first, then choose which repos belong to this brand.
+              {repoPendingInstall
+                ? "GitHub is installed but this brand has not finished syncing yet. Press Refresh GitHub, then choose which repos belong to this brand."
+                : "Connect the GitHub App first, then choose which repos belong to this brand."}
             </div>
           )}
         </section>

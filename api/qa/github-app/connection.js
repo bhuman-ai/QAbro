@@ -7,6 +7,7 @@ const {
 const {
   deleteBrandRepoConnection,
   loadBrandRepoConnection,
+  listOwnerBrandRepoConnections,
   upsertBrandRepoConnection
 } = require("../../../lib/qa-brand-repo-connections");
 
@@ -62,6 +63,102 @@ function sanitizeRepoList(value) {
   return repos;
 }
 
+async function reconcileBrandInstallation(connectionRow, owner) {
+  const safeConnection = connectionRow && typeof connectionRow === "object" ? connectionRow : null;
+  if (!safeConnection) {
+    return { ok: false, status: 404, error: "Brand repo connection not found" };
+  }
+
+  const ownerUserId = sanitizeString(owner?.ownerUserId, 128);
+  if (!ownerUserId) {
+    return { ok: false, status: 400, error: "owner_user_id is required" };
+  }
+
+  const ownedConnections = await listOwnerBrandRepoConnections(ownerUserId, {
+    includeSecrets: true
+  });
+  if (!ownedConnections.ok) {
+    return ownedConnections;
+  }
+
+  const reusableConnections = (ownedConnections.rows || []).filter(
+    (row) =>
+      normalizeString(row?.brand_key) !== normalizeString(safeConnection.brand_key) &&
+      Number.isFinite(Number(row?.installation_id)) &&
+      String(row?.installation_id || "").trim()
+  );
+  const uniqueInstallationIds = Array.from(
+    new Set(reusableConnections.map((row) => String(row.installation_id || "").trim()).filter(Boolean))
+  );
+
+  const installationId =
+    String(safeConnection.installation_id || "").trim() ||
+    (uniqueInstallationIds.length === 1 ? uniqueInstallationIds[0] : "");
+  if (!installationId) {
+    return {
+      ok: false,
+      status: 409,
+      error:
+        uniqueInstallationIds.length > 1
+          ? "GitHub is installed for multiple accounts. Reconnect and choose the right account, then refresh."
+          : "GitHub install is still pending. Finish the GitHub popup, then refresh."
+    };
+  }
+
+  const reusableConnection =
+    reusableConnections.find((row) => String(row.installation_id || "").trim() === installationId) || safeConnection;
+  const listed = await listGitHubInstallationRepositories(installationId);
+  if (!listed.ok) {
+    return listed;
+  }
+
+  const repositories = Array.isArray(listed.repositories) ? listed.repositories : [];
+  const autoSelectedRepo = repositories.length === 1 ? repositories[0] : null;
+  const saved = await upsertBrandRepoConnection(
+    {
+      brand_key: safeConnection.brand_key,
+      provider: "github",
+      connection_status: autoSelectedRepo ? "connected" : "awaiting_repo_selection",
+      installation_id: Number(installationId),
+      installation_account_login: reusableConnection.installation_account_login || null,
+      installation_account_type: reusableConnection.installation_account_type || null,
+      installation_target_type: reusableConnection.installation_target_type || null,
+      installation_target_id: reusableConnection.installation_target_id || null,
+      selected_repo_id: autoSelectedRepo?.id || null,
+      selected_repo_owner: autoSelectedRepo?.owner || null,
+      selected_repo_name: autoSelectedRepo?.name || null,
+      selected_repo_full_name: autoSelectedRepo?.full_name || null,
+      default_branch: autoSelectedRepo?.default_branch || null,
+      pending_state_token: null,
+      pending_state_expires_at: null,
+      connection: {
+        ...(reusableConnection.connection && typeof reusableConnection.connection === "object" ? reusableConnection.connection : {}),
+        reused_for_brand: safeConnection.brand_key,
+        repository_count: repositories.length
+      },
+      associated_repo_full_names: autoSelectedRepo?.full_name ? [autoSelectedRepo.full_name] : []
+    },
+    {
+      owner_user_id: ownerUserId,
+      owner_email: safeConnection.owner_email || sanitizeString(owner?.ownerEmail, 320).toLowerCase()
+    }
+  );
+  if (!saved.ok) {
+    return saved;
+  }
+
+  return {
+    ok: true,
+    status: 200,
+    row: saved.row,
+    repositories
+  };
+}
+
+function normalizeString(value) {
+  return sanitizeString(value, 256).toLowerCase();
+}
+
 module.exports = async (req, res) => {
   const auth = await requireDashboardOrServiceAuth(req, res);
   if (!auth.ok) {
@@ -94,8 +191,28 @@ module.exports = async (req, res) => {
     let warning = "";
     const includeRepositories =
       String(req.query?.include_repositories || req.query?.includeRepositories || "").trim() === "1";
-    if (includeRepositories && loaded.ok && loaded.row?.installation_id && isGitHubAppConfigured()) {
-      const listed = await listGitHubInstallationRepositories(loaded.row.installation_id);
+    const shouldReconcile =
+      String(req.query?.reconcile || req.query?.refresh || "").trim() === "1";
+    let connectionRow = loaded.ok ? loaded.row : null;
+    if (
+      shouldReconcile &&
+      connectionRow &&
+      connectionRow.connection_status === "pending_install" &&
+      isGitHubAppConfigured()
+    ) {
+      const reconciled = await reconcileBrandInstallation(connectionRow, {
+        ownerUserId,
+        ownerEmail
+      });
+      if (reconciled.ok) {
+        connectionRow = reconciled.row;
+        repositories = Array.isArray(reconciled.repositories) ? reconciled.repositories : [];
+      } else {
+        warning = reconciled.error || "";
+      }
+    }
+    if (includeRepositories && connectionRow?.installation_id && isGitHubAppConfigured() && !repositories.length) {
+      const listed = await listGitHubInstallationRepositories(connectionRow.installation_id);
       if (listed.ok) {
         repositories = listed.repositories;
       } else {
@@ -106,7 +223,7 @@ module.exports = async (req, res) => {
     return res.status(200).json({
       ok: true,
       app_configured: isGitHubAppConfigured(),
-      connection: loaded.ok ? buildConnectionSummary(loaded.row, repositories) : null,
+      connection: connectionRow ? buildConnectionSummary(connectionRow, repositories) : null,
       repositories,
       warning: warning || null
     });
