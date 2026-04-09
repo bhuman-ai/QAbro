@@ -7450,7 +7450,6 @@ type ReplayThoughtCue = {
   left: number;
   top: number;
   align: "left" | "right";
-  source?: "captured" | "derived";
 };
 
 type ReplayCursorCue = {
@@ -7477,6 +7476,8 @@ type PersonaReadout = {
   takeaways: string[];
   skepticisms: string[];
   latestThought: string;
+  blocker: string;
+  blockerContext: string;
 };
 
 function getRunLogEvent(entry: RunLogEntry | Record<string, unknown> | null | undefined) {
@@ -7666,18 +7667,6 @@ function buildCleanSkepticismItems(values: unknown[], limit = 3) {
   return normalizedItems.slice(0, Math.min(limit, 1));
 }
 
-function toCustomerVoice(text: string) {
-  const normalized = normalizeReplayText(text, 500);
-  if (!normalized) {
-    return "";
-  }
-  return normalized
-    .replace(/^the tester\b/i, "I")
-    .replace(/\bthe tester\b/gi, "I")
-    .replace(/\bthe user\b/gi, "I")
-    .replace(/\bthe visitor\b/gi, "I");
-}
-
 function getReplayTimestampLabel(entry: RunLogEntry | Record<string, unknown> | null | undefined) {
   const raw = String((entry && typeof entry === "object" ? entry.ts || entry.timestamp : "") || "").trim();
   return raw ? formatDateTime(raw) : "";
@@ -7698,242 +7687,25 @@ function readReportFailureDiagnostics(report: QaReport | null | undefined) {
     : null;
 }
 
-function buildDerivedReplayThoughtCandidates(
-  runLog: StatusResponse["run_log"] | null | undefined,
-  report: QaReport | null | undefined,
-  startMs: number,
-  totalMs: number,
-  hasWindow: boolean
-) {
-  const safeRunLog = Array.isArray(runLog) ? runLog : [];
-  const candidates: Array<Omit<ReplayThoughtCue, "left" | "top" | "align"> & { atMs: number }> = [];
-  const seen = new Set<string>();
-  const primaryFinding = Array.isArray(report?.findings) ? report.findings[0] : null;
-  const failureDiagnostics = readReportFailureDiagnostics(report);
-  const fallbackSummary = normalizeReplayText(report?.summary?.note, 320);
-  const failureReason = normalizeReplayText(
-    failureDiagnostics?.failure_reason || primaryFinding?.observed_behavior || fallbackSummary,
-    320
-  );
-  const lastSuccessfulStep = normalizeReplayText(failureDiagnostics?.last_successful_step, 220);
-  const fallbackCurrentUrl = normalizeReplayText(
-    failureDiagnostics?.current_url || primaryFinding?.page?.url || "",
-    4096
-  );
-
-  const pushCandidate = (
-    candidate: Partial<Omit<ReplayThoughtCue, "left" | "top" | "align">> & {
-      atMs?: number;
-      progress?: number;
-    } | null,
-    fallbackProgress: number,
-    id: string
-  ) => {
-    if (!candidate) {
-      return;
-    }
-    const text = normalizeReplayText(candidate.text, 320);
-    if (!text) {
-      return;
-    }
-    const key = text.toLowerCase();
-    if (seen.has(key)) {
-      return;
-    }
-    seen.add(key);
-    const atMs = Number.isFinite(Number(candidate.atMs)) ? Number(candidate.atMs) : startMs || 0;
-    const progress = Number.isFinite(Number(candidate.progress))
-      ? clampReplayPercent(Number(candidate.progress), 0.04, 0.96)
-      : clampReplayPercent(fallbackProgress, 0.04, 0.96);
-    candidates.push({
-      id,
-      action: normalizeReplayText(candidate.action, 120),
-      target: normalizeReplayText(candidate.target, 220),
-      emotion: normalizeReplayText(candidate.emotion, 48),
-      text,
-      whatThisIs: normalizeReplayText(candidate.whatThisIs, 220),
-      noticed: readObservationList(candidate.noticed),
-      skepticism: normalizeReplayText(candidate.skepticism, 220),
-      missingInformation: normalizeReplayText(candidate.missingInformation, 220),
-      trustSignal: normalizeReplayText(candidate.trustSignal, 220),
-      continueState: normalizeReplayText(candidate.continueState, 32),
-      currentUrl: normalizeReplayText(candidate.currentUrl, 4096),
-      timestampLabel: normalizeReplayText(candidate.timestampLabel, 80),
-      progress,
-      atMs,
-      source: "derived"
-    });
-  };
-
-  safeRunLog.forEach((entry, index) => {
-    const event = getRunLogEvent(entry);
-    const payload = getRunLogPayload(entry);
-    const atMs = getRunLogTimestampMs(entry);
-    const normalizedProgress =
-      hasWindow && Number.isFinite(atMs)
-        ? clampReplayPercent((atMs - startMs) / totalMs, 0.04, 0.96)
-        : clampReplayPercent(0.16 + index * 0.18, 0.04, 0.96);
-    const mode = normalizeReplayText(payload.mode, 32).toLowerCase();
-    const currentUrl = normalizeReplayText(payload.url || payload.current_url || fallbackCurrentUrl, 4096);
-    const timestampLabel = getReplayTimestampLabel(entry);
-
-    if (event === "auth_surface_ready") {
-      pushCandidate(
-        {
-          atMs,
-          progress: normalizedProgress,
-          emotion: "confidence",
-          text:
-            mode === "signup"
-              ? "I found the sign-up form and know where to start."
-              : "I found the login form and know where to start.",
-          whatThisIs: mode === "signup" ? "Account creation flow" : "Login flow",
-          trustSignal: "The next step is visible on the page.",
-          continueState: "continue",
-          currentUrl,
-          timestampLabel
-        },
-        normalizedProgress,
-        `derived-auth-surface-${index}`
-      );
-      return;
-    }
-
-    if (event === "auth_form_filled") {
-      pushCandidate(
-        {
-          atMs,
-          progress: normalizedProgress,
-          emotion: "confidence",
-          text:
-            mode === "signup"
-              ? "The sign-up form was clear enough for me to fill out."
-              : "The login form was clear enough for me to fill out.",
-          whatThisIs: mode === "signup" ? "Account creation flow" : "Login flow",
-          trustSignal: "The labels made the next step understandable.",
-          continueState: "continue",
-          currentUrl,
-          timestampLabel
-        },
-        normalizedProgress,
-        `derived-auth-filled-${index}`
-      );
-      return;
-    }
-
-    if (event === "auth_submit_attempted") {
-      pushCandidate(
-        {
-          atMs,
-          progress: normalizedProgress,
-          emotion: "uncertainty",
-          text:
-            mode === "signup"
-              ? "I clicked sign up and expected the product to move me forward next."
-              : "I clicked log in and expected the product to move me forward next.",
-          whatThisIs: mode === "signup" ? "The account creation step" : "The login step",
-          missingInformation: "I couldn't tell what should happen immediately after I submit this form.",
-          continueState: "continue",
-          currentUrl,
-          timestampLabel
-        },
-        normalizedProgress,
-        `derived-auth-submit-${index}`
-      );
-      return;
-    }
-
-    if (event === "auth_flow_failed" || event === "local_agent_failed") {
-      pushCandidate(
-        {
-          atMs,
-          progress: normalizedProgress,
-          emotion: "frustration",
-          text:
-            toCustomerVoice(fallbackSummary) ||
-            "I expected this step to move me forward, but I still feel stuck on the same screen.",
-          skepticism: "",
-          missingInformation:
-            "The page did not confirm whether this worked or what I was supposed to do next.",
-          trustSignal: lastSuccessfulStep ? `I got as far as: ${lastSuccessfulStep}` : "",
-          continueState: "abandon",
-          currentUrl: normalizeReplayText(payload.current_url || currentUrl, 4096),
-          timestampLabel
-        },
-        normalizedProgress,
-        `derived-auth-failed-${index}`
-      );
-    }
-  });
-
-  const experienceTimeline =
-    report && typeof report === "object"
-      ? ((report as unknown as Record<string, unknown>).experience_timeline as Record<string, unknown> | null | undefined)
-      : null;
-  const timelineSummary =
-    experienceTimeline && typeof experienceTimeline.summary === "object"
-      ? experienceTimeline.summary as Record<string, unknown>
-      : null;
-  const timelineDurationMs = Number(experienceTimeline?.video_duration_ms || timelineSummary?.video_duration_ms);
-  const spans = Array.isArray(experienceTimeline?.spans) ? experienceTimeline.spans : [];
-  if (candidates.length < 2) {
-    spans
-      .filter((span) => span && typeof span === "object")
-      .slice(0, 6)
-      .forEach((span, index) => {
-        if (candidates.length >= 4) {
-          return;
-        }
-        const safeSpan = span as Record<string, unknown>;
-        const spanSummary = toCustomerVoice(normalizeReplayText(safeSpan.summary, 320));
-        const level = normalizeReplayText(safeSpan.level, 32).toLowerCase();
-        const jumpMs = Number(safeSpan.jump_ts_ms || safeSpan.start_ms || safeSpan.end_ms);
-        const spanProgress =
-          Number.isFinite(timelineDurationMs) && timelineDurationMs > 0 && Number.isFinite(jumpMs)
-            ? clampReplayPercent(jumpMs / timelineDurationMs, 0.04, 0.96)
-            : clampReplayPercent(0.22 + index * 0.18, 0.04, 0.96);
-        pushCandidate(
-          {
-            progress: spanProgress,
-            emotion:
-              level === "blocker" ? "frustration" : level === "friction" ? "uncertainty" : "confidence",
-            text: spanSummary,
-            whatThisIs: normalizeReplayText(safeSpan.label, 220),
-            skepticism: level === "good" ? "" : failureReason,
-            trustSignal: level === "good" ? lastSuccessfulStep : "",
-            continueState:
-              level === "blocker" ? "abandon" : level === "friction" ? "pause" : "continue",
-            currentUrl: normalizeReplayText(
-              safeSpan.page && typeof safeSpan.page === "object"
-                ? (safeSpan.page as Record<string, unknown>).url
-                : fallbackCurrentUrl,
-              4096
-            )
-          },
-          spanProgress,
-          `derived-span-${index}`
-        );
-      });
+function readRunBlocker(report: QaReport | null | undefined) {
+  const diagnostics = readReportFailureDiagnostics(report);
+  const failureReason = normalizeReplayText(diagnostics?.failure_reason, 320);
+  if (failureReason) {
+    return failureReason;
   }
 
-  if (!candidates.length && failureReason) {
-    pushCandidate(
-      {
-        progress: 0.82,
-        emotion: "frustration",
-        text: toCustomerVoice(failureReason),
-        skepticism: "",
-        missingInformation: "The page did not show a clear success state or next step after I submitted.",
-        trustSignal: lastSuccessfulStep ? `I got as far as: ${lastSuccessfulStep}` : "",
-        continueState: "abandon",
-        currentUrl: fallbackCurrentUrl
-      },
-      0.82,
-      "derived-fallback-summary"
-    );
+  const firstFinding = Array.isArray(report?.findings) ? report.findings[0] : null;
+  const observedBehavior = normalizeReplayText(firstFinding?.observed_behavior, 320);
+  if (observedBehavior) {
+    return observedBehavior;
   }
 
-  return candidates.slice(0, 4);
+  return normalizeReplayText(firstFinding?.title, 220);
+}
+
+function readRunBlockerContext(report: QaReport | null | undefined) {
+  const diagnostics = readReportFailureDiagnostics(report);
+  return normalizeReplayText(diagnostics?.last_successful_step, 220);
 }
 
 function buildReplayOverlayData(
@@ -8006,17 +7778,10 @@ function buildReplayOverlayData(
         currentUrl: String(payload.current_url || "").trim(),
         timestampLabel: getReplayTimestampLabel(entry),
         progress: normalizedProgress,
-        atMs: Number.isFinite(atMs) ? atMs : startMs || 0,
-        source: "captured"
+        atMs: Number.isFinite(atMs) ? atMs : startMs || 0
       });
     }
   });
-
-  if (!thoughtCandidates.length) {
-    thoughtCandidates.push(
-      ...buildDerivedReplayThoughtCandidates(safeRunLog, report, startMs, totalMs, hasWindow)
-    );
-  }
 
   const sortedCursors = cursorCues.slice().sort((left, right) => left.atMs - right.atMs);
   const thoughts = thoughtCandidates
@@ -8165,18 +7930,18 @@ function getPersonaReadoutTone(emotion: string, frictionCount: number) {
 function buildPersonaReadout({
   persona,
   report,
-  run,
   thoughts,
   frictionPoints
 }: {
   persona: StarterPersona;
   report: QaReport | null;
-  run: RunSummary | null;
   thoughts: ReplayThoughtCue[];
   frictionPoints: Array<{ title: string; description: string; severity: string }>;
 }): PersonaReadout {
   const latestThought = thoughts.length ? thoughts[thoughts.length - 1]?.text || "" : "";
   const latestObservation = thoughts.length ? thoughts[thoughts.length - 1] : null;
+  const runBlocker = readRunBlocker(report);
+  const runBlockerContext = readRunBlockerContext(report);
   const explicitOverall = readReportSummaryText(report, [
     "persona_readout",
     "persona_overall",
@@ -8185,12 +7950,10 @@ function buildPersonaReadout({
     "overall_user_reaction",
     "emotional_summary"
   ]);
-  const fallbackSummary = report?.summary?.note || run?.summary_note || "";
   const overall =
     explicitOverall ||
     latestThought ||
-    fallbackSummary ||
-    `${persona.name}'s customer-perspective reaction was not captured for this run.`;
+    "No customer thoughts were captured for this run.";
 
   const emotionCounts = new Map<string, number>();
   thoughts.forEach((thought) => {
@@ -8228,35 +7991,20 @@ function buildPersonaReadout({
           if (baseEmotion && latestObservation.continueState === "continue") {
             return `${baseEmotion}; willing to keep going.`;
           }
-          return baseEmotion || "No clear customer emotional state was captured.";
+          return baseEmotion || "No customer thoughts were captured for this run.";
         })()
-      : frictionPoints.length
-        ? "Concerned because the run recorded friction."
-        : "No clear customer emotional state was captured.");
+      : "No customer thoughts were captured for this run.");
 
   const explicitTakeaways = buildCleanTakeawayItems(
     readReportSummaryList(report, ["persona_takeaways", "takeaways", "user_takeaways"])
   );
-  const thoughtTakeaways = thoughts.flatMap((thought) => [thought.whatThisIs, thought.trustSignal]).filter(Boolean);
-  const fallbackTakeawayCandidates = buildCleanTakeawayItems(
-    [
-      normalizeReplayText(readReportFailureDiagnostics(report)?.last_successful_step, 220),
-      ...((report?.tested_journeys || []) as Array<Record<string, unknown>>).flatMap((journey) =>
-        readObservationList(journey?.observations)
-      )
-    ],
+  const thoughtTakeaways = buildCleanTakeawayItems(
+    thoughts.flatMap((thought) => [thought.whatThisIs, thought.trustSignal]).filter(Boolean),
     3
   );
   const takeaways = explicitTakeaways.length
     ? explicitTakeaways
-      : buildCleanTakeawayItems(
-        [
-          ...thoughtTakeaways.slice(-3),
-          ...fallbackTakeawayCandidates,
-          ...(thoughts.length || fallbackTakeawayCandidates.length ? [] : ["No customer-perspective takeaway was captured for this run."])
-        ],
-        3
-      );
+    : thoughtTakeaways;
 
   const explicitSkepticisms = buildCleanSkepticismItems(
     readReportSummaryList(report, [
@@ -8266,32 +8014,23 @@ function buildPersonaReadout({
       "user_skepticisms"
     ])
   );
-  const skepticalThoughts = thoughts.flatMap((thought) => [thought.skepticism, thought.missingInformation]).filter(Boolean);
-  const fallbackSkepticismCandidates = buildCleanSkepticismItems(
-    [
-      normalizeReplayText(readReportFailureDiagnostics(report)?.failure_reason, 220),
-      ...frictionPoints.map((point) => point.description)
-    ],
+  const skepticalThoughts = buildCleanSkepticismItems(
+    thoughts.flatMap((thought) => [thought.skepticism, thought.missingInformation]).filter(Boolean),
     3
   );
   const skepticisms = explicitSkepticisms.length
     ? explicitSkepticisms
-    : buildCleanSkepticismItems(
-        [
-          ...skepticalThoughts.slice(-3),
-          ...fallbackSkepticismCandidates,
-          ...(thoughts.length || fallbackSkepticismCandidates.length ? [] : ["No content-specific skepticism was captured for this run."])
-        ],
-        3
-      );
+    : skepticalThoughts;
 
   return {
     overall,
     emotionalState,
     emotionalTone: getPersonaReadoutTone(dominantEmotion, frictionPoints.length),
-    takeaways: takeaways.length ? takeaways : ["No customer-perspective takeaway was captured for this run."],
-    skepticisms: skepticisms.length ? skepticisms : ["No content-specific skepticism was captured for this run."],
-    latestThought
+    takeaways,
+    skepticisms,
+    latestThought,
+    blocker: runBlocker,
+    blockerContext: runBlockerContext
   };
 }
 
@@ -8569,9 +8308,6 @@ function ReplayVideoWithOverlay({
               <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
                 <Quote className="h-3.5 w-3.5 text-brand-accent" />
                 Customer reaction
-                {activeThought.source === "derived" ? (
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] text-slate-500">Derived</span>
-                ) : null}
                 {activeThought.emotion ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] text-slate-500">{activeThought.emotion}</span> : null}
               </div>
               <div className="mt-2 text-sm font-black leading-6 text-brand-ink">{activeThought.text}</div>
@@ -8684,9 +8420,6 @@ function StarterSessionReplayModal({
                   <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
                     <Quote className="h-3.5 w-3.5 text-brand-accent" />
                     {thought.timestampLabel || "Thought"}
-                    {thought.source === "derived" ? (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] text-slate-500">Derived</span>
-                    ) : null}
                   </div>
                   <div className="mt-2 text-sm font-black leading-6 text-brand-ink">{thought.text}</div>
                   {thought.whatThisIs ? (
@@ -8838,7 +8571,6 @@ function StarterReportPage({
   const personaReadout = buildPersonaReadout({
     persona,
     report,
-    run,
     thoughts: replayOverlay.thoughts,
     frictionPoints
   });
@@ -9034,7 +8766,7 @@ function StarterReportPage({
               </section>
 
               <section className="space-y-6">
-                {liveThoughtRows.length ? (
+              {liveThoughtRows.length ? (
                   <div className="space-y-6">
                     <div className="flex items-center justify-between gap-4">
                       <h3 className="text-xl font-black tracking-tight">What the customer is thinking</h3>
@@ -9065,7 +8797,11 @@ function StarterReportPage({
                       ))}
                     </div>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="dash-card p-6 text-sm font-bold text-slate-500">
+                    No customer thoughts were captured for this run yet.
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between gap-4">
                   <h3 className="text-xl font-black tracking-tight">Live activity</h3>
@@ -9176,7 +8912,7 @@ function StarterReportPage({
                   <div>
                     <h3 className="text-xl font-black tracking-tight">Persona readout</h3>
                     <p className="mt-2 text-sm font-bold text-slate-500">
-                      What {persona.name} thought this was, what felt trustworthy, and what still felt unclear.
+                      Only captured customer thoughts appear here. Raw run failures are shown separately.
                     </p>
                   </div>
                   <div className={`rounded-xl border px-4 py-3 text-sm font-black ${personaReadoutToneClass}`}>
@@ -9191,17 +8927,35 @@ function StarterReportPage({
                   </div>
                 </div>
 
+                {personaReadout.blocker ? (
+                  <div className="mt-4 rounded-2xl border border-brand-danger/20 bg-brand-danger/5 px-5 py-4">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-brand-danger">Run blocker</div>
+                    <p className="mt-2 text-base font-black leading-7 text-brand-ink">{personaReadout.blocker}</p>
+                    {personaReadout.blockerContext ? (
+                      <p className="mt-2 text-sm font-bold text-slate-600">
+                        Last confirmed progress: {personaReadout.blockerContext}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <div className="mt-6 grid gap-4 md:grid-cols-2">
                   <div className="rounded-2xl border border-slate-100 p-5">
                     <h4 className="text-sm font-black text-brand-ink">Takeaways</h4>
-                    <ul className="mt-4 space-y-3">
-                      {personaReadout.takeaways.map((item) => (
-                        <li key={item} className="flex gap-3 text-sm font-bold leading-6 text-slate-600">
-                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand-success" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    {personaReadout.takeaways.length ? (
+                      <ul className="mt-4 space-y-3">
+                        {personaReadout.takeaways.map((item) => (
+                          <li key={item} className="flex gap-3 text-sm font-bold leading-6 text-slate-600">
+                            <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand-success" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="mt-4 text-sm font-bold leading-6 text-slate-500">
+                        No customer takeaways were captured in this run.
+                      </div>
+                    )}
                   </div>
 
                   <div className="rounded-2xl border border-slate-100 p-5">
@@ -9228,7 +8982,7 @@ function StarterReportPage({
                     ) : (
                       <div className="mt-4 flex gap-3 text-sm font-bold leading-6 text-slate-500">
                         <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-slate-300" />
-                        <span>No actionable skepticisms were captured in this run.</span>
+                        <span>No customer skepticisms were captured in this run.</span>
                       </div>
                     )}
                   </div>
