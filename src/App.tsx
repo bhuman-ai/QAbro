@@ -1,4 +1,4 @@
-import { cloneElement, startTransition, useDeferredValue, useEffect, useRef, useState } from "react";
+import { cloneElement, startTransition, useDeferredValue, useEffect, useId, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   Activity,
@@ -643,6 +643,66 @@ function buildDraftFromRun(run?: RunSummary | null, report?: QaReport | null, re
   };
 }
 
+function readSavedEnvironmentUrls(project?: ProjectSummary | null): string[] {
+  const metadata = project?.metadata && typeof project.metadata === "object" ? project.metadata : {};
+  const safeMetadata = metadata as Record<string, unknown>;
+  const rawHistory = Array.isArray(safeMetadata.environment_urls)
+    ? safeMetadata.environment_urls
+    : Array.isArray(safeMetadata.environmentUrls)
+      ? safeMetadata.environmentUrls
+      : [];
+  const rawLast = String(safeMetadata.last_environment_url || safeMetadata.lastEnvironmentUrl || "").trim();
+  const seen = new Set<string>();
+  const urls: string[] = [];
+
+  function pushUrl(value: unknown) {
+    const normalized = normalizeUrlInput(String(value || "").trim());
+    if (!normalized) {
+      return;
+    }
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    urls.push(normalized);
+  }
+
+  pushUrl(rawLast);
+  rawHistory.forEach((value) => pushUrl(value));
+  pushUrl(project?.target_url || "");
+
+  return urls.slice(0, 8);
+}
+
+function buildProjectEnvironmentMetadata(metadata: Record<string, unknown>, nextTargetUrl: string, fallbackTargetUrl?: string | null) {
+  const nextUrl = normalizeUrlInput(nextTargetUrl);
+  const urls = readSavedEnvironmentUrls({
+    brand_key: "",
+    target_url: fallbackTargetUrl || null,
+    metadata
+  });
+  const ordered = nextUrl
+    ? [nextUrl, ...urls.filter((item) => item.toLowerCase() !== nextUrl.toLowerCase())]
+    : urls;
+
+  return {
+    ...metadata,
+    environment_urls: ordered.slice(0, 8),
+    last_environment_url: nextUrl || ordered[0] || null
+  };
+}
+
+function applyLaunchTargetUrl(current: LaunchDraft, nextTarget: string): LaunchDraft {
+  const nextBrandKey = current.brandKey || deriveBrandKeyFromUrl(nextTarget);
+  return {
+    ...current,
+    targetUrl: nextTarget,
+    brandKey: nextBrandKey,
+    brandName: current.brandName || inferBrandName(nextBrandKey)
+  };
+}
+
 function buildDraftFromProject(project?: ProjectSummary | null, repoConnection?: RepoConnection | null): Partial<LaunchDraft> {
   const metadata = project?.metadata && typeof project.metadata === "object" ? project.metadata : {};
   const launchDefaults =
@@ -676,7 +736,7 @@ function buildDraftFromProject(project?: ProjectSummary | null, repoConnection?:
       : [];
 
   return {
-    targetUrl: project?.target_url || "",
+    targetUrl: readSavedEnvironmentUrls(project)[0] || project?.target_url || "",
     brandKey: project?.brand_key || "",
     brandName: project?.brand_name || inferBrandName(project?.brand_key || ""),
     runMode:
@@ -2764,14 +2824,16 @@ function WorkspacePage({
           const controlled = payload.metadata.controlled_ux && typeof payload.metadata.controlled_ux === "object"
             ? payload.metadata.controlled_ux
             : { enabled: false };
+          const canonicalProjectTarget = currentProject?.target_url || payload.target_url;
+          const nextProjectMetadata = buildProjectEnvironmentMetadata(currentProjectMetadata, payload.target_url, canonicalProjectTarget);
           await apiFetch("/api/qa/projects", {
             method: "POST",
             body: {
               brand_key: payload.metadata.brand_key,
               brand_name: payload.metadata.brand_name,
-              target_url: payload.target_url,
+              target_url: canonicalProjectTarget,
               metadata: {
-                ...currentProjectMetadata,
+                ...nextProjectMetadata,
                 source: "react_dashboard",
                 repo_triage: {
                   enabled: payload.metadata.repo_triage?.enabled === true,
@@ -3776,6 +3838,102 @@ function AdvancedBrowserReadinessCard({
   );
 }
 
+function EnvironmentUrlField({
+  value,
+  savedUrls,
+  onChange
+}: {
+  value: string;
+  savedUrls: string[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const inputId = useId();
+  const query = value.trim().toLowerCase();
+  const filteredUrls = savedUrls.filter((url) => !query || url.toLowerCase().includes(query));
+  const hasSavedUrls = savedUrls.length > 0;
+
+  return (
+    <div>
+      <FieldLabel>Environment URL</FieldLabel>
+      <div className="relative">
+        <TextInput
+          id={inputId}
+          placeholder="https://staging.example.com"
+          value={value}
+          onFocus={() => {
+            if (hasSavedUrls) {
+              setOpen(true);
+            }
+          }}
+          onBlur={() => {
+            window.setTimeout(() => setOpen(false), 120);
+          }}
+          onChange={(event) => {
+            onChange(event.target.value);
+            if (hasSavedUrls) {
+              setOpen(true);
+            }
+          }}
+          className="pr-11"
+        />
+        {hasSavedUrls ? (
+          <button
+            type="button"
+            aria-label="Show saved URLs"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              setOpen((current) => !current);
+            }}
+            className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-brand-ink"
+          >
+            <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+          </button>
+        ) : null}
+      </div>
+
+      {hasSavedUrls ? (
+        <p className="mt-2 text-xs leading-5 text-brand-muted">
+          Saved for this brand. Pick one from the dropdown or type a new URL.
+        </p>
+      ) : null}
+
+      {open && hasSavedUrls ? (
+        <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-2">
+          {filteredUrls.length ? (
+            <div className="max-h-56 overflow-y-auto">
+              {filteredUrls.map((url) => {
+                const selected = value.trim().toLowerCase() === url.toLowerCase();
+                return (
+                  <button
+                    key={url}
+                    type="button"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      onChange(url);
+                      setOpen(false);
+                    }}
+                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${
+                      selected ? "bg-brand-primary/10 text-brand-ink" : "text-brand-ink hover:bg-white"
+                    }`}
+                  >
+                    <span className="truncate">{url}</span>
+                    {selected ? <Check className="h-4 w-4 shrink-0 text-brand-primary" /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-xl bg-white px-4 py-3 text-sm text-slate-400">
+              No saved URLs match that search.
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function QuickLaunchModal({
   draft,
   currentProject,
@@ -3806,6 +3964,7 @@ function QuickLaunchModal({
   const accessMethod = normalizeAccessMethod(draft.accessMethod, validationTarget);
   const scrollBodyRef = useRef<HTMLDivElement | null>(null);
   const projectMetadata = currentProject?.metadata && typeof currentProject.metadata === "object" ? currentProject.metadata : {};
+  const savedEnvironmentUrls = readSavedEnvironmentUrls(currentProject);
   const savedSessionAvailable =
     projectMetadata?.qa_profile && typeof projectMetadata.qa_profile === "object"
       ? (projectMetadata.qa_profile as Record<string, unknown>).available === true
@@ -3838,25 +3997,11 @@ function QuickLaunchModal({
       </div>
 
       <div ref={scrollBodyRef} className="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-5 py-4 [overflow-anchor:none]">
-        <div>
-          <FieldLabel>Environment URL</FieldLabel>
-          <TextInput
-            placeholder="https://staging.example.com"
-            value={draft.targetUrl}
-            onChange={(event) =>
-              onChange((current) => {
-                const nextTarget = event.target.value;
-                const nextBrandKey = current.brandKey || deriveBrandKeyFromUrl(nextTarget);
-                return {
-                  ...current,
-                  targetUrl: nextTarget,
-                  brandKey: nextBrandKey,
-                  brandName: current.brandName || inferBrandName(nextBrandKey)
-                };
-              })
-            }
-          />
-        </div>
+        <EnvironmentUrlField
+          value={draft.targetUrl}
+          savedUrls={savedEnvironmentUrls}
+          onChange={(nextTarget) => onChange((current) => applyLaunchTargetUrl(current, nextTarget))}
+        />
 
         <div>
           <FieldLabel>Test mode</FieldLabel>
@@ -4231,6 +4376,7 @@ function LaunchComposer({
   const validationTarget = draft.validationTarget;
   const accessMethod = normalizeAccessMethod(draft.accessMethod, validationTarget);
   const projectMetadata = currentProject?.metadata && typeof currentProject.metadata === "object" ? currentProject.metadata : {};
+  const savedEnvironmentUrls = readSavedEnvironmentUrls(currentProject);
   const savedSessionAvailable =
     projectMetadata?.qa_profile && typeof projectMetadata.qa_profile === "object"
       ? (projectMetadata.qa_profile as Record<string, unknown>).available === true
@@ -4366,22 +4512,10 @@ function LaunchComposer({
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="md:col-span-2">
-                  <FieldLabel>Environment URL</FieldLabel>
-                  <TextInput
-                    placeholder="https://staging.example.com"
+                  <EnvironmentUrlField
                     value={draft.targetUrl}
-                    onChange={(event) =>
-                      onChange((current) => {
-                        const nextTarget = event.target.value;
-                        const nextBrandKey = current.brandKey || deriveBrandKeyFromUrl(nextTarget);
-                        return {
-                          ...current,
-                          targetUrl: nextTarget,
-                          brandKey: nextBrandKey,
-                          brandName: current.brandName || inferBrandName(nextBrandKey)
-                        };
-                      })
-                    }
+                    savedUrls={savedEnvironmentUrls}
+                    onChange={(nextTarget) => onChange((current) => applyLaunchTargetUrl(current, nextTarget))}
                   />
                 </div>
                 <div>
