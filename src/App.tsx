@@ -1838,6 +1838,7 @@ function WorkspacePage({
   const [repoConnection, setRepoConnection] = useState<RepoConnection | null>(null);
   const [repoLoading, setRepoLoading] = useState(false);
   const [repoError, setRepoError] = useState("");
+  const [repoConnectionReloadKey, setRepoConnectionReloadKey] = useState(0);
   const [repoRoutes, setRepoRoutes] = useState<RepoRouteSuggestion[]>([]);
   const [repoRoutesLoading, setRepoRoutesLoading] = useState(false);
   const [repoRoutesError, setRepoRoutesError] = useState("");
@@ -2045,18 +2046,23 @@ function WorkspacePage({
       const brandKey = normalizeBrandKey(String(payload.brand_key || ""));
       const status = String(payload.status || "").trim().toLowerCase();
       const error = String(payload.error || "").trim();
+      const nextPanel =
+        currentPanel === "settings" || status === "repo_selection_required"
+          ? "settings"
+          : "overview";
 
       const next = new URLSearchParams(route.search);
       if (brandKey) {
         next.set("brand", brandKey);
       }
-      next.set("panel", status === "repo_selection_required" ? "automations" : "overview");
+      next.set("panel", nextPanel);
       next.delete("github_app_status");
       next.delete("github_app_error");
       next.delete("github_app_brand");
       navigate("/dashboard", next, true);
 
       refreshWorkspaceLists().catch(() => null);
+      setRepoConnectionReloadKey((current) => current + 1);
       setRepoError(error ? `GitHub setup failed: ${error.replace(/_/g, " ")}` : "");
     }
 
@@ -2064,7 +2070,7 @@ function WorkspacePage({
     return () => {
       window.removeEventListener("message", handleGitHubPopupMessage);
     };
-  }, [navigate, route.search]);
+  }, [currentPanel, navigate, route.search]);
 
   useEffect(() => {
     if (isSharedView) {
@@ -2198,7 +2204,7 @@ function WorkspacePage({
     return () => {
       cancelled = true;
     };
-  }, [authState.authorized, currentBrandKey, isSharedView]);
+  }, [authState.authorized, currentBrandKey, isSharedView, repoConnectionReloadKey]);
 
   useEffect(() => {
     if (

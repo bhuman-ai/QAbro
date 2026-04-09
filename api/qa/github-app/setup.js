@@ -163,7 +163,7 @@ module.exports = async (req, res) => {
   return redirect(
     res,
     buildDashboardRedirect(req, buildBrandRedirectParams(loaded.row.brand_key, {
-      panel: autoSelectedRepo ? "overview" : "automations",
+      panel: autoSelectedRepo ? "overview" : "settings",
       github_app_status: autoSelectedRepo ? "connected" : "repo_selection_required",
     }))
   );
