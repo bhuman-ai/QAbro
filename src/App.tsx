@@ -1953,6 +1953,7 @@ function WorkspacePage({
   const frictionRows = buildStarterFrictionRows(selectedReport, sameBrandRuns.length ? sameBrandRuns : reports);
   const trendData = buildTrendData(sameBrandRuns.length ? sameBrandRuns : reports);
   const emptyWorkspace = workspaceBootstrapped && !projectCatalog.length && !reports.length;
+  const onboardingSeen = authState.user?.onboarding_seen === true;
   const workspaceState = !workspaceBootstrapped || runsLoading ? "loading" : runsError ? "error" : "ready";
   const detailState = detailLoading ? "loading" : detailError ? "error" : selectedReport ? "ready" : "empty";
 
@@ -2595,6 +2596,17 @@ function WorkspacePage({
       brandKey,
       brandName: input.name
     }));
+    try {
+      await apiFetch("/api/auth/onboarding-seen", {
+        method: "POST",
+        body: {
+          seen: true
+        }
+      });
+      await onRefreshSession().catch(() => null);
+    } catch {
+      // Ignore onboarding persistence failures and continue to the dashboard.
+    }
 
     const next = new URLSearchParams(route.search);
     next.set("brand", brandKey);
@@ -3327,7 +3339,7 @@ function WorkspacePage({
     navigate("/dashboard", next);
   }
 
-  const resolvedPanel = emptyWorkspace && currentPanel !== "help" ? "onboarding" : currentPanel;
+  const resolvedPanel = !onboardingSeen && emptyWorkspace && currentPanel !== "help" ? "onboarding" : currentPanel;
   const canShowReportPanel = Boolean(requestedRunId || selectedRun || selectedReport);
   const previousRun = requestedRunId ? sameBrandRuns.find((run, index) => sameBrandRuns[index + 1]?.run_id === requestedRunId) || null : null;
   const currentRunIndex = sameBrandRuns.findIndex((run) => run.run_id === requestedRunId);

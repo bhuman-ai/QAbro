@@ -1,6 +1,8 @@
 export interface AuthUser {
   id?: string | null;
   email?: string | null;
+  created_at?: string | null;
+  onboarding_seen?: boolean | null;
   user_metadata?: Record<string, unknown> | null;
 }
 
