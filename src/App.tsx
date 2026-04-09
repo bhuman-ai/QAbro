@@ -9162,10 +9162,6 @@ function StarterAutomationsPage({
   const savedAssociatedRepos = Array.isArray(repoConnection?.associated_repo_full_names)
     ? repoConnection.associated_repo_full_names.filter((repo) => repo && repo !== repoConnection?.selected_repo_full_name)
     : [];
-  const remainingRepoOptions = availableRepos.filter((repo) => {
-    const fullName = String(repo.full_name || "");
-    return fullName && fullName !== repoPrimaryDraft && !repoAssociatedDraft.includes(fullName);
-  });
   const repoSelectionDirty =
     repoPrimaryDraft !== String(repoConnection?.selected_repo_full_name || "") ||
     JSON.stringify([...repoAssociatedDraft].sort()) !== JSON.stringify([...savedAssociatedRepos].sort());
@@ -9557,6 +9553,10 @@ function StarterBrandSettingsPage({
   const [settingsTone, setSettingsTone] = useState<"neutral" | "success" | "danger">("neutral");
   const [repoPrimaryDraft, setRepoPrimaryDraft] = useState("");
   const [repoAssociatedDraft, setRepoAssociatedDraft] = useState<string[]>([]);
+  const [mainRepoQuery, setMainRepoQuery] = useState("");
+  const [supportRepoQuery, setSupportRepoQuery] = useState("");
+  const [mainRepoPickerOpen, setMainRepoPickerOpen] = useState(false);
+  const [supportRepoPickerOpen, setSupportRepoPickerOpen] = useState(false);
   const [repoSaving, setRepoSaving] = useState(false);
   const [repoSaveMessage, setRepoSaveMessage] = useState("");
   const [repoSaveTone, setRepoSaveTone] = useState<"neutral" | "success" | "danger">("neutral");
@@ -9580,6 +9580,26 @@ function StarterBrandSettingsPage({
     brandNameDraft.trim() !== savedBrandName.trim() ||
     websiteDraft.trim() !== savedWebsite.trim() ||
     JSON.stringify([...teamMembersDraft].sort()) !== JSON.stringify([...savedTeamMembers].sort());
+  const mainRepoSearchTerm = mainRepoQuery.trim().toLowerCase();
+  const supportRepoSearchTerm = supportRepoQuery.trim().toLowerCase();
+  const mainRepoResults = availableRepos
+    .filter((repo) => {
+      const fullName = String(repo.full_name || "");
+      if (!fullName) {
+        return false;
+      }
+      return !mainRepoSearchTerm || fullName.toLowerCase().includes(mainRepoSearchTerm);
+    })
+    .slice(0, 8);
+  const supportRepoResults = availableRepos
+    .filter((repo) => {
+      const fullName = String(repo.full_name || "");
+      if (!fullName || fullName === repoPrimaryDraft || repoAssociatedDraft.includes(fullName)) {
+        return false;
+      }
+      return !supportRepoSearchTerm || fullName.toLowerCase().includes(supportRepoSearchTerm);
+    })
+    .slice(0, 10);
   const linkedRepoCount = (repoPrimaryDraft ? 1 : 0) + repoAssociatedDraft.length;
   const repoStatusTone = repoConnected ? "success" : repoNeedsSelection ? "warning" : repoPendingInstall ? "neutral" : "neutral";
   const repoStatusLabel = repoConnected ? "Connected" : repoNeedsSelection ? "Pick repos" : repoPendingInstall ? "Waiting for GitHub" : "Not connected";
@@ -9599,7 +9619,11 @@ function StarterBrandSettingsPage({
       ? repoConnection.associated_repo_full_names.filter((repo) => repo && repo !== primaryRepoFullName)
       : [];
     setRepoPrimaryDraft(primaryRepoFullName);
+    setMainRepoQuery(primaryRepoFullName);
     setRepoAssociatedDraft(associatedRepoFullNames);
+    setSupportRepoQuery("");
+    setMainRepoPickerOpen(false);
+    setSupportRepoPickerOpen(false);
     setRepoSaveMessage("");
     setRepoSaveTone("neutral");
   }, [repoConnection?.associated_repo_full_names, repoConnection?.selected_repo_full_name]);
@@ -9965,21 +9989,76 @@ function StarterBrandSettingsPage({
 
               <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
                 <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-slate-400">Main repo</label>
-                <Select
-                  value={repoPrimaryDraft}
-                  onChange={(event) => {
-                    const nextPrimary = event.target.value;
-                    setRepoPrimaryDraft(nextPrimary);
-                    setRepoAssociatedDraft((current) => current.filter((repo) => repo !== nextPrimary));
-                  }}
-                >
-                  <option value="">Choose the main repo</option>
-                  {availableRepos.map((repo) => (
-                    <option key={repo.full_name || repo.id} value={repo.full_name || ""}>
-                      {repo.full_name}
-                    </option>
-                  ))}
-                </Select>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <TextInput
+                    value={mainRepoQuery}
+                    onFocus={() => setMainRepoPickerOpen(true)}
+                    onBlur={() => {
+                      window.setTimeout(() => setMainRepoPickerOpen(false), 120);
+                    }}
+                    onChange={(event) => {
+                      const nextQuery = event.target.value;
+                      setMainRepoQuery(nextQuery);
+                      if (repoPrimaryDraft && nextQuery.trim().toLowerCase() !== repoPrimaryDraft.toLowerCase()) {
+                        setRepoPrimaryDraft("");
+                      }
+                    }}
+                    placeholder="Type to search repos"
+                    className="pl-10 pr-10"
+                  />
+                  {mainRepoQuery ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMainRepoQuery("");
+                        setRepoPrimaryDraft("");
+                        setMainRepoPickerOpen(true);
+                      }}
+                      className="absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-brand-ink"
+                    >
+                      <Plus className="h-3.5 w-3.5 rotate-45" />
+                    </button>
+                  ) : null}
+                </div>
+
+                {mainRepoPickerOpen ? (
+                  <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-2">
+                    {mainRepoResults.length ? (
+                      <div className="max-h-56 overflow-y-auto">
+                        {mainRepoResults.map((repo) => {
+                          const fullName = String(repo.full_name || "");
+                          const selected = fullName === repoPrimaryDraft;
+                          return (
+                            <button
+                              key={fullName || repo.id}
+                              type="button"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                setRepoPrimaryDraft(fullName);
+                                setMainRepoQuery(fullName);
+                                setRepoAssociatedDraft((current) => current.filter((repoName) => repoName !== fullName));
+                                setMainRepoPickerOpen(false);
+                              }}
+                              className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${
+                                selected ? "bg-brand-primary/10 text-brand-ink" : "text-brand-ink hover:bg-white"
+                              }`}
+                            >
+                              <span className="truncate">{fullName}</span>
+                              {selected ? <Check className="h-4 w-4 shrink-0 text-brand-primary" /> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl bg-white px-4 py-3 text-sm text-slate-400">No repos match that search.</div>
+                    )}
+                  </div>
+                ) : null}
+
+                <div className="mt-2 text-sm text-slate-500">
+                  {repoPrimaryDraft ? `Selected main repo: ${repoPrimaryDraft}` : "Type a few letters, then click the repo you want."}
+                </div>
 
                 <div className="mt-5">
                   <div className="flex items-center justify-between gap-3">
@@ -10019,25 +10098,63 @@ function StarterBrandSettingsPage({
                     )}
                   </div>
 
-                  {remainingRepoOptions.length ? (
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {remainingRepoOptions.map((repo) => {
-                        const fullName = String(repo.full_name || "");
-                        return (
-                          <button
-                            key={fullName || repo.id}
-                            type="button"
-                            onClick={() => setRepoAssociatedDraft((current) => [...current, fullName])}
-                            className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-500 transition hover:border-brand-accent hover:text-brand-ink"
-                          >
-                            + {fullName}
-                          </button>
-                        );
-                      })}
+                  <div className="mt-4">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <TextInput
+                        value={supportRepoQuery}
+                        onFocus={() => {
+                          if (repoPrimaryDraft) {
+                            setSupportRepoPickerOpen(true);
+                          }
+                        }}
+                        onBlur={() => {
+                          window.setTimeout(() => setSupportRepoPickerOpen(false), 120);
+                        }}
+                        onChange={(event) => {
+                          setSupportRepoQuery(event.target.value);
+                          if (repoPrimaryDraft) {
+                            setSupportRepoPickerOpen(true);
+                          }
+                        }}
+                        placeholder={repoPrimaryDraft ? "Type to search supporting repos" : "Choose the main repo first"}
+                        disabled={!repoPrimaryDraft}
+                        className="pl-10"
+                      />
                     </div>
-                  ) : repoPrimaryDraft ? (
-                    <div className="mt-4 text-sm text-slate-400">No other repos are available for this GitHub install.</div>
-                  ) : null}
+
+                    {supportRepoPickerOpen && repoPrimaryDraft ? (
+                      <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-2">
+                        {supportRepoResults.length ? (
+                          <div className="max-h-64 overflow-y-auto">
+                            {supportRepoResults.map((repo) => {
+                              const fullName = String(repo.full_name || "");
+                              return (
+                                <button
+                                  key={fullName || repo.id}
+                                  type="button"
+                                  onMouseDown={(event) => {
+                                    event.preventDefault();
+                                    setRepoAssociatedDraft((current) => [...current, fullName]);
+                                    setSupportRepoQuery("");
+                                    setSupportRepoPickerOpen(true);
+                                  }}
+                                  className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-brand-ink transition hover:bg-white"
+                                >
+                                  <span className="truncate">{fullName}</span>
+                                  <span className="text-xs font-black uppercase tracking-widest text-slate-400">Add</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="rounded-xl bg-white px-4 py-3 text-sm text-slate-400">
+                            {supportRepoSearchTerm ? "No repos match that search." : "No other repos are available for this GitHub install."}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-4 md:flex-row md:items-center md:justify-between">
