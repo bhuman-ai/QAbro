@@ -560,12 +560,13 @@ function upsertProjectSummary(projects: ProjectSummary[], project?: ProjectSumma
   }
 
   const current = projects.find((item) => normalizeBrandKey(item.brand_key) === brandKey) || null;
+  const hasTargetUrl = Boolean(project && Object.prototype.hasOwnProperty.call(project, "target_url"));
   const merged: ProjectSummary = {
     ...(current || {}),
     ...(project || {}),
     brand_key: brandKey,
     brand_name: project?.brand_name || current?.brand_name || inferBrandName(brandKey),
-    target_url: project?.target_url || current?.target_url || null,
+    target_url: hasTargetUrl ? project?.target_url ?? null : current?.target_url || null,
     run_count: Number(project?.run_count ?? current?.run_count ?? 0) || 0,
     latest_run_at: project?.latest_run_at ?? current?.latest_run_at ?? null,
     metadata:
@@ -774,6 +775,29 @@ function buildStarterBrands(projects: ProjectSummary[], runs: RunSummary[], repo
     website: project.target_url || `https://${normalizeBrandKey(project.brand_key)}.com`,
     githubConnected: Boolean(repoConnection?.selected_repo_full_name && normalizeBrandKey(repoConnection?.brand_key || "") === normalizeBrandKey(project.brand_key))
   }));
+}
+
+function readProjectTeamMembers(project?: ProjectSummary | null) {
+  const metadata = project?.metadata && typeof project.metadata === "object" ? project.metadata : {};
+  const rawValue = (metadata as Record<string, unknown>).team_members;
+  if (!Array.isArray(rawValue)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const members: string[] = [];
+  for (const item of rawValue) {
+    const safeValue = String(item || "").trim().toLowerCase();
+    if (!safeValue || seen.has(safeValue)) {
+      continue;
+    }
+    seen.add(safeValue);
+    members.push(safeValue);
+    if (members.length >= 12) {
+      break;
+    }
+  }
+  return members;
 }
 
 function deriveScoreFromReport(report?: QaReport | null, run?: RunSummary | null) {
@@ -3024,6 +3048,96 @@ function WorkspacePage({
     }
   }
 
+  async function handleDisconnectGitHubConnection() {
+    const brandKey = normalizeBrandKey(currentBrandKey || activeStarterBrand?.id || "");
+    if (!brandKey) {
+      throw new Error("Pick a brand first.");
+    }
+
+    setRepoLoading(true);
+    try {
+      await apiFetch("/api/qa/github-app/connection", {
+        method: "DELETE",
+        params: {
+          brand_key: brandKey
+        }
+      });
+      setRepoConnection(null);
+      setRepoError("");
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Could not disconnect GitHub.";
+      setRepoError(message);
+      throw new Error(message);
+    } finally {
+      setRepoLoading(false);
+    }
+  }
+
+  async function handleSaveBrandSettings(input: { brandName: string; website: string; teamMembers: string[] }) {
+    const brandKey = normalizeBrandKey(currentBrandKey || activeStarterBrand?.id || "");
+    if (!brandKey) {
+      throw new Error("Pick a brand first.");
+    }
+
+    const trimmedBrandName = String(input.brandName || "").trim();
+    if (!trimmedBrandName) {
+      throw new Error("Brand name is required.");
+    }
+
+    const normalizedWebsite = input.website ? normalizeUrlInput(input.website) : "";
+    if (input.website && !normalizedWebsite) {
+      throw new Error("Add a valid website URL.");
+    }
+
+    const currentMetadata =
+      currentProject?.metadata && typeof currentProject.metadata === "object"
+        ? { ...currentProject.metadata }
+        : {};
+    delete (currentMetadata as Record<string, unknown>).qa_profile;
+
+    const response = await apiFetch<{ items?: ProjectSummary[] }>("/api/qa/projects", {
+      method: "POST",
+      body: {
+        brand_key: brandKey,
+        brand_name: trimmedBrandName,
+        target_url: normalizedWebsite || null,
+        metadata: {
+          ...currentMetadata,
+          source: currentMetadata.source || "react_dashboard_brand_settings",
+          team_members: input.teamMembers
+        }
+      }
+    });
+
+    const savedProject =
+      (response.items || []).find((item) => normalizeBrandKey(item.brand_key) === brandKey) ||
+      response.items?.[0] ||
+      ({
+        brand_key: brandKey,
+        brand_name: trimmedBrandName,
+        target_url: normalizedWebsite || null,
+        metadata: {
+          ...currentMetadata,
+          source: currentMetadata.source || "react_dashboard_brand_settings",
+          team_members: input.teamMembers
+        }
+      } satisfies ProjectSummary);
+
+    setProjects((current) => upsertProjectSummary(current, savedProject));
+    setLaunchDraft((current) =>
+      normalizeBrandKey(current.brandKey || "") === brandKey
+        ? {
+            ...current,
+            brandKey,
+            brandName: savedProject.brand_name || trimmedBrandName,
+            targetUrl: savedProject.target_url || ""
+          }
+        : current
+    );
+    refreshWorkspaceLists().catch(() => null);
+    return savedProject;
+  }
+
   async function handleOperatorAction(kind: "prepare" | "preflight" | "queue") {
     const brand = operatorState.brands.find((item) => item.brand_profile_id === operatorState.selectedBrandId);
     const pack = operatorState.packs.find((item) => item.pack_id === operatorState.selectedPackId);
@@ -3344,6 +3458,7 @@ function WorkspacePage({
   const previousRun = requestedRunId ? sameBrandRuns.find((run, index) => sameBrandRuns[index + 1]?.run_id === requestedRunId) || null : null;
   const currentRunIndex = sameBrandRuns.findIndex((run) => run.run_id === requestedRunId);
   const nextRun = currentRunIndex > 0 ? sameBrandRuns[currentRunIndex - 1] : null;
+  const activeDashboardBrandKey = activeStarterBrand?.id || currentBrandKey || "";
 
   let workspaceContent: React.ReactNode;
 
@@ -3391,6 +3506,21 @@ function WorkspacePage({
         onConnectGitHub={handleGitHubInstall}
         onSaveProjectRepos={handleProjectRepositoriesSave}
         onAcknowledgeAlert={handleAlertAcknowledge}
+      />
+    );
+  } else if (resolvedPanel === "settings") {
+    workspaceContent = (
+      <StarterBrandSettingsPage
+        activeBrand={activeStarterBrand}
+        currentProject={currentProject}
+        repoConnection={repoConnection}
+        repoLoading={repoLoading}
+        repoError={repoError}
+        onBack={() => openPanel(activeStarterBrand ? "overview" : "onboarding", { brand: activeDashboardBrandKey })}
+        onSaveBrandSettings={handleSaveBrandSettings}
+        onConnectGitHub={handleGitHubInstall}
+        onSaveProjectRepos={handleProjectRepositoriesSave}
+        onDisconnectGitHub={handleDisconnectGitHubConnection}
       />
     );
   } else if (resolvedPanel === "help") {
@@ -3441,13 +3571,13 @@ function WorkspacePage({
         onAddBrand={() => openPanel("onboarding")}
         onLogout={onSignOut}
         onViewReport={handleOpenReport}
-        onViewPersonas={() => openPanel("personas", { brand: currentBrandKey || "" })}
-        onViewAutomations={() => openPanel("automations", { brand: currentBrandKey || "" })}
-        onViewHistory={() => openPanel("history", { brand: currentBrandKey || "" })}
-        onViewHelp={() => openPanel("help", { brand: currentBrandKey || "" })}
+        onViewPersonas={() => openPanel("personas", { brand: activeDashboardBrandKey })}
+        onViewAutomations={() => openPanel("automations", { brand: activeDashboardBrandKey })}
+        onViewHistory={() => openPanel("history", { brand: activeDashboardBrandKey })}
+        onViewHelp={() => openPanel("help", { brand: activeDashboardBrandKey })}
+        onOpenSettings={() => openPanel("settings", { brand: activeDashboardBrandKey })}
         onRunNewTest={handleQuickRun}
-        onOpenAdvancedLaunch={() => handleOpenComposer("advanced")}
-        onScheduleTest={() => openPanel("automations", { brand: currentBrandKey || "" })}
+        onScheduleTest={() => openPanel("automations", { brand: activeDashboardBrandKey })}
       />
     );
   }
@@ -5718,8 +5848,8 @@ function StarterDashboard({
   onViewAutomations,
   onViewHistory,
   onViewHelp,
+  onOpenSettings,
   onRunNewTest,
-  onOpenAdvancedLaunch,
   onScheduleTest
 }: {
   brands: StarterBrand[];
@@ -5738,8 +5868,8 @@ function StarterDashboard({
   onViewAutomations: () => void;
   onViewHistory: () => void;
   onViewHelp: () => void;
+  onOpenSettings: () => void;
   onRunNewTest: () => void;
-  onOpenAdvancedLaunch: () => void;
   onScheduleTest: () => void;
 }) {
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
@@ -5820,7 +5950,7 @@ function StarterDashboard({
           <StarterNavItem icon={<Users />} label="Persona Lab" onClick={onViewPersonas} />
           <StarterNavItem icon={<Zap />} label="Automations" onClick={onViewAutomations} />
           <StarterNavItem icon={<FileText />} label="Help Center" onClick={onViewHelp} />
-          <StarterNavItem icon={<Settings />} label="Settings" onClick={onOpenAdvancedLaunch} />
+          <StarterNavItem icon={<Settings />} label="Settings" onClick={onOpenSettings} />
         </nav>
 
         <div className="p-4 border-t border-slate-200">
@@ -9373,6 +9503,496 @@ function StarterAutomationsPage({
           </motion.div>
         ) : null}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function StarterBrandSettingsPage({
+  activeBrand,
+  currentProject,
+  repoConnection,
+  repoLoading,
+  repoError,
+  onBack,
+  onSaveBrandSettings,
+  onConnectGitHub,
+  onSaveProjectRepos,
+  onDisconnectGitHub
+}: {
+  activeBrand: StarterBrand | null;
+  currentProject: ProjectSummary | null;
+  repoConnection: RepoConnection | null;
+  repoLoading: boolean;
+  repoError: string;
+  onBack: () => void;
+  onSaveBrandSettings: (input: { brandName: string; website: string; teamMembers: string[] }) => Promise<ProjectSummary>;
+  onConnectGitHub: () => Promise<void>;
+  onSaveProjectRepos: (input: { primaryRepoFullName: string; associatedRepoFullNames: string[] }) => Promise<void>;
+  onDisconnectGitHub: () => Promise<void>;
+}) {
+  const savedBrandName = String(currentProject?.brand_name || activeBrand?.name || "");
+  const savedWebsite = String(currentProject?.target_url || activeBrand?.website || "");
+  const savedTeamMembers = readProjectTeamMembers(currentProject);
+  const [brandNameDraft, setBrandNameDraft] = useState(savedBrandName);
+  const [websiteDraft, setWebsiteDraft] = useState(savedWebsite);
+  const [teamMembersDraft, setTeamMembersDraft] = useState<string[]>(savedTeamMembers);
+  const [teamMemberInput, setTeamMemberInput] = useState("");
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState("");
+  const [settingsTone, setSettingsTone] = useState<"neutral" | "success" | "danger">("neutral");
+  const [repoPrimaryDraft, setRepoPrimaryDraft] = useState("");
+  const [repoAssociatedDraft, setRepoAssociatedDraft] = useState<string[]>([]);
+  const [repoAddDraft, setRepoAddDraft] = useState("");
+  const [repoSaving, setRepoSaving] = useState(false);
+  const [repoSaveMessage, setRepoSaveMessage] = useState("");
+  const [repoSaveTone, setRepoSaveTone] = useState<"neutral" | "success" | "danger">("neutral");
+  const availableRepos = Array.isArray(repoConnection?.repositories) ? repoConnection.repositories.filter((repo) => repo.full_name) : [];
+  const githubInstalled = Boolean(repoConnection?.installation_id);
+  const repoConnected = repoConnection?.connection_status === "connected";
+  const repoNeedsSelection = repoConnection?.connection_status === "awaiting_repo_selection";
+  const canChooseProjectRepos = repoConnected || repoNeedsSelection || availableRepos.length > 0;
+  const savedAssociatedRepos = Array.isArray(repoConnection?.associated_repo_full_names)
+    ? repoConnection.associated_repo_full_names.filter((repo) => repo && repo !== repoConnection?.selected_repo_full_name)
+    : [];
+  const remainingRepoOptions = availableRepos.filter((repo) => {
+    const fullName = String(repo.full_name || "");
+    return fullName && fullName !== repoPrimaryDraft && !repoAssociatedDraft.includes(fullName);
+  });
+  const repoSelectionDirty =
+    repoPrimaryDraft !== String(repoConnection?.selected_repo_full_name || "") ||
+    JSON.stringify([...repoAssociatedDraft].sort()) !== JSON.stringify([...savedAssociatedRepos].sort());
+  const settingsDirty =
+    brandNameDraft.trim() !== savedBrandName.trim() ||
+    websiteDraft.trim() !== savedWebsite.trim() ||
+    JSON.stringify([...teamMembersDraft].sort()) !== JSON.stringify([...savedTeamMembers].sort());
+
+  useEffect(() => {
+    setBrandNameDraft(savedBrandName);
+    setWebsiteDraft(savedWebsite);
+    setTeamMembersDraft(savedTeamMembers);
+    setTeamMemberInput("");
+    setSettingsMessage("");
+    setSettingsTone("neutral");
+  }, [savedBrandName, savedWebsite, currentProject?.brand_key, JSON.stringify(savedTeamMembers)]);
+
+  useEffect(() => {
+    const primaryRepoFullName = String(repoConnection?.selected_repo_full_name || "");
+    const associatedRepoFullNames = Array.isArray(repoConnection?.associated_repo_full_names)
+      ? repoConnection.associated_repo_full_names.filter((repo) => repo && repo !== primaryRepoFullName)
+      : [];
+    setRepoPrimaryDraft(primaryRepoFullName);
+    setRepoAssociatedDraft(associatedRepoFullNames);
+    setRepoAddDraft("");
+    setRepoSaveMessage("");
+    setRepoSaveTone("neutral");
+  }, [repoConnection?.associated_repo_full_names, repoConnection?.selected_repo_full_name]);
+
+  function handleAddTeamMember() {
+    const nextEmail = teamMemberInput.trim().toLowerCase();
+    if (!nextEmail) {
+      return;
+    }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(nextEmail)) {
+      setSettingsMessage("Add a valid teammate email.");
+      setSettingsTone("danger");
+      return;
+    }
+    if (teamMembersDraft.includes(nextEmail)) {
+      setTeamMemberInput("");
+      return;
+    }
+    setTeamMembersDraft((current) => [...current, nextEmail]);
+    setTeamMemberInput("");
+    setSettingsMessage("");
+    setSettingsTone("neutral");
+  }
+
+  function handleAddAssociatedRepo() {
+    if (!repoAddDraft || repoAddDraft === repoPrimaryDraft || repoAssociatedDraft.includes(repoAddDraft)) {
+      return;
+    }
+    setRepoAssociatedDraft((current) => [...current, repoAddDraft]);
+    setRepoAddDraft("");
+  }
+
+  async function handleSaveSettings() {
+    if (!brandNameDraft.trim()) {
+      setSettingsMessage("Brand name is required.");
+      setSettingsTone("danger");
+      return;
+    }
+    if (websiteDraft.trim() && !normalizeUrlInput(websiteDraft)) {
+      setSettingsMessage("Add a valid website URL.");
+      setSettingsTone("danger");
+      return;
+    }
+
+    setSettingsSaving(true);
+    setSettingsMessage("");
+    try {
+      await onSaveBrandSettings({
+        brandName: brandNameDraft.trim(),
+        website: websiteDraft.trim(),
+        teamMembers: teamMembersDraft
+      });
+      setSettingsMessage("Brand settings saved.");
+      setSettingsTone("success");
+    } catch (caught) {
+      setSettingsMessage(caught instanceof Error ? caught.message : "Could not save brand settings.");
+      setSettingsTone("danger");
+    } finally {
+      setSettingsSaving(false);
+    }
+  }
+
+  async function handleSaveRepos() {
+    if (!repoPrimaryDraft) {
+      setRepoSaveMessage("Pick a primary repo first.");
+      setRepoSaveTone("danger");
+      return;
+    }
+    setRepoSaving(true);
+    setRepoSaveMessage("");
+    try {
+      await onSaveProjectRepos({
+        primaryRepoFullName: repoPrimaryDraft,
+        associatedRepoFullNames: [repoPrimaryDraft, ...repoAssociatedDraft]
+      });
+      setRepoSaveMessage("Project repos saved.");
+      setRepoSaveTone("success");
+    } catch (caught) {
+      setRepoSaveMessage(caught instanceof Error ? caught.message : "Could not save project repos.");
+      setRepoSaveTone("danger");
+    } finally {
+      setRepoSaving(false);
+    }
+  }
+
+  async function handleDisconnectRepos() {
+    if (typeof window !== "undefined" && !window.confirm("Disconnect GitHub from this brand?")) {
+      return;
+    }
+    setRepoSaving(true);
+    setRepoSaveMessage("");
+    try {
+      await onDisconnectGitHub();
+      setRepoSaveMessage("GitHub disconnected for this brand.");
+      setRepoSaveTone("success");
+    } catch (caught) {
+      setRepoSaveMessage(caught instanceof Error ? caught.message : "Could not disconnect GitHub.");
+      setRepoSaveTone("danger");
+    } finally {
+      setRepoSaving(false);
+    }
+  }
+
+  if (!activeBrand && !currentProject) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col">
+        <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center gap-6 sticky top-0 z-50">
+          <button onClick={onBack} className="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-all group">
+            <ArrowRight className="w-5 h-5 rotate-180 text-slate-400 group-hover:text-brand-ink" />
+          </button>
+          <div>
+            <h1 className="text-xl font-black tracking-tight">Brand Settings</h1>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Choose a brand first</p>
+          </div>
+        </header>
+        <main className="flex-1 flex items-center justify-center p-8">
+          <div className="dash-card max-w-xl rounded-[2rem] border border-slate-200 bg-white p-10 text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+              <Settings2 className="h-8 w-8" />
+            </div>
+            <h2 className="mt-6 text-2xl font-black tracking-tight text-brand-ink">No brand selected</h2>
+            <p className="mt-3 text-sm leading-7 text-slate-500">
+              Pick a brand from the switcher first, then open Settings to manage its name, repos, and team.
+            </p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-50">
+        <div className="flex items-center gap-6">
+          <button onClick={onBack} className="w-10 h-10 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-all group">
+            <ArrowRight className="w-5 h-5 rotate-180 text-slate-400 group-hover:text-brand-ink" />
+          </button>
+          <div>
+            <h1 className="text-xl font-black tracking-tight">Brand Settings</h1>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Edit brand details and connected codebases</p>
+          </div>
+        </div>
+        <Button tone="primary" disabled={settingsSaving || !settingsDirty} onClick={() => handleSaveSettings().catch(() => null)} className="px-5 py-2.5 rounded-xl font-black">
+          {settingsSaving ? "Saving..." : "Save settings"}
+        </Button>
+      </header>
+
+      <main className="flex-1 max-w-6xl mx-auto w-full p-8 md:p-12 space-y-8">
+        <div className="grid gap-8 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,.8fr)]">
+          <section className="dash-card rounded-[2rem] border border-slate-200 bg-white p-8 space-y-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-white">
+                    <Settings2 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-black tracking-tight text-brand-ink">Brand profile</h2>
+                    <p className="mt-1 text-sm text-slate-500">Update the project name, site, and internal team list.</p>
+                  </div>
+                </div>
+              </div>
+              {savedWebsite ? (
+                <a
+                  href={savedWebsite}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-brand-ink transition-all hover:border-brand-accent"
+                >
+                  Visit site
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              ) : null}
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <FieldLabel>Brand name</FieldLabel>
+                <TextInput value={brandNameDraft} onChange={(event) => setBrandNameDraft(event.target.value)} placeholder="Acme" />
+              </div>
+              <div className="md:col-span-2">
+                <FieldLabel>Website URL</FieldLabel>
+                <TextInput value={websiteDraft} onChange={(event) => setWebsiteDraft(event.target.value)} placeholder="https://acme.com" />
+              </div>
+              <div className="md:col-span-2">
+                <FieldLabel>Brand key</FieldLabel>
+                <div className="flex h-11 items-center rounded-lg border border-brand-line bg-brand-panel px-3 text-sm font-semibold text-slate-400">
+                  {currentProject?.brand_key || activeBrand?.id || ""}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-slate-500 shadow-sm">
+                  <Mail className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-sm font-black tracking-tight text-brand-ink">Team members</div>
+                  <div className="text-sm text-slate-500">Add the people tied to this brand so ownership stays obvious.</div>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {teamMembersDraft.length ? (
+                  teamMembersDraft.map((email) => (
+                    <button
+                      key={email}
+                      type="button"
+                      onClick={() => setTeamMembersDraft((current) => current.filter((member) => member !== email))}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-brand-ink hover:border-brand-accent"
+                    >
+                      {email}
+                      <Plus className="h-3.5 w-3.5 rotate-45 text-slate-400" />
+                    </button>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400">
+                    No teammates added yet.
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+                <TextInput
+                  value={teamMemberInput}
+                  onChange={(event) => setTeamMemberInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      handleAddTeamMember();
+                    }
+                  }}
+                  placeholder="name@company.com"
+                />
+                <Button type="button" onClick={handleAddTeamMember} disabled={!teamMemberInput.trim()} className="rounded-xl px-5 py-2.5 font-black">
+                  Add teammate
+                </Button>
+              </div>
+            </div>
+
+            {settingsMessage ? (
+              <div className={`rounded-xl border px-4 py-3 text-sm font-bold ${settingsTone === "success" ? "border-brand-secondary/20 bg-brand-secondary/10 text-brand-secondary" : settingsTone === "danger" ? "border-brand-danger/20 bg-brand-danger/10 text-brand-danger" : "border-slate-200 bg-white text-slate-500"}`}>
+                {settingsMessage}
+              </div>
+            ) : null}
+          </section>
+
+          <section className="dash-card rounded-[2rem] border border-slate-200 bg-white p-8">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-white">
+                <Globe className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-xl font-black tracking-tight text-brand-ink">Current setup</h2>
+                <p className="mt-1 text-sm text-slate-500">Quick status for this brand.</p>
+              </div>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Website</div>
+                <div className="mt-2 text-sm font-bold text-brand-ink">{savedWebsite || "No URL saved yet."}</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">GitHub</div>
+                <div className="mt-2 text-sm font-bold text-brand-ink">
+                  {repoConnected ? repoConnection?.selected_repo_full_name || "Connected" : githubInstalled ? "Connected, repo still needs selection" : "Not connected"}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Team</div>
+                <div className="mt-2 text-sm font-bold text-brand-ink">{teamMembersDraft.length ? `${teamMembersDraft.length} teammate${teamMembersDraft.length === 1 ? "" : "s"}` : "No teammates added"}</div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section className="dash-card rounded-[2rem] border border-slate-200 bg-white p-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-16 w-16 items-center justify-center rounded-[1.5rem] bg-slate-900 text-white shadow-xl">
+                <GitBranch className="h-8 w-8" />
+              </div>
+              <div>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-2xl font-black tracking-tight text-brand-ink">Connected repos</h2>
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${repoConnected ? "bg-brand-secondary/10 text-brand-secondary border-brand-secondary/20" : repoNeedsSelection ? "bg-brand-warning/10 text-brand-warning border-brand-warning/20" : "bg-slate-100 text-slate-500 border-slate-200"}`}>
+                    {repoConnected ? "Connected" : repoNeedsSelection ? "Pick repos" : "Not connected"}
+                  </span>
+                </div>
+                <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-500">
+                  Choose the primary codebase for this brand, add any supporting repos, or reconnect GitHub if the install changed.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <Button type="button" onClick={() => onConnectGitHub().catch(() => null)} disabled={repoLoading} className="rounded-xl px-5 py-2.5 font-black">
+                {repoLoading ? "Loading..." : githubInstalled ? "Reconnect GitHub" : "Connect GitHub"}
+              </Button>
+              {githubInstalled ? (
+                <Button type="button" tone="danger" onClick={() => handleDisconnectRepos().catch(() => null)} disabled={repoSaving || repoLoading} className="rounded-xl px-5 py-2.5 font-black">
+                  Disconnect GitHub
+                </Button>
+              ) : null}
+            </div>
+          </div>
+
+          {repoError ? <div className="mt-6 rounded-xl border border-brand-danger/20 bg-brand-danger/10 px-4 py-3 text-sm font-bold text-brand-danger">{repoError}</div> : null}
+
+          {repoNeedsSelection ? (
+            <div className="mt-6 rounded-2xl border border-brand-warning/20 bg-brand-warning/10 p-5">
+              <div className="text-sm font-black tracking-tight text-brand-ink">
+                Choose the repos for {activeBrand?.name || "this brand"}
+              </div>
+              <p className="mt-1 text-sm leading-6 text-brand-muted">
+                GitHub is connected. Now pick the main repo and any supporting repos that belong to this product so diagnosis searches the right codebase.
+              </p>
+            </div>
+          ) : null}
+
+          {canChooseProjectRepos ? (
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+              <div className="text-sm font-black tracking-tight text-brand-ink">Project repos</div>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                The main repo is searched first. Extra repos stay attached for shared components, APIs, or supporting apps.
+              </p>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
+                <div>
+                  <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-slate-400">Primary repo</label>
+                  <Select
+                    value={repoPrimaryDraft}
+                    onChange={(event) => {
+                      const nextPrimary = event.target.value;
+                      setRepoPrimaryDraft(nextPrimary);
+                      setRepoAssociatedDraft((current) => current.filter((repo) => repo !== nextPrimary));
+                    }}
+                  >
+                    <option value="">Choose a repo</option>
+                    {availableRepos.map((repo) => (
+                      <option key={repo.full_name || repo.id} value={repo.full_name || ""}>
+                        {repo.full_name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="self-end text-xs font-bold uppercase tracking-widest text-slate-400">
+                  {repoConnection?.associated_repo_full_names?.length || (repoConnection?.selected_repo_full_name ? 1 : 0)} linked
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-slate-400">Other repos for this project</label>
+                <div className="flex flex-wrap gap-2">
+                  {repoAssociatedDraft.length ? (
+                    repoAssociatedDraft.map((repo) => (
+                      <button
+                        key={repo}
+                        type="button"
+                        onClick={() => setRepoAssociatedDraft((current) => current.filter((item) => item !== repo))}
+                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-brand-ink hover:border-brand-accent"
+                      >
+                        {repo}
+                        <Plus className="h-3.5 w-3.5 rotate-45 text-slate-400" />
+                      </button>
+                    ))
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400">
+                      No extra repos linked yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+                <Select value={repoAddDraft} onChange={(event) => setRepoAddDraft(event.target.value)}>
+                  <option value="">Add another repo</option>
+                  {remainingRepoOptions.map((repo) => (
+                    <option key={repo.full_name || repo.id} value={repo.full_name || ""}>
+                      {repo.full_name}
+                    </option>
+                  ))}
+                </Select>
+                <Button type="button" onClick={handleAddAssociatedRepo} disabled={!repoAddDraft} className="rounded-xl px-5 py-2.5 font-black">
+                  Add repo
+                </Button>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm text-slate-500">Diagnosis searches the primary repo first, then the linked repos.</div>
+                <Button type="button" tone="primary" onClick={() => handleSaveRepos().catch(() => null)} disabled={repoSaving || !repoPrimaryDraft || !repoSelectionDirty} className="rounded-xl px-5 py-2.5 font-black">
+                  {repoSaving ? "Saving..." : "Save project repos"}
+                </Button>
+              </div>
+
+              {repoSaveMessage ? (
+                <div className={`mt-4 rounded-xl border px-4 py-3 text-sm font-bold ${repoSaveTone === "success" ? "border-brand-secondary/20 bg-brand-secondary/10 text-brand-secondary" : repoSaveTone === "danger" ? "border-brand-danger/20 bg-brand-danger/10 text-brand-danger" : "border-slate-200 bg-white text-slate-500"}`}>
+                  {repoSaveMessage}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm leading-7 text-slate-500">
+              Connect the GitHub App first, then choose which repos belong to this brand.
+            </div>
+          )}
+        </section>
+      </main>
     </div>
   );
 }
