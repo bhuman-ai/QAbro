@@ -270,6 +270,28 @@ test("buildTaskPrompt supports saved project sessions for inside-product runs", 
   assert.match(prompt, /Reuse the saved project session when it is still valid/);
 });
 
+test("buildTaskPrompt supports creating a fresh account for inside-product runs", () => {
+  const prompt = buildTaskPrompt({
+    run_id: "run_inside_product_signup_1",
+    target_url: "https://example.com/app",
+    scope_mode: "feature_targeted",
+    scenario_list: ["Reach the dashboard and create the first project"],
+    brand_persona: "Test user",
+    source: "qa_bot",
+    metadata: {
+      validation_target: "inside_product",
+      access_method: "create_account",
+      auth_entry_url: "https://example.com/signup",
+      auth_policy: "signup_if_needed",
+      auto_create_account: true
+    }
+  });
+
+  assert.match(prompt, /Validation target: Inside the product/);
+  assert.match(prompt, /Access method: Create a fresh account during the run via https:\/\/example.com\/signup/);
+  assert.match(prompt, /No credentials were provided\. If the product is gated, create a fresh test account/);
+});
+
 test("buildPrimaryUserGoal prefers explicit metadata goal", () => {
   const goal = buildPrimaryUserGoal({
     scenario_list: ["Create a project", "Invite teammate"],

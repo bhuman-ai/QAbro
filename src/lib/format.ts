@@ -55,6 +55,17 @@ export function normalizeAccessMethod(value: string, validationTarget: string) {
   if (safe === "credentials" || safe === "test_login" || safe === "login") {
     return "credentials";
   }
+  if (
+    safe === "create_account" ||
+    safe === "create-account" ||
+    safe === "auto_signup" ||
+    safe === "auto-signup" ||
+    safe === "signup" ||
+    safe === "sign_up" ||
+    safe === "sign-up"
+  ) {
+    return "create_account";
+  }
   if (safe === "app_url" || safe === "app-url" || safe === "default") {
     return "app_url";
   }
@@ -214,14 +225,17 @@ export function buildLaunchPayload(draft: LaunchDraft, options: { retryOfRunId?:
     accessMethod === "credentials" &&
     String(draft.authUsername || "").trim() &&
     String(draft.authPassword || "").trim();
+  const shouldCreateAccount = accessMethod === "create_account";
   const authPolicy =
     validationTarget === "public_flow"
       ? "public_only"
-      : validationTarget === "inside_product"
-        ? "none"
-        : accessMethod === "credentials"
+      : shouldCreateAccount
+        ? "signup_if_needed"
+        : validationTarget === "inside_product"
           ? "none"
-          : "signup_if_needed";
+          : accessMethod === "credentials"
+            ? "none"
+            : "signup_if_needed";
 
   return {
     run_id: runId,
@@ -255,6 +269,11 @@ export function buildLaunchPayload(draft: LaunchDraft, options: { retryOfRunId?:
       access_method: accessMethod,
       auth_entry_url: authUrl || null,
       auth_policy: authPolicy,
+      ...(shouldCreateAccount
+        ? {
+            auto_create_account: true
+          }
+        : {}),
       goal:
         qaMode === "controlled_ux"
           ? controlled.userJob || goals[0] || "Follow the declared owned flow."

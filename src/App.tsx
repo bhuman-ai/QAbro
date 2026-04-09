@@ -317,7 +317,7 @@ const VALIDATION_TARGET_OPTIONS = [
   {
     value: "inside_product",
     label: "Inside the product",
-    description: "Start authenticated and judge the product after login."
+    description: "Get into the product with a saved session, a login, or a fresh sign-up."
   }
 ] as const;
 
@@ -342,8 +342,13 @@ const AUTH_FLOW_ACCESS_OPTIONS = [
 const INSIDE_PRODUCT_ACCESS_OPTIONS = [
   {
     value: "saved_session",
-    label: "Use saved session",
+    label: "Use old account",
     description: "Reuse the last working browser session for this project."
+  },
+  {
+    value: "create_account",
+    label: "Sign up for me",
+    description: "Create a fresh account, save that session, then continue inside the product."
   },
   {
     value: "credentials",
@@ -351,6 +356,49 @@ const INSIDE_PRODUCT_ACCESS_OPTIONS = [
     description: "Log in with a test account and save that session for later runs."
   }
 ] as const;
+
+function getDefaultInsideProductAccessMethod(
+  browserMode: LaunchDraft["browserMode"],
+  savedSessionAvailable: boolean
+): LaunchDraft["accessMethod"] {
+  if (browserMode !== "advanced_browser" && savedSessionAvailable) {
+    return "saved_session";
+  }
+  return "create_account";
+}
+
+function getInsideProductAccessOptions(
+  browserMode: LaunchDraft["browserMode"],
+  savedSessionAvailable: boolean
+) {
+  if (browserMode !== "advanced_browser" && savedSessionAvailable) {
+    return INSIDE_PRODUCT_ACCESS_OPTIONS;
+  }
+  return INSIDE_PRODUCT_ACCESS_OPTIONS.filter((option) => option.value !== "saved_session");
+}
+
+function isInsideProductCredentialAccess(accessMethod: LaunchDraft["accessMethod"]) {
+  return accessMethod === "credentials";
+}
+
+function getAccessMethodLabel(accessMethod: LaunchDraft["accessMethod"], validationTarget: LaunchDraft["validationTarget"]) {
+  if (validationTarget === "public_flow") {
+    return "No login needed";
+  }
+  if (accessMethod === "saved_session") {
+    return "Old account";
+  }
+  if (accessMethod === "create_account") {
+    return "Sign up during run";
+  }
+  if (accessMethod === "credentials") {
+    return "Test login";
+  }
+  if (accessMethod === "auth_url") {
+    return "Specific auth URL";
+  }
+  return "App URL";
+}
 
 const GOAL_PRESETS = [
   "Understand what the product does from the first screen.",
@@ -2760,7 +2808,7 @@ function WorkspacePage({
       }
     }
     if (browserMode === "advanced_browser" && nextDraft.validationTarget === "inside_product" && nextDraft.accessMethod === "saved_session") {
-      setLaunchMessage("Advanced browser starts from a fresh DO worker session. Use a real test login instead of a saved session.");
+      setLaunchMessage("Advanced browser starts from a fresh DO worker session. Pick sign-up or a test login instead of an old saved account.");
       setLaunchTone("danger");
       return;
     }
@@ -2769,17 +2817,16 @@ function WorkspacePage({
         nextDraft.accessMethod === "saved_session" &&
         !savedSessionAvailable
       ) {
-        setLaunchMessage("There is no saved session for this project yet. Start once with a test login first.");
+        setLaunchMessage("There is no old saved account for this project yet. Start once with sign-up or a test login first.");
         setLaunchTone("danger");
         return;
       }
       if (
-        nextDraft.accessMethod !== "saved_session" &&
-        (nextDraft.accessMethod !== "credentials" ||
-          !String(nextDraft.authUsername || "").trim() ||
+        nextDraft.accessMethod === "credentials" &&
+        (!String(nextDraft.authUsername || "").trim() ||
           !String(nextDraft.authPassword || "").trim())
       ) {
-        setLaunchMessage("Inside the product needs either a saved session or a real test login.");
+        setLaunchMessage("Inside the product needs an old account, a test login, or sign-up enabled.");
         setLaunchTone("danger");
         return;
       }
@@ -2847,7 +2894,7 @@ function WorkspacePage({
                   access_method:
                     browserMode !== "advanced_browser" &&
                     nextDraft.validationTarget === "inside_product" &&
-                    nextDraft.accessMethod === "credentials"
+                    (nextDraft.accessMethod === "credentials" || nextDraft.accessMethod === "create_account")
                       ? "saved_session"
                       : payload.metadata.access_method,
                   auth_entry_url: payload.metadata.auth_entry_url || null,
@@ -3974,7 +4021,8 @@ function QuickLaunchModal({
     (draft.runMode !== "controlled_ux" || hasControlledUxFlowPlan(draft)) &&
     (browserMode !== "advanced_browser" || advancedBrowserRuntime.status === "ready") &&
     (validationTarget !== "inside_product" ||
-      (browserMode !== "advanced_browser" && accessMethod === "saved_session") ||
+      (browserMode !== "advanced_browser" && accessMethod === "saved_session" && savedSessionAvailable) ||
+      accessMethod === "create_account" ||
       Boolean(String(draft.authUsername || "").trim() && String(draft.authPassword || "").trim())) &&
     (accessMethod !== "auth_url" || Boolean(normalizeUrlInput(draft.authUrl))) &&
     (accessMethod !== "credentials" ||
@@ -4056,8 +4104,10 @@ function QuickLaunchModal({
                       ...current,
                       browserMode: option.value,
                       accessMethod:
-                        option.value === "advanced_browser" && current.validationTarget === "inside_product"
-                          ? "credentials"
+                        option.value === "advanced_browser" &&
+                        current.validationTarget === "inside_product" &&
+                        current.accessMethod === "saved_session"
+                          ? "create_account"
                           : current.accessMethod
                     }))
                   }
@@ -4101,9 +4151,7 @@ function QuickLaunchModal({
                         option.value === "public_flow"
                           ? "none"
                           : option.value === "inside_product"
-                            ? browserMode !== "advanced_browser" && savedSessionAvailable
-                              ? "saved_session"
-                              : "credentials"
+                            ? getDefaultInsideProductAccessMethod(browserMode, savedSessionAvailable)
                             : normalizeAccessMethod(current.accessMethod, option.value)
                     }))
                   }
@@ -4169,70 +4217,121 @@ function QuickLaunchModal({
           </div>
         ) : null}
 
-        {validationTarget === "public_flow" ? null : validationTarget === "inside_product" && browserMode === "advanced_browser" ? (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2 rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
-              Advanced browser starts fresh each run, so saved project sessions are disabled here. Use a real test login and the captcha assist path instead.
+        {validationTarget === "public_flow" ? null : validationTarget === "inside_product" ? (
+          <div className="space-y-4">
+            <div className="grid gap-2">
+              {getInsideProductAccessOptions(browserMode, savedSessionAvailable).map((option) => {
+                const active = accessMethod === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`rounded-xl border px-4 py-3 text-left transition ${
+                      active ? "border-brand-ink bg-slate-50" : "border-brand-line bg-brand-shell hover:border-slate-300 hover:bg-slate-50"
+                    }`}
+                    onClick={() =>
+                      onChange((current) => ({
+                        ...current,
+                        accessMethod: option.value
+                      }))
+                    }
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-semibold text-brand-ink">{option.label}</div>
+                      {active ? <Check className="h-4 w-4 text-brand-primary" /> : null}
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-brand-muted">{option.description}</p>
+                  </button>
+                );
+              })}
             </div>
-            <div className="sm:col-span-2">
-              <FieldLabel>Optional login URL</FieldLabel>
-              <TextInput
-                value={draft.authUrl}
-                onChange={(event) =>
-                  onChange((current) => ({
-                    ...current,
-                    authUrl: event.target.value,
-                    accessMethod: "credentials"
-                  }))
-                }
-                placeholder="https://staging.example.com/login"
-              />
-            </div>
-            <div>
-              <FieldLabel>Test login email</FieldLabel>
-              <TextInput
-                value={draft.authUsername}
-                onChange={(event) =>
-                  onChange((current) => ({
-                    ...current,
-                    authUsername: event.target.value,
-                    accessMethod: "credentials"
-                  }))
-                }
-                placeholder="tester@example.com"
-              />
-            </div>
-            <div>
-              <FieldLabel>Test login password</FieldLabel>
-              <TextInput
-                type="password"
-                value={draft.authPassword}
-                onChange={(event) =>
-                  onChange((current) => ({
-                    ...current,
-                    authPassword: event.target.value,
-                    accessMethod: "credentials"
-                  }))
-                }
-                placeholder="••••••••"
-              />
-            </div>
-          </div>
-        ) : validationTarget === "inside_product" && savedSessionAvailable && accessMethod === "saved_session" ? (
-          <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-3 text-sm leading-6 text-brand-muted">
-            We will start from the saved session for this project and focus on the product after login.
-            <button
-              type="button"
-              className="mt-3 block text-sm font-semibold text-brand-primary hover:underline"
-              onClick={() =>
-                onChange((current) => ({
-                  ...current,
-                  accessMethod: "credentials"
-                }))
-              }
-            >
-              Use a test login instead
-            </button>
+
+            {browserMode === "advanced_browser" ? (
+              <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+                Advanced browser starts fresh each run, so old saved sessions are hidden here. Pick sign-up or give the bot a test login.
+              </div>
+            ) : null}
+
+            {accessMethod === "saved_session" ? (
+              <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-3 text-sm leading-6 text-brand-muted">
+                We will open the product with the last saved account for this brand and focus on the product after login.
+              </div>
+            ) : null}
+
+            {accessMethod === "create_account" ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <FieldLabel>Optional sign-up URL</FieldLabel>
+                  <TextInput
+                    value={draft.authUrl}
+                    onChange={(event) =>
+                      onChange((current) => ({
+                        ...current,
+                        authUrl: event.target.value,
+                        accessMethod: "create_account"
+                      }))
+                    }
+                    placeholder="https://staging.example.com/signup"
+                  />
+                </div>
+                <div className="sm:col-span-2 rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+                  We will create a fresh account, save that session, then continue into the product. Add a sign-up URL only if the good path is hard to find.
+                </div>
+              </div>
+            ) : null}
+
+            {isInsideProductCredentialAccess(accessMethod) ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <FieldLabel>Optional login URL</FieldLabel>
+                  <TextInput
+                    value={draft.authUrl}
+                    onChange={(event) =>
+                      onChange((current) => ({
+                        ...current,
+                        authUrl: event.target.value,
+                        accessMethod: "credentials"
+                      }))
+                    }
+                    placeholder="https://staging.example.com/login"
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Test login email</FieldLabel>
+                  <TextInput
+                    value={draft.authUsername}
+                    onChange={(event) =>
+                      onChange((current) => ({
+                        ...current,
+                        authUsername: event.target.value,
+                        accessMethod: "credentials"
+                      }))
+                    }
+                    placeholder="tester@example.com"
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Test login password</FieldLabel>
+                  <TextInput
+                    type="password"
+                    value={draft.authPassword}
+                    onChange={(event) =>
+                      onChange((current) => ({
+                        ...current,
+                        authPassword: event.target.value,
+                        accessMethod: "credentials"
+                      }))
+                    }
+                    placeholder="••••••••"
+                  />
+                </div>
+                <div className="sm:col-span-2 rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+                  {browserMode === "advanced_browser"
+                    ? "Advanced browser will use a fresh DO worker browser with stronger captcha handling when the worker supports it."
+                    : "After one successful run, we can reuse this account as the old saved account next time."}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -4244,12 +4343,7 @@ function QuickLaunchModal({
                   onChange((current) => ({
                     ...current,
                     authUrl: event.target.value,
-                    accessMethod:
-                      validationTarget === "inside_product" || String(event.target.value || "").trim()
-                        ? validationTarget === "inside_product"
-                          ? "credentials"
-                          : "auth_url"
-                        : current.accessMethod
+                    accessMethod: String(event.target.value || "").trim() ? "auth_url" : current.accessMethod
                   }))
                 }
                 placeholder="https://staging.example.com/login"
@@ -4411,9 +4505,9 @@ function LaunchComposer({
     }
     onChange((current) => ({
       ...current,
-      accessMethod: "credentials"
+      accessMethod: getDefaultInsideProductAccessMethod(browserMode, false)
     }));
-  }, [accessMethod, draft.validationTarget, onChange, savedSessionAvailable]);
+  }, [accessMethod, browserMode, draft.validationTarget, onChange, savedSessionAvailable]);
 
   useEffect(() => {
     if (browserMode !== "advanced_browser" || draft.validationTarget !== "inside_product" || accessMethod !== "saved_session") {
@@ -4421,20 +4515,11 @@ function LaunchComposer({
     }
     onChange((current) => ({
       ...current,
-      accessMethod: "credentials"
+      accessMethod: "create_account"
     }));
   }, [accessMethod, browserMode, draft.validationTarget, onChange]);
 
-  const reviewAccessLabel =
-    validationTarget === "public_flow"
-      ? "No login needed"
-      : accessMethod === "saved_session"
-        ? "Saved project session"
-      : accessMethod === "auth_url"
-        ? "Specific auth URL"
-        : accessMethod === "credentials"
-          ? "Test login"
-          : "App URL";
+  const reviewAccessLabel = getAccessMethodLabel(accessMethod, validationTarget);
 
   const controlledJobPlaceholder =
     validationTarget === "inside_product"
@@ -4453,7 +4538,9 @@ function LaunchComposer({
             : validationTarget === "inside_product"
               ? browserMode !== "advanced_browser" && accessMethod === "saved_session"
                 ? savedSessionAvailable
-                : Boolean(String(draft.authUsername || "").trim() && String(draft.authPassword || "").trim())
+                : accessMethod === "create_account"
+                  ? true
+                  : Boolean(String(draft.authUsername || "").trim() && String(draft.authPassword || "").trim())
               : accessMethod === "auth_url"
                 ? Boolean(normalizeUrlInput(draft.authUrl))
                 : accessMethod === "credentials"
@@ -4588,8 +4675,10 @@ function LaunchComposer({
                             ...current,
                             browserMode: option.value,
                             accessMethod:
-                              option.value === "advanced_browser" && current.validationTarget === "inside_product"
-                                ? "credentials"
+                              option.value === "advanced_browser" &&
+                              current.validationTarget === "inside_product" &&
+                              current.accessMethod === "saved_session"
+                                ? "create_account"
                                 : current.accessMethod
                           }))
                         }
@@ -4641,8 +4730,8 @@ function LaunchComposer({
                             ...current,
                             validationTarget: nextValidationTarget,
                             accessMethod:
-                              nextValidationTarget === "inside_product" && browserMode !== "advanced_browser" && savedSessionAvailable
-                                ? "saved_session"
+                              nextValidationTarget === "inside_product"
+                                ? getDefaultInsideProductAccessMethod(browserMode, savedSessionAvailable)
                                 : normalizeAccessMethod(current.accessMethod, nextValidationTarget),
                             authUrl: nextValidationTarget === "public_flow" ? "" : current.authUrl
                           };
@@ -4673,10 +4762,10 @@ function LaunchComposer({
                         ? "Choose how we should enter the auth flow. Advanced browser will use stronger anti-bot and captcha handling."
                         : "Choose how we should enter the auth flow."
                       : browserMode === "advanced_browser"
-                        ? "Advanced browser starts fresh each run, so use a real test login."
+                        ? "Pick one: let the bot sign up or give it a test login. Advanced browser starts clean each run."
                         : savedSessionAvailable
-                        ? "Reuse the saved project session or refresh it with a test login."
-                        : "Add one working test login. We will save that session for next time."}
+                        ? "Pick one: reuse the old account, let the bot sign up, or give it a test login."
+                        : "Pick one: let the bot sign up, or give it a test login."}
                 </p>
               </div>
 
@@ -4768,10 +4857,7 @@ function LaunchComposer({
               ) : (
                 <div className="space-y-4">
                   <div className="grid gap-3">
-                    {(browserMode !== "advanced_browser" && savedSessionAvailable
-                      ? INSIDE_PRODUCT_ACCESS_OPTIONS
-                      : INSIDE_PRODUCT_ACCESS_OPTIONS.filter((option) => option.value === "credentials")
-                    ).map((option) => {
+                    {getInsideProductAccessOptions(browserMode, savedSessionAvailable).map((option) => {
                       const active = accessMethod === option.value;
                       return (
                         <button
@@ -4799,17 +4885,39 @@ function LaunchComposer({
 
                   {browserMode === "advanced_browser" ? (
                     <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
-                      This path uses a fresh DO worker browser with stronger captcha handling. Saved project sessions only work on the standard browser.
+                      This path uses a fresh DO worker browser with stronger captcha handling. Old saved accounts only work on the standard browser.
                     </div>
                   ) : null}
 
-                  {browserMode !== "advanced_browser" && savedSessionAvailable && accessMethod === "saved_session" ? (
+                  {accessMethod === "saved_session" ? (
                     <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
-                      We will open the project with the last saved browser session. If that session has expired, rerun this step with a test login to refresh it.
+                      We will open the product with the last saved account for this brand. If it has expired, switch to sign-up or test login.
                     </div>
                   ) : null}
 
-                  {accessMethod === "credentials" ? (
+                  {accessMethod === "create_account" ? (
+                    <>
+                      <div>
+                        <FieldLabel>Optional sign-up URL</FieldLabel>
+                        <TextInput
+                          value={draft.authUrl}
+                          onChange={(event) =>
+                            onChange((current) => ({
+                              ...current,
+                              authUrl: event.target.value,
+                              accessMethod: "create_account"
+                            }))
+                          }
+                          placeholder="https://staging.example.com/signup"
+                        />
+                      </div>
+                      <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
+                        We will create a fresh account, save that session, then keep going inside the product.
+                      </div>
+                    </>
+                  ) : null}
+
+                  {isInsideProductCredentialAccess(accessMethod) ? (
                     <>
                       <div>
                         <FieldLabel>Optional login URL</FieldLabel>
@@ -4858,7 +4966,7 @@ function LaunchComposer({
                       </div>
                       {browserMode !== "advanced_browser" ? (
                         <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
-                          After one successful run, this project can start from the saved session instead of asking for the login again.
+                          After one successful run, this project can use that account as the old saved account next time.
                         </div>
                       ) : (
                         <div className="rounded-xl border border-brand-line bg-brand-shell px-4 py-4 text-sm leading-6 text-brand-muted">
@@ -5262,8 +5370,10 @@ function LaunchComposer({
                 : validationTarget === "login_signup"
                   ? "We will judge the auth experience itself and avoid bypasses."
                   : accessMethod === "saved_session"
-                    ? "We will start from the saved project session and focus on the product after login."
-                    : "We will use the provided test login and focus on the product after login."}
+                    ? "We will start from the old saved account and focus on the product after login."
+                    : accessMethod === "create_account"
+                      ? "We will create a fresh account, then keep going inside the product."
+                      : "We will use the provided test login and focus on the product after login."}
             </div>
             {browserMode === "advanced_browser" ? (
               <div className="mt-3">
@@ -9296,6 +9406,10 @@ function StarterAutomationsPage({
   const savedAssociatedRepos = Array.isArray(repoConnection?.associated_repo_full_names)
     ? repoConnection.associated_repo_full_names.filter((repo) => repo && repo !== repoConnection?.selected_repo_full_name)
     : [];
+  const remainingRepoOptions = availableRepos.filter((repo) => {
+    const fullName = String(repo.full_name || "");
+    return fullName && fullName !== repoPrimaryDraft && !repoAssociatedDraft.includes(fullName);
+  });
   const repoSelectionDirty =
     repoPrimaryDraft !== String(repoConnection?.selected_repo_full_name || "") ||
     JSON.stringify([...repoAssociatedDraft].sort()) !== JSON.stringify([...savedAssociatedRepos].sort());
