@@ -2,7 +2,7 @@
   "name": "swarmtester-web",
   "private": true,
   "version": "1.0.0",
-  "description": "Swarm Tester marketing site and QA orchestration APIs",
+  "description": "Before Users Do marketing site and QA orchestration APIs",
   "type": "commonjs",
   "scripts": {
     "test": "node --test tests/*.test.js",
@@ -22,7 +22,10 @@
     "submission:smoke:drift": "node scripts/smoke-submission-drift-loop.js",
     "qa:dashboard:smoke": "node scripts/smoke-dashboard-authenticated.js",
     "qa:customerio:login": "node scripts/run-customerio-login-once.js",
-    "qa:agent-task": "node scripts/run-browser-agent-task.js",
+    "qa:agent-task": "node scripts/run-local-agent-task.js",
+    "qa:local-agent-task": "node scripts/run-local-agent-task.js",
+    "qa:browserbase-agent-task": "node scripts/run-browser-agent-task.js",
+    "qa:export-dev-handoff": "node scripts/export-qa-dev-handoff.js",
     "stripe:bootstrap:share-offer": "node scripts/bootstrap-stripe-share-offer.js",
     "dev": "node scripts/dev-server.js",
     "dev:client": "vite --host 0.0.0.0 --port 3000",
@@ -33,6 +36,7 @@
   "dependencies": {
     "@browserbasehq/stagehand": "^3.1.0",
     "@modelcontextprotocol/sdk": "^1.28.0",
+    "@ui-tars/action-parser": "^1.2.3",
     "imapflow": "^1.2.18",
     "lucide-react": "^1.7.0",
     "motion": "^12.38.0",

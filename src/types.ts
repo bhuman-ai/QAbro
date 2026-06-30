@@ -313,6 +313,17 @@ export interface WorkerSummary {
   latest_heartbeat_age_seconds?: number | null;
 }
 
+export interface McpTokenSummary {
+  id: string;
+  name?: string | null;
+  token_prefix?: string | null;
+  created_at?: string | null;
+  last_used_at?: string | null;
+  revoked_at?: string | null;
+  active?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
 export interface SubmissionBrandProfile {
   brand_profile_id: string;
   brand_key?: string | null;

@@ -7,13 +7,18 @@ const {
   extractYellowBoxFromAnnotatedDiff,
   createCoordinateAwareClickTool,
   resolveBrowserbaseSessionCreateParams,
+  resolveVisionOnlyConfig,
   resolveCoordinateClickFallbackConfig,
   executeVisionOnlyModeAttempt,
+  requestUiTarsClickLocalization,
+  requestVisionCoordinateLocalization,
+  requestYellowBoxAnnotationWithOpenRouterImage,
   requestYellowBoxAnnotationWithReplicate,
   requestYellowBoxAnnotationWithOpenAi,
   prepareOcrCandidatesForJudge,
   chooseOcrCandidateWithJudge,
-  clickWithVisionLocalization
+  clickWithVisionLocalization,
+  attachBrowserTelemetry
 } = __private;
 
 const REQUIRED_ENV = {
@@ -21,6 +26,56 @@ const REQUIRED_ENV = {
   BROWSERBASE_PROJECT_ID: "test-browserbase-project-id",
   OPENAI_API_KEY: "test-openai-api-key"
 };
+
+const ISOLATED_TEST_ENV_KEYS = [
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_BASE_URL",
+  "QA_COORDINATE_ANNOTATION_API_KEY",
+  "QA_COORDINATE_ANNOTATION_BASE_URL",
+  "QA_COORDINATE_ANNOTATION_FAL_API_KEY",
+  "QA_COORDINATE_ANNOTATION_FAL_BASE_URL",
+  "QA_COORDINATE_ANNOTATION_GEMINI_API_KEY",
+  "QA_COORDINATE_ANNOTATION_MODEL",
+  "QA_COORDINATE_ANNOTATION_OPENROUTER_API_KEY",
+  "QA_COORDINATE_ANNOTATION_OPENROUTER_BASE_URL",
+  "QA_COORDINATE_ANNOTATION_PROVIDER",
+  "QA_COORDINATE_ANNOTATION_QWEN_API_KEY",
+  "QA_COORDINATE_ANNOTATION_QWEN_BASE_URL",
+  "QA_COORDINATE_ANNOTATION_QWEN_MODEL",
+  "QA_COORDINATE_ANNOTATION_REPLICATE_API_KEY",
+  "QA_COORDINATE_ANNOTATION_REPLICATE_BASE_URL",
+  "QA_COORDINATE_LOCALIZATION_ORDER",
+  "QA_COORDINATE_LLM_API_KEY",
+  "QA_COORDINATE_LLM_BASE_URL",
+  "QA_COORDINATE_LLM_MAX_TOKENS",
+  "QA_COORDINATE_LLM_MODEL",
+  "QA_COORDINATE_OCR_JUDGE_API_KEY",
+  "QA_COORDINATE_OCR_JUDGE_BASE_URL",
+  "QA_COORDINATE_OCR_JUDGE_ENABLED",
+  "QA_COORDINATE_OCR_JUDGE_MODEL",
+  "QA_COORDINATE_UI_TARS_API_KEY",
+  "QA_COORDINATE_UI_TARS_BASE_URL",
+  "QA_COORDINATE_UI_TARS_MAX_TOKENS",
+  "QA_COORDINATE_UI_TARS_MODEL",
+  "QA_COORDINATE_UI_TARS_MODEL_VERSION",
+  "QA_COORDINATE_VISION_API_KEY",
+  "QA_COORDINATE_VISION_BASE_URL",
+  "QA_COORDINATE_VISION_MAX_TOKENS",
+  "QA_COORDINATE_VISION_MODEL",
+  "QA_UI_TARS_API_KEY",
+  "QA_UI_TARS_BASE_URL",
+  "QA_UI_TARS_MAX_TOKENS",
+  "QA_UI_TARS_MODEL",
+  "QA_UI_TARS_MODEL_VERSION",
+  "QA_VISION_API_KEY",
+  "QA_VISION_BASE_URL",
+  "QA_VISION_MODEL",
+  "UI_TARS_API_KEY",
+  "UI_TARS_BASE_URL",
+  "UI_TARS_MAX_TOKENS",
+  "UI_TARS_MODEL",
+  "UI_TARS_MODEL_VERSION"
+];
 
 function createRunRequest() {
   return {
@@ -34,11 +89,11 @@ function createRunRequest() {
 }
 
 async function withEnv(overrides, callback) {
-  const keys = Object.keys(overrides);
+  const keys = Array.from(new Set([...ISOLATED_TEST_ENV_KEYS, ...Object.keys(overrides)]));
   const previous = {};
   for (const key of keys) {
     previous[key] = process.env[key];
-    const nextValue = overrides[key];
+    const nextValue = Object.prototype.hasOwnProperty.call(overrides, key) ? overrides[key] : undefined;
     if (nextValue === undefined || nextValue === null) {
       delete process.env[key];
     } else {
@@ -139,6 +194,84 @@ test("extractYellowBoxFromAnnotatedDiff identifies yellow rectangle center from 
   assert.equal(box.center_y, 34);
 });
 
+test("attachBrowserTelemetry ignores unsupported page events", () => {
+  const artifacts = {};
+  const runLog = [];
+  const subscribedEvents = [];
+  const page = {
+    url: () => "https://example.com/",
+    on: (eventName) => {
+      if (eventName === "pageerror") {
+        throw new Error("Unsupported event: pageerror");
+      }
+      subscribedEvents.push(eventName);
+    }
+  };
+
+  assert.doesNotThrow(() =>
+    attachBrowserTelemetry(page, artifacts, runLog, {
+      attachedPages: new WeakSet(),
+      requestStartTimes: new WeakMap()
+    })
+  );
+
+  assert.deepEqual(subscribedEvents, ["console", "request", "response", "requestfailed"]);
+  assert.ok(
+    runLog.some(
+      (entry) =>
+        entry.event === "browser_telemetry_event_unsupported" &&
+        entry.details?.event === "pageerror" &&
+        /Unsupported event/.test(entry.details?.error || "")
+    )
+  );
+});
+
+test("attachBrowserTelemetry records console and network events", () => {
+  const artifacts = {};
+  const runLog = [];
+  const handlers = {};
+  const page = {
+    url: () => "https://example.com/app",
+    on: (eventName, handler) => {
+      handlers[eventName] = handler;
+    }
+  };
+
+  attachBrowserTelemetry(page, artifacts, runLog, {
+    attachedPages: new WeakSet(),
+    requestStartTimes: new WeakMap()
+  });
+
+  handlers.console({
+    type: () => "error",
+    text: () => "Client exploded",
+    location: () => ({ url: "https://example.com/app?token=secret" })
+  });
+
+  const request = {
+    method: () => "POST",
+    url: () => "https://api.example.com/verify?token=secret",
+    resourceType: () => "fetch",
+    failure: () => ({ errorText: "net::ERR_FAILED" })
+  };
+  handlers.request(request);
+  handlers.response({
+    request: () => request,
+    url: () => request.url(),
+    status: () => 500,
+    ok: () => false
+  });
+  handlers.requestfailed(request);
+
+  assert.equal(artifacts.console_timeline.length, 1);
+  assert.equal(artifacts.network_timeline.length, 3);
+  assert.equal(artifacts.network_timeline[1].status, 500);
+  assert.equal(artifacts.network_timeline[2].error, "net::ERR_FAILED");
+  assert.match(artifacts.network_timeline[0].url, /token=%5Bredacted%5D/);
+  assert.ok(runLog.some((entry) => entry.event === "browser_console"));
+  assert.ok(runLog.some((entry) => entry.event === "browser_network"));
+});
+
 test("createCoordinateAwareClickTool falls back to yellow-box coordinates after failed click", async () => {
   const runLog = [];
   const artifacts = {
@@ -194,6 +327,8 @@ test("createCoordinateAwareClickTool falls back to yellow-box coordinates after 
     coordinateFallbackConfig: {
       enabled: true,
       model: "mock-annotator",
+      strategy: "yellow_box_diff",
+      localizationOrder: ["yellow_box_diff"],
       annotateImage: async () => annotatedBuffer,
       decodePng: (buffer) => {
         if (buffer === sourceBuffer) return sourceImage;
@@ -272,7 +407,8 @@ test("resolveCoordinateClickFallbackConfig supports fal provider", async () => {
       QA_COORDINATE_ANNOTATION_PROVIDER: "fal",
       QA_COORDINATE_ANNOTATION_MODEL: undefined,
       QA_COORDINATE_ANNOTATION_BASE_URL: undefined,
-      QA_COORDINATE_ANNOTATION_FAL_BASE_URL: undefined
+      QA_COORDINATE_ANNOTATION_FAL_BASE_URL: undefined,
+      QA_COORDINATE_LOCALIZATION_ORDER: "yellow_box_diff"
     },
     async () => {
       const config = resolveCoordinateClickFallbackConfig({
@@ -295,7 +431,8 @@ test("resolveCoordinateClickFallbackConfig supports replicate provider", async (
       QA_COORDINATE_ANNOTATION_PROVIDER: "replicate",
       QA_COORDINATE_ANNOTATION_MODEL: undefined,
       QA_COORDINATE_ANNOTATION_BASE_URL: undefined,
-      QA_COORDINATE_ANNOTATION_REPLICATE_BASE_URL: undefined
+      QA_COORDINATE_ANNOTATION_REPLICATE_BASE_URL: undefined,
+      QA_COORDINATE_LOCALIZATION_ORDER: "yellow_box_diff"
     },
     async () => {
       const config = resolveCoordinateClickFallbackConfig({
@@ -311,7 +448,144 @@ test("resolveCoordinateClickFallbackConfig supports replicate provider", async (
   );
 });
 
-test("resolveCoordinateClickFallbackConfig prioritizes qwen OCR before yellow-box diff", async () => {
+test("resolveCoordinateClickFallbackConfig supports OpenRouter image provider", async () => {
+  await withEnv(
+    {
+      QA_COORDINATE_ANNOTATION_PROVIDER: "openrouter_image",
+      QA_COORDINATE_ANNOTATION_OPENROUTER_API_KEY: "test-openrouter-key",
+      QA_COORDINATE_ANNOTATION_MODEL: undefined,
+      QA_COORDINATE_ANNOTATION_OPENROUTER_BASE_URL: undefined
+    },
+    async () => {
+      const config = resolveCoordinateClickFallbackConfig({
+        coordinateClickFallbackEnabled: true,
+        coordinateLocalizationOrder: "yellow_box_diff"
+      });
+
+      assert.equal(config.enabled, true);
+      assert.equal(config.provider, "openrouter_image");
+      assert.equal(config.model, "openai/gpt-image-1-mini");
+      assert.equal(config.baseUrl, "https://openrouter.ai/api/v1");
+      assert.equal(typeof config.annotateImage, "function");
+      assert.deepEqual(config.localizationOrder, ["yellow_box_diff"]);
+    }
+  );
+});
+
+test("resolveVisionOnlyConfig preserves provider model ids for OpenAI-compatible base URLs", async () => {
+  await withEnv(
+    {
+      QA_VISION_MODEL: "google/gemini-2.5-flash",
+      QA_VISION_BASE_URL: "https://openrouter.ai/api/v1",
+      QA_VISION_API_KEY: "test-openrouter-key"
+    },
+    async () => {
+      const config = resolveVisionOnlyConfig(createRunRequest(), {});
+
+      assert.equal(config.model, "google/gemini-2.5-flash");
+      assert.equal(config.baseUrl, "https://openrouter.ai/api/v1");
+      assert.equal(config.apiKey, "test-openrouter-key");
+    }
+  );
+});
+
+test("resolveVisionOnlyConfig strips openai provider for official OpenAI base URL", async () => {
+  await withEnv(
+    {
+      QA_VISION_MODEL: "openai/gpt-4.1-mini",
+      QA_VISION_BASE_URL: "https://api.openai.com/v1",
+      QA_VISION_API_KEY: "test-openai-key"
+    },
+    async () => {
+      const config = resolveVisionOnlyConfig(createRunRequest(), {});
+
+      assert.equal(config.model, "gpt-4.1-mini");
+      assert.equal(config.baseUrl, "https://api.openai.com/v1");
+    }
+  );
+});
+
+test("resolveCoordinateClickFallbackConfig supports explicitly configured UI-TARS localization", async () => {
+  await withEnv(
+    {
+      QA_COORDINATE_UI_TARS_API_KEY: "test-ui-tars-key",
+      QA_COORDINATE_UI_TARS_BASE_URL: "https://ui-tars.example.com/v1/",
+      QA_COORDINATE_UI_TARS_MODEL: "bytedance/ui-tars-1.5-7b",
+      QA_COORDINATE_ANNOTATION_API_KEY: undefined,
+      QA_COORDINATE_ANNOTATION_QWEN_API_KEY: undefined,
+      QA_COORDINATE_ANNOTATION_REPLICATE_API_KEY: undefined,
+      QA_COORDINATE_LOCALIZATION_ORDER: "ui_tars"
+    },
+    async () => {
+      const config = resolveCoordinateClickFallbackConfig({
+        coordinateClickFallbackEnabled: true
+      });
+
+      assert.equal(config.enabled, true);
+      assert.equal(config.strategy, "ui_tars");
+      assert.deepEqual(config.localizationOrder, ["ui_tars"]);
+      assert.equal(config.uiTars?.model, "bytedance/ui-tars-1.5-7b");
+      assert.equal(config.uiTars?.baseUrl, "https://ui-tars.example.com/v1");
+      assert.equal(config.uiTars?.model_version, "1.5");
+      assert.equal(typeof config.localizeBox, "function");
+    }
+  );
+});
+
+test("resolveCoordinateClickFallbackConfig does not use UI-TARS by default", async () => {
+  await withEnv(
+    {
+      QA_COORDINATE_UI_TARS_API_KEY: "test-ui-tars-key",
+      QA_COORDINATE_UI_TARS_BASE_URL: "https://ui-tars.example.com/v1/",
+      QA_COORDINATE_UI_TARS_MODEL: "bytedance/ui-tars-1.5-7b",
+      QA_COORDINATE_ANNOTATION_API_KEY: undefined,
+      QA_COORDINATE_ANNOTATION_QWEN_API_KEY: undefined,
+      QA_COORDINATE_ANNOTATION_REPLICATE_API_KEY: undefined,
+      QA_COORDINATE_ANNOTATION_OPENROUTER_API_KEY: undefined,
+      QA_COORDINATE_VISION_API_KEY: undefined,
+      QA_COORDINATE_LOCALIZATION_ORDER: undefined
+    },
+    async () => {
+      const config = resolveCoordinateClickFallbackConfig({
+        coordinateClickFallbackEnabled: true
+      });
+
+      assert.equal(config.enabled, false);
+      assert.equal(config.reason, "missing_localization_clients");
+      assert.deepEqual(config.localizationOrder, []);
+      assert.equal(config.uiTars, null);
+    }
+  );
+});
+
+test("resolveCoordinateClickFallbackConfig supports direct vision LLM localization", async () => {
+  await withEnv(
+    {
+      QA_COORDINATE_VISION_API_KEY: "test-openrouter-key",
+      QA_COORDINATE_VISION_BASE_URL: "https://openrouter.ai/api/v1/",
+      QA_COORDINATE_VISION_MODEL: "qwen/qwen2.5-vl-72b-instruct",
+      QA_COORDINATE_UI_TARS_API_KEY: undefined,
+      QA_COORDINATE_ANNOTATION_QWEN_API_KEY: undefined,
+      QA_COORDINATE_ANNOTATION_REPLICATE_API_KEY: undefined,
+      QA_COORDINATE_ANNOTATION_OPENROUTER_API_KEY: undefined,
+      QA_COORDINATE_LOCALIZATION_ORDER: undefined
+    },
+    async () => {
+      const config = resolveCoordinateClickFallbackConfig({
+        coordinateClickFallbackEnabled: true
+      });
+
+      assert.equal(config.enabled, true);
+      assert.equal(config.strategy, "vision_llm");
+      assert.deepEqual(config.localizationOrder, ["vision_llm"]);
+      assert.equal(config.visionLlm?.model, "qwen/qwen2.5-vl-72b-instruct");
+      assert.equal(config.visionLlm?.baseUrl, "https://openrouter.ai/api/v1");
+      assert.equal(typeof config.localizeBox, "function");
+    }
+  );
+});
+
+test("resolveCoordinateClickFallbackConfig keeps expensive yellow-box diff out of the default order", async () => {
   await withEnv(
     {
       QA_COORDINATE_ANNOTATION_PROVIDER: "replicate",
@@ -327,12 +601,171 @@ test("resolveCoordinateClickFallbackConfig prioritizes qwen OCR before yellow-bo
       assert.equal(config.enabled, true);
       assert.equal(config.provider, "replicate");
       assert.equal(config.model, "google/nano-banana-2");
-      assert.equal(config.strategy, "ocr_qwen->yellow_box_diff");
-      assert.deepEqual(config.localizationOrder, ["ocr_qwen", "yellow_box_diff"]);
+      assert.equal(config.strategy, "ocr_qwen");
+      assert.deepEqual(config.localizationOrder, ["ocr_qwen"]);
       assert.equal(typeof config.localizeBox, "function");
       assert.equal(config.qwen?.model, "qwen-vl-ocr");
     }
   );
+});
+
+test("requestUiTarsClickLocalization posts screenshot and parses click box", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    calls.push({
+      url,
+      headers: options.headers,
+      body: options.body
+    });
+    return {
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: "Thought: Click the requested button.\nAction: click(start_box='[100,200,300,400]')"
+            }
+          }
+        ]
+      })
+    };
+  };
+
+  try {
+    const result = await requestUiTarsClickLocalization({
+      imageBuffer: Buffer.from("not-a-png"),
+      targetDescription: "Continue button",
+      apiKey: "test-ui-tars-key",
+      model: "bytedance/ui-tars-1.5-7b",
+      baseUrl: "https://ui-tars.example.com/v1/",
+      modelVersion: "1.0",
+      timeoutMs: 2000
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "https://ui-tars.example.com/v1/chat/completions");
+    assert.equal(calls[0].headers.Authorization, "Bearer test-ui-tars-key");
+    const body = JSON.parse(calls[0].body);
+    assert.equal(body.model, "bytedance/ui-tars-1.5-7b");
+    assert.equal(body.temperature, 0);
+    assert.equal(body.messages[1].content[1].image_url.url.startsWith("data:image/png;base64,"), true);
+    assert.equal(result.box.center_x, 256);
+    assert.equal(result.box.center_y, 216);
+    assert.match(result.prediction, /click\(start_box=/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("requestVisionCoordinateLocalization posts screenshot and parses JSON point", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    calls.push({
+      url,
+      headers: options.headers,
+      body: options.body
+    });
+    return {
+      ok: true,
+      json: async () => ({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                left: 100,
+                top: 200,
+                right: 300,
+                bottom: 260,
+                x: 200,
+                y: 230
+              })
+            }
+          }
+        ],
+        usage: {
+          cost: 0.00123
+        }
+      })
+    };
+  };
+
+  try {
+    const result = await requestVisionCoordinateLocalization({
+      imageBuffer: Buffer.from("not-a-png"),
+      targetDescription: "Continue button",
+      apiKey: "test-openrouter-key",
+      model: "qwen/qwen2.5-vl-72b-instruct",
+      baseUrl: "https://openrouter.ai/api/v1/",
+      timeoutMs: 2000
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "https://openrouter.ai/api/v1/chat/completions");
+    assert.equal(calls[0].headers.Authorization, "Bearer test-openrouter-key");
+    const body = JSON.parse(calls[0].body);
+    assert.equal(body.model, "qwen/qwen2.5-vl-72b-instruct");
+    assert.equal(body.temperature, 0);
+    assert.equal(body.messages[1].content[1].image_url.url.startsWith("data:image/png;base64,"), true);
+    assert.equal(result.box.center_x, 200);
+    assert.equal(result.box.center_y, 230);
+    assert.equal(result.metadata.usage.cost, 0.00123);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("requestYellowBoxAnnotationWithOpenRouterImage posts image request", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+
+  global.fetch = async (url, options = {}) => {
+    calls.push({
+      url,
+      headers: options.headers,
+      body: options.body
+    });
+    return {
+      ok: true,
+      json: async () => ({
+        data: [
+          {
+            b64_json: Buffer.from("annotated").toString("base64")
+          }
+        ],
+        usage: {
+          cost: 0.0042
+        }
+      })
+    };
+  };
+
+  try {
+    const result = await requestYellowBoxAnnotationWithOpenRouterImage({
+      imageBuffer: Buffer.from("source"),
+      targetDescription: "Start QA button",
+      apiKey: "test-openrouter-key",
+      model: "openai/gpt-image-1-mini",
+      baseUrl: "https://openrouter.ai/api/v1/",
+      timeoutMs: 2000
+    });
+
+    assert.equal(Buffer.isBuffer(result), true);
+    assert.equal(result.toString(), "annotated");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "https://openrouter.ai/api/v1/images");
+    assert.equal(calls[0].headers.Authorization, "Bearer test-openrouter-key");
+    const body = JSON.parse(calls[0].body);
+    assert.equal(body.model, "openai/gpt-image-1-mini");
+    assert.equal(body.quality, "low");
+    assert.equal(body.background, "opaque");
+    assert.equal(body.input_references[0].image_url.url.startsWith("data:image/png;base64,"), true);
+  } finally {
+    global.fetch = originalFetch;
+  }
 });
 
 test("requestYellowBoxAnnotationWithReplicate posts prediction request with 1K input", async () => {
@@ -417,6 +850,89 @@ test("coordinate localizeBox uses qwen OCR first when target text is matched", a
   assert.equal(result.strategy, "ocr_qwen");
   assert.equal(result.box.center_x, 160);
   assert.equal(result.box.center_y, 225);
+  assert.equal(yellowFallbackCalled, false);
+});
+
+test("coordinate localizeBox uses UI-TARS before yellow-box diff when configured", async () => {
+  let yellowFallbackCalled = false;
+  const config = resolveCoordinateClickFallbackConfig({
+    coordinateClickFallbackEnabled: true,
+    coordinateLocalizationOrder: "ui_tars,yellow_box_diff",
+    coordinateUiTarsClient: async () => ({
+      box: {
+        left: 40,
+        top: 20,
+        right: 100,
+        bottom: 60,
+        width: 61,
+        height: 41,
+        center_x: 70,
+        center_y: 40
+      },
+      prediction: "Thought: Click it.\nAction: click(start_box='[40,20,100,60]')",
+      metadata: {
+        parsed_actions: 1
+      }
+    }),
+    coordinateAnnotationClient: async () => {
+      yellowFallbackCalled = true;
+      throw new Error("yellow fallback should not be called");
+    }
+  });
+
+  const result = await config.localizeBox({
+    imageBuffer: Buffer.from("not-a-png"),
+    targetDescription: "Continue button"
+  });
+
+  assert.equal(result.strategy, "ui_tars");
+  assert.equal(result.provider, "ui_tars");
+  assert.equal(result.box.center_x, 70);
+  assert.equal(result.box.center_y, 40);
+  assert.equal(result.metadata.parsed_actions, 1);
+  assert.equal(yellowFallbackCalled, false);
+});
+
+test("coordinate localizeBox falls through from UI-TARS to vision LLM before yellow-box diff", async () => {
+  let yellowFallbackCalled = false;
+  const config = resolveCoordinateClickFallbackConfig({
+    coordinateClickFallbackEnabled: true,
+    coordinateLocalizationOrder: "ui_tars,vision_llm,yellow_box_diff",
+    coordinateUiTarsClient: async () => {
+      throw new Error("ui-tars missed");
+    },
+    coordinateVisionClient: async () => ({
+      box: {
+        left: 360,
+        top: 466,
+        right: 509,
+        bottom: 528,
+        width: 150,
+        height: 63,
+        center_x: 435,
+        center_y: 497
+      },
+      prediction: '{"x":435,"y":497}'
+    }),
+    coordinateAnnotationClient: async () => {
+      yellowFallbackCalled = true;
+      throw new Error("yellow fallback should not be called");
+    }
+  });
+
+  const result = await config.localizeBox({
+    imageBuffer: Buffer.from("not-a-png"),
+    targetDescription: "Start QA button"
+  });
+
+  assert.equal(result.strategy, "vision_llm");
+  assert.equal(result.box.center_x, 435);
+  assert.deepEqual(result.attempts, [
+    {
+      strategy: "ui_tars",
+      error: "ui-tars missed"
+    }
+  ]);
   assert.equal(yellowFallbackCalled, false);
 });
 
@@ -552,6 +1068,242 @@ test("clickWithVisionLocalization retries with yellow-box annotation after OCR c
   assert.equal(successEvent.details.strategy, "yellow_box_diff");
 });
 
+test("clickWithVisionLocalization retries next strategy when UI-TARS points at whitespace", async () => {
+  const clicks = [];
+  const page = {
+    screenshot: async () => Buffer.from("not-a-real-png"),
+    evaluate: async () => ({
+      valid: false,
+      reason: "non_interactive_element_at_point",
+      tag: "main",
+      text: ""
+    }),
+    mouse: {
+      move: async () => {},
+      click: async (x, y) => {
+        clicks.push({ x, y });
+      }
+    }
+  };
+  const runLog = [];
+  const config = {
+    enabled: true,
+    provider: "ui_tars",
+    model: "bytedance/ui-tars-1.5-7b",
+    strategy: "ui_tars->ocr_qwen",
+    localizationOrder: ["ui_tars", "ocr_qwen"],
+    uiTars: {
+      model: "bytedance/ui-tars-1.5-7b",
+      model_version: "1.5",
+      localize: async () => ({
+        box: {
+          left: 10,
+          top: 20,
+          right: 10,
+          bottom: 20,
+          width: 1,
+          height: 1,
+          center_x: 10,
+          center_y: 20,
+          pixel_count: 1
+        },
+        prediction: "Action: click(start_box='(10,20)')"
+      })
+    },
+    qwen: {
+      model: "qwen-vl-ocr",
+      ocrImage: async () => [
+        { text: "Start", location: [400, 450, 430, 470] },
+        { text: "QA", location: [435, 450, 470, 470] }
+      ]
+    }
+  };
+
+  const result = await clickWithVisionLocalization({
+    page,
+    targetDescription: "Start QA button",
+    coordinateFallbackConfig: config,
+    artifacts: {},
+    runLog,
+    actionDelayMs: 0
+  });
+
+  assert.deepEqual(clicks, [{ x: 435, y: 460 }]);
+  assert.equal(result.x, 435);
+  assert.equal(result.y, 460);
+  assert.ok(
+    runLog.some(
+      (entry) =>
+        entry.event === "agent_click_coordinate_fallback_retrying" &&
+        entry.details?.from_strategy === "ui_tars" &&
+        entry.details?.retry_strategy === "ocr_qwen"
+    )
+  );
+  const successEvent = runLog.find((entry) => entry.event === "agent_click_coordinate_fallback_succeeded");
+  assert.equal(successEvent.details.strategy, "ocr_qwen");
+});
+
+test("clickWithVisionLocalization rejects input hits for button targets", async () => {
+  const clicks = [];
+  const page = {
+    screenshot: async () => Buffer.from("not-a-real-png"),
+    evaluate: async (_fn, point) => {
+      if (point.pointX === 820) {
+        return {
+          valid: true,
+          reason: "interactive_element_at_point",
+          tag: "input",
+          role: "textbox",
+          type: "email",
+          text: "test@example.com"
+        };
+      }
+      return {
+        valid: true,
+        reason: "interactive_element_at_point",
+        tag: "button",
+        role: "button",
+        text: "Continue"
+      };
+    },
+    mouse: {
+      move: async () => {},
+      click: async (x, y) => {
+        clicks.push({ x, y });
+      }
+    }
+  };
+  const runLog = [];
+  const config = {
+    enabled: true,
+    provider: "ui_tars",
+    model: "bytedance/ui-tars-1.5-7b",
+    strategy: "ui_tars->vision_llm",
+    localizationOrder: ["ui_tars", "vision_llm"],
+    uiTars: {
+      model: "bytedance/ui-tars-1.5-7b",
+      model_version: "1.5",
+      localize: async () => ({
+        box: {
+          left: 805,
+          top: 200,
+          right: 835,
+          bottom: 230,
+          width: 31,
+          height: 31,
+          center_x: 820,
+          center_y: 215,
+          pixel_count: 961
+        }
+      })
+    },
+    visionLlm: {
+      model: "qwen/qwen2.5-vl-72b-instruct",
+      baseUrl: "https://openrouter.ai/api/v1",
+      localize: async () => ({
+        box: {
+          left: 745,
+          top: 200,
+          right: 775,
+          bottom: 230,
+          width: 31,
+          height: 31,
+          center_x: 760,
+          center_y: 215,
+          pixel_count: 961
+        },
+        prediction: '{"x":760,"y":215}'
+      })
+    }
+  };
+
+  const result = await clickWithVisionLocalization({
+    page,
+    targetDescription: "circular arrow button",
+    coordinateFallbackConfig: config,
+    artifacts: {},
+    runLog,
+    actionDelayMs: 0
+  });
+
+  assert.deepEqual(clicks, [{ x: 760, y: 215 }]);
+  assert.equal(result.x, 760);
+  assert.ok(
+    runLog.some(
+      (entry) =>
+        entry.event === "agent_click_coordinate_fallback_retrying" &&
+        entry.details?.from_strategy === "ui_tars" &&
+        entry.details?.retry_strategy === "vision_llm" &&
+        /target_expected_button_but_hit_input/.test(entry.details?.click_error || "")
+    )
+  );
+  const successEvent = runLog.find((entry) => entry.event === "agent_click_coordinate_fallback_succeeded");
+  assert.equal(successEvent.details.strategy, "vision_llm");
+});
+
+test("clickWithVisionLocalization does not use yellow-box annotation when it is excluded", async () => {
+  let annotationCalls = 0;
+  const page = {
+    screenshot: async () => Buffer.from("not-a-real-png"),
+    evaluate: async () => ({
+      valid: false,
+      reason: "non_interactive_element_at_point"
+    }),
+    mouse: {
+      move: async () => {},
+      click: async () => {}
+    }
+  };
+
+  await assert.rejects(
+    () =>
+      clickWithVisionLocalization({
+        page,
+        targetDescription: "Start QA button",
+        coordinateFallbackConfig: {
+          enabled: true,
+          provider: "ui_tars",
+          model: "bytedance/ui-tars-1.5-7b",
+          strategy: "ui_tars->ocr_qwen",
+          localizationOrder: ["ui_tars", "ocr_qwen"],
+          uiTars: {
+            model: "bytedance/ui-tars-1.5-7b",
+            model_version: "1.5",
+            localize: async () => ({
+              box: {
+                left: 10,
+                top: 20,
+                right: 10,
+                bottom: 20,
+                width: 1,
+                height: 1,
+                center_x: 10,
+                center_y: 20,
+                pixel_count: 1
+              }
+            })
+          },
+          qwen: {
+            model: "qwen-vl-ocr",
+            ocrImage: async () => {
+              throw new Error("qwen unavailable");
+            }
+          },
+          annotateImage: async () => {
+            annotationCalls += 1;
+            return Buffer.from("annotated");
+          }
+        },
+        artifacts: {},
+        runLog: [],
+        actionDelayMs: 0
+      }),
+    /retry failed/
+  );
+
+  assert.equal(annotationCalls, 0);
+});
+
 test("resolveBrowserbaseSessionCreateParams enables advanced stealth without proxies by default", async () => {
   await withEnv(
     {
@@ -623,6 +1375,58 @@ test("resolveBrowserbaseSessionCreateParams builds browserbase geolocated proxy 
       ]);
     }
   );
+});
+
+test("executeBrowserbaseQaRun accepts QA_VISION_API_KEY as a model key", async () => {
+  class FakeStagehand {
+    constructor() {
+      this.browserbaseSessionID = "session_vision_key";
+      this.browserbaseSessionURL = "https://browserbase.example/session";
+      this.browserbaseDebugURL = "https://browserbase.example/debug";
+      this.bus = { on() {} };
+    }
+
+    async init() {}
+
+    async close() {}
+
+    async agent() {
+      return {
+        execute: async () => ({
+          output: {
+            status: "completed",
+            findings: [],
+            summary: {
+              coverage: {
+                pages_visited: 1,
+                flows_tested: 1,
+                flows_blocked: 0,
+                untested_areas: []
+              }
+            }
+          }
+        })
+      };
+    }
+  }
+
+  const result = await withEnv(
+    {
+      BROWSERBASE_API_KEY: "test-browserbase-api-key",
+      BROWSERBASE_PROJECT_ID: "test-browserbase-project-id",
+      OPENAI_API_KEY: undefined,
+      QA_OPENAI_API_KEY: undefined,
+      BROWSERBASE_OPENAI_API_KEY: undefined,
+      QA_VISION_API_KEY: "test-openrouter-key"
+    },
+    async () =>
+      executeBrowserbaseQaRun(createRunRequest(), {
+        stagehandModule: { Stagehand: FakeStagehand }
+      })
+  );
+
+  assert.equal(result.report.status, "completed");
+  assert.equal(result.runLog.some((entry) => entry.event === "browserbase_config_missing"), false);
 });
 
 test("executeBrowserbaseQaRun strips plan-restricted Browserbase features on fallback", async () => {
@@ -937,6 +1741,7 @@ test("executeBrowserbaseQaRun supports vision_only mode with annotation-based cl
       agentModeFallbackOrder: ["vision_only"],
       coordinateClickFallbackEnabled: true,
       coordinateClickFallbackMode: "always",
+      coordinateLocalizationOrder: "yellow_box_diff",
       coordinateAnnotationClient: async () => annotatedBuffer,
       coordinateAnnotationDecodePng: (buffer) => {
         if (buffer === sourceBuffer) return sourceImage;
@@ -1220,6 +2025,131 @@ test("executeVisionOnlyModeAttempt stops after repeated wait decisions on the sa
   assert.equal(result.candidateReport.status, "partial");
   assert.match(result.candidateReport.summary.note, /same waiting state/i);
   assert.ok(runLog.some((entry) => entry.event === "vision_only_wait_streak_blocked"));
+});
+
+test("executeVisionOnlyModeAttempt diagnoses blank screen after OTP with final page state", async () => {
+  let currentUrl = "https://app.bhuman.ai/";
+  const page = {
+    goto: async (url) => {
+      currentUrl = String(url || "");
+    },
+    url: () => currentUrl,
+    title: async () => "",
+    viewportSize: () => ({ width: 1440, height: 900 }),
+    context: () => ({
+      browser: () => ({
+        version: () => "Chromium 140.0.0.0"
+      })
+    }),
+    evaluate: async (fn) => {
+      const source = String(fn || "");
+      if (source.includes("elementFromPoint")) {
+        return {
+          valid: true,
+          reason: "interactive_element_at_point",
+          tag: "input",
+          role: "",
+          type: "text",
+          text: "",
+          rect: { left: 0, top: 0, right: 10, bottom: 10 }
+        };
+      }
+      return {
+        document_ready_state: "complete",
+        body_text_length: 0,
+        visible_text_preview: "",
+        dom_snapshot: [],
+        resource_urls: ["https://app.bhuman.ai/assets/index-da14f964.js"],
+        post_auth_state: {
+          token_present: true,
+          auth_cookie_present: false,
+          need_profile: true,
+          serialized_step: "business_profile",
+          storage_key_hints: ["auth_token", "onboarding_state"]
+        }
+      };
+    },
+    screenshot: async () => Buffer.from("vision-post-otp-blank"),
+    waitForTimeout: async () => {},
+    mouse: {
+      wheel: async () => {},
+      move: async () => {},
+      click: async () => {}
+    },
+    keyboard: {
+      press: async () => {},
+      type: async () => {}
+    }
+  };
+  const plannerDecisions = [
+    { action: "type", target: "Verification code input", text: "123456" },
+    { action: "press", target: "Enter key", key: "Enter" },
+    { action: "wait", target: "page to fully load", amount: 1 },
+    { action: "wait", target: "page to fully load", amount: 1 },
+    { action: "wait", target: "page to fully load", amount: 1 },
+    { action: "wait", target: "page to fully load", amount: 1 }
+  ];
+  let plannerIndex = 0;
+  const runLog = [];
+
+  const result = await executeVisionOnlyModeAttempt({
+    stagehand: {
+      context: {
+        awaitActivePage: async () => page
+      }
+    },
+    runRequest: {
+      ...createRunRequest(),
+      target_url: "https://app.bhuman.ai/",
+      metadata: {
+        goal: "Pass OTP and reach onboarding."
+      }
+    },
+    options: {
+      visionApiKey: "test-openai-api-key",
+      visionActionDelayMs: 1,
+      visionMaxWaitStreak: 4,
+      visionPlannerClient: async () => plannerDecisions[plannerIndex++] || plannerDecisions[plannerDecisions.length - 1],
+      visionObserverClient: async () => ({
+        observation: "This is a blank white screen after successful OTP verification.",
+        what_i_think_this_is: "A blank page after email verification.",
+        noticed: [],
+        skepticism: "The app looks broken after verification.",
+        missing_information: "There is no onboarding, dashboard, spinner, or error.",
+        trust_signal: "",
+        emotion: "frustration",
+        continue_state: "abandon"
+      })
+    },
+    runLog,
+    artifacts: {
+      local_video_url: "https://example.com/run.webm",
+      captured_screenshots: [],
+      screenshot_event_count: 0
+    },
+    captureState: {
+      maxCount: 8,
+      maxBytes: 1500000,
+      capturedBytes: 0
+    },
+    coordinateFallbackConfig: {
+      enabled: true,
+      localizeBox: async () => ({
+        strategy: "mock",
+        box: { center_x: 1, center_y: 1 }
+      })
+    }
+  });
+
+  const finding = result.candidateReport.findings[0];
+  assert.equal(finding.title, "Blank white screen after successful OTP verification");
+  assert.match(finding.observed_behavior, /blank white screen/i);
+  assert.equal(finding.diagnostic_details.body_text_length, 0);
+  assert.equal(finding.diagnostic_details.post_auth_state.token_present, true);
+  assert.equal(finding.diagnostic_details.post_auth_state.need_profile, true);
+  assert.equal(finding.diagnostic_details.post_auth_state.serialized_step, "business_profile");
+  assert.match(finding.diagnostic_details.asset_fingerprints[0].file, /index-da14f964\.js/);
+  assert.ok(runLog.some((entry) => entry.event === "vision_final_page_diagnostics_captured"));
 });
 
 test("executeVisionOnlyModeAttempt builds a partial blocked report from real vision history", async () => {
