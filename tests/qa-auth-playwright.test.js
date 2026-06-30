@@ -429,6 +429,62 @@ test("retryInvalidAuthFields infers required phone fields from page error text",
   }
 });
 
+test("fillSafeAuthFormFields inventories safe generic fields and skips sensitive required fields", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<!doctype html>
+      <html>
+        <body>
+          <form id="signup-form">
+            <label>Company <input name="tenant[organization_name]" /></label>
+            <label>Company website <input type="url" name="tenant[domain]" /></label>
+            <label>Your role
+              <select name="role">
+                <option value="">Choose one</option>
+                <option value="founder">Founder</option>
+              </select>
+            </label>
+            <label>Employees <input type="number" name="headcount" required /></label>
+            <label>Anything else? <textarea name="onboarding_notes" required></textarea></label>
+            <label>Credit card <input name="credit_card" required /></label>
+            <label>Referral code <input name="referral_code" /></label>
+          </form>
+        </body>
+      </html>`);
+
+    const result = await __private.fillSafeAuthFormFields(
+      page,
+      {
+        company: "Before Users Do QA",
+        website: "https://beforeusersdo.com",
+        role: "Founder",
+        teamSize: "10",
+        genericText: "QA test"
+      },
+      {
+        signupMode: true,
+        fillOptionalSafeFields: true
+      }
+    );
+
+    assert.equal(await page.locator('input[name="tenant[organization_name]"]').inputValue(), "Before Users Do QA");
+    assert.equal(await page.locator('input[name="tenant[domain]"]').inputValue(), "https://beforeusersdo.com");
+    assert.equal(await page.locator('select[name="role"]').inputValue(), "founder");
+    assert.equal(await page.locator('input[name="headcount"]').inputValue(), "10");
+    assert.equal(await page.locator('textarea[name="onboarding_notes"]').inputValue(), "QA test");
+    assert.equal(await page.locator('input[name="credit_card"]').inputValue(), "");
+    assert.equal(await page.locator('input[name="referral_code"]').inputValue(), "");
+    assert.equal(result.skippedUnsafe.length, 1);
+    assert.equal(result.skippedUnsafe[0].name, "credit_card");
+    assert.equal(result.unfilledRequired.length, 0);
+    assert.ok(result.filled.some((field) => field.key === "company"));
+    assert.ok(result.filled.some((field) => field.key === "generic_text"));
+  } finally {
+    await browser.close();
+  }
+});
+
 test("performCredentialedLogin completes a direct username/password login flow", async () => {
   await withServer(
     {
@@ -1350,6 +1406,93 @@ test("performCredentialedLogin fills required phone fields on signup forms", asy
         assert.equal(currentUrl.pathname, "/app");
         assert.equal(currentUrl.searchParams.get("phone"), "6505550100");
         assert.match(JSON.stringify(runLog), /auth_flow_completed/);
+      } finally {
+        await browser.close();
+      }
+    }
+  );
+});
+
+test("performCredentialedLogin fills safe generic signup fields before submit", async () => {
+  await withServer(
+    {
+      "/register": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <form id="signup-form">
+                <label>Email <input type="email" name="email" autocomplete="email" /></label>
+                <label>Password <input type="password" name="password" autocomplete="new-password" /></label>
+                <label>Confirm password <input type="password" name="password_confirmation" autocomplete="new-password" /></label>
+                <label>Company <input type="text" name="tenant[organization_name]" /></label>
+                <label>Company website <input type="url" name="tenant[domain]" /></label>
+                <label>Job title <input type="text" name="position" /></label>
+                <label>Team size
+                  <select name="team_size">
+                    <option value="">Select one</option>
+                    <option value="10">10</option>
+                  </select>
+                </label>
+                <label>What are you trying to do? <textarea name="goal"></textarea></label>
+                <button type="submit">Create account</button>
+              </form>
+              <script>
+                document.getElementById("signup-form").addEventListener("submit", (event) => {
+                  event.preventDefault();
+                  const form = event.currentTarget;
+                  const email = form.elements.email.value;
+                  const password = form.elements.password.value;
+                  const confirmation = form.elements.password_confirmation.value;
+                  const company = form.elements["tenant[organization_name]"].value;
+                  const website = form.elements["tenant[domain]"].value;
+                  const title = form.elements.position.value;
+                  const teamSize = form.elements.team_size.value;
+                  const goal = form.elements.goal.value;
+                  if (email && password && confirmation && password === confirmation && company && website && title && teamSize && goal) {
+                    const params = new URLSearchParams({ company, website, title, teamSize, goal });
+                    window.location.href = "/app?" + params.toString();
+                  }
+                });
+              </script>
+            </body>
+          </html>`);
+      },
+      "/app": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html><html><body><main><h1>Registered</h1></main></body></html>`);
+      }
+    },
+    async (baseUrl) => {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage();
+        const runLog = [];
+        const result = await performCredentialedLogin(
+          page,
+          {
+            run_id: "signup_generic_fields_test",
+            target_url: `${baseUrl}/register`,
+            scope_mode: "feature_targeted",
+            metadata: {
+              otp_provider: "none",
+              auto_create_account: true
+            }
+          },
+          { runLog }
+        );
+
+        const currentUrl = new URL(page.url());
+        assert.equal(result.attempted, true);
+        assert.equal(result.success, true);
+        assert.equal(result.autoCreatedAccount, true);
+        assert.equal(currentUrl.pathname, "/app");
+        assert.equal(currentUrl.searchParams.get("company"), "Before Users Do QA");
+        assert.equal(currentUrl.searchParams.get("website"), "https://beforeusersdo.com");
+        assert.equal(currentUrl.searchParams.get("title"), "QA Tester");
+        assert.equal(currentUrl.searchParams.get("teamSize"), "10");
+        assert.equal(currentUrl.searchParams.get("goal"), "QA test");
+        assert.match(JSON.stringify(runLog), /auth_generic_fields_filled/);
       } finally {
         await browser.close();
       }
