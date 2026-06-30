@@ -186,7 +186,7 @@ const GITHUB_APP_POPUP_MESSAGE = "swarmtester:github-app";
 const PUBLIC_BRAND_NAME = "Before Users Do";
 const PUBLIC_BASE_URL = "https://beforeusersdo.com";
 const MCP_CLIENT_SERVER_NAME = "beforeusersdo-qa";
-const HOSTED_MCP_URL = "https://swarmtester-qa-mcp-jw6c3tt6ua-uc.a.run.app/mcp";
+const HOSTED_MCP_URL = "https://mcp.beforeusersdo.com/mcp";
 
 type AdvancedBrowserRuntimeState = {
   status: "ready" | "blocked" | "checking";
