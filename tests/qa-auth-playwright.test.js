@@ -316,6 +316,7 @@ test("retryInvalidAuthFields refills required signup fields reported by the page
           <form id="signup-form">
             <label>Name <input name="user[name]" /></label>
             <label>Email <input type="email" name="subscriber[email]" /></label>
+            <label>Phone <input type="tel" name="user[phone]" /></label>
             <label>Username <input name="user[username]" /></label>
             <label>Password <input type="password" name="user[password]" /></label>
             <label>Password confirmation <input type="password" name="user[password_confirmation]" /></label>
@@ -347,6 +348,12 @@ test("retryInvalidAuthFields refills required signup fields reported by the page
             name: "user[name]",
             type: "text",
             validationMessage: "Please fill out this field."
+          },
+          {
+            label: "",
+            name: "user[phone]",
+            type: "tel",
+            validationMessage: "Please fill out this field."
           }
         ],
         errorTexts: []
@@ -355,6 +362,7 @@ test("retryInvalidAuthFields refills required signup fields reported by the page
       {
         autoCreateAccount: true,
         fullName: "EnrichAnything",
+        phone: "6505550100",
         accountHandle: "team_enrichanything",
         username: "team+betalist@enrichanything.com",
         password: "Secret123!"
@@ -362,9 +370,10 @@ test("retryInvalidAuthFields refills required signup fields reported by the page
     );
 
     assert.equal(result.retried, true);
-    assert.deepEqual(result.restored, ["email", "full_name"]);
+    assert.deepEqual(result.restored, ["email", "full_name", "phone"]);
     assert.equal(await page.locator('input[name="subscriber[email]"]').inputValue(), "team+betalist@enrichanything.com");
     assert.equal(await page.locator('input[name="user[name]"]').inputValue(), "EnrichAnything");
+    assert.equal(await page.locator('input[name="user[phone]"]').inputValue(), "6505550100");
     assert.equal(await page.evaluate(() => window.__submitCount), 1);
   } finally {
     await browser.close();
@@ -1210,6 +1219,87 @@ test("performCredentialedLogin fills separate first and last name fields on sign
         assert.equal(currentUrl.pathname, "/app");
         assert.equal(currentUrl.searchParams.get("first"), "Swarm");
         assert.equal(currentUrl.searchParams.get("last"), "Tester");
+        assert.match(JSON.stringify(runLog), /auth_flow_completed/);
+      } finally {
+        await browser.close();
+      }
+    }
+  );
+});
+
+test("performCredentialedLogin fills required phone fields on signup forms", async () => {
+  await withServer(
+    {
+      "/": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <a href="/register">Create account</a>
+            </body>
+          </html>`);
+      },
+      "/register": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <form id="signup-form">
+                <label>First name <input type="text" name="first_name" autocomplete="given-name" required /></label>
+                <label>Last name <input type="text" name="last_name" autocomplete="family-name" required /></label>
+                <label>Email <input type="email" name="email" autocomplete="email" required /></label>
+                <label>Phone <input type="tel" name="phone" autocomplete="tel" required /></label>
+                <label>Password <input type="password" name="password" autocomplete="new-password" required /></label>
+                <label>Confirm password <input type="password" name="password_confirmation" autocomplete="new-password" required /></label>
+                <button type="submit">Register</button>
+              </form>
+              <script>
+                document.getElementById("signup-form").addEventListener("submit", (event) => {
+                  event.preventDefault();
+                  const first = document.querySelector('input[name="first_name"]').value;
+                  const last = document.querySelector('input[name="last_name"]').value;
+                  const email = document.querySelector('input[name="email"]').value;
+                  const phone = document.querySelector('input[name="phone"]').value;
+                  const password = document.querySelector('input[name="password"]').value;
+                  const confirmation = document.querySelector('input[name="password_confirmation"]').value;
+                  if (first && last && email && phone && password && confirmation && password === confirmation) {
+                    window.location.href = "/app?phone=" + encodeURIComponent(phone);
+                  }
+                });
+              </script>
+            </body>
+          </html>`);
+      },
+      "/app": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html><html><body><main><h1>Registered</h1></main></body></html>`);
+      }
+    },
+    async (baseUrl) => {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage();
+        const runLog = [];
+        const result = await performCredentialedLogin(
+          page,
+          {
+            run_id: "signup_phone_fields_test",
+            target_url: `${baseUrl}/`,
+            scope_mode: "feature_targeted",
+            metadata: {
+              otp_provider: "none",
+              auto_create_account: true
+            }
+          },
+          { runLog }
+        );
+
+        const currentUrl = new URL(page.url());
+        assert.equal(result.attempted, true);
+        assert.equal(result.success, true);
+        assert.equal(result.autoCreatedAccount, true);
+        assert.equal(currentUrl.pathname, "/app");
+        assert.equal(currentUrl.searchParams.get("phone"), "6505550100");
         assert.match(JSON.stringify(runLog), /auth_flow_completed/);
       } finally {
         await browser.close();
