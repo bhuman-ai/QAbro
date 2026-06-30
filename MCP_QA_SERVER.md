@@ -25,7 +25,7 @@ Use the hosted Streamable HTTP endpoint when you want Codex, Cursor, Claude Desk
 {
   "mcpServers": {
     "beforeusersdo-qa": {
-      "url": "https://swarmtester-qa-mcp-jw6c3tt6ua-uc.a.run.app/mcp",
+      "url": "https://mcp.beforeusersdo.com/mcp",
       "headers": {
         "Authorization": "Bearer mcp_..."
       }
@@ -279,7 +279,7 @@ Then configure any Streamable HTTP MCP client with:
 {
   "mcpServers": {
     "beforeusersdo-qa": {
-      "url": "https://swarmtester-qa-mcp-jw6c3tt6ua-uc.a.run.app/mcp",
+      "url": "https://mcp.beforeusersdo.com/mcp",
       "headers": {
         "Authorization": "Bearer mcp_..."
       }

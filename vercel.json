@@ -176,6 +176,16 @@
   ],
   "rewrites": [
     {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "mcp.beforeusersdo.com"
+        }
+      ],
+      "destination": "https://swarmtester-qa-mcp-jw6c3tt6ua-uc.a.run.app/:path*"
+    },
+    {
       "source": "/dashboard",
       "destination": "/index.html"
     },
