@@ -43,6 +43,26 @@ test("buildEmbeddedEvidenceMedia inlines bounded local screenshots for publicati
   });
 });
 
+test("buildEmbeddedEvidenceMedia inlines normal browser screenshots by default", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-local-publish-default-size-"));
+  const screenshotPath = path.join(tempDir, "browser-proof.png");
+  fs.writeFileSync(screenshotPath, Buffer.alloc(440 * 1024, 3));
+
+  const evidenceMedia = __private.buildEmbeddedEvidenceMedia(
+    {
+      evidence_gallery: {
+        screenshots: [screenshotPath]
+      }
+    },
+    {}
+  );
+
+  assert.equal(evidenceMedia?.screenshots?.length, 1);
+  assert.equal(evidenceMedia.screenshots[0].source, screenshotPath.replaceAll("\\", "/"));
+  assert.equal(evidenceMedia.screenshots[0].content_type, "image/png");
+  assert.match(evidenceMedia.screenshots[0].data_url, /^data:image\/png;base64,/);
+});
+
 test("buildEmbeddedEvidenceMedia inlines bounded local videos for publication", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-local-publish-video-"));
   const videoPath = path.join(tempDir, "proof.webm");
