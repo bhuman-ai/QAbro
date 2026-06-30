@@ -79,11 +79,39 @@ test("validateRunRequest accepts webhook config and defaults events", () => {
   ]);
 });
 
+test("validateRunRequest treats blank webhook config as no webhook", () => {
+  const result = validateRunRequest({
+    run_id: "run_webhook_blank",
+    target_url: "https://example.com",
+    webhook: {},
+    webhook_url: "",
+    webhook_secret: "",
+    webhook_events: [],
+    webhook_headers: {}
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.webhook, null);
+});
+
 test("validateRunRequest rejects invalid webhook URL", () => {
   const result = validateRunRequest({
     run_id: "run_webhook_2",
     target_url: "https://example.com",
     webhook_url: "not-a-url"
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /webhook_url/i);
+});
+
+test("validateRunRequest rejects webhook details without a URL", () => {
+  const result = validateRunRequest({
+    run_id: "run_webhook_missing_url",
+    target_url: "https://example.com",
+    webhook: {
+      events: ["run.completed"]
+    }
   });
 
   assert.equal(result.ok, false);
