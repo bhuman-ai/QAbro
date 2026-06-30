@@ -380,6 +380,55 @@ test("retryInvalidAuthFields refills required signup fields reported by the page
   }
 });
 
+test("retryInvalidAuthFields infers required phone fields from page error text", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<!doctype html>
+      <html>
+        <body>
+          <form id="signup-form">
+            <label>Email <input type="email" name="email" value="qa@example.com" /></label>
+            <label>Phone <input type="tel" name="phone" /></label>
+            <label>Password <input type="password" name="password" value="Secret123!" /></label>
+            <button type="submit">Register</button>
+          </form>
+          <p class="field-error">The phone number is required.</p>
+          <script>
+            window.__submitCount = 0;
+            document.getElementById("signup-form").addEventListener("submit", (event) => {
+              event.preventDefault();
+              window.__submitCount += 1;
+            });
+          </script>
+        </body>
+      </html>`);
+
+    const locators = __private.buildAuthLocators(page);
+    const result = await __private.retryInvalidAuthFields(
+      page,
+      {
+        invalidFields: [],
+        errorTexts: ["The phone number is required."]
+      },
+      locators,
+      {
+        autoCreateAccount: true,
+        phone: "6505550100",
+        username: "qa@example.com",
+        password: "Secret123!"
+      }
+    );
+
+    assert.equal(result.retried, true);
+    assert.deepEqual(result.restored, ["phone"]);
+    assert.equal(await page.locator('input[name="phone"]').inputValue(), "6505550100");
+    assert.equal(await page.evaluate(() => window.__submitCount), 1);
+  } finally {
+    await browser.close();
+  }
+});
+
 test("performCredentialedLogin completes a direct username/password login flow", async () => {
   await withServer(
     {
