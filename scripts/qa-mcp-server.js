@@ -6,8 +6,10 @@ const { z } = require("zod");
 const pkg = require("../package.json");
 const {
   MCP_QA_RESOURCE_TEMPLATES,
+  buildCodingAgentQaInput,
   createQaResourceReaders,
   createQaApiClient,
+  summarizeCodingAgentQaOutcome,
   summarizeReportPayload,
   summarizeStatusPayload
 } = require("../lib/qa-mcp");
@@ -126,6 +128,42 @@ function buildRunInputSchema() {
         otp_mode: z.enum(["none", "manual_prompt", "provider_hook"]).optional()
       })
       .optional()
+  };
+}
+
+function buildCodingAgentCheckInputSchema() {
+  return {
+    target_url: z.string().url().describe("Preview, localhost tunnel, staging, or production URL to QA."),
+    work_summary: z.string().max(1200).optional().describe("Short summary of what the coding agent changed."),
+    feature_name: z.string().max(240).optional().describe("Short feature label. Defaults from work_summary."),
+    task_to_try: z.string().max(1000).optional().describe("Specific user task the QA agent should attempt."),
+    expected_success: z.string().max(1000).optional().describe("What success looks like when the work is correct."),
+    acceptance_criteria: z.array(z.string().max(800)).max(20).optional(),
+    changed_files: z.array(z.string().max(320)).max(40).optional(),
+    repository: z.string().max(500).optional(),
+    branch: z.string().max(240).optional(),
+    commit_sha: z.string().max(120).optional(),
+    pull_request_url: z.string().url().optional(),
+    developer_notes: z.string().max(1600).optional(),
+    scenario_list: z.array(z.string().max(1000)).max(12).optional(),
+    persona: z.string().max(500).optional(),
+    auth_strategy: z.enum(["signup_if_needed", "public_only", "provided_credentials"]).optional(),
+    new_account_required: z.boolean().optional(),
+    credentials: z
+      .object({
+        login_url: z.string().url().optional(),
+        username: z.string().max(320).optional(),
+        password: z.string().max(320).optional(),
+        otp_mode: z.enum(["none", "manual_prompt", "provider_hook"]).optional()
+      })
+      .optional(),
+    execution_engine: z.enum(["auto", "local_playwright", "local_vision_agent"]).optional(),
+    model: z.string().max(128).optional(),
+    run_id: z.string().max(128).optional(),
+    timeout_seconds: z.number().int().min(1).max(7200).optional(),
+    poll_interval_seconds: z.number().int().min(1).max(120).optional(),
+    share_after: z.boolean().optional(),
+    dry_run: z.boolean().optional()
   };
 }
 
@@ -423,6 +461,90 @@ function createQaMcpServer(options = {}) {
     }
   );
 
+  server.registerTool(
+    "qa_check_work",
+    {
+      title: "QA Check Work",
+      description:
+        "Coding-agent-oriented one-shot QA: submit a preview URL plus implementation context, wait for real browser QA, and return a pass/fix/review verdict with evidence links.",
+      inputSchema: buildCodingAgentCheckInputSchema()
+    },
+    async (input, extra) => {
+      try {
+        const qaInput = buildCodingAgentQaInput(input);
+        const queued = await apiClient.requestRun(qaInput);
+        await maybeSendProgress(extra, 1, 3, `Queued QA check ${queued.run_id}`);
+
+        let tick = 0;
+        const pollEvery = Math.max(1, Number(input.poll_interval_seconds || 5));
+        const waitResult = await apiClient.waitForRun(queued.run_id, {
+          timeout_seconds: input.timeout_seconds,
+          poll_interval_seconds: input.poll_interval_seconds,
+          signal: extra.signal,
+          async onPoll(status) {
+            tick += 1;
+            await maybeSendProgress(
+              extra,
+              1 + tick,
+              Math.max(2, 2 + Math.ceil((Number(input.timeout_seconds || 1200) || 1200) / pollEvery)),
+              `QA check ${queued.run_id} is ${
+                status.report_status || status?.queue?.queue_status || status?.queue?.status || "processing"
+              }`
+            );
+          }
+        });
+
+        const report = waitResult.status?.report_ready ? await apiClient.getRunReport(queued.run_id, { signal: extra.signal }) : null;
+        const shared = input.share_after ? await apiClient.shareRunReport(queued.run_id, { signal: extra.signal }) : null;
+        const outcome = summarizeCodingAgentQaOutcome({
+          reportPayload: report,
+          waitResult,
+          share: shared
+        });
+        const reportResource = `qa://runs/${encodeURIComponent(queued.run_id)}/report`;
+        const markdownResource = `qa://runs/${encodeURIComponent(queued.run_id)}/report.md`;
+        const statusResource = `qa://runs/${encodeURIComponent(queued.run_id)}/status`;
+
+        const result = {
+          ok: true,
+          run_id: queued.run_id,
+          verdict: outcome.verdict,
+          pass: outcome.pass,
+          reason: outcome.reason,
+          report_status: outcome.report_status,
+          summary_note: outcome.summary_note,
+          top_finding: outcome.top_finding,
+          target_url: qaInput.target_url || input.target_url,
+          queued,
+          wait: waitResult,
+          report,
+          share: shared,
+          evidence: {
+            ui_report_url: outcome.ui_report_url || queued.ui_report_url || waitResult.status?.ui_report_url || null,
+            share_url: outcome.share_url,
+            status_resource: statusResource,
+            report_resource: reportResource,
+            markdown_resource: markdownResource
+          }
+        };
+
+        const text = buildText([
+          `QA verdict for ${queued.run_id}: ${outcome.verdict}.`,
+          outcome.reason,
+          outcome.summary_note ? `Summary: ${outcome.summary_note}` : "",
+          outcome.top_finding?.title ? `Top finding: ${outcome.top_finding.title}` : "",
+          result.evidence.ui_report_url ? `Open report: ${result.evidence.ui_report_url}` : "",
+          result.evidence.share_url ? `Share URL: ${result.evidence.share_url}` : "",
+          `Report resource: ${markdownResource}`
+        ]);
+
+        return makeToolResult(text, result);
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
   return { server, apiClient };
 }
 
@@ -449,6 +571,7 @@ function printHelp() {
     "- qa_get_run_report",
     "- qa_share_run_report",
     "- qa_run_feature_check",
+    "- qa_check_work",
     "",
     "Resources:",
     `- ${MCP_QA_RESOURCE_TEMPLATES.run_status}`,

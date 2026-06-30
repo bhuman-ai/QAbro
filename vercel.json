@@ -24,10 +24,54 @@
       "has": [
         {
           "type": "host",
+          "value": "www.beforeusersdo.com"
+        }
+      ],
+      "destination": "https://beforeusersdo.com/",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.beforeusersdo.com"
+        }
+      ],
+      "destination": "https://beforeusersdo.com/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "swarmtester.com"
+        }
+      ],
+      "destination": "https://beforeusersdo.com/",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "swarmtester.com"
+        }
+      ],
+      "destination": "https://beforeusersdo.com/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
           "value": "www.swarmtester.com"
         }
       ],
-      "destination": "https://swarmtester.com/",
+      "destination": "https://beforeusersdo.com/",
       "permanent": true
     },
     {
@@ -38,7 +82,7 @@
           "value": "www.swarmtester.com"
         }
       ],
-      "destination": "https://swarmtester.com/:path*",
+      "destination": "https://beforeusersdo.com/:path*",
       "permanent": true
     },
     {
@@ -49,7 +93,7 @@
           "value": "swarmtester.co"
         }
       ],
-      "destination": "https://swarmtester.com/",
+      "destination": "https://beforeusersdo.com/",
       "permanent": true
     },
     {
@@ -60,7 +104,7 @@
           "value": "swarmtester.co"
         }
       ],
-      "destination": "https://swarmtester.com/:path*",
+      "destination": "https://beforeusersdo.com/:path*",
       "permanent": true
     },
     {
@@ -71,7 +115,7 @@
           "value": "www.swarmtester.co"
         }
       ],
-      "destination": "https://swarmtester.com/",
+      "destination": "https://beforeusersdo.com/",
       "permanent": true
     },
     {
@@ -82,7 +126,7 @@
           "value": "www.swarmtester.co"
         }
       ],
-      "destination": "https://swarmtester.com/:path*",
+      "destination": "https://beforeusersdo.com/:path*",
       "permanent": true
     },
     {
@@ -93,7 +137,7 @@
           "value": "qaswarm.dev"
         }
       ],
-      "destination": "https://swarmtester.com/",
+      "destination": "https://beforeusersdo.com/",
       "permanent": true
     },
     {
@@ -104,7 +148,7 @@
           "value": "qaswarm.dev"
         }
       ],
-      "destination": "https://swarmtester.com/:path*",
+      "destination": "https://beforeusersdo.com/:path*",
       "permanent": true
     },
     {
@@ -115,7 +159,7 @@
           "value": "www.qaswarm.dev"
         }
       ],
-      "destination": "https://swarmtester.com/",
+      "destination": "https://beforeusersdo.com/",
       "permanent": true
     },
     {
@@ -126,7 +170,7 @@
           "value": "www.qaswarm.dev"
         }
       ],
-      "destination": "https://swarmtester.com/:path*",
+      "destination": "https://beforeusersdo.com/:path*",
       "permanent": true
     }
   ],

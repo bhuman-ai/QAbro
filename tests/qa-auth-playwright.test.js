@@ -89,6 +89,34 @@ test("private helpers detect google auth and OTP inbox metadata", () => {
   );
 });
 
+test("OTP helpers detect and fill split decimal PIN inputs", async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<!doctype html>
+      <html>
+        <body>
+          <h1>Check your email</h1>
+          <p>Enter the security code we emailed you to confirm you're not a robot</p>
+          <div>
+            ${Array.from({ length: 6 }, (_, index) => {
+              return `<input id="pin-${index}" type="text" inputmode="decimal" maxlength="1" />`;
+            }).join("")}
+          </div>
+        </body>
+      </html>`);
+
+    assert.equal(await __private.detectOtpRequiredUi(page), true);
+    assert.equal(await __private.fillOtpCode(page, "654321"), true);
+    assert.deepEqual(
+      await page.locator("input").evaluateAll((inputs) => inputs.map((input) => input.value)),
+      ["6", "5", "4", "3", "2", "1"]
+    );
+  } finally {
+    await browser.close();
+  }
+});
+
 test("describeAuthFailureForRun recognizes signup submit bounce-backs", async () => {
   const browser = await chromium.launch({ headless: true });
   try {

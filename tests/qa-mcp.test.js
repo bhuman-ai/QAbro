@@ -5,10 +5,12 @@ const os = require("os");
 const path = require("path");
 
 const {
+  buildCodingAgentQaInput,
   buildQaResourceUri,
   buildQaRunRequest,
   createQaApiClient,
-  createQaResourceReaders
+  createQaResourceReaders,
+  summarizeCodingAgentQaOutcome
 } = require("../lib/qa-mcp");
 const { readQaMcpStoredAuth, writeQaMcpStoredAuth } = require("../lib/qa-mcp-auth");
 
@@ -42,6 +44,71 @@ test("buildQaRunRequest creates a feature-targeted signup-aware run request", ()
   assert.equal(runRequest.metadata.auth_policy, "signup_if_needed");
   assert.match(runRequest.scenario_list[0], /signup flow/i);
   assert.match(runRequest.scenario_list.join(" "), /logged-in product/i);
+});
+
+test("buildCodingAgentQaInput maps implementation context into run scenarios and metadata", () => {
+  const agentInput = buildCodingAgentQaInput({
+    target_url: "https://preview.example.com",
+    work_summary: "Added the checkout discount field",
+    changed_files: ["src/Checkout.tsx", "src/api/discounts.ts"],
+    acceptance_criteria: ["Customer can apply a valid discount", "Invalid codes show a useful error"],
+    repository: "acme/shop",
+    branch: "feature/discounts",
+    commit_sha: "abc123",
+    pull_request_url: "https://github.com/acme/shop/pull/42"
+  });
+
+  const runRequest = buildQaRunRequest(agentInput, { defaultBrand: "acme" });
+
+  assert.equal(agentInput.feature_name, "Added the checkout discount field");
+  assert.match(runRequest.scenario_list.join(" "), /checkout discount/i);
+  assert.match(runRequest.scenario_list.join(" "), /src\/Checkout\.tsx/);
+  assert.equal(runRequest.metadata.caller_kind, "coding_agent");
+  assert.equal(runRequest.metadata.repository, "acme/shop");
+  assert.deepEqual(runRequest.metadata.acceptance_criteria, [
+    "Customer can apply a valid discount",
+    "Invalid codes show a useful error"
+  ]);
+});
+
+test("summarizeCodingAgentQaOutcome returns pass, needs_fix, and timed_out verdicts", () => {
+  const pass = summarizeCodingAgentQaOutcome({
+    reportPayload: {
+      status: "completed",
+      summary: { note: "Main flow worked." },
+      findings: []
+    }
+  });
+  assert.equal(pass.verdict, "pass");
+  assert.equal(pass.pass, true);
+
+  const needsFix = summarizeCodingAgentQaOutcome({
+    reportPayload: {
+      status: "partial",
+      summary: { note: "The tester hit a blocker." },
+      findings: [
+        {
+          title: "Checkout submit does not advance",
+          severity: "high",
+          observed_behavior: "Clicking Pay keeps the user on the same step."
+        }
+      ]
+    }
+  });
+  assert.equal(needsFix.verdict, "needs_fix");
+  assert.equal(needsFix.pass, false);
+  assert.equal(needsFix.top_finding.title, "Checkout submit does not advance");
+
+  const timedOut = summarizeCodingAgentQaOutcome({
+    waitResult: {
+      timed_out: true,
+      status: {
+        report_status: "processing"
+      }
+    }
+  });
+  assert.equal(timedOut.verdict, "timed_out");
+  assert.equal(timedOut.pass, false);
 });
 
 test("qa MCP client requestRun sends service token and owner headers", async () => {

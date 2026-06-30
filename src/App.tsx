@@ -37,6 +37,7 @@ import {
   Star,
   Quote,
   TrendingUp,
+  Trash2,
   TriangleAlert,
   Users,
   WandSparkles,
@@ -84,6 +85,7 @@ import type {
   AlertItem,
   AuthUser,
   LaunchDraft,
+  McpTokenSummary,
   ProjectSummary,
   QaReport,
   ReportFinding,
@@ -181,6 +183,10 @@ const BROWSER_MODE_OPTIONS = [
 ] as const;
 
 const GITHUB_APP_POPUP_MESSAGE = "swarmtester:github-app";
+const PUBLIC_BRAND_NAME = "Before Users Do";
+const PUBLIC_BASE_URL = "https://beforeusersdo.com";
+const MCP_CLIENT_SERVER_NAME = "beforeusersdo-qa";
+const HOSTED_MCP_URL = "https://swarmtester-qa-mcp-jw6c3tt6ua-uc.a.run.app/mcp";
 
 type AdvancedBrowserRuntimeState = {
   status: "ready" | "blocked" | "checking";
@@ -1334,16 +1340,28 @@ function BrandMark() {
 
 function HomePage({
   authorized,
-  onOpenWorkspace
+  onOpenWorkspace,
+  onOpenMcpSettings
 }: {
   authorized: boolean;
   onOpenWorkspace: () => void;
+  onOpenMcpSettings: () => void;
 }) {
   const [site, setSite] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [queued, setQueued] = useState<any | null>(null);
+  const mcpInstallConfig = `{
+  "mcpServers": {
+    "${MCP_CLIENT_SERVER_NAME}": {
+      "url": "${HOSTED_MCP_URL}",
+      "headers": {
+        "Authorization": "Bearer mcp_..."
+      }
+    }
+  }
+}`;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1373,136 +1391,204 @@ function HomePage({
           <Logo />
         </div>
         <nav className="hidden md:flex items-center gap-8 font-bold text-sm uppercase tracking-widest">
-          <a href="#how" className="hover:text-brand-accent transition-colors">How it works</a>
+          <a href="#install" className="hover:text-brand-accent transition-colors">Install MCP</a>
+          <a href="#proof" className="hover:text-brand-accent transition-colors">Proof</a>
           <button className="hover:text-brand-accent transition-colors" onClick={onOpenWorkspace}>Help Center</button>
           <button
-            onClick={onOpenWorkspace}
+            onClick={onOpenMcpSettings}
             className="bg-brand-ink text-white px-6 py-2 rounded-full hover:bg-brand-accent transition-all"
           >
-            {authorized ? "Dashboard" : "Login"}
+            {authorized ? "Create MCP key" : "Login"}
           </button>
         </nav>
       </header>
 
       <main>
-        <section className="pt-16 pb-24 px-4 max-w-7xl mx-auto text-center">
+        <section className="pt-12 pb-20 px-4 max-w-7xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
+            className="grid items-center gap-12 lg:grid-cols-[1.02fr_0.98fr]"
           >
-            <div className="organic-pill inline-block mb-6 bg-brand-secondary/10 text-brand-ink border-brand-ink">
-              ✨ User Testing, but 100x faster
-            </div>
+            <div>
+              <div className="organic-pill inline-flex items-center gap-2 mb-6 bg-brand-secondary/10 text-brand-ink border-brand-ink">
+                <Code className="h-3.5 w-3.5" />
+                Hosted QA MCP for coding agents
+              </div>
 
-            <div className="flex items-center justify-center -space-x-3 mb-8">
-              {STARTER_PERSONAS.map((persona, index) => (
-                <motion.div
-                  key={persona.id}
-                  initial={{ opacity: 0, scale: 0.5 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.2 + index * 0.1 }}
-                  className={`w-12 h-12 rounded-2xl border-4 border-white ${persona.color} overflow-hidden shadow-xl`}
+              <h1 className="text-[clamp(2.5rem,7vw,6.5rem)] font-black mb-8 leading-[0.88] max-w-5xl tracking-tighter text-brand-ink">
+                Let your coding agent QA its own work.
+              </h1>
+              <p className="text-xl md:text-2xl text-slate-600 max-w-2xl mb-10 font-medium leading-relaxed">
+                Install the {PUBLIC_BRAND_NAME} MCP once. Codex, Cursor, Claude Desktop, or any Streamable HTTP MCP client can launch a real browser QA run, wait for the result, and return screenshots, console errors, network proof, and a dev-ready report.
+              </p>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={onOpenMcpSettings}
+                  className="bg-brand-accent text-white px-8 py-5 rounded-2xl font-black text-lg hover:bg-brand-ink transition-all flex items-center justify-center gap-2 shadow-[6px_6px_0px_0px_rgba(15,23,42,1)]"
                 >
-                  <img src={persona.avatar} alt={persona.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                </motion.div>
-              ))}
-              <div className="w-12 h-12 rounded-2xl border-4 border-white bg-brand-ink flex items-center justify-center text-white font-black text-[10px] shadow-xl">
-                +10
+                  {authorized ? "Create MCP key" : "Sign in to create key"}
+                  <ArrowRight className="w-5 h-5" />
+                </button>
+                <a
+                  href="#install"
+                  className="handcrafted-card px-8 py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-2"
+                >
+                  See install steps
+                  <ChevronRight className="w-5 h-5" />
+                </a>
+              </div>
+
+              <div className="mt-7 flex flex-wrap gap-3 text-xs font-black uppercase tracking-widest text-slate-500">
+                <span className="inline-flex items-center gap-1 rounded-full border border-brand-line bg-white px-3 py-2"><Shield className="w-3 h-3" /> Revocable keys</span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-brand-line bg-white px-3 py-2"><Clock className="w-3 h-3" /> Hosted endpoint</span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-brand-line bg-white px-3 py-2"><FileText className="w-3 h-3" /> Evidence bundle</span>
               </div>
             </div>
 
-            <h1 className="text-[clamp(2.25rem,7vw,6rem)] font-black mb-8 leading-[0.9] max-w-6xl mx-auto tracking-tighter">
-              <span className="block whitespace-nowrap">AI agents that break your app</span>
-              <span className="block text-brand-accent">before users do.</span>
-            </h1>
-            <p className="text-xl md:text-2xl text-slate-600 max-w-2xl mx-auto mb-12 font-medium leading-relaxed">
-              We built AI agents with the personalities of your real users. They find the friction, the bugs, and the &quot;WTF&quot; moments before your real customers do.
-            </p>
-
-            <div className="max-w-3xl mx-auto">
-              {!queued ? (
-                <form
-                  onSubmit={handleSubmit}
-                  className="handcrafted-card p-2 flex flex-col md:flex-row gap-2 rounded-3xl"
-                >
-                  <div className="flex-1 flex items-center px-4 gap-3 border-b-2 md:border-b-0 md:border-r-2 border-brand-muted py-2">
-                    <Globe className="text-slate-400 w-5 h-5" />
-                    <div className="flex items-center w-full">
-                      <span className="text-slate-300 font-bold mr-1">https://</span>
-                      <input
-                        type="text"
-                        placeholder="yourwebsite.com"
-                        required
-                        className="w-full bg-transparent outline-none font-bold placeholder:text-slate-300"
-                        value={site}
-                        onChange={(event) => setSite(event.target.value.replace(/^https?:\/\//, ""))}
-                      />
-                    </div>
+            <div className="relative">
+              <div className="handcrafted-card !bg-brand-ink p-5 sm:p-7 rounded-[2rem] text-white">
+                <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-brand-danger"></div>
+                    <div className="w-3 h-3 rounded-full bg-brand-warning"></div>
+                    <div className="w-3 h-3 rounded-full bg-brand-success"></div>
                   </div>
-                  <div className="flex-1 flex items-center px-4 gap-3 py-2">
-                    <Mail className="text-slate-400 w-5 h-5" />
-                    <input
-                      type="email"
-                      placeholder="you@company.com"
-                      required
-                      className="w-full bg-transparent outline-none font-bold placeholder:text-slate-300"
-                      value={email}
-                      onChange={(event) => setEmail(event.target.value)}
-                    />
+                  <span className="truncate text-xs font-black uppercase tracking-widest text-white/45">mcp client config</span>
+                </div>
+                <pre className="mt-5 overflow-x-auto whitespace-pre-wrap break-words text-left font-mono text-[11px] leading-relaxed text-brand-secondary sm:text-xs">
+                  {mcpInstallConfig}
+                </pre>
+                <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-center gap-3 text-sm font-black text-white">
+                    <Check className="h-5 w-5 text-brand-success" />
+                    qa_check_work returned needs_fix
                   </div>
-                  <button
-                    disabled={loading}
-                    className="bg-brand-accent text-white px-8 py-4 rounded-2xl font-black text-lg hover:bg-brand-ink transition-all flex items-center justify-center gap-2 whitespace-nowrap"
-                  >
-                    {loading ? "Generating..." : "Get my QA Report"}
-                    <ArrowRight className="w-5 h-5" />
-                  </button>
-                </form>
-              ) : (
-                <motion.div
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  className="handcrafted-card p-8 rounded-3xl bg-brand-secondary/10 border-brand-secondary"
-                >
-                  <div className="w-16 h-16 bg-brand-secondary rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Clock className="text-white w-8 h-8" />
-                  </div>
-                  <h3 className="text-2xl font-black mb-2">Report incoming! 🚀</h3>
-                  <p className="font-bold text-slate-600">
-                    {queued.message || `Our agents are scouring ${site} right now. Check your inbox in 15 mins.`}
+                  <p className="mt-2 text-sm font-semibold leading-relaxed text-white/60">
+                    Blank white screen after successful OTP verification. Includes final screenshot, page errors, DOM snapshot, network timeline, viewport, browser version, and post-auth state flags.
                   </p>
-                  <div className="mt-6 flex flex-wrap justify-center gap-3">
-                    {queued.share_url ? (
-                      <>
-                        <a
-                          href={queued.share_url}
-                          className="bg-brand-ink text-white px-6 py-3 rounded-2xl font-black text-sm hover:bg-brand-accent transition-all"
-                        >
-                          Open shared report
-                        </a>
-                        <button
-                          type="button"
-                          onClick={() => copyText(queued.share_url || "")}
-                          className="handcrafted-card px-6 py-3 rounded-2xl font-black text-sm"
-                        >
-                          Copy report link
-                        </button>
-                      </>
-                    ) : null}
-                  </div>
-                </motion.div>
-              )}
-
-              {error ? <p className="mt-4 text-sm font-bold text-brand-danger">{error}</p> : null}
-
-              <div className="mt-4 flex items-center justify-center gap-6 text-xs font-black uppercase tracking-widest text-slate-400">
-                <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> 15 Min Turnaround</span>
-                <span className="flex items-center gap-1"><Shield className="w-3 h-3" /> No Credit Card</span>
-                <span className="flex items-center gap-1"><Star className="w-3 h-3" /> 100% AI Powered</span>
+                </div>
               </div>
+              <motion.div
+                animate={{ y: [0, -8, 0] }}
+                transition={{ duration: 4, repeat: Infinity }}
+                className="absolute -bottom-7 -left-4 hidden rounded-3xl border-4 border-brand-ink bg-white p-3 shadow-2xl sm:flex sm:items-center sm:gap-3"
+              >
+                <div className={`w-12 h-12 rounded-2xl ${STARTER_PERSONAS[1].color} overflow-hidden border-2 border-brand-ink`}>
+                  <img src={STARTER_PERSONAS[1].avatar} alt={STARTER_PERSONAS[1].name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                </div>
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Persona run</div>
+                  <div className="text-sm font-black text-brand-ink">First-time user QA</div>
+                </div>
+              </motion.div>
             </div>
           </motion.div>
+        </section>
+
+        <section id="install" className="py-20 px-4 bg-white border-y-2 border-brand-ink">
+          <div className="max-w-7xl mx-auto">
+            <div className="max-w-3xl">
+              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Install once</span>
+              <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
+                Give every coding agent a real QA tool.
+              </h2>
+              <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
+                The hosted MCP endpoint is already live. Create a key in your dashboard, paste the config into your coding agent, then ask it to test a preview URL before it calls the work done.
+              </p>
+            </div>
+
+            <div className="mt-12 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+              <div className="grid gap-4">
+                {[
+                  ["1", "Create a key", "Open Settings, choose Coding agents, then create a revocable MCP key."],
+                  ["2", "Paste the config", "Use the hosted Streamable HTTP URL and Authorization header in your MCP client."],
+                  ["3", "Ask for QA", "Tell the agent what changed, the preview URL, and the task a user should try."]
+                ].map(([step, title, body]) => (
+                  <div key={step} className="handcrafted-card rounded-3xl p-6">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-ink font-black text-white">
+                        {step}
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-black text-brand-ink">{title}</h3>
+                        <p className="mt-2 text-sm font-bold leading-relaxed text-slate-600">{body}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={onOpenMcpSettings}
+                  className="bg-brand-ink text-white px-7 py-5 rounded-2xl font-black text-lg hover:bg-brand-accent transition-all flex items-center justify-center gap-2"
+                >
+                  Open MCP settings
+                  <ExternalLink className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="handcrafted-card rounded-3xl !bg-brand-ink p-6 text-white">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-white/40">Hosted MCP URL</div>
+                    <div className="mt-1 max-w-full break-all font-mono text-xs font-bold text-brand-secondary">{HOSTED_MCP_URL}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copyText(mcpInstallConfig)}
+                    className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs font-black uppercase tracking-widest text-brand-ink"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    Copy
+                  </button>
+                </div>
+                <pre className="mt-6 overflow-x-auto whitespace-pre-wrap break-words rounded-2xl border border-white/10 bg-white/5 p-4 text-left font-mono text-[11px] leading-relaxed text-brand-secondary sm:text-xs">
+                  {mcpInstallConfig}
+                </pre>
+                <div className="mt-6 rounded-2xl bg-white p-5 text-brand-ink">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Try this prompt</div>
+                  <p className="mt-2 text-sm font-black leading-relaxed">
+                    Test my preview URL with {PUBLIC_BRAND_NAME} QA. Use qa_check_work, try the signup flow, wait for the verdict, and fix anything marked needs_fix before you finish.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="proof" className="py-24 px-4 max-w-7xl mx-auto">
+          <div className="grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
+            <div>
+              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Dev handoff</span>
+              <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
+                Not just screenshots. A report a developer can act on.
+              </h2>
+              <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
+                Every MCP run returns a plain verdict plus the proof needed to reproduce, diagnose, and prioritize the issue without leaking private tokens.
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {[
+                ["Final screenshot", "The terminal state is promoted first so a blank screen or blocked flow is obvious."],
+                ["Page errors", "Uncaught exceptions and console errors are captured beside the user-facing failure."],
+                ["Network timeline", "Requests are ordered by time with misleading transient failures filtered from the diagnosis."],
+                ["DOM snapshot", "The accessibility tree and visible DOM state show what the browser could actually interact with."],
+                ["Environment", "Browser version, viewport, URL, asset hash, and run timing travel with the report."],
+                ["Auth state flags", "Post-auth booleans like need_profile, token_present, and serialized_step are included without secrets."]
+              ].map(([title, body]) => (
+                <div key={title} className="handcrafted-card rounded-3xl p-6">
+                  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-secondary/10 text-brand-secondary">
+                    <Check className="h-5 w-5" />
+                  </div>
+                  <h3 className="text-lg font-black text-brand-ink">{title}</h3>
+                  <p className="mt-2 text-sm font-bold leading-relaxed text-slate-600">{body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </section>
 
         <section id="personas" className="py-24 px-4 bg-brand-ink text-white overflow-hidden">
@@ -1569,7 +1655,7 @@ function HomePage({
                 Read exactly what the agents were thinking as they navigated your product.
               </p>
             </div>
-            <div className="handcrafted-card p-10 rounded-[3rem] bg-brand-ink text-white">
+            <div className="handcrafted-card p-10 rounded-[3rem] !bg-brand-ink text-white">
               <h3 className="text-3xl font-black mb-4">15 Min Reports</h3>
               <p className="text-lg font-bold text-slate-400 mb-8">
                 Why wait weeks for a user study? Get a comprehensive QA report before your coffee gets cold.
@@ -1604,7 +1690,7 @@ function HomePage({
           <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-16">
             <div className="flex-1">
               <div className="organic-pill inline-block mb-6 bg-brand-ink text-white border-brand-ink">
-                🤖 Built for AI-First Workflows
+                Built for agentic workflows
               </div>
               <h2 className="text-4xl md:text-6xl font-black mb-8 leading-tight text-brand-ink">
                 Your AI writes the code. <br />
@@ -1623,7 +1709,7 @@ function HomePage({
                   </div>
                   <div>
                     <h4 className="font-black text-lg">MCP Integration</h4>
-                    <p className="text-slate-500 font-medium">Connect directly to Claude Code or Cursor. Ask your AI to &quot;test this with Sarah&quot; and get a real report in seconds.</p>
+                    <p className="text-slate-500 font-medium">Connect hosted Streamable HTTP MCP to Codex, Cursor, Claude Desktop, or any compatible client. Ask the agent to test the preview before it reports done.</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-4">
@@ -1648,11 +1734,11 @@ function HomePage({
                     <span className="text-white/40 ml-2">cursor-terminal</span>
                   </div>
                   <div className="space-y-2">
-                    <p><span className="text-white/40">$</span> cursor test --with-beforeusersdo</p>
-                    <p className="text-white">🚀 Initializing Sarah (31yr old Mom)...</p>
-                    <p className="text-white">🔍 Sarah is navigating to /checkout...</p>
-                    <p className="text-brand-accent">⚠️ Sarah got stuck: &quot;The 'Buy' button is too small for one-thumb use.&quot;</p>
-                    <p className="text-brand-secondary">✅ Fix suggested by AI Agent.</p>
+                    <p><span className="text-white/40">$</span> qa_check_work target_url=https://preview.example.com</p>
+                    <p className="text-white">Starting persona browser run for the signup flow...</p>
+                    <p className="text-white">Capturing screenshots, console errors, DOM, and network timeline...</p>
+                    <p className="text-brand-accent">needs_fix: Blank white screen after OTP verification.</p>
+                    <p className="text-brand-secondary">share_url: {PUBLIC_BASE_URL}/share/...</p>
                   </div>
                 </div>
                 <motion.div
@@ -1673,46 +1759,131 @@ function HomePage({
         </section>
 
         <section className="py-24 px-4">
-          <div className="max-w-5xl mx-auto handcrafted-card !bg-brand-accent p-12 md:p-20 rounded-[4rem] text-center relative overflow-hidden">
-            <div className="relative z-10">
-              <div className="organic-pill inline-block mb-6 bg-white text-brand-ink border-brand-ink shadow-[2px_2px_0px_0px_rgba(18,18,18,1)]">
-                🚀 Ready to ship with confidence?
-              </div>
-              <h2 className="text-4xl md:text-7xl font-black mb-8 leading-none text-white">
-                Stop guessing. <br />
-                <span className="text-brand-ink">Start knowing.</span>
-              </h2>
-              <p className="text-xl md:text-2xl font-bold text-white mb-12 max-w-xl mx-auto leading-relaxed">
-                Sarah, Marcus, and Leo are standing by. Get your first comprehensive QA report in the next 15 minutes.
-              </p>
-              <button
-                onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-                className="bg-brand-ink text-white px-12 py-6 rounded-3xl font-black text-2xl hover:scale-105 transition-all shadow-[8px_8px_0px_0px_rgba(255,255,255,0.3)] flex items-center gap-3 mx-auto group"
-              >
-                Get my free report
-                <ArrowRight className="w-6 h-6 group-hover:translate-x-2 transition-transform" />
-              </button>
-
-              <div className="mt-12 flex items-center justify-center gap-4">
-                <div className="flex -space-x-3">
-                  {STARTER_PERSONAS.map((persona) => (
-                    <img
-                      key={persona.id}
-                      src={persona.avatar}
-                      className="w-12 h-12 rounded-full border-2 border-brand-ink bg-white shadow-sm"
-                      alt="Agent"
-                      referrerPolicy="no-referrer"
-                    />
-                  ))}
+          <div className="max-w-7xl mx-auto grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+            <div className="handcrafted-card !bg-brand-accent p-10 md:p-14 rounded-[3rem] relative overflow-hidden">
+              <div className="relative z-10">
+                <div className="organic-pill inline-flex items-center gap-2 mb-6 bg-white text-brand-ink border-brand-ink shadow-[2px_2px_0px_0px_rgba(18,18,18,1)]">
+                  <Code className="h-3.5 w-3.5" />
+                  Ready to connect an agent?
                 </div>
-                <span className="text-sm font-black uppercase tracking-widest text-brand-ink">The fleet is ready</span>
+                <h2 className="text-4xl md:text-6xl font-black mb-8 leading-none text-white">
+                  Install the QA MCP, then ship with proof.
+                </h2>
+                <p className="text-lg md:text-xl font-bold text-white mb-10 max-w-xl leading-relaxed">
+                  The primary path is hosted MCP: create a key, paste the config, and make QA a required step before your agent finishes work.
+                </p>
+                <button
+                  type="button"
+                  onClick={onOpenMcpSettings}
+                  className="bg-brand-ink text-white px-9 py-5 rounded-3xl font-black text-xl hover:scale-[1.02] transition-all shadow-[8px_8px_0px_0px_rgba(255,255,255,0.3)] flex items-center gap-3"
+                >
+                  Create MCP key
+                  <ArrowRight className="w-6 h-6" />
+                </button>
+
+                <div className="mt-10 flex items-center gap-4">
+                  <div className="flex -space-x-3">
+                    {STARTER_PERSONAS.map((persona) => (
+                      <img
+                        key={persona.id}
+                        src={persona.avatar}
+                        className="w-12 h-12 rounded-full border-2 border-brand-ink bg-white shadow-sm"
+                        alt="Agent"
+                        referrerPolicy="no-referrer"
+                      />
+                    ))}
+                  </div>
+                  <span className="text-sm font-black uppercase tracking-widest text-brand-ink">Personas ready</span>
+                </div>
               </div>
             </div>
 
-            <div className="absolute top-[-20px] right-[-20px] w-64 h-64 border-[12px] border-white/20 rounded-full"></div>
-            <div className="absolute bottom-[-40px] left-[-40px] w-80 h-80 border-[12px] border-white/20 rounded-full"></div>
-            <div className="absolute top-20 left-10 w-6 h-6 bg-brand-secondary rounded-full animate-bounce border-2 border-brand-ink"></div>
-            <div className="absolute bottom-20 right-10 w-8 h-8 bg-brand-ink rounded-full opacity-20"></div>
+            <div className="handcrafted-card rounded-[3rem] bg-white p-8 md:p-10">
+              <div className="flex items-start justify-between gap-6">
+                <div>
+                  <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-xs">Secondary path</span>
+                  <h3 className="mt-3 text-3xl font-black text-brand-ink">Need one quick site report?</h3>
+                  <p className="mt-3 text-sm font-bold leading-relaxed text-slate-600">
+                    Use this when you are not installing MCP yet. Agents still run a real browser test and email a shareable report.
+                  </p>
+                </div>
+                <Globe className="hidden h-10 w-10 shrink-0 text-brand-secondary sm:block" />
+              </div>
+
+              {!queued ? (
+                <form onSubmit={handleSubmit} className="mt-8 grid gap-3">
+                  <label className="grid gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Website</span>
+                    <div className="flex items-center gap-3 rounded-2xl border-2 border-brand-ink bg-white px-4 py-4">
+                      <Globe className="text-slate-400 w-5 h-5" />
+                      <span className="text-slate-300 font-bold">https://</span>
+                      <input
+                        type="text"
+                        placeholder="yourwebsite.com"
+                        required
+                        className="w-full min-w-0 bg-transparent outline-none font-bold placeholder:text-slate-300"
+                        value={site}
+                        onChange={(event) => setSite(event.target.value.replace(/^https?:\/\//, ""))}
+                      />
+                    </div>
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Email</span>
+                    <div className="flex items-center gap-3 rounded-2xl border-2 border-brand-ink bg-white px-4 py-4">
+                      <Mail className="text-slate-400 w-5 h-5" />
+                      <input
+                        type="email"
+                        placeholder="you@company.com"
+                        required
+                        className="w-full min-w-0 bg-transparent outline-none font-bold placeholder:text-slate-300"
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                      />
+                    </div>
+                  </label>
+                  <button
+                    disabled={loading}
+                    className="mt-2 bg-brand-ink text-white px-8 py-5 rounded-2xl font-black text-lg hover:bg-brand-accent transition-all flex items-center justify-center gap-2"
+                  >
+                    {loading ? "Starting report..." : "Start one-off report"}
+                    <ArrowRight className="w-5 h-5" />
+                  </button>
+                </form>
+              ) : (
+                <motion.div
+                  initial={{ scale: 0.96, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="mt-8 rounded-3xl border-2 border-brand-secondary bg-brand-secondary/10 p-6"
+                >
+                  <div className="w-14 h-14 bg-brand-secondary rounded-2xl flex items-center justify-center mb-4">
+                    <Clock className="text-white w-7 h-7" />
+                  </div>
+                  <h3 className="text-2xl font-black mb-2">Report started</h3>
+                  <p className="font-bold text-slate-600">
+                    {queued.message || `Our agents are checking ${site} now. Watch your inbox for the report.`}
+                  </p>
+                  {queued.share_url ? (
+                    <div className="mt-6 flex flex-wrap gap-3">
+                      <a
+                        href={queued.share_url}
+                        className="bg-brand-ink text-white px-6 py-3 rounded-2xl font-black text-sm hover:bg-brand-accent transition-all"
+                      >
+                        Open shared report
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => copyText(queued.share_url || "")}
+                        className="rounded-2xl border-2 border-brand-ink px-6 py-3 font-black text-sm"
+                      >
+                        Copy report link
+                      </button>
+                    </div>
+                  ) : null}
+                </motion.div>
+              )}
+
+              {error ? <p className="mt-4 text-sm font-bold text-brand-danger">{error}</p> : null}
+            </div>
           </div>
         </section>
       </main>
@@ -2055,6 +2226,11 @@ function App() {
       <HomePage
         authorized={authState.authorized}
         onOpenWorkspace={() => navigate("/dashboard")}
+        onOpenMcpSettings={() => {
+          const next = new URLSearchParams();
+          next.set("panel", "settings");
+          navigate("/dashboard", next);
+        }}
       />
     );
   }
@@ -2125,6 +2301,10 @@ function WorkspacePage({
   const [repoLoading, setRepoLoading] = useState(false);
   const [repoError, setRepoError] = useState("");
   const [repoConnectionReloadKey, setRepoConnectionReloadKey] = useState(0);
+  const [mcpTokens, setMcpTokens] = useState<McpTokenSummary[]>([]);
+  const [mcpTokensLoading, setMcpTokensLoading] = useState(false);
+  const [mcpTokenError, setMcpTokenError] = useState("");
+  const [createdMcpToken, setCreatedMcpToken] = useState("");
   const [repoRoutes, setRepoRoutes] = useState<RepoRouteSuggestion[]>([]);
   const [repoRoutesLoading, setRepoRoutesLoading] = useState(false);
   const [repoRoutesError, setRepoRoutesError] = useState("");
@@ -2371,7 +2551,9 @@ function WorkspacePage({
 
     async function loadWorkspace() {
       setRunsLoading(true);
+      setMcpTokensLoading(true);
       setRunsError("");
+      setMcpTokenError("");
 
       const results = await Promise.allSettled([
         apiFetch<{ items: ProjectSummary[] }>("/api/qa/projects"),
@@ -2382,14 +2564,15 @@ function WorkspacePage({
         apiFetch<{ items: AlertItem[] }>("/api/qa/alerts", {
           params: { status: "open" }
         }),
-        apiFetch<{ items: WorkerInfo[]; summary: WorkerSummary }>("/api/qa/workers")
+        apiFetch<{ items: WorkerInfo[]; summary: WorkerSummary }>("/api/qa/workers"),
+        apiFetch<{ items: McpTokenSummary[] }>("/api/mcp-tokens")
       ]);
 
       if (cancelled) {
         return;
       }
 
-      const [projectsResult, reportsResult, schedulesResult, alertsResult, workersResult] = results;
+      const [projectsResult, reportsResult, schedulesResult, alertsResult, workersResult, mcpTokensResult] = results;
       const nextWorkspaceErrors: string[] = [];
 
       if (projectsResult.status === "fulfilled") {
@@ -2416,9 +2599,19 @@ function WorkspacePage({
         setWorkers(workersResult.value.items || []);
         setWorkerSummary(workersResult.value.summary || null);
       }
+      if (mcpTokensResult.status === "fulfilled") {
+        setMcpTokens(mcpTokensResult.value.items || []);
+        setMcpTokenError("");
+      } else {
+        setMcpTokens([]);
+        setMcpTokenError(
+          mcpTokensResult.reason instanceof Error ? mcpTokensResult.reason.message : "Could not load MCP tokens."
+        );
+      }
 
       setRunsError(nextWorkspaceErrors[0] || "");
       setRunsLoading(false);
+      setMcpTokensLoading(false);
       setWorkspaceBootstrapped(true);
     }
 
@@ -2850,12 +3043,14 @@ function WorkspacePage({
     if (!authState.authorized || isSharedView) {
       return;
     }
-    const [projectsResponse, reportsResponse, schedulesResponse, alertsResponse, workersResponse] = await Promise.allSettled([
+    setMcpTokensLoading(true);
+    const [projectsResponse, reportsResponse, schedulesResponse, alertsResponse, workersResponse, mcpTokensResponse] = await Promise.allSettled([
       apiFetch<{ items: ProjectSummary[] }>("/api/qa/projects"),
       apiFetch<{ items: RunSummary[] }>("/api/qa/reports", { params: { limit: 120, offset: 0 } }),
       apiFetch<{ items: ScheduleItem[] }>("/api/qa/schedules"),
       apiFetch<{ items: AlertItem[] }>("/api/qa/alerts", { params: { status: "open" } }),
-      apiFetch<{ items: WorkerInfo[]; summary: WorkerSummary }>("/api/qa/workers")
+      apiFetch<{ items: WorkerInfo[]; summary: WorkerSummary }>("/api/qa/workers"),
+      apiFetch<{ items: McpTokenSummary[] }>("/api/mcp-tokens")
     ]);
     const nextWorkspaceErrors: string[] = [];
     if (projectsResponse.status === "fulfilled") {
@@ -2882,6 +3077,15 @@ function WorkspacePage({
       setWorkers(workersResponse.value.items || []);
       setWorkerSummary(workersResponse.value.summary || null);
     }
+    if (mcpTokensResponse.status === "fulfilled") {
+      setMcpTokens(mcpTokensResponse.value.items || []);
+      setMcpTokenError("");
+    } else {
+      setMcpTokenError(
+        mcpTokensResponse.reason instanceof Error ? mcpTokensResponse.reason.message : "Could not load MCP tokens."
+      );
+    }
+    setMcpTokensLoading(false);
     setRunsError(nextWorkspaceErrors[0] || "");
   }
 
@@ -2893,6 +3097,59 @@ function WorkspacePage({
     setWorkers(response.items || []);
     setWorkerSummary(response.summary || null);
     return response;
+  }
+
+  async function handleCreateMcpToken(name: string) {
+    setMcpTokensLoading(true);
+    setMcpTokenError("");
+    try {
+      const response = await apiFetch<{ token: string; item: McpTokenSummary }>("/api/mcp-tokens", {
+        method: "POST",
+        body: {
+          name: name || "Coding agent MCP key"
+        }
+      });
+      if (response.item) {
+        setMcpTokens((current) => [response.item, ...current.filter((item) => item.id !== response.item.id)]);
+      }
+      setCreatedMcpToken(response.token || "");
+      return response;
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Could not create MCP token.";
+      setMcpTokenError(message);
+      throw caught;
+    } finally {
+      setMcpTokensLoading(false);
+    }
+  }
+
+  async function handleRevokeMcpToken(tokenId: string) {
+    if (!tokenId) {
+      return;
+    }
+    setMcpTokensLoading(true);
+    setMcpTokenError("");
+    try {
+      const response = await apiFetch<{ revoked?: boolean; item?: McpTokenSummary }>("/api/mcp-tokens", {
+        method: "DELETE",
+        params: {
+          id: tokenId
+        }
+      });
+      if (response.item) {
+        setMcpTokens((current) => current.map((item) => (item.id === tokenId ? response.item as McpTokenSummary : item)));
+      } else {
+        setMcpTokens((current) =>
+          current.map((item) => (item.id === tokenId ? { ...item, active: false, revoked_at: new Date().toISOString() } : item))
+        );
+      }
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Could not revoke MCP token.";
+      setMcpTokenError(message);
+      throw caught;
+    } finally {
+      setMcpTokensLoading(false);
+    }
   }
 
   async function handleStarterOnboardingComplete(input: { name: string; website: string; connectGitHub: boolean }) {
@@ -3830,12 +4087,19 @@ function WorkspacePage({
         repoConnection={repoConnection}
         repoLoading={repoLoading}
         repoError={repoError}
+        mcpTokens={mcpTokens}
+        mcpTokensLoading={mcpTokensLoading}
+        mcpTokenError={mcpTokenError}
+        createdMcpToken={createdMcpToken}
         onBack={() => openPanel(activeStarterBrand ? "overview" : "onboarding", { brand: activeDashboardBrandKey })}
         onSaveBrandSettings={handleSaveBrandSettings}
         onConnectGitHub={handleGitHubInstall}
         onRefreshGitHubConnection={handleRefreshGitHubConnection}
         onSaveProjectRepos={handleProjectRepositoriesSave}
         onDisconnectGitHub={handleDisconnectGitHubConnection}
+        onCreateMcpToken={handleCreateMcpToken}
+        onRevokeMcpToken={handleRevokeMcpToken}
+        onClearCreatedMcpToken={() => setCreatedMcpToken("")}
       />
     );
   } else if (resolvedPanel === "help") {
@@ -9855,24 +10119,38 @@ function StarterBrandSettingsPage({
   repoConnection,
   repoLoading,
   repoError,
+  mcpTokens,
+  mcpTokensLoading,
+  mcpTokenError,
+  createdMcpToken,
   onBack,
   onSaveBrandSettings,
   onConnectGitHub,
   onRefreshGitHubConnection,
   onSaveProjectRepos,
-  onDisconnectGitHub
+  onDisconnectGitHub,
+  onCreateMcpToken,
+  onRevokeMcpToken,
+  onClearCreatedMcpToken
 }: {
   activeBrand: StarterBrand | null;
   currentProject: ProjectSummary | null;
   repoConnection: RepoConnection | null;
   repoLoading: boolean;
   repoError: string;
+  mcpTokens: McpTokenSummary[];
+  mcpTokensLoading: boolean;
+  mcpTokenError: string;
+  createdMcpToken: string;
   onBack: () => void;
   onSaveBrandSettings: (input: { brandName: string; website: string; teamMembers: string[] }) => Promise<ProjectSummary>;
   onConnectGitHub: () => Promise<void>;
   onRefreshGitHubConnection: () => void;
   onSaveProjectRepos: (input: { primaryRepoFullName: string; associatedRepoFullNames: string[] }) => Promise<void>;
   onDisconnectGitHub: () => Promise<void>;
+  onCreateMcpToken: (name: string) => Promise<{ token: string; item: McpTokenSummary }>;
+  onRevokeMcpToken: (tokenId: string) => Promise<void>;
+  onClearCreatedMcpToken: () => void;
 }) {
   const savedBrandName = String(currentProject?.brand_name || activeBrand?.name || "");
   const savedWebsite = String(currentProject?.target_url || activeBrand?.website || "");
@@ -9893,6 +10171,12 @@ function StarterBrandSettingsPage({
   const [repoSaving, setRepoSaving] = useState(false);
   const [repoSaveMessage, setRepoSaveMessage] = useState("");
   const [repoSaveTone, setRepoSaveTone] = useState<"neutral" | "success" | "danger">("neutral");
+  const [mcpTokenName, setMcpTokenName] = useState("Codex MCP key");
+  const [mcpTokenSaving, setMcpTokenSaving] = useState(false);
+  const [mcpTokenMessage, setMcpTokenMessage] = useState("");
+  const [mcpTokenTone, setMcpTokenTone] = useState<"neutral" | "success" | "danger">("neutral");
+  const [mcpCopyFeedback, setMcpCopyFeedback] = useState("");
+  const [revokingMcpTokenId, setRevokingMcpTokenId] = useState("");
   const availableRepos = Array.isArray(repoConnection?.repositories) ? repoConnection.repositories.filter((repo) => repo.full_name) : [];
   const repoPendingInstall = repoConnection?.connection_status === "pending_install";
   const githubInstalled = Boolean(repoConnection?.installation_id) || repoPendingInstall;
@@ -9936,6 +10220,23 @@ function StarterBrandSettingsPage({
   const linkedRepoCount = (repoPrimaryDraft ? 1 : 0) + repoAssociatedDraft.length;
   const repoStatusTone = repoConnected ? "success" : repoNeedsSelection ? "warning" : repoPendingInstall ? "neutral" : "neutral";
   const repoStatusLabel = repoConnected ? "Connected" : repoNeedsSelection ? "Pick repos" : repoPendingInstall ? "Waiting for GitHub" : "Not connected";
+  const activeMcpTokens = mcpTokens.filter((token) => token.active !== false);
+  const visibleMcpTokens = mcpTokens.slice(0, 8);
+  const mcpSnippetToken = createdMcpToken || "<your mcp token>";
+  const mcpConfigSnippet = JSON.stringify(
+    {
+      mcpServers: {
+        [MCP_CLIENT_SERVER_NAME]: {
+          url: HOSTED_MCP_URL,
+          headers: {
+            Authorization: `Bearer ${mcpSnippetToken}`
+          }
+        }
+      }
+    },
+    null,
+    2
+  );
 
   useEffect(() => {
     setBrandNameDraft(savedBrandName);
@@ -10049,6 +10350,56 @@ function StarterBrandSettingsPage({
       setRepoSaveTone("danger");
     } finally {
       setRepoSaving(false);
+    }
+  }
+
+  async function handleCreateAgentKey() {
+    if (mcpTokenSaving) {
+      return;
+    }
+    setMcpTokenSaving(true);
+    setMcpTokenMessage("");
+    try {
+      await onCreateMcpToken(mcpTokenName.trim() || "Coding agent MCP key");
+      setMcpTokenMessage("Token created. Copy it now; the full value will not be shown again.");
+      setMcpTokenTone("success");
+    } catch (caught) {
+      setMcpTokenMessage(caught instanceof Error ? caught.message : "Could not create MCP token.");
+      setMcpTokenTone("danger");
+    } finally {
+      setMcpTokenSaving(false);
+    }
+  }
+
+  async function handleCopyMcpValue(value: string, label: string) {
+    try {
+      await copyText(value);
+      setMcpCopyFeedback(label);
+      window.setTimeout(() => setMcpCopyFeedback(""), 1400);
+    } catch {
+      setMcpCopyFeedback("Copy failed");
+      window.setTimeout(() => setMcpCopyFeedback(""), 1800);
+    }
+  }
+
+  async function handleRevokeAgentKey(tokenId: string) {
+    if (!tokenId || revokingMcpTokenId) {
+      return;
+    }
+    if (typeof window !== "undefined" && !window.confirm("Revoke this MCP key? Agents using it will stop working.")) {
+      return;
+    }
+    setRevokingMcpTokenId(tokenId);
+    setMcpTokenMessage("");
+    try {
+      await onRevokeMcpToken(tokenId);
+      setMcpTokenMessage("Token revoked.");
+      setMcpTokenTone("success");
+    } catch (caught) {
+      setMcpTokenMessage(caught instanceof Error ? caught.message : "Could not revoke MCP token.");
+      setMcpTokenTone("danger");
+    } finally {
+      setRevokingMcpTokenId("");
     }
   }
 
@@ -10234,6 +10585,154 @@ function StarterBrandSettingsPage({
             </div>
           </section>
         </div>
+
+        <section className="dash-card rounded-[2rem] border border-slate-200 bg-white p-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-[1.25rem] bg-slate-900 text-white shadow-xl">
+                <Code className="h-7 w-7" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-3">
+                  <h2 className="text-2xl font-black tracking-tight text-brand-ink">Coding agents</h2>
+                  <StatusPill label={`${activeMcpTokens.length} active`} tone={activeMcpTokens.length ? "success" : "neutral"} />
+                </div>
+                <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-500">
+                  Give Codex, Claude Desktop, Cursor, or another MCP client a revocable key for hosted QA runs.
+                </p>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left">
+              <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Hosted MCP URL</div>
+              <div className="mt-1 max-w-xs truncate font-mono text-xs font-bold text-brand-ink">{HOSTED_MCP_URL}</div>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6">
+              <div className="text-base font-black tracking-tight text-brand-ink">Create an MCP key</div>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                The full key is shown once. Store it in the coding agent, then keep only the prefix here.
+              </p>
+              <div className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+                <TextInput
+                  value={mcpTokenName}
+                  onChange={(event) => setMcpTokenName(event.target.value)}
+                  placeholder="Codex MCP key"
+                />
+                <Button
+                  type="button"
+                  tone="primary"
+                  onClick={() => handleCreateAgentKey().catch(() => null)}
+                  disabled={mcpTokenSaving || mcpTokensLoading}
+                  className="rounded-xl px-5 py-2.5 font-black"
+                >
+                  {mcpTokenSaving ? "Creating..." : "Create key"}
+                </Button>
+              </div>
+
+              {createdMcpToken ? (
+                <div className="mt-5 rounded-2xl border border-brand-secondary/20 bg-brand-secondary/10 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="text-sm font-black text-brand-ink">Copy this key now</div>
+                      <div className="mt-1 text-xs font-bold text-brand-secondary">It will not be shown again after you clear it.</div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        onClick={() => handleCopyMcpValue(createdMcpToken, "Token copied").catch(() => null)}
+                        className="rounded-xl px-4 py-2 font-black"
+                      >
+                        <Copy className="h-4 w-4" />
+                        Copy
+                      </Button>
+                      <Button type="button" tone="secondary" onClick={onClearCreatedMcpToken} className="rounded-xl px-4 py-2 font-black">
+                        Clear
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-3 break-all rounded-xl border border-brand-secondary/20 bg-white px-3 py-3 font-mono text-xs font-bold text-brand-ink">
+                    {createdMcpToken}
+                  </div>
+                </div>
+              ) : null}
+
+              {(mcpTokenMessage || mcpTokenError) ? (
+                <div className={`mt-5 rounded-xl border px-4 py-3 text-sm font-bold ${mcpTokenTone === "success" && !mcpTokenError ? "border-brand-secondary/20 bg-brand-secondary/10 text-brand-secondary" : "border-brand-danger/20 bg-brand-danger/10 text-brand-danger"}`}>
+                  {mcpTokenError || mcpTokenMessage}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <div className="text-base font-black tracking-tight text-brand-ink">Agent config</div>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    Paste this into an MCP client that supports Streamable HTTP.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => handleCopyMcpValue(mcpConfigSnippet, "Config copied").catch(() => null)}
+                  className="rounded-xl px-4 py-2 font-black"
+                >
+                  <Copy className="h-4 w-4" />
+                  Copy config
+                </Button>
+              </div>
+              <pre className="mt-4 max-h-80 overflow-auto rounded-2xl border border-slate-200 bg-white p-4 text-xs leading-5 text-brand-ink">
+                <code>{mcpConfigSnippet}</code>
+              </pre>
+              {mcpCopyFeedback ? <div className="mt-3 text-xs font-black uppercase tracking-widest text-brand-secondary">{mcpCopyFeedback}</div> : null}
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-base font-black tracking-tight text-brand-ink">Keys</div>
+                <p className="mt-1 text-sm text-slate-500">Revoke any key that leaves your team or an agent you no longer use.</p>
+              </div>
+              {mcpTokensLoading ? <LoaderCircle className="h-5 w-5 animate-spin text-slate-400" /> : null}
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {visibleMcpTokens.length ? (
+                visibleMcpTokens.map((token) => (
+                  <div key={token.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 md:flex-row md:items-center md:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="truncate text-sm font-black text-brand-ink">{token.name || "MCP key"}</div>
+                        <StatusPill label={token.active === false ? "Revoked" : "Active"} tone={token.active === false ? "danger" : "success"} />
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-slate-500">
+                        <span className="font-mono">{token.token_prefix || "mcp_"}</span>
+                        {token.created_at ? <span>Created {formatRelativeTime(token.created_at)}</span> : null}
+                        {token.last_used_at ? <span>Last used {formatRelativeTime(token.last_used_at)}</span> : <span>Never used</span>}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      tone="danger"
+                      onClick={() => handleRevokeAgentKey(token.id).catch(() => null)}
+                      disabled={token.active === false || revokingMcpTokenId === token.id}
+                      className="rounded-xl px-4 py-2 font-black"
+                    >
+                      {revokingMcpTokenId === token.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      Revoke
+                    </Button>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-5 text-sm text-slate-400">
+                  No MCP keys yet.
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
 
         <section className="dash-card rounded-[2rem] border border-slate-200 bg-white p-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

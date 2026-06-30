@@ -339,7 +339,9 @@ function createWorkerHeartbeat(workerId, options = {}) {
 
 function hasAnyModelApiKey(env = process.env) {
   return Boolean(
-    env.OPENAI_API_KEY ||
+    env.QA_VISION_API_KEY ||
+      env.OPENROUTER_API_KEY ||
+      env.OPENAI_API_KEY ||
       env.QA_OPENAI_API_KEY ||
       env.BROWSERBASE_OPENAI_API_KEY ||
       env.GEMINI_API_KEY ||
@@ -363,7 +365,7 @@ function getLocalAgentAvailability(env = process.env) {
   const missing = [];
 
   if (!hasAnyModelApiKey(env)) {
-    missing.push("OPENAI_API_KEY");
+    missing.push("OPENAI_API_KEY or QA_VISION_API_KEY");
   }
   if (!isPlaywrightInstalled()) {
     missing.push("playwright");

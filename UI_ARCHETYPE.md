@@ -1,4 +1,9 @@
-# Swarm Tester UI Archetype
+# Before Users Do UI Archetype
+
+## Brand Naming
+
+The public product brand is `Before Users Do` and the primary domain is `beforeusersdo.com`.
+`SwarmTester` was an experiment name and may remain in internal service names, auth storage paths, database objects, and backwards-compatible URLs until those are migrated deliberately.
 
 ## Product Job To Be Done
 
@@ -12,7 +17,9 @@ Help a product owner run a real first-time-user test on a public site, then quic
 
 ## Single Main Action
 
-- Before a run: `Start Test`
+- Homepage: `Create MCP key`
+- One-off report path: `Start one-off report`
+- Before a dashboard run: `Start Test`
 - After a run: `Open Test`
 
 If a screen does not clearly support one of those actions, simplify it again.
@@ -21,7 +28,7 @@ If a screen does not clearly support one of those actions, simplify it again.
 
 ### Guided Triage Inbox
 
-Swarm Tester should behave like a simple inbox of test runs with one selected detail view.
+Before Users Do should behave like a simple inbox of test runs with one selected detail view.
 It should not behave like a broad analytics dashboard.
 
 Use this product grammar:
@@ -156,11 +163,13 @@ Keep machine terms only where the user truly needs them.
 
 ### Homepage
 
-Use a launch-pad pattern.
+Use an MCP-first developer launch pattern.
 
-- Show what the tool does
-- Ask for the minimum inputs
-- Let the user start a test immediately
+- Show that the hosted QA MCP is the primary product
+- Put install steps, endpoint shape, and agent prompt above generic testing copy
+- Send the primary CTA to dashboard Settings -> Coding agents
+- Keep the public one-off site test available, but make it clearly secondary
+- Explain evidence bundles in developer language: final screenshot, page errors, DOM/accessibility snapshot, network timeline, asset hash, browser/viewport, and post-auth state flags without secrets
 
 ### Dashboard
 

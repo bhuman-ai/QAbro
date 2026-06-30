@@ -565,6 +565,122 @@ test("normalizeReport does not synthesize friction from normal partial summaries
   assert.equal(report.summary.coverage.flows_blocked, 0);
 });
 
+test("normalizeReport preserves post-OTP blank-screen finding diagnostics", () => {
+  const report = normalizeReport({
+    candidateReport: {
+      run_id: "run_post_otp_blank",
+      target: "https://bhuman.ai",
+      status: "partial",
+      summary: {
+        note: "Page is blank after OTP submission, no UI elements visible to interact with"
+      },
+      findings: [
+        {
+          id: "finding-vision-blocked",
+          type: "dead_end",
+          severity: "high",
+          title: "Blank white screen after successful OTP verification",
+          expected_behavior: "Onboarding should visibly render after OTP verification.",
+          observed_behavior: "After the managed inbox OTP was filled and submitted, the app stayed on a blank white screen.",
+          emotional_reaction: { primary: "frustration", intensity: 4 },
+          page: { url: "https://app.bhuman.ai/" },
+          evidence: {
+            screenshots: ["data:image/png;base64,ZmFrZQ=="]
+          },
+          diagnostic_details: {
+            page_loaded: true,
+            current_url: "https://app.bhuman.ai/",
+            current_state: "Blank white screen after successful OTP verification.",
+            last_successful_step: "Verification code input",
+            failure_reason: "The OTP flow completed, but the authenticated app shell did not visibly render.",
+            browser_version: "Chromium 145.0.7632.6",
+            viewport: { width: 1440, height: 900 },
+            document_ready_state: "complete",
+            body_text_length: 412,
+            final_screenshot_visual_summary: {
+              looks_blank: true,
+              mostly_white_ratio: 0.997,
+              non_white_ratio: 0.003
+            },
+            dom_snapshot: [{ tag: "h1", text: "Is this your business?", attrs: {} }],
+            accessibility_snapshot: { source: "dom_fallback", nodes: [{ role: "heading", name: "Is this your business?" }] },
+            asset_fingerprints: [{ file: "index-da14f964.js", hash: "da14f964" }],
+            post_auth_state: {
+              token_present: true,
+              auth_cookie_present: true,
+              need_profile: true,
+              serialized_step: "userInfo"
+            },
+            page_error_count: 0,
+            console_error_count: 0,
+            failed_request_count: 0,
+            attempted_actions: [
+              { action: "type", target: "Verification code input", outcome: "Typed code from managed inbox" },
+              { action: "press", target: "Enter key", outcome: "Submitted verification code" },
+              { action: "fail", target: "current screen", outcome: "Page is blank after OTP submission" }
+            ]
+          }
+        }
+      ],
+      tested_journeys: []
+    },
+    runRequest: {
+      run_id: "run_post_otp_blank",
+      target_url: "https://bhuman.ai",
+      scope_mode: "feature_targeted",
+      scenario_list: ["Create an account and reach onboarding"],
+      brand_persona: "Test user",
+      source: "qa_bot"
+    },
+    artifacts: {
+      captured_screenshots: ["data:image/png;base64,ZmFrZQ=="]
+    },
+    actions: { flows_blocked: 1 }
+  });
+
+  const finding = report.findings[0];
+  assert.equal(finding.title, "Blank white screen after successful OTP verification");
+  assert.equal(finding.diagnostic_details.browser_version, "Chromium 145.0.7632.6");
+  assert.equal(finding.diagnostic_details.final_screenshot_visual_summary.looks_blank, true);
+  assert.equal(finding.diagnostic_details.post_auth_state.token_present, true);
+  assert.equal(finding.diagnostic_details.post_auth_state.need_profile, true);
+  assert.equal(finding.diagnostic_details.asset_fingerprints[0].hash, "da14f964");
+  assert.equal(finding.diagnostic_details.dom_snapshot[0].text, "Is this your business?");
+  assert.equal(finding.diagnostic_details.accessibility_snapshot.nodes[0].role, "heading");
+});
+
+test("normalizeReport synthesizes a post-OTP blank-screen finding from a blocked partial summary", () => {
+  const report = normalizeReport({
+    candidateReport: {
+      run_id: "run_post_otp_blank_summary",
+      target: "https://bhuman.ai",
+      status: "partial",
+      summary: {
+        note: "Page is blank after OTP submission, no UI elements visible to interact with"
+      },
+      findings: [],
+      tested_journeys: []
+    },
+    runRequest: {
+      run_id: "run_post_otp_blank_summary",
+      target_url: "https://bhuman.ai",
+      scope_mode: "feature_targeted",
+      scenario_list: ["Create an account and reach onboarding"],
+      brand_persona: "Test user",
+      source: "qa_bot"
+    },
+    artifacts: {
+      captured_screenshots: ["data:image/png;base64,ZmFrZQ=="]
+    },
+    actions: { flows_blocked: 1 }
+  });
+
+  assert.equal(report.findings.length, 1);
+  assert.equal(report.findings[0].title, "Blank white screen after successful OTP verification");
+  assert.match(report.findings[0].observed_behavior, /blank after OTP submission/i);
+  assert.equal(report.summary.coverage.flows_blocked, 1);
+});
+
 test("normalizeReport removes stale generic synthetic findings when no blocker happened", () => {
   const report = normalizeReport({
     candidateReport: {

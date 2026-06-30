@@ -1,0 +1,13 @@
+.git
+.tmp
+.vercel
+.playwright-cli
+node_modules
+dist
+output
+*.log
+.env*
+.DS_Store
+Screenshot*.png
+selffunded_dev_blast_*.csv
+tmp_*.js

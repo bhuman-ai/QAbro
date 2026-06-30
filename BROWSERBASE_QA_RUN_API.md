@@ -74,9 +74,73 @@ The worker still sends the final callback to:
 Optional:
 
 - `QA_MODEL`
+- `QA_VISION_API_KEY` (overrides `OPENAI_API_KEY` for `vision_only` planner calls)
+- `QA_VISION_BASE_URL` (OpenAI-compatible `/v1` base URL for `vision_only`; for example OpenRouter)
+- `QA_VISION_MODEL` (supports provider-prefixed model IDs when `QA_VISION_BASE_URL` is not OpenAI)
 - `QA_PUBLIC_APP_URL`
 - `QA_CALLBACK_URL`
 - `QA_WORKER_ID`
+
+Optional coordinate localization:
+
+- `QA_COORDINATE_LOCALIZATION_ORDER` (default prefers configured clients in this order: `ocr_qwen`, `vision_llm`)
+- `QA_COORDINATE_ANNOTATION_QWEN_API_KEY` (enables OCR candidate localization with DashScope/Qwen OCR)
+- `QA_COORDINATE_ANNOTATION_QWEN_BASE_URL` (default `https://dashscope-intl.aliyuncs.com`)
+- `QA_COORDINATE_ANNOTATION_QWEN_MODEL` (default `qwen-vl-ocr`)
+- `QA_COORDINATE_OCR_JUDGE_API_KEY` (optional LLM judge for duplicate OCR labels; falls back to `OPENAI_API_KEY` when set)
+- `QA_COORDINATE_OCR_JUDGE_MODEL` (default `gpt-4.1-mini`)
+- `QA_COORDINATE_VISION_API_KEY` (enables direct vision coordinate localization; falls back to `OPENROUTER_API_KEY`)
+- `QA_COORDINATE_VISION_BASE_URL` (default `https://openrouter.ai/api/v1`)
+- `QA_COORDINATE_VISION_MODEL` (default `qwen/qwen2.5-vl-72b-instruct`)
+- `QA_COORDINATE_VISION_MAX_TOKENS` (default `180`)
+- `QA_COORDINATE_ANNOTATION_PROVIDER` (only used by `yellow_box_diff`; supports `openai`, `openrouter_image`, `gemini`, `fal`, `replicate`)
+- `QA_COORDINATE_ANNOTATION_OPENROUTER_API_KEY` (enables OpenRouter image annotation; falls back to `OPENROUTER_API_KEY`)
+- `QA_COORDINATE_ANNOTATION_MODEL` (for `openrouter_image`, default `openai/gpt-image-1-mini`)
+- `QA_COORDINATE_ANNOTATION_OPENROUTER_BASE_URL` (default `https://openrouter.ai/api/v1`)
+
+Recommended low-cost order for `vision_only` QA:
+
+```sh
+QA_COORDINATE_LOCALIZATION_ORDER=ocr_qwen,vision_llm
+QA_COORDINATE_VISION_MODEL=qwen/qwen2.5-vl-72b-instruct
+```
+
+Keep `ui_tars` and `yellow_box_diff` out of the order unless they are explicitly being evaluated. `ui_tars` has been unreliable on small unlabeled controls, and `yellow_box_diff` is the image-generation fallback that costs materially more per click than coordinate localization.
+
+Local managed-inbox smoke for email-code flows:
+
+```sh
+node scripts/run-local-agent-task.js \
+  --target https://bhuman.ai/ \
+  --goal "Start free signup, use the managed inbox email, submit the emailed security code, and stop at onboarding." \
+  --managed_inbox true \
+  --otp_provider mailtm \
+  --otp_subject_pattern "BHuman|security|code|verification|verify"
+```
+
+The local artifact redacts managed-inbox tokens and passwords while keeping the generated test email visible for debugging.
+
+Developer handoff bundles are generated automatically by `scripts/run-local-agent-task.js` unless disabled with `--dev_handoff false`.
+The bundle includes a redacted report, run log, extracted screenshots, copied videos/blocker clips, console logs, network logs, and failed-request JSONL:
+
+```sh
+node scripts/run-local-agent-task.js \
+  --target https://bhuman.ai/ \
+  --goal "Start free signup and stop at the first blocker." \
+  --managed_inbox true \
+  --dev_handoff true \
+  --dev_handoff_zip true
+```
+
+To export an already saved local artifact:
+
+```sh
+npm run qa:export-dev-handoff -- \
+  --artifact output/<run_id>_local_agent_full.json \
+  --zip true
+```
+
+If `--artifact` is omitted, the exporter uses the newest `*_local_agent_full.json` under `output/`.
 
 ## Service Token Auth (for external walkthrough-video services)
 
