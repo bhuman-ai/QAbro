@@ -2,9 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 const PROJECT_ROOT = process.cwd();
-const TEMPLATE_PATH = path.join(PROJECT_ROOT, "supabase", "templates", "magic-link-swarmtester.html");
+const TEMPLATE_PATH = path.join(PROJECT_ROOT, "supabase", "templates", "magic-link-beforeusersdo.html");
 const PROJECT_REF_PATH = path.join(PROJECT_ROOT, "supabase", ".temp", "project-ref");
-const DEFAULT_SUBJECT = "Sign in to SwarmTester";
+const DEFAULT_SUBJECT = "Sign in to Before Users Do";
 
 function readProjectRef() {
   const fromEnv = String(process.env.SUPABASE_PROJECT_REF || "").trim();
