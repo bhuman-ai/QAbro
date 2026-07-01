@@ -6,6 +6,7 @@ const path = require("path");
 
 const {
   getQaProfileState,
+  resolveFreshProfileReason,
   resolveQaProfileDir
 } = require("../lib/qa-session-profiles");
 
@@ -43,6 +44,37 @@ test("getQaProfileState detects reusable saved sessions", () => {
     assert.equal(state.available, true);
     assert.equal(state.access_method, "saved_session");
     assert.equal(state.profile_dir, profileDir);
+  } finally {
+    fs.rmSync(profileRoot, { recursive: true, force: true });
+  }
+});
+
+test("getQaProfileState bypasses saved sessions when a new account is required", () => {
+  const profileRoot = fs.mkdtempSync(path.join(os.tmpdir(), "qa-session-profile-"));
+  const profileDir = path.join(profileRoot, "dashboard", "user_123", "databoss");
+  fs.mkdirSync(profileDir, { recursive: true });
+  fs.writeFileSync(path.join(profileDir, "Cookies"), "sqlite");
+
+  try {
+    const state = getQaProfileState(
+      {
+        brand_key: "databoss",
+        owner_user_id: "user_123",
+        metadata: {
+          new_account_required: true
+        }
+      },
+      {
+        profileRootDir: profileRoot
+      }
+    );
+
+    assert.equal(resolveFreshProfileReason({ metadata: { new_account_required: true } }), "new_account_required");
+    assert.equal(state.available, false);
+    assert.equal(state.access_method, null);
+    assert.equal(state.profile_dir, null);
+    assert.equal(state.bypassed, true);
+    assert.equal(state.bypass_reason, "new_account_required");
   } finally {
     fs.rmSync(profileRoot, { recursive: true, force: true });
   }

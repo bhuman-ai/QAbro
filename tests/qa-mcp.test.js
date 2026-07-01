@@ -46,6 +46,18 @@ test("buildQaRunRequest creates a feature-targeted signup-aware run request", ()
   assert.match(runRequest.scenario_list.join(" "), /logged-in product/i);
 });
 
+test("buildQaRunRequest preserves new account requirement for worker profile isolation", () => {
+  const runRequest = buildQaRunRequest({
+    target_url: "https://databoss.us/customer/register",
+    brand: "databoss",
+    task_to_try: "Create a new account",
+    new_account_required: true
+  });
+
+  assert.equal(runRequest.metadata.auth_policy, "signup_if_needed");
+  assert.equal(runRequest.metadata.new_account_required, true);
+});
+
 test("buildCodingAgentQaInput maps implementation context into run scenarios and metadata", () => {
   const agentInput = buildCodingAgentQaInput({
     target_url: "https://preview.example.com",
