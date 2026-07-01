@@ -219,7 +219,7 @@ async function callWidgetFeedbackHandler(body, token) {
   return res;
 }
 
-test("manual QA widget prioritizes video capture and hides advanced tools by default", () => {
+test("manual QA widget shows a separate capture panel with visible tools", () => {
   const script = buildManualQaWidgetScript({
     sessionId: "manual-voice-smoke",
     token: "widget-token",
@@ -228,11 +228,22 @@ test("manual QA widget prioritizes video capture and hides advanced tools by def
 
   assert.match(script, /Say what you notice/);
   assert.match(script, /Not recording\. Records screen and voice after Chrome asks\./);
+  assert.match(script, /class="bud-capture-panel"/);
+  assert.match(script, /capturePanel\.classList\.add\("is-open"\)/);
   assert.match(script, /class="bud-record" data-action="record"/);
   assert.match(script, /Record video/);
-  assert.match(script, /data-action="toggle-tools"/);
-  assert.match(script, /id="bud-tools-panel"/);
-  assert.match(script, /toolsOpen: false/);
+  assert.match(script, /data-action="draw"/);
+  assert.match(script, /data-action="clear"/);
+  assert.match(script, /data-action="send-all"/);
+  assert.match(script, /className = "bud-item-send"/);
+  assert.match(script, /Video saved/);
+  assert.match(script, /Drawing saved/);
+  assert.match(script, /const saved = await autoSaveDrawingIfNeeded\(\)/);
+  assert.doesNotMatch(script, /data-action="toggle-tools"/);
+  assert.doesNotMatch(script, /id="bud-tools-panel"/);
+  assert.doesNotMatch(script, /toolsOpen: false/);
+  assert.doesNotMatch(script, /bud-note-wrap/);
+  assert.doesNotMatch(script, /bud-tray/);
   assert.doesNotMatch(script, /class="bud-tool" data-action="record"/);
   assert.doesNotMatch(script, /data-action="save-drawing"/);
   assert.doesNotMatch(script, /Save drawing/);
