@@ -358,6 +358,8 @@ export interface ManualQaSession {
     mode?: string | null;
     status?: string | null;
     installed?: boolean;
+    installed_at?: string | null;
+    last_seen_at?: string | null;
     note?: string | null;
   } | null;
   checklist?: ManualQaItem[];

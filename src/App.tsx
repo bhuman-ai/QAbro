@@ -2838,31 +2838,49 @@ function WorkspacePage({
 
     let cancelled = false;
 
-    async function loadManualQaSession() {
-      setManualQaLoading(true);
-      setManualQaError("");
+    let pollId: number | null = null;
+
+    async function loadManualQaSession(silent = false) {
+      if (!silent) {
+        setManualQaLoading(true);
+        setManualQaError("");
+      }
       try {
         const response = await apiFetch<{ session: ManualQaSession }>("/api/manual-qa/sessions", {
           params: { session_id: requestedManualSessionId }
         });
         if (!cancelled) {
           setManualQaSession(response.session || null);
+          if (response.session?.widget?.installed && pollId) {
+            window.clearInterval(pollId);
+            pollId = null;
+          }
         }
       } catch (caught) {
         if (!cancelled) {
-          setManualQaSession(null);
-          setManualQaError(caught instanceof Error ? caught.message : "Could not load manual QA session.");
+          if (!silent) {
+            setManualQaSession(null);
+          }
+          if (!silent) {
+            setManualQaError(caught instanceof Error ? caught.message : "Could not load manual QA session.");
+          }
         }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && !silent) {
           setManualQaLoading(false);
         }
       }
     }
 
     loadManualQaSession();
+    pollId = window.setInterval(() => {
+      loadManualQaSession(true);
+    }, 5000);
     return () => {
       cancelled = true;
+      if (pollId) {
+        window.clearInterval(pollId);
+      }
     };
   }, [currentPanel, isSharedView, requestedManualSessionId]);
 
@@ -6113,18 +6131,32 @@ function downloadUrl(url: string, filename: string) {
   document.body.removeChild(link);
 }
 
-function ManualQaWidgetLaunch({ targetUrl, widgetStatus }: { targetUrl: string; widgetStatus?: string | null }) {
+function ManualQaWidgetLaunch({
+  targetUrl,
+  widgetStatus,
+  widgetInstalled
+}: {
+  targetUrl: string;
+  widgetStatus?: string | null;
+  widgetInstalled: boolean;
+}) {
+  const statusLabel = widgetInstalled ? "Widget verified" : "Waiting for widget";
   return (
     <div className="rounded-xl border border-brand-line bg-brand-shell p-4 shadow-shell">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-brand-ink">Page widget</div>
           <div className="mt-1 text-sm text-brand-muted">
-            Open the preview. If the agent injected the snippet, use the floating Review button on the page.
+            {widgetInstalled
+              ? "Open the preview and use the floating Review button."
+              : "Ask the agent to inject the widget before opening the preview."}
           </div>
-          {widgetStatus ? <div className="mt-2 text-xs font-semibold text-brand-muted">Widget: {widgetStatus}</div> : null}
+          <div className="mt-2 text-xs font-semibold text-brand-muted">
+            {statusLabel}
+            {widgetStatus ? `: ${widgetStatus}` : ""}
+          </div>
         </div>
-        {targetUrl ? (
+        {targetUrl && widgetInstalled ? (
           <a
             href={targetUrl}
             target="_blank"
@@ -6136,7 +6168,8 @@ function ManualQaWidgetLaunch({ targetUrl, widgetStatus }: { targetUrl: string; 
           </a>
         ) : (
           <Button tone="primary" disabled>
-            Open target
+            <Lock className="h-4 w-4" />
+            Install widget first
           </Button>
         )}
       </div>
@@ -6147,11 +6180,13 @@ function ManualQaWidgetLaunch({ targetUrl, widgetStatus }: { targetUrl: string; 
 function ManualQaReviewRecorder({
   targetUrl,
   sessionId,
-  isSidecar
+  isSidecar,
+  canOpenTarget
 }: {
   targetUrl: string;
   sessionId: string;
   isSidecar: boolean;
+  canOpenTarget: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -6204,6 +6239,10 @@ function ManualQaReviewRecorder({
   }
 
   function openTargetWindow() {
+    if (!canOpenTarget) {
+      setRecorderMessage("Install the page widget before opening the target.");
+      return null;
+    }
     if (!targetUrl) {
       setRecorderMessage("No target URL was provided.");
       return null;
@@ -6427,7 +6466,7 @@ function ManualQaReviewRecorder({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-brand-ink">Fallback recorder</div>
-          <div className="mt-1 text-sm text-brand-muted">Use this only if the page widget was not installed.</div>
+          <div className="mt-1 text-sm text-brand-muted">Use this only after the page widget is verified.</div>
         </div>
         <div className="flex flex-wrap gap-2">
           {!isSidecar ? (
@@ -6442,7 +6481,7 @@ function ManualQaReviewRecorder({
               Stop
             </Button>
           ) : (
-            <Button tone="primary" onClick={startReviewCapture} disabled={!targetUrl}>
+            <Button tone="primary" onClick={startReviewCapture} disabled={!targetUrl || !canOpenTarget}>
               <MonitorUp className="h-4 w-4" />
               Start review
             </Button>
@@ -6531,6 +6570,7 @@ function ManualQaPage({
   const browserEmbedUrl = String(session?.browser?.embed_url || session?.browser?.viewer_url || "").trim();
   const browserViewerUrl = String(session?.browser?.viewer_url || session?.browser?.embed_url || "").trim();
   const targetUrl = String(session?.target_url || session?.browser?.target_url || "").trim();
+  const widgetInstalled = session?.widget?.installed === true || session?.widget?.status === "installed";
   const isSidecar =
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("sidecar") === "1";
 
@@ -6578,7 +6618,7 @@ function ManualQaPage({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {targetUrl ? (
+            {targetUrl && widgetInstalled ? (
               <a
                 href={targetUrl}
                 target="_blank"
@@ -6663,7 +6703,11 @@ function ManualQaPage({
         <main className="space-y-5">
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-4">
-              <ManualQaWidgetLaunch targetUrl={targetUrl} widgetStatus={session?.widget?.status} />
+              <ManualQaWidgetLaunch
+                targetUrl={targetUrl}
+                widgetStatus={session?.widget?.status}
+                widgetInstalled={widgetInstalled}
+              />
 
               <details className="px-1">
                 <summary className="cursor-pointer list-none text-sm font-semibold text-brand-muted hover:text-brand-ink">
@@ -6674,6 +6718,7 @@ function ManualQaPage({
                     targetUrl={targetUrl}
                     sessionId={session?.session_id || "manual-qa"}
                     isSidecar={isSidecar}
+                    canOpenTarget={widgetInstalled}
                   />
                 </div>
               </details>
@@ -6690,7 +6735,7 @@ function ManualQaPage({
                 </div>
               ) : null}
 
-              {browserEmbedUrl ? (
+              {browserEmbedUrl && widgetInstalled ? (
                 <details className="px-1">
                   <summary className="cursor-pointer list-none text-sm font-semibold text-brand-muted hover:text-brand-ink">
                     Advanced remote browser fallback
@@ -6714,7 +6759,7 @@ function ManualQaPage({
                   <div>
                     <div className="flex items-center justify-between gap-3">
                       <StatusPill label={getManualQaItemLabel(selectedItem.status)} tone={getManualQaItemTone(selectedItem.status)} />
-                      {selectedItem.start_url ? (
+                      {selectedItem.start_url && widgetInstalled ? (
                         <a
                           href={selectedItem.start_url}
                           target="_blank"

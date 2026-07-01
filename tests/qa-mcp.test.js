@@ -273,7 +273,8 @@ test("manual review workflow tells agents what context to gather", () => {
   assert.match(text, /changed files/i);
   assert.match(text, /acceptance criteria/i);
   assert.match(text, /widget_install\.script_tag/i);
-  assert.match(text, /directly on the page/i);
+  assert.match(text, /required, not optional/i);
+  assert.match(text, /Do not tell the user to open the target page until the widget is verified/i);
   assert.match(text, /https:\/\/preview\.example\.com/);
 });
 

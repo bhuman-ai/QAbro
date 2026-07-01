@@ -256,7 +256,8 @@ test("manual QA session can be created, updated, and exported with sensitive URL
     assert.equal(created.session.browser.status, "viewer_ready");
     assert.equal(created.session.browser.remote_fallback_ready, true);
     assert.match(created.session.browser.viewer_url, /password=pw123/);
-    assert.equal(created.session.widget.status, "ready");
+    assert.equal(created.session.widget.status, "install_required");
+    assert.equal(created.session.widget.installed, false);
     assert.equal(created.session.widget.token_hash, undefined);
     assert.match(created.widget_install.script_tag, /api\/manual-qa\/widget\.js/);
     assert.match(created.widget_install.script_tag, /token=/);
@@ -270,6 +271,10 @@ test("manual QA session can be created, updated, and exported with sensitive URL
       serviceKey: "service"
     });
     assert.equal(widgetLoaded.ok, true);
+    assert.equal(widgetLoaded.session.widget.status, "installed");
+    assert.equal(widgetLoaded.session.widget.installed, true);
+    assert.ok(widgetLoaded.session.widget.installed_at);
+    assert.ok(widgetLoaded.session.widget.last_seen_at);
 
     const widgetUpdated = await updateManualQaWidgetItem(
       created.session.session_id,
@@ -384,6 +389,9 @@ test("manual QA browser state defaults to user's own browser sidecar without rem
     assert.equal(payload.session.browser.viewer_url, null);
     assert.match(payload.session.browser.note, /own browser/);
     assert.equal(payload.session.widget.mode, "in_page_overlay");
+    assert.equal(payload.session.widget.status, "install_required");
+    assert.equal(payload.widgetInstall.required, true);
+    assert.equal(payload.widgetInstall.target_locked_until_widget_loads, true);
     assert.match(payload.widgetInstall.script_tag, /api\/manual-qa\/widget\.js/);
   } finally {
     for (const [key, value] of Object.entries(previousEnv)) {
