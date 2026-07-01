@@ -641,7 +641,7 @@ function createQaMcpServer(options = {}) {
     {
       title: "Start BeforeUsersDo Manual Review",
       description:
-        "Default tool when the user says 'manual review with BeforeUsersDo', 'manual QA', 'human review', or wants a human checklist for recent code changes. If target_url is missing, returns exactly what to ask for. When available, include preview URL, work_summary, changed_files, acceptance_criteria, scenario_list, repository, branch, commit_sha, pull_request_url, and an explicit test_plan.",
+        "Default tool when the user says 'manual review with BeforeUsersDo', 'manual QA', 'human review', or wants a human checklist for recent code changes. Creates a checklist/recorder sidecar for the human's own browser. If target_url is missing, returns exactly what to ask for. When available, include preview URL, work_summary, changed_files, acceptance_criteria, scenario_list, repository, branch, commit_sha, pull_request_url, and an explicit test_plan.",
       inputSchema: buildManualQaSessionInputSchema({ targetRequired: false })
     },
     async (input) => {
