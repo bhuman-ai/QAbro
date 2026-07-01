@@ -92,7 +92,8 @@ function buildManualReviewWorkflowText(input = {}) {
     "",
     "5. Return the result to the user.",
     "- Give the `manual_session_url` first.",
-    "- Say that the human should open the manual session, click Start review, test in their own browser window, and keep BeforeUsersDo open as the checklist/recorder sidecar.",
+    "- If `widget_install.script_tag` is present, tell the coding agent to inject that snippet into the preview/dev build so the human can draw and record directly on the page.",
+    "- If the widget cannot be injected, say that the human should open the manual session, click Start review, test in their own browser window, and keep BeforeUsersDo open as the checklist/recorder sidecar.",
     "- Tell the user you can fetch the finished report later with `qa_get_manual_report`.",
     "",
     "6. After the human finishes.",
@@ -175,11 +176,16 @@ function buildReportText(payload) {
 function buildManualSessionText(payload) {
   const session = payload?.session && typeof payload.session === "object" ? payload.session : {};
   const checklist = Array.isArray(session.checklist) ? session.checklist : [];
+  const widgetInstall = payload?.widget_install && typeof payload.widget_install === "object" ? payload.widget_install : {};
   return buildText([
     `Manual QA session ${session.session_id || payload.session_id || "created"}.`,
     session.target_url ? `Target: ${session.target_url}` : "",
     checklist.length ? `Checklist: ${checklist.length} items.` : "",
     session.browser?.status ? `Browser: ${session.browser.status}.` : "",
+    widgetInstall.script_tag ? "Inject this widget into the preview page:" : "",
+    widgetInstall.script_tag ? "```html" : "",
+    widgetInstall.script_tag || "",
+    widgetInstall.script_tag ? "```" : "",
     payload.manual_session_url || session.session_url ? `Open manual QA: ${payload.manual_session_url || session.session_url}` : "",
     session.session_id ? `Report resource: qa://manual/${encodeURIComponent(session.session_id)}/report.md` : ""
   ]);
@@ -624,7 +630,7 @@ function createQaMcpServer(options = {}) {
     {
       title: "Create Manual QA Session",
       description:
-        "Create a BeforeUsersDo manual QA workspace with a checklist, user-browser launch, screen/voice recorder, and annotation tools. Use when you already have the target URL.",
+        "Create a BeforeUsersDo manual QA workspace and return an agent-injectable page widget for drawing, voice/screen recording, checklist updates, and page context capture. Use when you already have the target URL.",
       inputSchema: buildManualQaSessionInputSchema()
     },
     async (input) => {
@@ -641,7 +647,7 @@ function createQaMcpServer(options = {}) {
     {
       title: "Start BeforeUsersDo Manual Review",
       description:
-        "Default tool when the user says 'manual review with BeforeUsersDo', 'manual QA', 'human review', or wants a human checklist for recent code changes. Creates a checklist/recorder sidecar for the human's own browser. If target_url is missing, returns exactly what to ask for. When available, include preview URL, work_summary, changed_files, acceptance_criteria, scenario_list, repository, branch, commit_sha, pull_request_url, and an explicit test_plan.",
+        "Default tool when the user says 'manual review with BeforeUsersDo', 'manual QA', 'human review', or wants a human checklist for recent code changes. Returns a widget snippet the coding agent should inject into the preview so the human can draw and record directly on the page. If target_url is missing, returns exactly what to ask for. When available, include preview URL, work_summary, changed_files, acceptance_criteria, scenario_list, repository, branch, commit_sha, pull_request_url, and an explicit test_plan.",
       inputSchema: buildManualQaSessionInputSchema({ targetRequired: false })
     },
     async (input) => {

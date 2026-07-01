@@ -6113,6 +6113,37 @@ function downloadUrl(url: string, filename: string) {
   document.body.removeChild(link);
 }
 
+function ManualQaWidgetLaunch({ targetUrl, widgetStatus }: { targetUrl: string; widgetStatus?: string | null }) {
+  return (
+    <div className="rounded-xl border border-brand-line bg-brand-shell p-4 shadow-shell">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-brand-ink">Page widget</div>
+          <div className="mt-1 text-sm text-brand-muted">
+            Open the preview. If the agent injected the snippet, use the floating Review button on the page.
+          </div>
+          {widgetStatus ? <div className="mt-2 text-xs font-semibold text-brand-muted">Widget: {widgetStatus}</div> : null}
+        </div>
+        {targetUrl ? (
+          <a
+            href={targetUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-brand-primary bg-brand-primary px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary-strong"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Open target
+          </a>
+        ) : (
+          <Button tone="primary" disabled>
+            Open target
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ManualQaReviewRecorder({
   targetUrl,
   sessionId,
@@ -6395,8 +6426,8 @@ function ManualQaReviewRecorder({
     <div className="rounded-xl border border-brand-line bg-brand-shell p-4 shadow-shell">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-brand-ink">Review recorder</div>
-          <div className="mt-1 text-sm text-brand-muted">Use your own Chrome window. Record your screen and voice here.</div>
+          <div className="text-sm font-semibold text-brand-ink">Fallback recorder</div>
+          <div className="mt-1 text-sm text-brand-muted">Use this only if the page widget was not installed.</div>
         </div>
         <div className="flex flex-wrap gap-2">
           {!isSidecar ? (
@@ -6632,11 +6663,20 @@ function ManualQaPage({
         <main className="space-y-5">
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-4">
-              <ManualQaReviewRecorder
-                targetUrl={targetUrl}
-                sessionId={session?.session_id || "manual-qa"}
-                isSidecar={isSidecar}
-              />
+              <ManualQaWidgetLaunch targetUrl={targetUrl} widgetStatus={session?.widget?.status} />
+
+              <details className="px-1">
+                <summary className="cursor-pointer list-none text-sm font-semibold text-brand-muted hover:text-brand-ink">
+                  Fallback sidecar recorder
+                </summary>
+                <div className="mt-4">
+                  <ManualQaReviewRecorder
+                    targetUrl={targetUrl}
+                    sessionId={session?.session_id || "manual-qa"}
+                    isSidecar={isSidecar}
+                  />
+                </div>
+              </details>
 
               {session?.context?.work_summary || session?.context?.developer_notes ? (
                 <div className="rounded-xl border border-brand-line bg-brand-shell p-4 shadow-shell">
@@ -6651,8 +6691,8 @@ function ManualQaPage({
               ) : null}
 
               {browserEmbedUrl ? (
-                <details className="rounded-xl border border-brand-line bg-brand-shell p-4 shadow-shell">
-                  <summary className="cursor-pointer list-none text-sm font-semibold text-brand-ink">
+                <details className="px-1">
+                  <summary className="cursor-pointer list-none text-sm font-semibold text-brand-muted hover:text-brand-ink">
                     Advanced remote browser fallback
                   </summary>
                   <div className="mt-4">

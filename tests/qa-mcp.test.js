@@ -272,8 +272,8 @@ test("manual review workflow tells agents what context to gather", () => {
   assert.match(text, /qa_start_manual_review/);
   assert.match(text, /changed files/i);
   assert.match(text, /acceptance criteria/i);
-  assert.match(text, /own browser/i);
-  assert.match(text, /checklist\/recorder sidecar/i);
+  assert.match(text, /widget_install\.script_tag/i);
+  assert.match(text, /directly on the page/i);
   assert.match(text, /https:\/\/preview\.example\.com/);
 });
 

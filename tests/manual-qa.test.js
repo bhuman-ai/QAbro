@@ -2,11 +2,14 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  appendManualQaItemEvidence,
   buildManualQaChecklist,
   buildManualQaSessionPayload,
   createManualQaSession,
   exportManualQaSession,
+  getManualQaWidgetSession,
   redactSensitiveUrl,
+  updateManualQaWidgetItem,
   updateManualQaItem
 } = require("../lib/manual-qa");
 
@@ -116,8 +119,63 @@ test("manual QA session can be created, updated, and exported with sensitive URL
     assert.equal(created.session.browser.status, "viewer_ready");
     assert.equal(created.session.browser.remote_fallback_ready, true);
     assert.match(created.session.browser.viewer_url, /password=pw123/);
+    assert.equal(created.session.widget.status, "ready");
+    assert.equal(created.session.widget.token_hash, undefined);
+    assert.match(created.widget_install.script_tag, /api\/manual-qa\/widget\.js/);
+    assert.match(created.widget_install.script_tag, /token=/);
 
     const firstItem = created.session.checklist[0];
+    const widgetUrl = new URL(created.widget_install.script_url);
+    const widgetToken = widgetUrl.searchParams.get("token");
+    const widgetLoaded = await getManualQaWidgetSession(created.session.session_id, widgetToken, {
+      fetchImpl: mock.fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      serviceKey: "service"
+    });
+    assert.equal(widgetLoaded.ok, true);
+
+    const widgetUpdated = await updateManualQaWidgetItem(
+      created.session.session_id,
+      widgetToken,
+      firstItem.id,
+      {
+        status: "confusing",
+        note: "The CTA label was unclear.",
+        widget_context: {
+          page_url: "https://preview.example.com/onboarding?token=abc123",
+          page_errors: [{ message: "Hydration failed", type: "error" }]
+        }
+      },
+      {
+        fetchImpl: mock.fetchImpl,
+        supabaseUrl: "https://supabase.example.com",
+        serviceKey: "service"
+      }
+    );
+    assert.equal(widgetUpdated.ok, true);
+    assert.equal(widgetUpdated.item.status, "confusing");
+    assert.match(widgetUpdated.item.widget_context.page_url, /token=%5Bredacted%5D/);
+
+    const appended = await appendManualQaItemEvidence(
+      created.session.session_id,
+      firstItem.id,
+      {
+        kind: "screenshot",
+        content_type: "image/png",
+        storage_bucket: "qa-evidence",
+        storage_path: "manual/example.png",
+        url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=x&token=secret"
+      },
+      {
+        widgetAccessOk: true,
+        fetchImpl: mock.fetchImpl,
+        supabaseUrl: "https://supabase.example.com",
+        serviceKey: "service"
+      }
+    );
+    assert.equal(appended.ok, true);
+    assert.equal(appended.item.evidence_media.length, 1);
+
     const updated = await updateManualQaItem(
       created.session.session_id,
       firstItem.id,
@@ -188,6 +246,8 @@ test("manual QA browser state defaults to user's own browser sidecar without rem
     assert.equal(payload.session.browser.remote_fallback_ready, false);
     assert.equal(payload.session.browser.viewer_url, null);
     assert.match(payload.session.browser.note, /own browser/);
+    assert.equal(payload.session.widget.mode, "in_page_overlay");
+    assert.match(payload.widgetInstall.script_tag, /api\/manual-qa\/widget\.js/);
   } finally {
     for (const [key, value] of Object.entries(previousEnv)) {
       if (value === undefined) {

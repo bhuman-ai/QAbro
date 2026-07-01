@@ -100,7 +100,7 @@ Optional:
 - `qa_share_run_report`
   - Create a team share link for a report.
 - `qa_start_manual_review`
-  - Default manual QA tool. Use when the user says “manual review with BeforeUsersDo”, “manual QA”, “human review”, or asks for a checklist for recent code changes. It creates a checklist/recorder sidecar for the human’s own browser. If `target_url` is missing, it returns the exact missing field to ask for.
+  - Default manual QA tool. Use when the user says “manual review with BeforeUsersDo”, “manual QA”, “human review”, or asks for a checklist for recent code changes. It returns a widget snippet the coding agent should inject into the preview so the human can draw, talk, record, and mark the checklist directly on the page. If `target_url` is missing, it returns the exact missing field to ask for.
 - `qa_create_manual_session`
   - Strict manual QA session creation tool. Use when the agent already has the target URL and context.
 - `qa_manual_review_guide`
@@ -205,8 +205,10 @@ If the user asks for manual QA or says “I want to do a manual review with Befo
 3. Gather context from its own work: summary, changed files, branch, commit SHA, PR URL, acceptance criteria, and any explicit user instructions.
 4. Call `qa_start_manual_review`.
 5. Return the `manual_session_url` first.
-6. Tell the human to click `Start review`, test in their own browser window, and keep BeforeUsersDo open as the checklist/recorder sidecar.
-7. After the human finishes the checklist, call `qa_get_manual_report` and use the Markdown as implementation feedback.
+6. If the response includes `widget_install.script_tag`, inject that script into the preview/dev build so the review widget appears on the actual page.
+7. Tell the human to open the preview, click the floating `Review` button, draw/talk/record there, and mark checklist items.
+8. If widget injection is impossible, fall back to the manual session sidecar.
+9. After the human finishes the checklist, call `qa_get_manual_report` and use the Markdown as implementation feedback.
 
 Minimal call:
 

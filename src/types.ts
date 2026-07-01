@@ -311,6 +311,22 @@ export interface ManualQaItem {
   status: "pending" | "pass" | "fail" | "confusing" | "blocked" | "skip";
   note?: string | null;
   evidence_urls?: string[];
+  evidence_media?: Array<{
+    kind?: string | null;
+    label?: string | null;
+    content_type?: string | null;
+    url?: string | null;
+    byte_length?: number | null;
+  }>;
+  widget_context?: {
+    page_url?: string | null;
+    page_title?: string | null;
+    user_agent?: string | null;
+    viewport?: Record<string, number | null>;
+    console_events?: Array<Record<string, unknown>>;
+    network_events?: Array<Record<string, unknown>>;
+    page_errors?: Array<Record<string, unknown>>;
+  };
   created_at?: string | null;
   reviewed_at?: string | null;
 }
@@ -336,6 +352,13 @@ export interface ManualQaSession {
     live_stream_enabled?: boolean;
     note?: string | null;
     [key: string]: unknown;
+  } | null;
+  widget?: {
+    enabled?: boolean;
+    mode?: string | null;
+    status?: string | null;
+    installed?: boolean;
+    note?: string | null;
   } | null;
   checklist?: ManualQaItem[];
   context?: {
