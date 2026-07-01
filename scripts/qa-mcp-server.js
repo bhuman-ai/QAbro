@@ -92,7 +92,7 @@ function buildManualReviewWorkflowText(input = {}) {
     "",
     "5. Return the result to the user.",
     "- Give the `manual_session_url` first.",
-    "- Say that the human should use the checklist and hosted Chromium viewer there.",
+    "- Say that the human should open the manual session, click Start review, test in their own browser window, and keep BeforeUsersDo open as the checklist/recorder sidecar.",
     "- Tell the user you can fetch the finished report later with `qa_get_manual_report`.",
     "",
     "6. After the human finishes.",
@@ -433,7 +433,7 @@ function registerQaPrompts(server) {
     {
       title: "BeforeUsersDo Manual Review",
       description:
-        "Use when the user says 'manual review with BeforeUsersDo', 'manual QA', 'human review', or asks for a checklist plus hosted browser.",
+        "Use when the user says 'manual review with BeforeUsersDo', 'manual QA', 'human review', or asks for a checklist plus a browser-side recorder.",
       argsSchema: {
         target_url: z.string().url().optional().describe("Preview, staging, production, or tunnel URL to review."),
         work_summary: z.string().max(4000).optional().describe("Plain-English summary of what changed."),
@@ -624,7 +624,7 @@ function createQaMcpServer(options = {}) {
     {
       title: "Create Manual QA Session",
       description:
-        "Create a hosted BeforeUsersDo manual QA workspace with a checklist and pop-out Chromium viewer. Use when you already have the target URL.",
+        "Create a BeforeUsersDo manual QA workspace with a checklist, user-browser launch, screen/voice recorder, and annotation tools. Use when you already have the target URL.",
       inputSchema: buildManualQaSessionInputSchema()
     },
     async (input) => {

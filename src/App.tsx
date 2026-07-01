@@ -13,6 +13,8 @@ import {
   Clock3,
   Code,
   Copy,
+  Download,
+  Eraser,
   ExternalLink,
   Eye,
   FileText,
@@ -26,7 +28,11 @@ import {
   LogOut,
   Mail,
   MessageCircle,
+  Mic,
+  MonitorUp,
   MousePointer2,
+  PanelRight,
+  PenLine,
   Play,
   Plus,
   Search,
@@ -34,6 +40,7 @@ import {
   Settings2,
   Shield,
   Sparkles,
+  Square,
   Star,
   Quote,
   TrendingUp,
@@ -6084,6 +6091,386 @@ function getManualQaItemLabel(status: ManualQaItem["status"] | string) {
   return "Pending";
 }
 
+function getSupportedRecordingMimeType() {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
+    return "";
+  }
+  const candidates = [
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+    "video/mp4"
+  ];
+  return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) || "";
+}
+
+function downloadUrl(url: string, filename: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function ManualQaReviewRecorder({
+  targetUrl,
+  sessionId,
+  isSidecar
+}: {
+  targetUrl: string;
+  sessionId: string;
+  isSidecar: boolean;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const activeStreamsRef = useRef<MediaStream[]>([]);
+  const chunksRef = useRef<Blob[]>([]);
+  const drawingRef = useRef(false);
+  const recordingUrlRef = useRef("");
+  const [captureStream, setCaptureStream] = useState<MediaStream | null>(null);
+  const [recordingState, setRecordingState] = useState<"idle" | "recording" | "ready">("idle");
+  const [recordingUrl, setRecordingUrl] = useState("");
+  const [recorderMessage, setRecorderMessage] = useState("");
+  const [hasDrawing, setHasDrawing] = useState(false);
+  const safeSessionId = String(sessionId || "manual-qa").replace(/[^a-z0-9_-]+/gi, "-").slice(0, 80);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+    if (captureStream) {
+      video.srcObject = captureStream;
+      video.play().catch(() => null);
+    } else {
+      video.srcObject = null;
+    }
+  }, [captureStream]);
+
+  useEffect(() => {
+    recordingUrlRef.current = recordingUrl;
+  }, [recordingUrl]);
+
+  useEffect(() => {
+    return () => {
+      stopReviewCapture();
+      if (recordingUrlRef.current) {
+        URL.revokeObjectURL(recordingUrlRef.current);
+        recordingUrlRef.current = "";
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function stopActiveStreams() {
+    activeStreamsRef.current.forEach((stream) => {
+      stream.getTracks().forEach((track) => track.stop());
+    });
+    activeStreamsRef.current = [];
+    setCaptureStream(null);
+  }
+
+  function openTargetWindow() {
+    if (!targetUrl) {
+      setRecorderMessage("No target URL was provided.");
+      return null;
+    }
+    return window.open(
+      targetUrl,
+      "beforeusersdo-test-target",
+      "popup=yes,width=1280,height=900,left=460,top=40"
+    );
+  }
+
+  function openSidecarWindow() {
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set("sidecar", "1");
+    const sidecar = window.open(
+      currentUrl.toString(),
+      "beforeusersdo-review-sidecar",
+      "popup=yes,width=440,height=900,left=20,top=40"
+    );
+    sidecar?.focus();
+  }
+
+  async function startReviewCapture() {
+    setRecorderMessage("");
+    if (targetUrl) {
+      openTargetWindow();
+    }
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setRecorderMessage("Screen recording is not available in this browser.");
+      return;
+    }
+    if (typeof MediaRecorder === "undefined") {
+      setRecorderMessage("Recording is not available in this browser.");
+      return;
+    }
+
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true
+      });
+      let micStream: MediaStream | null = null;
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        micStream = null;
+      }
+
+      const combinedTracks = [
+        ...displayStream.getVideoTracks(),
+        ...displayStream.getAudioTracks(),
+        ...(micStream ? micStream.getAudioTracks() : [])
+      ];
+      const combinedStream = new MediaStream(combinedTracks);
+      activeStreamsRef.current = micStream ? [displayStream, micStream, combinedStream] : [displayStream, combinedStream];
+
+      if (recordingUrlRef.current) {
+        URL.revokeObjectURL(recordingUrlRef.current);
+        recordingUrlRef.current = "";
+        setRecordingUrl("");
+      }
+      chunksRef.current = [];
+      const mimeType = getSupportedRecordingMimeType();
+      const recorder = new MediaRecorder(combinedStream, mimeType ? { mimeType } : undefined);
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+      recorder.onstop = () => {
+        const blobType = recorder.mimeType || mimeType || "video/webm";
+        const blob = new Blob(chunksRef.current, { type: blobType });
+        const nextUrl = URL.createObjectURL(blob);
+        recordingUrlRef.current = nextUrl;
+        setRecordingUrl(nextUrl);
+        setRecordingState("ready");
+        setRecorderMessage("Recording ready. Download it before closing this page.");
+        stopActiveStreams();
+      };
+      displayStream.getVideoTracks()[0]?.addEventListener("ended", () => {
+        stopReviewCapture();
+      });
+      setCaptureStream(combinedStream);
+      setRecordingState("recording");
+      setRecorderMessage("Recording. Choose the target window if Chrome asks what to share.");
+      recorder.start(1000);
+      window.setTimeout(resizeDrawingCanvas, 250);
+    } catch (caught) {
+      setRecorderMessage(caught instanceof Error ? caught.message : "Could not start recording.");
+      stopActiveStreams();
+      setRecordingState("idle");
+    }
+  }
+
+  function stopReviewCapture() {
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+      return;
+    }
+    stopActiveStreams();
+    if (recordingState === "recording") {
+      setRecordingState("idle");
+    }
+  }
+
+  function resizeDrawingCanvas() {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
+      return;
+    }
+    const ratio = window.devicePixelRatio || 1;
+    const nextWidth = Math.max(1, Math.floor(rect.width * ratio));
+    const nextHeight = Math.max(1, Math.floor(rect.height * ratio));
+    if (canvas.width === nextWidth && canvas.height === nextHeight) {
+      return;
+    }
+    canvas.width = nextWidth;
+    canvas.height = nextHeight;
+  }
+
+  function getCanvasPoint(event: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return { x: 0, y: 0 };
+    }
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / Math.max(1, rect.width)) * canvas.width,
+      y: ((event.clientY - rect.top) / Math.max(1, rect.height)) * canvas.height
+    };
+  }
+
+  function handleDrawStart(event: React.PointerEvent<HTMLCanvasElement>) {
+    resizeDrawingCanvas();
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) {
+      return;
+    }
+    const point = getCanvasPoint(event);
+    drawingRef.current = true;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.lineWidth = Math.max(4, canvas.width / 180);
+    context.strokeStyle = "#ef4444";
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+  }
+
+  function handleDrawMove(event: React.PointerEvent<HTMLCanvasElement>) {
+    if (!drawingRef.current) {
+      return;
+    }
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!context) {
+      return;
+    }
+    const point = getCanvasPoint(event);
+    context.lineTo(point.x, point.y);
+    context.stroke();
+    setHasDrawing(true);
+  }
+
+  function handleDrawEnd(event: React.PointerEvent<HTMLCanvasElement>) {
+    drawingRef.current = false;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // Pointer may already be released by the browser.
+    }
+  }
+
+  function clearDrawing() {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) {
+      return;
+    }
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    setHasDrawing(false);
+  }
+
+  function downloadAnnotation() {
+    const video = videoRef.current;
+    const annotation = canvasRef.current;
+    if (!video || !annotation || !captureStream) {
+      setRecorderMessage("Start screen sharing before saving an annotated screenshot.");
+      return;
+    }
+    const rect = annotation.getBoundingClientRect();
+    const width = annotation.width || Math.floor(rect.width || 1280);
+    const height = annotation.height || Math.floor(rect.height || 720);
+    const output = document.createElement("canvas");
+    output.width = width;
+    output.height = height;
+    const context = output.getContext("2d");
+    if (!context) {
+      return;
+    }
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    try {
+      context.drawImage(video, 0, 0, width, height);
+    } catch {
+      // Some browsers briefly block drawing the stream before the first frame is ready.
+    }
+    context.drawImage(annotation, 0, 0, width, height);
+    downloadUrl(output.toDataURL("image/png"), `${safeSessionId}-annotation.png`);
+  }
+
+  return (
+    <div className="rounded-xl border border-brand-line bg-brand-shell p-4 shadow-shell">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-brand-ink">Review recorder</div>
+          <div className="mt-1 text-sm text-brand-muted">Use your own Chrome window. Record your screen and voice here.</div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {!isSidecar ? (
+            <Button tone="secondary" onClick={openSidecarWindow}>
+              <PanelRight className="h-4 w-4" />
+              Sidecar
+            </Button>
+          ) : null}
+          {recordingState === "recording" ? (
+            <Button tone="danger" onClick={stopReviewCapture}>
+              <Square className="h-4 w-4" />
+              Stop
+            </Button>
+          ) : (
+            <Button tone="primary" onClick={startReviewCapture} disabled={!targetUrl}>
+              <MonitorUp className="h-4 w-4" />
+              Start review
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 overflow-hidden rounded-xl border border-brand-line bg-brand-ink">
+        <div className="relative aspect-video min-h-[220px]">
+          {captureStream ? (
+            <>
+              <video ref={videoRef} muted playsInline className="absolute inset-0 h-full w-full object-contain" />
+              <canvas
+                ref={canvasRef}
+                className="absolute inset-0 h-full w-full cursor-crosshair touch-none"
+                onPointerDown={handleDrawStart}
+                onPointerMove={handleDrawMove}
+                onPointerUp={handleDrawEnd}
+                onPointerCancel={handleDrawEnd}
+                aria-label="Draw on the recorded screen preview"
+              />
+            </>
+          ) : (
+            <div className="flex h-full min-h-[220px] items-center justify-center px-6 text-center text-sm text-white/70">
+              Press Start review, then choose the target window when Chrome asks what to share.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button tone="secondary" onClick={downloadAnnotation} disabled={!captureStream}>
+            <PenLine className="h-4 w-4" />
+            Save drawing
+          </Button>
+          <Button tone="ghost" onClick={clearDrawing} disabled={!hasDrawing}>
+            <Eraser className="h-4 w-4" />
+            Clear
+          </Button>
+        </div>
+        {recordingUrl ? (
+          <Button tone="secondary" onClick={() => downloadUrl(recordingUrl, `${safeSessionId}-review.webm`)}>
+            <Download className="h-4 w-4" />
+            Download recording
+          </Button>
+        ) : null}
+      </div>
+
+      {recorderMessage ? (
+        <div className="mt-3 rounded-lg border border-brand-line bg-brand-panel px-3 py-2 text-sm text-brand-muted">
+          <Mic className="mr-2 inline h-4 w-4 text-brand-accent" />
+          {recorderMessage}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ManualQaPage({
   session,
   loading,
@@ -6113,6 +6500,8 @@ function ManualQaPage({
   const browserEmbedUrl = String(session?.browser?.embed_url || session?.browser?.viewer_url || "").trim();
   const browserViewerUrl = String(session?.browser?.viewer_url || session?.browser?.embed_url || "").trim();
   const targetUrl = String(session?.target_url || session?.browser?.target_url || "").trim();
+  const isSidecar =
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("sidecar") === "1";
 
   useEffect(() => {
     if (!selectedItemId && firstPending?.id) {
@@ -6243,36 +6632,11 @@ function ManualQaPage({
         <main className="space-y-5">
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-4">
-              {browserEmbedUrl ? (
-                <LiveSessionEmbed
-                  embedUrl={browserEmbedUrl}
-                  viewerUrl={browserViewerUrl}
-                  title="Hosted Chromium"
-                  className="bg-brand-shell shadow-shell"
-                  frameClassName="h-[calc(100vh-280px)] min-h-[520px]"
-                />
-              ) : (
-                <div className="rounded-xl border border-brand-line bg-brand-shell p-6 shadow-shell">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-brand-ink">
-                    <CircleAlert className="h-4 w-4 text-brand-warning" />
-                    Hosted Chromium is not configured
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-brand-muted">
-                    This session can still collect checklist feedback, but the remote browser viewer needs the live-stream worker env vars before it can pop out here.
-                  </p>
-                  {targetUrl ? (
-                    <a
-                      href={targetUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-brand-accent"
-                    >
-                      Open target URL
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  ) : null}
-                </div>
-              )}
+              <ManualQaReviewRecorder
+                targetUrl={targetUrl}
+                sessionId={session?.session_id || "manual-qa"}
+                isSidecar={isSidecar}
+              />
 
               {session?.context?.work_summary || session?.context?.developer_notes ? (
                 <div className="rounded-xl border border-brand-line bg-brand-shell p-4 shadow-shell">
@@ -6284,6 +6648,23 @@ function ManualQaPage({
                     <p className="mt-3 text-sm leading-6 text-brand-muted">{session.context.developer_notes}</p>
                   ) : null}
                 </div>
+              ) : null}
+
+              {browserEmbedUrl ? (
+                <details className="rounded-xl border border-brand-line bg-brand-shell p-4 shadow-shell">
+                  <summary className="cursor-pointer list-none text-sm font-semibold text-brand-ink">
+                    Advanced remote browser fallback
+                  </summary>
+                  <div className="mt-4">
+                    <LiveSessionEmbed
+                      embedUrl={browserEmbedUrl}
+                      viewerUrl={browserViewerUrl}
+                      title="Remote browser fallback"
+                      className="bg-brand-shell"
+                      frameClassName="h-[420px] min-h-[320px]"
+                    />
+                  </div>
+                </details>
               ) : null}
             </div>
 

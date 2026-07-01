@@ -3,6 +3,7 @@ const test = require("node:test");
 
 const {
   buildManualQaChecklist,
+  buildManualQaSessionPayload,
   createManualQaSession,
   exportManualQaSession,
   redactSensitiveUrl,
@@ -111,7 +112,9 @@ test("manual QA session can be created, updated, and exported with sensitive URL
 
     assert.equal(created.ok, true);
     assert.equal(created.session.checklist.length >= 2, true);
+    assert.equal(created.session.browser.mode, "local_browser_sidecar");
     assert.equal(created.session.browser.status, "viewer_ready");
+    assert.equal(created.session.browser.remote_fallback_ready, true);
     assert.match(created.session.browser.viewer_url, /password=pw123/);
 
     const firstItem = created.session.checklist[0];
@@ -149,6 +152,42 @@ test("manual QA session can be created, updated, and exported with sensitive URL
     assert.doesNotMatch(exported.markdown, /abc123/);
     assert.doesNotMatch(exported.markdown, /pw123/);
     assert.equal(exported.session.browser.viewer_url, "[redacted in export]");
+  } finally {
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
+test("manual QA browser state defaults to user's own browser sidecar without remote fallback", () => {
+  const previousEnv = {
+    QA_LIVE_STREAM_ENABLED: process.env.QA_LIVE_STREAM_ENABLED,
+    QA_LIVE_STREAM_PUBLIC_BASE_URL: process.env.QA_LIVE_STREAM_PUBLIC_BASE_URL,
+    QA_LIVE_STREAM_PASSWORD: process.env.QA_LIVE_STREAM_PASSWORD
+  };
+  delete process.env.QA_LIVE_STREAM_ENABLED;
+  delete process.env.QA_LIVE_STREAM_PUBLIC_BASE_URL;
+  delete process.env.QA_LIVE_STREAM_PASSWORD;
+
+  try {
+    const payload = buildManualQaSessionPayload(
+      {
+        target_url: "https://preview.example.com",
+        work_summary: "Changed onboarding cards."
+      },
+      { publicBaseUrl: "https://beforeusersdo.com" }
+    );
+
+    assert.equal(payload.ok, true);
+    assert.equal(payload.session.browser.mode, "local_browser_sidecar");
+    assert.equal(payload.session.browser.status, "local_sidecar_ready");
+    assert.equal(payload.session.browser.remote_fallback_ready, false);
+    assert.equal(payload.session.browser.viewer_url, null);
+    assert.match(payload.session.browser.note, /own browser/);
   } finally {
     for (const [key, value] of Object.entries(previousEnv)) {
       if (value === undefined) {
