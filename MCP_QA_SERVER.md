@@ -99,8 +99,23 @@ Optional:
   - Fetch the normalized report JSON and markdown.
 - `qa_share_run_report`
   - Create a team share link for a report.
+- `qa_start_manual_review`
+  - Default manual QA tool. Use when the user says “manual review with BeforeUsersDo”, “manual QA”, “human review”, or asks for a checklist for recent code changes. If `target_url` is missing, it returns the exact missing field to ask for.
+- `qa_create_manual_session`
+  - Strict manual QA session creation tool. Use when the agent already has the target URL and context.
+- `qa_manual_review_guide`
+  - Returns the manual-review workflow and the context an agent should gather before creating a session.
+- `qa_get_manual_session`
+  - Read checklist status for a manual QA session.
+- `qa_get_manual_report`
+  - Export the completed human checklist as redacted Markdown and JSON.
 - `qa_run_feature_check`
   - High-level one-shot tool: queue, wait, and return the final report. This is the best default for preview URLs and PR deploys.
+
+## Prompts
+
+- `manual_review_workflow`
+  - Agent-facing workflow for “manual review with BeforeUsersDo”. It tells the agent to gather the preview URL, work summary, changed files, acceptance criteria, scenarios, PR/branch/commit metadata, and then call `qa_start_manual_review`.
 
 ## Resources
 
@@ -110,6 +125,10 @@ Optional:
   - JSON normalized report for the run.
 - `qa://runs/{run_id}/report.md`
   - Markdown report body for the run.
+- `qa://workflows/manual-review`
+  - Markdown instructions for agents that need to understand manual review setup.
+- `qa://manual/{session_id}/report.md`
+  - Markdown export of a human manual QA session.
 
 ## Suggested use
 
@@ -176,6 +195,27 @@ For a feature branch or preview:
 - `auth_strategy`: usually `signup_if_needed`
 
 The MCP layer converts that into a `feature_targeted` QA run and attaches brand/auth metadata automatically.
+
+### Manual human review
+
+If the user asks for manual QA or says “I want to do a manual review with BeforeUsersDo,” the agent should:
+
+1. Use the `manual_review_workflow` prompt or read `qa://workflows/manual-review` if supported.
+2. Gather or infer the preview URL. If no reachable URL exists, ask the user for it.
+3. Gather context from its own work: summary, changed files, branch, commit SHA, PR URL, acceptance criteria, and any explicit user instructions.
+4. Call `qa_start_manual_review`.
+5. Return the `manual_session_url` first.
+6. After the human finishes the checklist, call `qa_get_manual_report` and use the Markdown as implementation feedback.
+
+Minimal call:
+
+```json
+{
+  "target_url": "https://preview.example.com",
+  "work_summary": "Updated onboarding recommendations and paywall layout",
+  "changed_files": ["src/onboarding/Recommendations.tsx", "src/paywall/PlanModal.tsx"]
+}
+```
 
 ## Agent install examples
 

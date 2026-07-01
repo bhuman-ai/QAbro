@@ -13,6 +13,10 @@ const {
   summarizeCodingAgentQaOutcome
 } = require("../lib/qa-mcp");
 const { readQaMcpStoredAuth, writeQaMcpStoredAuth } = require("../lib/qa-mcp-auth");
+const {
+  buildManualReviewNeedsInputResult,
+  buildManualReviewWorkflowText
+} = require("../scripts/qa-mcp-server");
 
 function createJsonResponse(payload, status = 200) {
   return {
@@ -254,6 +258,30 @@ test("buildQaResourceUri encodes dynamic run ids", () => {
   assert.equal(buildQaResourceUri("run_status", "run id/with spaces"), "qa://runs/run%20id%2Fwith%20spaces/status");
   assert.equal(buildQaResourceUri("run_report", "run id/with spaces"), "qa://runs/run%20id%2Fwith%20spaces/report");
   assert.equal(buildQaResourceUri("run_report_markdown", "run id/with spaces"), "qa://runs/run%20id%2Fwith%20spaces/report.md");
+  assert.equal(buildQaResourceUri("manual_review_workflow", "ignored"), "qa://workflows/manual-review");
+  assert.equal(buildQaResourceUri("manual_qa_report_markdown", "manual id"), "qa://manual/manual%20id/report.md");
+});
+
+test("manual review workflow tells agents what context to gather", () => {
+  const text = buildManualReviewWorkflowText({
+    target_url: "https://preview.example.com",
+    work_summary: "Changed onboarding cards."
+  });
+
+  assert.match(text, /manual review/i);
+  assert.match(text, /qa_start_manual_review/);
+  assert.match(text, /changed files/i);
+  assert.match(text, /acceptance criteria/i);
+  assert.match(text, /https:\/\/preview\.example\.com/);
+});
+
+test("manual review missing-input result asks only for target_url", () => {
+  const result = buildManualReviewNeedsInputResult({});
+
+  assert.equal(result.structuredContent.needs_input, true);
+  assert.deepEqual(result.structuredContent.missing_fields, ["target_url"]);
+  assert.equal(result.structuredContent.recommended_tool, "qa_start_manual_review");
+  assert.match(result.content[0].text, /target URL/i);
 });
 
 test("qa MCP client loads stored dashboard auth and sends dashboard token headers", async () => {

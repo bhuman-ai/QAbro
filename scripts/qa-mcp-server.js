@@ -57,6 +57,91 @@ function buildText(lines) {
     .join("\n");
 }
 
+function safeText(value, maxLength = 4000) {
+  return String(value || "").trim().slice(0, maxLength);
+}
+
+function buildManualReviewWorkflowText(input = {}) {
+  const targetUrl = safeText(input.target_url || input.targetUrl, 4096);
+  const workSummary = safeText(input.work_summary || input.workSummary || input.change_summary || input.changeSummary, 4000);
+  const featureName = safeText(input.feature_name || input.featureName || input.title, 240);
+
+  return buildText([
+    "# BeforeUsersDo Manual Review Workflow",
+    "",
+    "Use this whenever the user says they want a manual review, manual QA, human review, or a BeforeUsersDo checklist for work you just changed.",
+    "",
+    "1. Gather the target URL.",
+    "- Prefer the live preview URL the user gave you.",
+    "- If you just deployed a preview, use that preview URL.",
+    "- If no reachable URL exists, ask for one before creating the session.",
+    "",
+    "2. Gather implementation context automatically when available.",
+    "- Include what changed in plain English.",
+    "- Include changed files, branch, commit SHA, PR URL, repository, acceptance criteria, and any user instructions.",
+    "- Do not leak tokens, secrets, private cookies, or credentials.",
+    "",
+    "3. Build the manual checklist.",
+    "- Create explicit checklist items for each changed surface and acceptance criterion.",
+    "- If an item starts deep in a flow, set the start URL/path and explain that the human may need to begin earlier if the app blocks deep links.",
+    "- Keep checklist item titles human-readable.",
+    "",
+    "4. Call `qa_start_manual_review`.",
+    "- Use `target_url`, `work_summary`, `changed_files`, `acceptance_criteria`, `scenario_list`, and `test_plan` when you have them.",
+    "- If the tool says `needs_input`, ask the user only for the missing fields.",
+    "",
+    "5. Return the result to the user.",
+    "- Give the `manual_session_url` first.",
+    "- Say that the human should use the checklist and hosted Chromium viewer there.",
+    "- Tell the user you can fetch the finished report later with `qa_get_manual_report`.",
+    "",
+    "6. After the human finishes.",
+    "- Call `qa_get_manual_report` with the session id.",
+    "- Send the Markdown report back to the coding agent as implementation feedback.",
+    "",
+    targetUrl ? `Current target_url: ${targetUrl}` : "",
+    featureName ? `Current feature_name: ${featureName}` : "",
+    workSummary ? `Current work_summary: ${workSummary}` : ""
+  ]);
+}
+
+function buildManualReviewNeedsInputResult(input = {}) {
+  const targetUrl = safeText(input.target_url || input.targetUrl, 4096);
+  if (targetUrl) {
+    return null;
+  }
+
+  const result = {
+    ok: false,
+    needs_input: true,
+    missing_fields: ["target_url"],
+    prompt: "I can start a BeforeUsersDo manual review. Send me the preview/staging/production URL you want reviewed.",
+    recommended_tool: "qa_start_manual_review",
+    workflow_prompt: "manual_review_workflow",
+    workflow_resource: MCP_QA_RESOURCE_TEMPLATES.manual_review_workflow,
+    optional_context_to_collect: [
+      "work_summary",
+      "changed_files",
+      "acceptance_criteria",
+      "scenario_list",
+      "test_plan",
+      "repository",
+      "branch",
+      "commit_sha",
+      "pull_request_url"
+    ]
+  };
+
+  return makeToolResult(
+    buildText([
+      "BeforeUsersDo manual review needs a target URL.",
+      result.prompt,
+      "If you just deployed a preview, call this tool again with that preview URL and the work summary."
+    ]),
+    result
+  );
+}
+
 function buildRequestedRunText(payload) {
   return buildText([
     `Queued QA run ${payload.run_id}.`,
@@ -180,9 +265,10 @@ function buildCodingAgentCheckInputSchema() {
   };
 }
 
-function buildManualQaSessionInputSchema() {
+function buildManualQaSessionInputSchema(options = {}) {
+  const targetUrlSchema = z.string().url().describe("Preview, staging, localhost tunnel, or production URL the human should test.");
   return {
-    target_url: z.string().url().describe("Preview, staging, localhost tunnel, or production URL the human should test."),
+    target_url: options.targetRequired === false ? targetUrlSchema.optional() : targetUrlSchema,
     brand: z.string().max(256).optional().describe("Brand slug or project key."),
     brand_name: z.string().max(180).optional(),
     title: z.string().max(180).optional().describe("Short title for the manual QA session."),
@@ -214,6 +300,18 @@ function buildManualQaSessionInputSchema() {
       .optional()
       .describe("Explicit human checklist. Use this when you know exactly where each test should start.")
   };
+}
+
+async function createManualSessionToolResult(apiClient, input, options = {}) {
+  if (options.allowMissingTargetUrl) {
+    const needsInput = buildManualReviewNeedsInputResult(input);
+    if (needsInput) {
+      return needsInput;
+    }
+  }
+
+  const response = await apiClient.createManualQaSession(input);
+  return makeToolResult(buildManualSessionText(response), response);
 }
 
 function registerQaResources(server, apiClient) {
@@ -306,6 +404,57 @@ function registerQaResources(server, apiClient) {
       };
     }
   );
+
+  server.registerResource(
+    "manual-review-workflow",
+    MCP_QA_RESOURCE_TEMPLATES.manual_review_workflow,
+    {
+      title: "Manual Review Workflow",
+      description: "Instructions for agents when the user asks for a BeforeUsersDo manual review.",
+      mimeType: "text/markdown"
+    },
+    async (uri) => {
+      return {
+        contents: [
+          {
+            uri: uri.toString(),
+            mimeType: "text/markdown",
+            text: buildManualReviewWorkflowText()
+          }
+        ]
+      };
+    }
+  );
+}
+
+function registerQaPrompts(server) {
+  server.registerPrompt(
+    "manual_review_workflow",
+    {
+      title: "BeforeUsersDo Manual Review",
+      description:
+        "Use when the user says 'manual review with BeforeUsersDo', 'manual QA', 'human review', or asks for a checklist plus hosted browser.",
+      argsSchema: {
+        target_url: z.string().url().optional().describe("Preview, staging, production, or tunnel URL to review."),
+        work_summary: z.string().max(4000).optional().describe("Plain-English summary of what changed."),
+        feature_name: z.string().max(240).optional().describe("Feature or flow name.")
+      }
+    },
+    async (args = {}) => {
+      return {
+        description: "Guide the coding agent through creating a BeforeUsersDo manual QA session.",
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: buildManualReviewWorkflowText(args)
+            }
+          }
+        ]
+      };
+    }
+  );
 }
 
 function createQaMcpServer(options = {}) {
@@ -323,6 +472,7 @@ function createQaMcpServer(options = {}) {
   );
 
   registerQaResources(server, apiClient);
+  registerQaPrompts(server);
 
   server.registerTool(
     "qa_request_run",
@@ -474,16 +624,56 @@ function createQaMcpServer(options = {}) {
     {
       title: "Create Manual QA Session",
       description:
-        "Create a hosted manual QA workspace with a checklist and pop-out Chromium viewer for a human tester.",
+        "Create a hosted BeforeUsersDo manual QA workspace with a checklist and pop-out Chromium viewer. Use when you already have the target URL.",
       inputSchema: buildManualQaSessionInputSchema()
     },
     async (input) => {
       try {
-        const response = await apiClient.createManualQaSession(input);
-        return makeToolResult(buildManualSessionText(response), response);
+        return await createManualSessionToolResult(apiClient, input);
       } catch (error) {
         return makeToolError(error);
       }
+    }
+  );
+
+  server.registerTool(
+    "qa_start_manual_review",
+    {
+      title: "Start BeforeUsersDo Manual Review",
+      description:
+        "Default tool when the user says 'manual review with BeforeUsersDo', 'manual QA', 'human review', or wants a human checklist for recent code changes. If target_url is missing, returns exactly what to ask for. When available, include preview URL, work_summary, changed_files, acceptance_criteria, scenario_list, repository, branch, commit_sha, pull_request_url, and an explicit test_plan.",
+      inputSchema: buildManualQaSessionInputSchema({ targetRequired: false })
+    },
+    async (input) => {
+      try {
+        return await createManualSessionToolResult(apiClient, input, { allowMissingTargetUrl: true });
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_manual_review_guide",
+    {
+      title: "BeforeUsersDo Manual Review Guide",
+      description:
+        "Explains exactly what context an agent should gather and which tool to call for a BeforeUsersDo manual review. Use this if the request is ambiguous.",
+      inputSchema: {
+        target_url: z.string().url().optional(),
+        work_summary: z.string().max(4000).optional(),
+        feature_name: z.string().max(240).optional()
+      }
+    },
+    async (input = {}) => {
+      const text = buildManualReviewWorkflowText(input);
+      return makeToolResult(text, {
+        ok: true,
+        recommended_tool: "qa_start_manual_review",
+        workflow_prompt: "manual_review_workflow",
+        workflow_resource: MCP_QA_RESOURCE_TEMPLATES.manual_review_workflow,
+        instructions: text
+      });
     }
   );
 
@@ -703,15 +893,21 @@ function printHelp() {
     "- qa_get_run_report",
     "- qa_share_run_report",
     "- qa_create_manual_session",
+    "- qa_start_manual_review",
+    "- qa_manual_review_guide",
     "- qa_get_manual_session",
     "- qa_get_manual_report",
     "- qa_run_feature_check",
     "- qa_check_work",
     "",
+    "Prompts:",
+    "- manual_review_workflow",
+    "",
     "Resources:",
     `- ${MCP_QA_RESOURCE_TEMPLATES.run_status}`,
     `- ${MCP_QA_RESOURCE_TEMPLATES.run_report}`,
     `- ${MCP_QA_RESOURCE_TEMPLATES.run_report_markdown}`,
+    `- ${MCP_QA_RESOURCE_TEMPLATES.manual_review_workflow}`,
     `- ${MCP_QA_RESOURCE_TEMPLATES.manual_qa_report_markdown}`
   ]);
   process.stdout.write(`${message}\n`);
@@ -737,7 +933,10 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildManualReviewNeedsInputResult,
+  buildManualReviewWorkflowText,
   createQaMcpServer,
+  registerQaPrompts,
   registerQaResources,
   main
 };
