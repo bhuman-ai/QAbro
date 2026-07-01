@@ -180,6 +180,13 @@ const MISSION_CLICKABLE_SELECTOR = [
   "input[type='submit']"
 ].join(",");
 
+let buildChromiumLaunchOptions = null;
+try {
+  ({ buildChromiumLaunchOptions } = require("../lib/qa-playwright-runtime"));
+} catch {
+  buildChromiumLaunchOptions = (baseOptions) => baseOptions;
+}
+
 function isLikelyAuthEntryText(value) {
   const normalized = String(value || "").trim();
   if (!normalized) {
@@ -203,6 +210,7 @@ function parseArgs(argv) {
     target: "https://workolo.com/",
     goal: String(process.env.QA_RUN_GOAL || "").trim(),
     brandPersona: String(process.env.QA_RUN_BRAND_PERSONA || "").trim(),
+    browserChannel: String(process.env.QA_LOCAL_BROWSER_CHANNEL || process.env.QA_PLAYWRIGHT_BROWSER_CHANNEL || "").trim(),
     outputRoot: path.resolve("output", "playwright"),
     otpProvider: String(process.env.QA_OTP_PROVIDER || "mailtm").trim().toLowerCase(),
     otpMailtmBaseUrl: String(process.env.QA_OTP_MAILTM_BASE_URL || "").trim(),
@@ -260,6 +268,12 @@ function parseArgs(argv) {
 
     if (key === "brand-persona" && hasNextValue) {
       parsed.brandPersona = String(next).trim();
+      index += 1;
+      continue;
+    }
+
+    if (key === "browser-channel" && hasNextValue) {
+      parsed.browserChannel = String(next).trim();
       index += 1;
       continue;
     }
@@ -5109,10 +5123,14 @@ async function main() {
   const matrixDir = path.join(config.outputRoot, matrixId);
   mkdirp(matrixDir);
 
-  const browser = await chromium.launch({
-    headless: config.headless,
-    channel: "chromium"
-  });
+  const browser = await chromium.launch(
+    buildChromiumLaunchOptions(
+      {
+        headless: config.headless
+      },
+      { browserChannel: config.browserChannel }
+    )
+  );
 
   const runs = [];
   try {
