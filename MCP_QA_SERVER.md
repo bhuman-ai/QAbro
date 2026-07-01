@@ -206,11 +206,12 @@ If the user asks for manual QA or says “I want to do a manual review with Befo
 4. Call `qa_start_manual_review`.
 5. Inject `widget_install.script_tag` into the preview/dev build. This is required, not optional.
 6. Deploy or refresh the preview, open the target once yourself, and verify `window.__beforeUsersDoWidgetLoaded === true` or `document.querySelector("#beforeusersdo-widget-root")`.
-7. Return the `manual_session_url`, but tell the human the target button stays locked until the widget loads once.
-8. Do not send the human to the target page until the widget is verified.
-9. Tell the human to click the floating `Review` button, draw/talk/record there, and mark checklist items.
-10. If widget injection is impossible, stop and explain why. Do not silently fall back.
-11. After the human finishes the checklist, call `qa_get_manual_report` and use the Markdown as implementation feedback.
+7. Return `widget_install.review_url` as the primary test link. This opens the preview page itself with the in-page checklist widget.
+8. Keep `manual_session_url` secondary as the report/dashboard link only. Do not send the human to the BeforeUsersDo dashboard as the place to start testing.
+9. Do not send the human to the target page until the widget is verified.
+10. Tell the human to click the floating `Review` button, draw/talk/record there, and mark checklist items.
+11. If widget injection is impossible, stop and explain why. Do not silently fall back.
+12. After the human finishes the checklist, call `qa_get_manual_report` and use the Markdown as implementation feedback.
 
 Minimal call:
 

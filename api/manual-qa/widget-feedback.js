@@ -1,0 +1,73 @@
+const { parseRequestBody, sanitizeString } = require("../../lib/qa-core");
+const {
+  buildManualQaAgentFeedbackMarkdown,
+  verifyManualQaWidgetToken
+} = require("../../lib/manual-qa");
+
+function setCors(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-bud-widget-token");
+}
+
+function readToken(req, body) {
+  return sanitizeString(
+    req.headers?.["x-bud-widget-token"] ||
+      req.query?.token ||
+      body?.token,
+    512
+  );
+}
+
+module.exports = async (req, res) => {
+  setCors(res);
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST, OPTIONS");
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
+
+  let body;
+  try {
+    body = await parseRequestBody(req);
+  } catch {
+    return res.status(400).json({ ok: false, error: "Invalid JSON body" });
+  }
+
+  const sessionId = sanitizeString(body?.session_id || body?.sessionId || req.query?.session_id, 128);
+  const token = readToken(req, body);
+  const scope = sanitizeString(body?.scope || "item", 24).toLowerCase() === "all" ? "all" : "item";
+  const itemId = sanitizeString(body?.item_id || body?.itemId || req.query?.item_id, 80);
+  if (!sessionId || !token) {
+    return res.status(400).json({ ok: false, error: "session_id and token are required" });
+  }
+  if (scope === "item" && !itemId) {
+    return res.status(400).json({ ok: false, error: "item_id is required for item feedback" });
+  }
+
+  const verified = await verifyManualQaWidgetToken(sessionId, token, { request: req });
+  if (!verified.ok) {
+    return res.status(verified.status || 500).json({ ok: false, error: verified.error });
+  }
+  if (
+    scope === "item" &&
+    !((verified.session.checklist || []).some((item) => item.id === itemId))
+  ) {
+    return res.status(404).json({ ok: false, error: "Checklist item not found" });
+  }
+
+  const markdown = buildManualQaAgentFeedbackMarkdown(verified.session, {
+    item_id: scope === "item" ? itemId : ""
+  });
+
+  return res.status(200).json({
+    ok: true,
+    scope,
+    session_id: sessionId,
+    item_id: scope === "item" ? itemId : null,
+    generated_at: new Date().toISOString(),
+    markdown
+  });
+};

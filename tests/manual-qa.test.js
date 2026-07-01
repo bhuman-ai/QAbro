@@ -3,6 +3,7 @@ const test = require("node:test");
 
 const {
   appendManualQaItemEvidence,
+  buildManualQaAgentFeedbackMarkdown,
   buildManualQaChecklist,
   buildManualQaSessionPayload,
   createManualQaSession,
@@ -13,6 +14,7 @@ const {
   updateManualQaItem
 } = require("../lib/manual-qa");
 const widgetEvidenceChunksHandler = require("../api/manual-qa/widget-evidence-chunks");
+const widgetFeedbackHandler = require("../api/manual-qa/widget-feedback");
 
 function createSupabaseFetchMock() {
   const rows = new Map();
@@ -200,6 +202,22 @@ async function callWidgetChunksHandler(body, token) {
   return res;
 }
 
+async function callWidgetFeedbackHandler(body, token) {
+  const req = {
+    method: "POST",
+    headers: {
+      host: "beforeusersdo.com",
+      "x-forwarded-proto": "https",
+      "x-bud-widget-token": token
+    },
+    query: {},
+    body
+  };
+  const res = createRes();
+  await widgetFeedbackHandler(req, res);
+  return res;
+}
+
 test("buildManualQaChecklist uses explicit agent test plan start URLs", () => {
   const items = buildManualQaChecklist({
     target_url: "https://example.com/app",
@@ -252,6 +270,7 @@ test("manual QA session can be created, updated, and exported with sensitive URL
 
     assert.equal(created.ok, true);
     assert.equal(created.session.checklist.length >= 2, true);
+    const firstItem = created.session.checklist[0];
     assert.equal(created.session.browser.mode, "local_browser_sidecar");
     assert.equal(created.session.browser.status, "viewer_ready");
     assert.equal(created.session.browser.remote_fallback_ready, true);
@@ -261,8 +280,10 @@ test("manual QA session can be created, updated, and exported with sensitive URL
     assert.equal(created.session.widget.token_hash, undefined);
     assert.match(created.widget_install.script_tag, /api\/manual-qa\/widget\.js/);
     assert.match(created.widget_install.script_tag, /token=/);
+    assert.equal(created.widget_install.review_url, firstItem.start_url);
+    assert.equal(created.widget_install.direct_review_url, firstItem.start_url);
+    assert.equal(created.widget_install.checklist_review_urls[0].review_url, firstItem.start_url);
 
-    const firstItem = created.session.checklist[0];
     const widgetUrl = new URL(created.widget_install.script_url);
     const widgetToken = widgetUrl.searchParams.get("token");
     const widgetLoaded = await getManualQaWidgetSession(created.session.session_id, widgetToken, {
@@ -394,6 +415,102 @@ test("manual QA browser state defaults to user's own browser sidecar without rem
     assert.equal(payload.widgetInstall.target_locked_until_widget_loads, true);
     assert.match(payload.widgetInstall.script_tag, /api\/manual-qa\/widget\.js/);
   } finally {
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
+test("widget feedback endpoint returns redacted agent feedback for one item", async () => {
+  const previousEnv = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY
+  };
+  const previousFetch = globalThis.fetch;
+  const mock = createSupabaseFetchMock();
+  process.env.SUPABASE_URL = "https://supabase-feedback.example.com";
+  process.env.SUPABASE_SERVICE_KEY = "service";
+  globalThis.fetch = mock.fetchImpl;
+
+  try {
+    const created = await createManualQaSession(
+      {
+        target_url: "https://preview.example.com/onboarding?token=abc123",
+        brand: "Example",
+        title: "Feedback pass",
+        test_plan: [
+          {
+            title: "Check onboarding card",
+            instructions: "Confirm the card is personalized.",
+            expected: "The card explains why it was picked."
+          }
+        ]
+      },
+      {
+        publicBaseUrl: "https://beforeusersdo.com",
+        ownerUserId: "user_1",
+        fetchImpl: mock.fetchImpl,
+        supabaseUrl: "https://supabase-feedback.example.com",
+        serviceKey: "service"
+      }
+    );
+    const item = created.session.checklist[0];
+    const widgetToken = new URL(created.widget_install.script_url).searchParams.get("token");
+    const updated = await updateManualQaWidgetItem(
+      created.session.session_id,
+      widgetToken,
+      item.id,
+      {
+        status: "fail",
+        note: "The card still shows generic copy.",
+        widget_context: {
+          page_url: "https://preview.example.com/onboarding?token=abc123",
+          page_title: "Onboarding",
+          viewport: { width: 1440, height: 900, device_pixel_ratio: 2 },
+          page_errors: [{ type: "error", message: "Hydration failed" }],
+          console_events: [{ type: "error", message: "Cannot read properties of undefined" }],
+          network_events: [{ method: "GET", status: 500, url: "https://preview.example.com/api/cards?token=abc123" }]
+        }
+      },
+      {
+        widgetAccessOk: true,
+        fetchImpl: mock.fetchImpl,
+        supabaseUrl: "https://supabase-feedback.example.com",
+        serviceKey: "service"
+      }
+    );
+    assert.equal(updated.ok, true);
+
+    const directMarkdown = buildManualQaAgentFeedbackMarkdown(updated.session, { item_id: item.id });
+    assert.match(directMarkdown, /single checklist item/);
+    assert.match(directMarkdown, /The card still shows generic copy/);
+    assert.match(directMarkdown, /Hydration failed/);
+    assert.doesNotMatch(directMarkdown, /abc123/);
+
+    const feedback = await callWidgetFeedbackHandler(
+      {
+        session_id: created.session.session_id,
+        token: widgetToken,
+        scope: "item",
+        item_id: item.id
+      },
+      widgetToken
+    );
+
+    assert.equal(feedback.statusCode, 200);
+    assert.equal(feedback.body.ok, true);
+    assert.equal(feedback.body.scope, "item");
+    assert.match(feedback.body.markdown, /BeforeUsersDo Manual QA Feedback/);
+    assert.match(feedback.body.markdown, /The card still shows generic copy/);
+    assert.match(feedback.body.markdown, /Cannot read properties of undefined/);
+    assert.match(feedback.body.markdown, /token=%5Bredacted%5D/);
+    assert.doesNotMatch(feedback.body.markdown, /abc123/);
+  } finally {
+    globalThis.fetch = previousFetch;
     for (const [key, value] of Object.entries(previousEnv)) {
       if (value === undefined) {
         delete process.env[key];

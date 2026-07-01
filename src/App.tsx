@@ -6148,7 +6148,7 @@ function ManualQaWidgetLaunch({
           <div className="text-sm font-semibold text-brand-ink">Page widget</div>
           <div className="mt-1 text-sm text-brand-muted">
             {widgetInstalled
-              ? "Open the preview and use the floating Review button."
+              ? "Open the current checklist item and use the floating Review button."
               : "Ask the agent to inject the widget before opening the preview."}
           </div>
           <div className="mt-2 text-xs font-semibold text-brand-muted">
@@ -6164,7 +6164,7 @@ function ManualQaWidgetLaunch({
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-brand-primary bg-brand-primary px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary-strong"
           >
             <ExternalLink className="h-4 w-4" />
-            Open target
+            Open item
           </a>
         ) : (
           <Button tone="primary" disabled>
@@ -6569,7 +6569,8 @@ function ManualQaPage({
   const counts = session?.counts || {};
   const browserEmbedUrl = String(session?.browser?.embed_url || session?.browser?.viewer_url || "").trim();
   const browserViewerUrl = String(session?.browser?.viewer_url || session?.browser?.embed_url || "").trim();
-  const targetUrl = String(session?.target_url || session?.browser?.target_url || "").trim();
+  const sessionTargetUrl = String(session?.target_url || session?.browser?.target_url || "").trim();
+  const targetUrl = String(selectedItem?.start_url || sessionTargetUrl).trim();
   const widgetInstalled = session?.widget?.installed === true || session?.widget?.status === "installed";
   const isSidecar =
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("sidecar") === "1";
@@ -6613,7 +6614,7 @@ function ManualQaPage({
               {session?.title || "Manual QA session"}
             </h1>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-brand-muted">
-              {targetUrl ? <span className="break-all">{targetUrl}</span> : null}
+              {sessionTargetUrl ? <span className="break-all">{sessionTargetUrl}</span> : null}
               {session?.updated_at ? <span>{formatDateTime(session.updated_at)}</span> : null}
             </div>
           </div>
@@ -6626,7 +6627,7 @@ function ManualQaPage({
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-brand-line bg-brand-shell px-3.5 py-2 text-sm font-semibold text-brand-ink transition-colors hover:bg-brand-bg"
               >
                 <ExternalLink className="h-4 w-4" />
-                Target
+                Open item
               </a>
             ) : null}
             <Button tone="secondary" onClick={onExport} disabled={!session}>

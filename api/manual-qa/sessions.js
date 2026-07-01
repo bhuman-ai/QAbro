@@ -93,6 +93,7 @@ module.exports = async (req, res) => {
       ok: true,
       session: created.session,
       session_id: created.session.session_id,
+      review_url: created.widget_install?.review_url || created.session.target_url,
       manual_session_url: created.session.session_url,
       widget_install: created.widget_install
     });

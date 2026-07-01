@@ -98,8 +98,9 @@ function buildManualReviewWorkflowText(input = {}) {
     "- Do not tell the user to open the target page until the widget is verified.",
     "",
     "6. Return the result to the user.",
-    "- Give the `manual_session_url`, but say it is locked until the widget loads.",
-    "- Tell the user the target page will unlock after the floating Review button has loaded on the preview.",
+    "- Give `widget_install.review_url` as the primary link. This should open the preview page itself with the in-page widget.",
+    "- Keep `manual_session_url` secondary as the report/dashboard link only.",
+    "- Do not send the BeforeUsersDo dashboard as the place to start testing.",
     "- If the widget cannot be injected, stop and explain why. Do not fall back silently.",
     "- Tell the user you can fetch the finished report later with `qa_get_manual_report`.",
     "",
@@ -184,6 +185,7 @@ function buildManualSessionText(payload) {
   const session = payload?.session && typeof payload.session === "object" ? payload.session : {};
   const checklist = Array.isArray(session.checklist) ? session.checklist : [];
   const widgetInstall = payload?.widget_install && typeof payload.widget_install === "object" ? payload.widget_install : {};
+  const directReviewUrl = widgetInstall.review_url || payload?.review_url || session.target_url;
   return buildText([
     `Manual QA session ${session.session_id || payload.session_id || "created"}.`,
     session.target_url ? `Target: ${session.target_url}` : "",
@@ -193,13 +195,14 @@ function buildManualSessionText(payload) {
     widgetInstall.script_tag ? "1. Inject this exact script tag into the preview/dev build." : "",
     widgetInstall.script_tag ? "2. Deploy or refresh the preview." : "",
     widgetInstall.script_tag ? "3. Open the target once yourself and verify the floating Review button appears." : "",
-    widgetInstall.script_tag ? "4. Only then send the manual QA link to the user. The target page is locked until the widget loads." : "",
+    widgetInstall.script_tag ? "4. Only then send widget_install.review_url to the user as the test link. Do not use the dashboard as the test entry point." : "",
     widgetInstall.script_tag ? "```html" : "",
     widgetInstall.script_tag || "",
     widgetInstall.script_tag ? "```" : "",
     widgetInstall.verify_expression ? `Verify expression: ${widgetInstall.verify_expression}` : "",
     widgetInstall.verify_selector ? `Verify selector: ${widgetInstall.verify_selector}` : "",
-    payload.manual_session_url || session.session_url ? `Manual QA dashboard: ${payload.manual_session_url || session.session_url}` : "",
+    directReviewUrl ? `Direct review URL: ${directReviewUrl}` : "",
+    payload.manual_session_url || session.session_url ? `Report dashboard: ${payload.manual_session_url || session.session_url}` : "",
     session.session_id ? `Report resource: qa://manual/${encodeURIComponent(session.session_id)}/report.md` : ""
   ]);
 }
