@@ -50,6 +50,7 @@ test("buildCodingAgentQaInput maps implementation context into run scenarios and
   const agentInput = buildCodingAgentQaInput({
     target_url: "https://preview.example.com",
     work_summary: "Added the checkout discount field",
+    scenario_list: ["Customer instruction: sign up with a phone number and confirm the discount field works."],
     changed_files: ["src/Checkout.tsx", "src/api/discounts.ts"],
     acceptance_criteria: ["Customer can apply a valid discount", "Invalid codes show a useful error"],
     repository: "acme/shop",
@@ -61,9 +62,16 @@ test("buildCodingAgentQaInput maps implementation context into run scenarios and
   const runRequest = buildQaRunRequest(agentInput, { defaultBrand: "acme" });
 
   assert.equal(agentInput.feature_name, "Added the checkout discount field");
+  assert.equal(
+    agentInput.scenario_list[0],
+    "Customer instruction: sign up with a phone number and confirm the discount field works."
+  );
+  assert.match(runRequest.scenario_list[0], /Customer instruction/i);
   assert.match(runRequest.scenario_list.join(" "), /checkout discount/i);
   assert.match(runRequest.scenario_list.join(" "), /src\/Checkout\.tsx/);
   assert.equal(runRequest.metadata.caller_kind, "coding_agent");
+  assert.equal(runRequest.metadata.instruction_priority, "customer_first");
+  assert.equal(runRequest.metadata.customer_scenario_count, 1);
   assert.equal(runRequest.metadata.repository, "acme/shop");
   assert.deepEqual(runRequest.metadata.acceptance_criteria, [
     "Customer can apply a valid discount",

@@ -185,6 +185,7 @@ test("buildTaskPrompt includes plaintext credentials when supplied", () => {
     /Attempt authenticated flows with provided credentials and reasonable alternate auth paths/
   );
   assert.match(prompt, /Primary goal: Login and continue to dashboard/);
+  assert.match(prompt, /Instruction priority: follow explicit customer task instructions/i);
   assert.match(prompt, /Reaching onboarding after auth does NOT count as goal completion/);
 });
 
