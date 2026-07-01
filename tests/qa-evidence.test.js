@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const evidenceHandler = require("../api/qa/evidence");
+const { ensureEvidenceStorageBucket } = require("../lib/qa-evidence-storage");
 
 function createRes() {
   return {
@@ -175,6 +176,23 @@ test("fetchStoredEvidenceObject streams media from Supabase storage", async () =
 
   assert.equal(result.contentType, "image/png");
   assert.equal(result.data.toString(), "proof-bytes");
+});
+
+test("ensureEvidenceStorageBucket treats existing-bucket messages as ready", async () => {
+  const result = await ensureEvidenceStorageBucket({
+    supabaseUrl: "https://supabase-existing-bucket.example",
+    serviceKey: "service-key",
+    bucket: "qa-evidence",
+    fetchImpl: async () => ({
+      ok: false,
+      status: 400,
+      async json() {
+        return { message: "The resource already exists" };
+      }
+    })
+  });
+
+  assert.equal(result, true);
 });
 
 test("readEvidenceList includes journey step clip videos in lookup order", () => {
