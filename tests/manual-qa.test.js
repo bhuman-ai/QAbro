@@ -219,7 +219,7 @@ async function callWidgetFeedbackHandler(body, token) {
   return res;
 }
 
-test("manual QA widget prioritizes voice capture and hides advanced tools by default", () => {
+test("manual QA widget prioritizes video capture and hides advanced tools by default", () => {
   const script = buildManualQaWidgetScript({
     sessionId: "manual-voice-smoke",
     token: "widget-token",
@@ -227,11 +227,17 @@ test("manual QA widget prioritizes voice capture and hides advanced tools by def
   });
 
   assert.match(script, /Say what you notice/);
-  assert.match(script, /Tap the mic to record screen and voice\./);
-  assert.match(script, /class="bud-mic" data-action="record"/);
+  assert.match(script, /Not recording\. Records screen and voice after Chrome asks\./);
+  assert.match(script, /class="bud-record" data-action="record"/);
+  assert.match(script, /Record video/);
   assert.match(script, /data-action="toggle-tools"/);
+  assert.match(script, /id="bud-tools-panel"/);
   assert.match(script, /toolsOpen: false/);
   assert.doesNotMatch(script, /class="bud-tool" data-action="record"/);
+  assert.doesNotMatch(script, /data-status="pass"/);
+  assert.doesNotMatch(script, /data-status="fail"/);
+  assert.doesNotMatch(script, /data-status="confusing"/);
+  assert.doesNotMatch(script, /data-status="blocked"/);
 });
 
 test("buildManualQaChecklist uses explicit agent test plan start URLs", () => {
