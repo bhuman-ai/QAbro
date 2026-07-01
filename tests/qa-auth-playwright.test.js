@@ -1252,6 +1252,89 @@ test("performCredentialedLogin fills separate email, username, and confirmation 
   );
 });
 
+test("performCredentialedLogin derives missing signup password from scenario instructions", async () => {
+  await withServer(
+    {
+      "/customer/register": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html>
+          <html>
+            <body>
+              <form id="signup-form">
+                <label>First name <input type="text" name="first_name" /></label>
+                <label>Last name <input type="text" name="last_name" /></label>
+                <label>Email <input type="email" name="email" /></label>
+                <label>Phone <input type="tel" name="phone" /></label>
+                <label>Password <input type="password" name="password" placeholder="Enter new password" /></label>
+                <label>Confirm Password <input type="password" name="password_confirmation" placeholder="Enter password" /></label>
+                <button type="submit">Register</button>
+              </form>
+              <div id="error"></div>
+              <script>
+                document.getElementById("signup-form").addEventListener("submit", (event) => {
+                  event.preventDefault();
+                  const first = document.querySelector('input[name="first_name"]').value;
+                  const last = document.querySelector('input[name="last_name"]').value;
+                  const email = document.querySelector('input[name="email"]').value;
+                  const phone = document.querySelector('input[name="phone"]').value;
+                  const password = document.querySelector('input[name="password"]').value;
+                  const confirmation = document.querySelector('input[name="password_confirmation"]').value;
+                  if (first && last && email && phone && password === "Testpass1!" && confirmation === "Testpass1!") {
+                    window.location.href = "/app";
+                    return;
+                  }
+                  document.getElementById("error").textContent = "The password field is required.";
+                });
+              </script>
+            </body>
+          </html>`);
+      },
+      "/app": (_req, res) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<!doctype html><html><body><main><h1>Registered</h1></main></body></html>`);
+      }
+    },
+    async (baseUrl) => {
+      const browser = await chromium.launch({ headless: true });
+      try {
+        const page = await browser.newPage();
+        const runLog = [];
+        const result = await performCredentialedLogin(
+          page,
+          {
+            run_id: "signup_missing_password_from_scenario_test",
+            target_url: `${baseUrl}/customer/register`,
+            scope_mode: "feature_targeted",
+            credentials: {
+              login_url: `${baseUrl}/customer/register`,
+              username: "swarmtester@example.com",
+              password: null,
+              otp_mode: "none"
+            },
+            metadata: {
+              auth_policy: "signup_if_needed",
+              otp_provider: "none",
+              task_to_try: "Use password Testpass1! in the Password field and Testpass1! in Confirm Password."
+            },
+            scenario_list: [
+              "Use exactly Testpass1! for both password fields.",
+              "Do not click Register until both password fields are filled."
+            ]
+          },
+          { runLog }
+        );
+
+        assert.equal(result.attempted, true);
+        assert.equal(result.success, true);
+        assert.equal(page.url().startsWith(`${baseUrl}/app`), true);
+        assert.match(JSON.stringify(runLog), /"password_available":true/);
+      } finally {
+        await browser.close();
+      }
+    }
+  );
+});
+
 test("performCredentialedLogin fills separate first and last name fields on signup forms", async () => {
   await withServer(
     {
