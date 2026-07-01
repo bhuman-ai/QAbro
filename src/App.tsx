@@ -85,6 +85,8 @@ import type {
   AlertItem,
   AuthUser,
   LaunchDraft,
+  ManualQaItem,
+  ManualQaSession,
   McpTokenSummary,
   ProjectSummary,
   QaReport,
@@ -2270,8 +2272,9 @@ function WorkspacePage({
   const composeOpen = params.get("compose") === "1";
   const composeMode = params.get("compose_mode") === "advanced" ? "advanced" : "simple";
   const requestedRunId = String(params.get("run_id") || "").trim();
+  const requestedManualSessionId = String(params.get("session_id") || params.get("manual_session_id") || "").trim();
   const selectedBrandFilter = normalizeBrandKey(params.get("brand") || "");
-  const currentPanel = String(params.get("panel") || (requestedRunId ? "report" : "overview")).toLowerCase();
+  const currentPanel = String(params.get("panel") || (requestedManualSessionId ? "manual_qa" : requestedRunId ? "report" : "overview")).toLowerCase();
   const githubAppStatus = String(params.get("github_app_status") || "").trim().toLowerCase();
   const githubAppError = String(params.get("github_app_error") || "").trim().toLowerCase();
   const githubAppBrand = normalizeBrandKey(params.get("github_app_brand") || params.get("brand") || "");
@@ -2290,6 +2293,11 @@ function WorkspacePage({
   const [selectedStatus, setSelectedStatus] = useState<StatusResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const [manualQaSession, setManualQaSession] = useState<ManualQaSession | null>(null);
+  const [manualQaLoading, setManualQaLoading] = useState(false);
+  const [manualQaError, setManualQaError] = useState("");
+  const [manualQaBusyItemId, setManualQaBusyItemId] = useState("");
+  const [manualQaCopyFeedback, setManualQaCopyFeedback] = useState("");
   const [shareState, setShareState] = useState<ShareResponse | null>(null);
   const [copyFeedback, setCopyFeedback] = useState("");
   const [selectedFindingId, setSelectedFindingId] = useState("");
@@ -2391,6 +2399,7 @@ function WorkspacePage({
     normalizeBrandKey(
       selectedReport?.metadata?.brand_key as string ||
         selectedReport?.metadata?.brandKey as string ||
+        manualQaSession?.brand_key ||
         reports.find((item) => item.run_id === requestedRunId)?.brand_key ||
         launchDraft.brandKey
     );
@@ -2811,6 +2820,44 @@ function WorkspacePage({
       cancelled = true;
     };
   }, [isSharedView, requestedRunId, shareKey]);
+
+  useEffect(() => {
+    if (isSharedView || currentPanel !== "manual_qa" || !requestedManualSessionId) {
+      if (currentPanel !== "manual_qa") {
+        setManualQaError("");
+      }
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadManualQaSession() {
+      setManualQaLoading(true);
+      setManualQaError("");
+      try {
+        const response = await apiFetch<{ session: ManualQaSession }>("/api/manual-qa/sessions", {
+          params: { session_id: requestedManualSessionId }
+        });
+        if (!cancelled) {
+          setManualQaSession(response.session || null);
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          setManualQaSession(null);
+          setManualQaError(caught instanceof Error ? caught.message : "Could not load manual QA session.");
+        }
+      } finally {
+        if (!cancelled) {
+          setManualQaLoading(false);
+        }
+      }
+    }
+
+    loadManualQaSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPanel, isSharedView, requestedManualSessionId]);
 
   useEffect(() => {
     if (!requestedRunId || !selectedStatus) {
@@ -3437,6 +3484,55 @@ function WorkspacePage({
     }
   }
 
+  async function handleManualQaItemUpdate(item: ManualQaItem, status: ManualQaItem["status"], note: string, evidenceText: string) {
+    if (!requestedManualSessionId) {
+      setManualQaError("Manual QA session is missing.");
+      return;
+    }
+    setManualQaBusyItemId(item.id);
+    setManualQaError("");
+    try {
+      const evidenceUrls = evidenceText
+        .split(/\r?\n/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+      const response = await apiFetch<{ session: ManualQaSession }>("/api/manual-qa/items", {
+        method: "PATCH",
+        body: {
+          session_id: requestedManualSessionId,
+          item_id: item.id,
+          status,
+          note,
+          evidence_urls: evidenceUrls
+        }
+      });
+      setManualQaSession(response.session || null);
+    } catch (caught) {
+      setManualQaError(caught instanceof Error ? caught.message : "Could not save checklist item.");
+    } finally {
+      setManualQaBusyItemId("");
+    }
+  }
+
+  async function handleManualQaExport() {
+    if (!requestedManualSessionId) {
+      setManualQaCopyFeedback("Missing session");
+      window.setTimeout(() => setManualQaCopyFeedback(""), 1600);
+      return;
+    }
+    try {
+      const response = await apiFetch<{ markdown: string }>("/api/manual-qa/export", {
+        params: { session_id: requestedManualSessionId }
+      });
+      await copyText(response.markdown || "");
+      setManualQaCopyFeedback("Copied report");
+      window.setTimeout(() => setManualQaCopyFeedback(""), 1600);
+    } catch (caught) {
+      setManualQaCopyFeedback(caught instanceof Error ? caught.message : "Could not export");
+      window.setTimeout(() => setManualQaCopyFeedback(""), 2200);
+    }
+  }
+
   async function handleSaveSchedule(override?: {
     name?: string;
     frequency_hours: number;
@@ -3964,7 +4060,7 @@ function WorkspacePage({
     return <LoadingShell label="Loading your dashboard..." />;
   }
 
-  function openPanel(panel: string, options: { brand?: string | null; runId?: string | null; keepRun?: boolean } = {}) {
+  function openPanel(panel: string, options: { brand?: string | null; runId?: string | null; sessionId?: string | null; keepRun?: boolean } = {}) {
     const next = new URLSearchParams(route.search);
     next.set("panel", panel);
     next.delete("compose");
@@ -3981,9 +4077,18 @@ function WorkspacePage({
         next.set("run_id", fallbackRunId);
       }
       next.set("view", currentView || "report");
+      next.delete("session_id");
+    } else if (panel === "manual_qa") {
+      const fallbackSessionId = options.sessionId || requestedManualSessionId || "";
+      if (fallbackSessionId) {
+        next.set("session_id", fallbackSessionId);
+      }
+      next.delete("run_id");
+      next.delete("view");
     } else if (!options.keepRun) {
       next.delete("run_id");
       next.delete("view");
+      next.delete("session_id");
     }
 
     startTransition(() => navigate("/dashboard", next));
@@ -4024,7 +4129,8 @@ function WorkspacePage({
     navigate("/dashboard", next);
   }
 
-  const resolvedPanel = !onboardingSeen && emptyWorkspace && currentPanel !== "help" ? "onboarding" : currentPanel;
+  const resolvedPanel =
+    !onboardingSeen && emptyWorkspace && !["help", "manual_qa"].includes(currentPanel) ? "onboarding" : currentPanel;
   const canShowReportPanel = Boolean(requestedRunId || selectedRun || selectedReport);
   const previousRun = requestedRunId ? sameBrandRuns.find((run, index) => sameBrandRuns[index + 1]?.run_id === requestedRunId) || null : null;
   const currentRunIndex = sameBrandRuns.findIndex((run) => run.run_id === requestedRunId);
@@ -4104,6 +4210,19 @@ function WorkspacePage({
     );
   } else if (resolvedPanel === "help") {
     workspaceContent = <StarterHelpCenter onBack={() => openPanel(activeStarterBrand ? "overview" : "onboarding", { brand: currentBrandKey || "" })} />;
+  } else if (resolvedPanel === "manual_qa") {
+    workspaceContent = (
+      <ManualQaPage
+        session={manualQaSession}
+        loading={manualQaLoading}
+        error={manualQaError}
+        busyItemId={manualQaBusyItemId}
+        copyFeedback={manualQaCopyFeedback}
+        onBack={() => openPanel("overview", { brand: currentBrandKey || "" })}
+        onUpdateItem={handleManualQaItemUpdate}
+        onExport={handleManualQaExport}
+      />
+    );
   } else if (resolvedPanel === "report" && canShowReportPanel) {
     workspaceContent = (
       <StarterReportPage
@@ -5946,6 +6065,309 @@ function LiveSessionEmbed({
         />
       </div>
     </div>
+  );
+}
+
+function getManualQaItemTone(status: ManualQaItem["status"] | string) {
+  if (status === "pass") return "success";
+  if (status === "fail" || status === "blocked") return "danger";
+  if (status === "confusing") return "warning";
+  return "neutral";
+}
+
+function getManualQaItemLabel(status: ManualQaItem["status"] | string) {
+  if (status === "pass") return "Pass";
+  if (status === "fail") return "Fail";
+  if (status === "confusing") return "Confusing";
+  if (status === "blocked") return "Blocked";
+  if (status === "skip") return "Skipped";
+  return "Pending";
+}
+
+function ManualQaPage({
+  session,
+  loading,
+  error,
+  busyItemId,
+  copyFeedback,
+  onBack,
+  onUpdateItem,
+  onExport
+}: {
+  session: ManualQaSession | null;
+  loading: boolean;
+  error: string;
+  busyItemId: string;
+  copyFeedback: string;
+  onBack: () => void;
+  onUpdateItem: (item: ManualQaItem, status: ManualQaItem["status"], note: string, evidenceText: string) => Promise<void>;
+  onExport: () => Promise<void>;
+}) {
+  const checklist = session?.checklist || [];
+  const firstPending = checklist.find((item) => item.status === "pending") || checklist[0] || null;
+  const [selectedItemId, setSelectedItemId] = useState(firstPending?.id || "");
+  const selectedItem = checklist.find((item) => item.id === selectedItemId) || firstPending;
+  const [noteDraft, setNoteDraft] = useState("");
+  const [evidenceDraft, setEvidenceDraft] = useState("");
+  const counts = session?.counts || {};
+  const browserEmbedUrl = String(session?.browser?.embed_url || session?.browser?.viewer_url || "").trim();
+  const browserViewerUrl = String(session?.browser?.viewer_url || session?.browser?.embed_url || "").trim();
+  const targetUrl = String(session?.target_url || session?.browser?.target_url || "").trim();
+
+  useEffect(() => {
+    if (!selectedItemId && firstPending?.id) {
+      setSelectedItemId(firstPending.id);
+    }
+  }, [firstPending?.id, selectedItemId]);
+
+  useEffect(() => {
+    setNoteDraft(selectedItem?.note || "");
+    setEvidenceDraft((selectedItem?.evidence_urls || []).join("\n"));
+  }, [selectedItem?.id, selectedItem?.note, selectedItem?.evidence_urls]);
+
+  async function saveSelected(status: ManualQaItem["status"]) {
+    if (!selectedItem) {
+      return;
+    }
+    await onUpdateItem(selectedItem, status, noteDraft, evidenceDraft);
+  }
+
+  return (
+    <section className="min-h-screen bg-brand-bg text-brand-ink">
+      <div className="border-b border-brand-line bg-brand-shell px-4 py-4 sm:px-6">
+        <div className="mx-auto flex max-w-[1500px] flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <button
+              type="button"
+              onClick={onBack}
+              className="mb-3 inline-flex items-center gap-2 text-sm font-semibold text-brand-muted hover:text-brand-ink"
+            >
+              <ChevronRight className="h-4 w-4 rotate-180" />
+              Dashboard
+            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill label={formatStatusLabel(session?.status || "manual_ready")} tone={getStatusTone(session?.status || "manual_ready")} />
+              <span className="text-sm text-brand-muted">{session?.brand_name || session?.brand_key || "Manual QA"}</span>
+            </div>
+            <h1 className="mt-3 text-2xl font-semibold tracking-tight text-brand-ink sm:text-3xl">
+              {session?.title || "Manual QA session"}
+            </h1>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-brand-muted">
+              {targetUrl ? <span className="break-all">{targetUrl}</span> : null}
+              {session?.updated_at ? <span>{formatDateTime(session.updated_at)}</span> : null}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {targetUrl ? (
+              <a
+                href={targetUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-brand-line bg-brand-shell px-3.5 py-2 text-sm font-semibold text-brand-ink transition-colors hover:bg-brand-bg"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Target
+              </a>
+            ) : null}
+            <Button tone="secondary" onClick={onExport} disabled={!session}>
+              <Copy className="h-4 w-4" />
+              {copyFeedback || "Copy report"}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto grid max-w-[1500px] gap-5 px-4 py-5 lg:grid-cols-[390px_1fr] sm:px-6">
+        <aside className="space-y-4">
+          <div className="rounded-xl border border-brand-line bg-brand-shell p-4 shadow-shell">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold text-brand-ink">Checklist</div>
+              <div className="text-xs font-semibold text-brand-muted">
+                {(counts.pass || 0) + (counts.fail || 0) + (counts.confusing || 0) + (counts.blocked || 0) + (counts.skip || 0)}/{checklist.length || 0}
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="rounded-lg border border-brand-line bg-brand-panel px-2 py-2">
+                <div className="font-semibold text-brand-success">{counts.pass || 0}</div>
+                <div className="text-brand-muted">Pass</div>
+              </div>
+              <div className="rounded-lg border border-brand-line bg-brand-panel px-2 py-2">
+                <div className="font-semibold text-brand-danger">{counts.fail || 0}</div>
+                <div className="text-brand-muted">Fail</div>
+              </div>
+              <div className="rounded-lg border border-brand-line bg-brand-panel px-2 py-2">
+                <div className="font-semibold text-brand-warning">{(counts.confusing || 0) + (counts.blocked || 0)}</div>
+                <div className="text-brand-muted">Needs note</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-brand-line bg-brand-shell shadow-shell">
+            {loading ? (
+              <div className="px-4 py-6 text-sm text-brand-muted">
+                <LoaderCircle className="mr-2 inline h-4 w-4 animate-spin" />
+                Loading manual QA
+              </div>
+            ) : error ? (
+              <div className="px-4 py-6 text-sm text-brand-danger">{error}</div>
+            ) : !checklist.length ? (
+              <div className="px-4 py-6 text-sm text-brand-muted">No checklist was found for this session.</div>
+            ) : (
+              <div className="divide-y divide-brand-line">
+                {checklist.map((item, index) => {
+                  const active = selectedItem?.id === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setSelectedItemId(item.id)}
+                      className={`w-full px-4 py-3 text-left transition-colors ${
+                        active ? "bg-brand-bg" : "hover:bg-brand-bg/70"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-brand-muted">Item {index + 1}</div>
+                          <div className="mt-1 line-clamp-2 text-sm font-semibold text-brand-ink">{item.title}</div>
+                        </div>
+                        <StatusPill label={getManualQaItemLabel(item.status)} tone={getManualQaItemTone(item.status)} />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <main className="space-y-5">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="space-y-4">
+              {browserEmbedUrl ? (
+                <LiveSessionEmbed
+                  embedUrl={browserEmbedUrl}
+                  viewerUrl={browserViewerUrl}
+                  title="Hosted Chromium"
+                  className="bg-brand-shell shadow-shell"
+                  frameClassName="h-[calc(100vh-280px)] min-h-[520px]"
+                />
+              ) : (
+                <div className="rounded-xl border border-brand-line bg-brand-shell p-6 shadow-shell">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-brand-ink">
+                    <CircleAlert className="h-4 w-4 text-brand-warning" />
+                    Hosted Chromium is not configured
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-brand-muted">
+                    This session can still collect checklist feedback, but the remote browser viewer needs the live-stream worker env vars before it can pop out here.
+                  </p>
+                  {targetUrl ? (
+                    <a
+                      href={targetUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-brand-accent"
+                    >
+                      Open target URL
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  ) : null}
+                </div>
+              )}
+
+              {session?.context?.work_summary || session?.context?.developer_notes ? (
+                <div className="rounded-xl border border-brand-line bg-brand-shell p-4 shadow-shell">
+                  <div className="text-sm font-semibold text-brand-ink">Agent context</div>
+                  {session.context.work_summary ? (
+                    <p className="mt-3 text-sm leading-6 text-brand-muted">{session.context.work_summary}</p>
+                  ) : null}
+                  {session.context.developer_notes ? (
+                    <p className="mt-3 text-sm leading-6 text-brand-muted">{session.context.developer_notes}</p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-xl border border-brand-line bg-brand-shell p-4 shadow-shell">
+              {selectedItem ? (
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between gap-3">
+                      <StatusPill label={getManualQaItemLabel(selectedItem.status)} tone={getManualQaItemTone(selectedItem.status)} />
+                      {selectedItem.start_url ? (
+                        <a
+                          href={selectedItem.start_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-brand-accent"
+                        >
+                          Start here
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      ) : null}
+                    </div>
+                    <h2 className="mt-3 text-lg font-semibold text-brand-ink">{selectedItem.title}</h2>
+                    {selectedItem.instructions ? (
+                      <p className="mt-2 text-sm leading-6 text-brand-muted">{selectedItem.instructions}</p>
+                    ) : null}
+                    {selectedItem.expected ? (
+                      <div className="mt-3 rounded-lg border border-brand-line bg-brand-panel px-3 py-2 text-sm leading-6 text-brand-muted">
+                        <span className="font-semibold text-brand-ink">Expected: </span>
+                        {selectedItem.expected}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <FieldLabel>Tester note</FieldLabel>
+                    <TextArea
+                      value={noteDraft}
+                      onChange={(event) => setNoteDraft(event.target.value)}
+                      placeholder="What happened? What should the developer see?"
+                      className="min-h-[130px]"
+                    />
+                  </div>
+
+                  <div>
+                    <FieldLabel>Evidence links</FieldLabel>
+                    <TextArea
+                      value={evidenceDraft}
+                      onChange={(event) => setEvidenceDraft(event.target.value)}
+                      placeholder="One screenshot, recording, or issue URL per line"
+                      className="min-h-[86px]"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button tone="primary" onClick={() => saveSelected("pass")} disabled={busyItemId === selectedItem.id}>
+                      <Check className="h-4 w-4" />
+                      Pass
+                    </Button>
+                    <Button tone="danger" onClick={() => saveSelected("fail")} disabled={busyItemId === selectedItem.id}>
+                      <TriangleAlert className="h-4 w-4" />
+                      Fail
+                    </Button>
+                    <Button tone="secondary" onClick={() => saveSelected("confusing")} disabled={busyItemId === selectedItem.id}>
+                      <CircleAlert className="h-4 w-4" />
+                      Confusing
+                    </Button>
+                    <Button tone="secondary" onClick={() => saveSelected("blocked")} disabled={busyItemId === selectedItem.id}>
+                      <Lock className="h-4 w-4" />
+                      Blocked
+                    </Button>
+                  </div>
+
+                  <Button tone="ghost" className="w-full" onClick={() => saveSelected("skip")} disabled={busyItemId === selectedItem.id}>
+                    Skip item
+                  </Button>
+                </div>
+              ) : (
+                <div className="text-sm text-brand-muted">Pick a checklist item to record feedback.</div>
+              )}
+            </div>
+          </div>
+        </main>
+      </div>
+    </section>
   );
 }
 

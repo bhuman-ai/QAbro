@@ -300,6 +300,60 @@ export interface WorkerInfo {
   [key: string]: unknown;
 }
 
+export interface ManualQaItem {
+  id: string;
+  title: string;
+  instructions?: string | null;
+  expected?: string | null;
+  start_url?: string | null;
+  area?: string | null;
+  source?: string | null;
+  status: "pending" | "pass" | "fail" | "confusing" | "blocked" | "skip";
+  note?: string | null;
+  evidence_urls?: string[];
+  created_at?: string | null;
+  reviewed_at?: string | null;
+}
+
+export interface ManualQaSession {
+  session_id: string;
+  title?: string | null;
+  target_url?: string | null;
+  brand_key?: string | null;
+  brand_name?: string | null;
+  status?: string | null;
+  counts?: Record<string, number>;
+  created_at?: string | null;
+  updated_at?: string | null;
+  completed_at?: string | null;
+  session_url?: string | null;
+  browser?: {
+    mode?: string | null;
+    status?: string | null;
+    target_url?: string | null;
+    viewer_url?: string | null;
+    embed_url?: string | null;
+    live_stream_enabled?: boolean;
+    note?: string | null;
+    [key: string]: unknown;
+  } | null;
+  checklist?: ManualQaItem[];
+  context?: {
+    work_summary?: string | null;
+    feature_name?: string | null;
+    acceptance_criteria?: string[];
+    scenario_list?: string[];
+    changed_files?: string[];
+    repository?: string | null;
+    branch?: string | null;
+    commit_sha?: string | null;
+    pull_request_url?: string | null;
+    developer_notes?: string | null;
+    [key: string]: unknown;
+  } | null;
+  requested_by?: Record<string, unknown> | null;
+}
+
 export interface WorkerSummary {
   total?: number;
   healthy?: number;

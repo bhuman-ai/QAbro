@@ -87,6 +87,19 @@ function buildReportText(payload) {
   ]);
 }
 
+function buildManualSessionText(payload) {
+  const session = payload?.session && typeof payload.session === "object" ? payload.session : {};
+  const checklist = Array.isArray(session.checklist) ? session.checklist : [];
+  return buildText([
+    `Manual QA session ${session.session_id || payload.session_id || "created"}.`,
+    session.target_url ? `Target: ${session.target_url}` : "",
+    checklist.length ? `Checklist: ${checklist.length} items.` : "",
+    session.browser?.status ? `Browser: ${session.browser.status}.` : "",
+    payload.manual_session_url || session.session_url ? `Open manual QA: ${payload.manual_session_url || session.session_url}` : "",
+    session.session_id ? `Report resource: qa://manual/${encodeURIComponent(session.session_id)}/report.md` : ""
+  ]);
+}
+
 async function maybeSendProgress(extra, progress, total, message) {
   if (!extra?._meta || extra._meta.progressToken === undefined) {
     return;
@@ -167,6 +180,42 @@ function buildCodingAgentCheckInputSchema() {
   };
 }
 
+function buildManualQaSessionInputSchema() {
+  return {
+    target_url: z.string().url().describe("Preview, staging, localhost tunnel, or production URL the human should test."),
+    brand: z.string().max(256).optional().describe("Brand slug or project key."),
+    brand_name: z.string().max(180).optional(),
+    title: z.string().max(180).optional().describe("Short title for the manual QA session."),
+    feature_name: z.string().max(240).optional().describe("Feature label, for example 'onboarding recommendations'."),
+    work_summary: z.string().max(4000).optional().describe("Plain-English summary of what changed."),
+    change_summary: z.string().max(4000).optional().describe("Alias for work_summary."),
+    acceptance_criteria: z.array(z.string().max(900)).max(24).optional(),
+    scenario_list: z.array(z.string().max(1000)).max(24).optional(),
+    changed_files: z.array(z.string().max(400)).max(60).optional(),
+    repository: z.string().max(500).optional(),
+    branch: z.string().max(240).optional(),
+    commit_sha: z.string().max(120).optional(),
+    pull_request_url: z.string().url().optional(),
+    developer_notes: z.string().max(4000).optional(),
+    entry_path: z.string().max(1000).optional().describe("Optional path to use when generated checklist items need a start URL."),
+    test_plan: z
+      .array(
+        z.object({
+          id: z.string().max(80).optional(),
+          title: z.string().max(180).optional(),
+          instructions: z.string().max(1600).optional(),
+          expected: z.string().max(1200).optional(),
+          start_url: z.string().max(4096).optional(),
+          path: z.string().max(1000).optional(),
+          area: z.string().max(180).optional()
+        })
+      )
+      .max(24)
+      .optional()
+      .describe("Explicit human checklist. Use this when you know exactly where each test should start.")
+  };
+}
+
 function registerQaResources(server, apiClient) {
   const readers = createQaResourceReaders(apiClient);
 
@@ -224,6 +273,28 @@ function registerQaResources(server, apiClient) {
     },
     async (uri, variables) => {
       const resource = await readers.readRunReportMarkdown(variables.run_id);
+      return {
+        contents: [
+          {
+            uri: uri.toString(),
+            mimeType: resource.mimeType,
+            text: resource.text
+          }
+        ]
+      };
+    }
+  );
+
+  server.registerResource(
+    "manual-qa-report-markdown",
+    new ResourceTemplate(MCP_QA_RESOURCE_TEMPLATES.manual_qa_report_markdown, { list: undefined }),
+    {
+      title: "Manual QA Report Markdown",
+      description: "Human tester feedback exported as Markdown for a coding agent.",
+      mimeType: "text/markdown"
+    },
+    async (uri, variables) => {
+      const resource = await readers.readManualQaReportMarkdown(variables.session_id);
       return {
         contents: [
           {
@@ -390,6 +461,67 @@ function createQaMcpServer(options = {}) {
         const text = buildText([
           `Created share link for ${run_id}.`,
           response.share_url ? `Share URL: ${response.share_url}` : ""
+        ]);
+        return makeToolResult(text, response);
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_create_manual_session",
+    {
+      title: "Create Manual QA Session",
+      description:
+        "Create a hosted manual QA workspace with a checklist and pop-out Chromium viewer for a human tester.",
+      inputSchema: buildManualQaSessionInputSchema()
+    },
+    async (input) => {
+      try {
+        const response = await apiClient.createManualQaSession(input);
+        return makeToolResult(buildManualSessionText(response), response);
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_get_manual_session",
+    {
+      title: "Get Manual QA Session",
+      description: "Fetch checklist status for a manual QA session.",
+      inputSchema: {
+        session_id: z.string().max(128)
+      }
+    },
+    async ({ session_id }) => {
+      try {
+        const response = await apiClient.getManualQaSession(session_id);
+        return makeToolResult(buildManualSessionText(response), response);
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_get_manual_report",
+    {
+      title: "Get Manual QA Report",
+      description: "Export the human manual QA checklist as redacted Markdown and JSON.",
+      inputSchema: {
+        session_id: z.string().max(128)
+      }
+    },
+    async ({ session_id }) => {
+      try {
+        const response = await apiClient.exportManualQaSession(session_id);
+        const text = buildText([
+          `Manual QA report for ${session_id}.`,
+          response.markdown || "",
+          `Resource: qa://manual/${encodeURIComponent(session_id)}/report.md`
         ]);
         return makeToolResult(text, response);
       } catch (error) {
@@ -570,13 +702,17 @@ function printHelp() {
     "- qa_wait_for_run",
     "- qa_get_run_report",
     "- qa_share_run_report",
+    "- qa_create_manual_session",
+    "- qa_get_manual_session",
+    "- qa_get_manual_report",
     "- qa_run_feature_check",
     "- qa_check_work",
     "",
     "Resources:",
     `- ${MCP_QA_RESOURCE_TEMPLATES.run_status}`,
     `- ${MCP_QA_RESOURCE_TEMPLATES.run_report}`,
-    `- ${MCP_QA_RESOURCE_TEMPLATES.run_report_markdown}`
+    `- ${MCP_QA_RESOURCE_TEMPLATES.run_report_markdown}`,
+    `- ${MCP_QA_RESOURCE_TEMPLATES.manual_qa_report_markdown}`
   ]);
   process.stdout.write(`${message}\n`);
 }
