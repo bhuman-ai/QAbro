@@ -12,6 +12,7 @@ const {
   updateManualQaWidgetItem,
   updateManualQaItem
 } = require("../lib/manual-qa");
+const widgetEvidenceChunksHandler = require("../api/manual-qa/widget-evidence-chunks");
 
 function createSupabaseFetchMock() {
   const rows = new Map();
@@ -61,6 +62,142 @@ function createSupabaseFetchMock() {
   }
 
   return { fetchImpl, rows, calls };
+}
+
+function createRes() {
+  return {
+    statusCode: 200,
+    headers: {},
+    body: null,
+    setHeader(name, value) {
+      this.headers[name] = value;
+    },
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(payload) {
+      this.body = payload;
+      return this;
+    },
+    end(payload) {
+      this.body = payload || null;
+      return this;
+    }
+  };
+}
+
+function createSupabaseAndStorageFetchMock() {
+  const rows = new Map();
+  const objects = new Map();
+  const calls = [];
+
+  async function fetchImpl(url, options = {}) {
+    calls.push({ url, options });
+    const parsed = new URL(url);
+
+    if (parsed.pathname === "/storage/v1/bucket") {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return { id: "qa-evidence" };
+        }
+      };
+    }
+
+    if (parsed.pathname.includes("/storage/v1/object/qa-evidence/")) {
+      const objectPath = parsed.pathname
+        .split("/storage/v1/object/qa-evidence/")[1]
+        .split("/")
+        .map((segment) => decodeURIComponent(segment))
+        .join("/");
+      if (options.method === "POST") {
+        const data = Buffer.isBuffer(options.body) ? options.body : Buffer.from(options.body || []);
+        objects.set(objectPath, {
+          data,
+          contentType: options.headers?.["Content-Type"] || "application/octet-stream"
+        });
+        return {
+          ok: true,
+          status: 200,
+          async json() {
+            return { Key: objectPath };
+          }
+        };
+      }
+      const stored = objects.get(objectPath);
+      return {
+        ok: Boolean(stored),
+        status: stored ? 200 : 404,
+        headers: {
+          get(name) {
+            return String(name || "").toLowerCase() === "content-type" ? stored?.contentType || "" : "";
+          }
+        },
+        async arrayBuffer() {
+          return stored ? stored.data.buffer.slice(stored.data.byteOffset, stored.data.byteOffset + stored.data.byteLength) : new ArrayBuffer(0);
+        }
+      };
+    }
+
+    const runFilter = parsed.searchParams.get("run_id") || "";
+    const runId = runFilter.startsWith("eq.") ? runFilter.slice(3) : "";
+
+    if (options.method === "POST") {
+      const body = JSON.parse(options.body || "[]");
+      const row = { id: 1, created_at: "2026-07-01T00:00:00.000Z", updated_at: "2026-07-01T00:00:00.000Z", ...body[0] };
+      rows.set(row.run_id, row);
+      return {
+        ok: true,
+        status: 201,
+        async json() {
+          return [row];
+        }
+      };
+    }
+
+    if (options.method === "PATCH") {
+      const current = rows.get(runId);
+      const body = JSON.parse(options.body || "{}");
+      const next = { ...current, ...body, updated_at: "2026-07-01T00:01:00.000Z" };
+      rows.set(runId, next);
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return [next];
+        }
+      };
+    }
+
+    const row = rows.get(runId);
+    return {
+      ok: true,
+      status: 200,
+      async json() {
+        return row ? [row] : [];
+      }
+    };
+  }
+
+  return { fetchImpl, rows, objects, calls };
+}
+
+async function callWidgetChunksHandler(body, token) {
+  const req = {
+    method: "POST",
+    headers: {
+      host: "beforeusersdo.com",
+      "x-forwarded-proto": "https",
+      "x-bud-widget-token": token
+    },
+    query: {},
+    body
+  };
+  const res = createRes();
+  await widgetEvidenceChunksHandler(req, res);
+  return res;
 }
 
 test("buildManualQaChecklist uses explicit agent test plan start URLs", () => {
@@ -249,6 +386,104 @@ test("manual QA browser state defaults to user's own browser sidecar without rem
     assert.equal(payload.session.widget.mode, "in_page_overlay");
     assert.match(payload.widgetInstall.script_tag, /api\/manual-qa\/widget\.js/);
   } finally {
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
+test("widget chunk endpoint assembles recording chunks into one evidence item", async () => {
+  const previousEnv = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
+    QA_EVIDENCE_STORAGE_BUCKET: process.env.QA_EVIDENCE_STORAGE_BUCKET,
+    QA_WIDGET_MAX_RECORDING_BYTES: process.env.QA_WIDGET_MAX_RECORDING_BYTES
+  };
+  const previousFetch = globalThis.fetch;
+  const mock = createSupabaseAndStorageFetchMock();
+  process.env.SUPABASE_URL = "https://supabase-chunks.example.com";
+  process.env.SUPABASE_SERVICE_KEY = "service";
+  process.env.QA_EVIDENCE_STORAGE_BUCKET = "qa-evidence";
+  process.env.QA_WIDGET_MAX_RECORDING_BYTES = "1024";
+  globalThis.fetch = mock.fetchImpl;
+
+  try {
+    const created = await createManualQaSession(
+      {
+        target_url: "https://preview.example.com",
+        brand: "Example",
+        title: "Chunk upload pass",
+        acceptance_criteria: ["Recording evidence can be uploaded."]
+      },
+      {
+        publicBaseUrl: "https://beforeusersdo.com",
+        ownerUserId: "user_1",
+        fetchImpl: mock.fetchImpl,
+        supabaseUrl: "https://supabase-chunks.example.com",
+        serviceKey: "service"
+      }
+    );
+    const item = created.session.checklist[0];
+    const widgetToken = new URL(created.widget_install.script_url).searchParams.get("token");
+
+    const chunkA = await callWidgetChunksHandler(
+      {
+        action: "chunk",
+        session_id: created.session.session_id,
+        token: widgetToken,
+        upload_id: "upload-1",
+        chunk_index: 0,
+        kind: "video",
+        filename: "review.webm",
+        content_type: "video/webm",
+        data_url: `data:video/webm;base64,${Buffer.from("first-").toString("base64")}`
+      },
+      widgetToken
+    );
+    const chunkB = await callWidgetChunksHandler(
+      {
+        action: "chunk",
+        session_id: created.session.session_id,
+        token: widgetToken,
+        upload_id: "upload-1",
+        chunk_index: 1,
+        kind: "video",
+        filename: "review.webm",
+        content_type: "video/webm",
+        data_url: `data:video/webm;base64,${Buffer.from("second").toString("base64")}`
+      },
+      widgetToken
+    );
+    assert.equal(chunkA.statusCode, 201);
+    assert.equal(chunkB.statusCode, 201);
+
+    const finished = await callWidgetChunksHandler(
+      {
+        action: "finish",
+        session_id: created.session.session_id,
+        token: widgetToken,
+        item_id: item.id,
+        kind: "video",
+        filename: "review.webm",
+        content_type: "video/webm",
+        chunks: [chunkB.body.chunk, chunkA.body.chunk]
+      },
+      widgetToken
+    );
+
+    assert.equal(finished.statusCode, 201);
+    assert.equal(finished.body.item.evidence_media.length, 1);
+    assert.equal(finished.body.item.evidence_media[0].kind, "video");
+    assert.equal(finished.body.item.evidence_media[0].byte_length, Buffer.byteLength("first-second"));
+    assert.match(finished.body.evidence_url, /api\/manual-qa\/evidence/);
+    const storedVideo = mock.objects.get(finished.body.item.evidence_media[0].storage_path);
+    assert.equal(storedVideo.data.toString(), "first-second");
+  } finally {
+    globalThis.fetch = previousFetch;
     for (const [key, value] of Object.entries(previousEnv)) {
       if (value === undefined) {
         delete process.env[key];
