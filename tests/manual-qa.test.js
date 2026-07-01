@@ -15,6 +15,7 @@ const {
 } = require("../lib/manual-qa");
 const widgetEvidenceChunksHandler = require("../api/manual-qa/widget-evidence-chunks");
 const widgetFeedbackHandler = require("../api/manual-qa/widget-feedback");
+const { buildManualQaWidgetScript } = require("../lib/manual-qa-widget");
 
 function createSupabaseFetchMock() {
   const rows = new Map();
@@ -217,6 +218,21 @@ async function callWidgetFeedbackHandler(body, token) {
   await widgetFeedbackHandler(req, res);
   return res;
 }
+
+test("manual QA widget prioritizes voice capture and hides advanced tools by default", () => {
+  const script = buildManualQaWidgetScript({
+    sessionId: "manual-voice-smoke",
+    token: "widget-token",
+    apiBaseUrl: "https://beforeusersdo.com"
+  });
+
+  assert.match(script, /Say what you notice/);
+  assert.match(script, /Tap the mic to record screen and voice\./);
+  assert.match(script, /class="bud-mic" data-action="record"/);
+  assert.match(script, /data-action="toggle-tools"/);
+  assert.match(script, /toolsOpen: false/);
+  assert.doesNotMatch(script, /class="bud-tool" data-action="record"/);
+});
 
 test("buildManualQaChecklist uses explicit agent test plan start URLs", () => {
   const items = buildManualQaChecklist({
