@@ -234,6 +234,8 @@ test("manual QA widget prioritizes video capture and hides advanced tools by def
   assert.match(script, /id="bud-tools-panel"/);
   assert.match(script, /toolsOpen: false/);
   assert.doesNotMatch(script, /class="bud-tool" data-action="record"/);
+  assert.doesNotMatch(script, /data-action="save-drawing"/);
+  assert.doesNotMatch(script, /Save drawing/);
   assert.doesNotMatch(script, /data-status="pass"/);
   assert.doesNotMatch(script, /data-status="fail"/);
   assert.doesNotMatch(script, /data-status="confusing"/);
