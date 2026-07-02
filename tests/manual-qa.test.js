@@ -250,6 +250,9 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /rememberWidgetOpen\(true\)/);
   assert.match(script, /rememberWidgetOpen\(false\)/);
   assert.match(script, /openWidget\(\{ load: false \}\)/);
+  assert.match(script, /stopRecordingAndWait/);
+  assert.match(script, /label: "Drawing annotation"/);
+  assert.match(script, /label: "Video recording"/);
   assert.doesNotMatch(script, /Say what you notice/);
   assert.doesNotMatch(script, /bud-capture-title/);
   assert.doesNotMatch(script, /bud-note-hint/);
@@ -525,7 +528,10 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
           viewport: { width: 1440, height: 900, device_pixel_ratio: 2 },
           page_errors: [{ type: "error", message: "Hydration failed" }],
           console_events: [{ type: "error", message: "Cannot read properties of undefined" }],
-          network_events: [{ method: "GET", status: 500, url: "https://preview.example.com/api/cards?token=abc123" }]
+          network_events: [
+            { method: "GET", status: 200, url: "https://preview.example.com/api/ok", message: "loaded" },
+            { method: "GET", status: 500, url: "https://preview.example.com/api/cards?token=abc123" }
+          ]
         }
       },
       {
@@ -537,10 +543,59 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
     );
     assert.equal(updated.ok, true);
 
-    const directMarkdown = buildManualQaAgentFeedbackMarkdown(updated.session, { item_id: item.id });
+    const withDrawing = await appendManualQaItemEvidence(
+      created.session.session_id,
+      item.id,
+      {
+        kind: "screenshot",
+        label: "Drawing annotation",
+        content_type: "image/png",
+        byte_length: 4096,
+        storage_bucket: "qa-evidence",
+        storage_path: "manual/drawing.png",
+        url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=feedback&item_id=item&index=0&token=abc123"
+      },
+      {
+        widgetAccessOk: true,
+        fetchImpl: mock.fetchImpl,
+        supabaseUrl: "https://supabase-feedback.example.com",
+        serviceKey: "service"
+      }
+    );
+    assert.equal(withDrawing.ok, true);
+
+    const withVideo = await appendManualQaItemEvidence(
+      created.session.session_id,
+      item.id,
+      {
+        kind: "video",
+        label: "Video recording",
+        content_type: "video/webm",
+        byte_length: 2 * 1024 * 1024,
+        storage_bucket: "qa-evidence",
+        storage_path: "manual/video.webm",
+        url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=feedback&item_id=item&index=1&token=abc123"
+      },
+      {
+        widgetAccessOk: true,
+        fetchImpl: mock.fetchImpl,
+        supabaseUrl: "https://supabase-feedback.example.com",
+        serviceKey: "service"
+      }
+    );
+    assert.equal(withVideo.ok, true);
+
+    const directMarkdown = buildManualQaAgentFeedbackMarkdown(withVideo.session, { item_id: item.id });
     assert.match(directMarkdown, /single checklist item/);
     assert.match(directMarkdown, /The card still shows generic copy/);
     assert.match(directMarkdown, /Hydration failed/);
+    assert.match(directMarkdown, /Captured media:/);
+    assert.match(directMarkdown, /Drawing \(Drawing annotation, image\/png, 4 KB/);
+    assert.match(directMarkdown, /Video recording \(Video recording, video\/webm, 2\.0 MB/);
+    assert.match(directMarkdown, /api\/manual-qa\/evidence\?session_id=feedback/);
+    assert.match(directMarkdown, /GET 500 https:\/\/preview\.example\.com\/api\/cards\?token=%5Bredacted%5D/);
+    assert.doesNotMatch(directMarkdown, /api\/ok/);
+    assert.doesNotMatch(directMarkdown, /Captured media: 2 files/);
     assert.doesNotMatch(directMarkdown, /abc123/);
 
     const feedback = await callWidgetFeedbackHandler(
@@ -559,6 +614,8 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
     assert.match(feedback.body.markdown, /BeforeUsersDo Manual QA Feedback/);
     assert.match(feedback.body.markdown, /The card still shows generic copy/);
     assert.match(feedback.body.markdown, /Cannot read properties of undefined/);
+    assert.match(feedback.body.markdown, /Drawing \(Drawing annotation, image\/png, 4 KB/);
+    assert.match(feedback.body.markdown, /Video recording \(Video recording, video\/webm, 2\.0 MB/);
     assert.match(feedback.body.markdown, /token=%5Bredacted%5D/);
     assert.doesNotMatch(feedback.body.markdown, /abc123/);
   } finally {
@@ -645,6 +702,7 @@ test("widget chunk endpoint assembles recording chunks into one evidence item", 
         token: widgetToken,
         item_id: item.id,
         kind: "video",
+        label: "Video recording",
         filename: "review.webm",
         content_type: "video/webm;codecs=vp8,opus",
         chunks: [chunkB.body.chunk, chunkA.body.chunk]
@@ -655,8 +713,11 @@ test("widget chunk endpoint assembles recording chunks into one evidence item", 
     assert.equal(finished.statusCode, 201);
     assert.equal(finished.body.item.evidence_media.length, 1);
     assert.equal(finished.body.item.evidence_media[0].kind, "video");
+    assert.equal(finished.body.item.evidence_media[0].label, "Video recording");
     assert.equal(finished.body.item.evidence_media[0].byte_length, Buffer.byteLength("first-second"));
     assert.match(finished.body.evidence_url, /api\/manual-qa\/evidence/);
+    const markdown = buildManualQaAgentFeedbackMarkdown(finished.body.session, { item_id: item.id });
+    assert.match(markdown, /Video recording \(Video recording, video\/webm;codecs=vp8,opus, 12 B/);
     const storedVideo = mock.objects.get(finished.body.item.evidence_media[0].storage_path);
     assert.equal(storedVideo.data.toString(), "first-second");
   } finally {

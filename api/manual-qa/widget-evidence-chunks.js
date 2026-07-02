@@ -219,7 +219,7 @@ async function handleFinish(body, verified, req, res) {
     itemId,
     {
       kind,
-      label: sanitizeString(body?.filename || body?.fileName, 240) || `${kind} recording`,
+      label: sanitizeString(body?.label || body?.filename || body?.fileName, 240) || `${kind} recording`,
       content_type: contentType,
       storage_bucket: uploaded.storage_bucket,
       storage_path: uploaded.storage_path,
