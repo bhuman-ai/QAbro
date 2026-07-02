@@ -244,6 +244,8 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /Video saved/);
   assert.match(script, /Drawing saved/);
   assert.match(script, /const saved = await autoSaveDrawingIfNeeded\(\)/);
+  assert.match(script, /normalizeRecordingContentType/);
+  assert.match(script, /new Blob\(\[blob\], \{ type: safeContentType \}\)/);
   assert.doesNotMatch(script, /Say what you notice/);
   assert.doesNotMatch(script, /bud-capture-title/);
   assert.doesNotMatch(script, /bud-note-hint/);
@@ -607,8 +609,8 @@ test("widget chunk endpoint assembles recording chunks into one evidence item", 
         chunk_index: 0,
         kind: "video",
         filename: "review.webm",
-        content_type: "video/webm",
-        data_url: `data:video/webm;base64,${Buffer.from("first-").toString("base64")}`
+        content_type: "video/webm;codecs=vp8,opus",
+        data_url: `data:video/webm;codecs=vp8,opus;base64,${Buffer.from("first-").toString("base64")}`
       },
       widgetToken
     );
@@ -637,7 +639,7 @@ test("widget chunk endpoint assembles recording chunks into one evidence item", 
         item_id: item.id,
         kind: "video",
         filename: "review.webm",
-        content_type: "video/webm",
+        content_type: "video/webm;codecs=vp8,opus",
         chunks: [chunkB.body.chunk, chunkA.body.chunk]
       },
       widgetToken

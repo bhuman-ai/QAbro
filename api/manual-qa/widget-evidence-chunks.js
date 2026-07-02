@@ -31,7 +31,7 @@ function maxRecordingBytes() {
 
 function decodeDataUrl(value) {
   const raw = sanitizeString(value, MAX_WIDGET_CHUNK_BYTES * 3);
-  const match = raw.match(/^data:([^;,]+);base64,(.+)$/i);
+  const match = raw.match(/^data:([\s\S]*?);base64,([\s\S]+)$/i);
   if (!match) {
     return null;
   }
