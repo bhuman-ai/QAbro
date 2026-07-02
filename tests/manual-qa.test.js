@@ -258,6 +258,10 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /stopRecordingAndWait/);
   assert.match(script, /label: "Drawing annotation"/);
   assert.match(script, /label: "Video recording"/);
+  assert.match(script, /isFreestyleMode/);
+  assert.match(script, /bud-panel\.is-freestyle/);
+  assert.match(script, /page_visits: state\.pageVisits/);
+  assert.match(script, /recordPageVisit/);
   assert.doesNotMatch(script, /Say what you notice/);
   assert.doesNotMatch(script, /bud-capture-title/);
   assert.doesNotMatch(script, /bud-note-hint/);
@@ -355,6 +359,36 @@ test("new manual QA sessions clear copied feedback and evidence from agent plans
   assert.deepEqual(item.widget_context.console_events, []);
   assert.equal(item.reviewed_at, null);
   assert.notEqual(item.created_at, "2026-01-01T00:00:00.000Z");
+});
+
+test("freestyle manual QA sessions create one capture item without checklist setup", () => {
+  const built = buildManualQaSessionPayload(
+    {
+      target_url: "https://preview.example.com/app",
+      brand: "Example",
+      title: "Freestyle QA",
+      review_mode: "freestyle",
+      work_summary: "Open review pass for latest changes.",
+      test_plan: [
+        {
+          title: "This should not appear as a visible checklist item",
+          instructions: "Copied checklist should be ignored in freestyle mode."
+        }
+      ]
+    },
+    { publicBaseUrl: "https://beforeusersdo.com" }
+  );
+
+  assert.equal(built.ok, true);
+  assert.equal(built.session.review_mode, "freestyle");
+  assert.equal(built.session.context.review_mode, "freestyle");
+  assert.equal(built.session.status, "manual_ready");
+  assert.equal(built.session.checklist.length, 1);
+  assert.equal(built.session.checklist[0].id, "freestyle");
+  assert.equal(built.session.checklist[0].title, "Freestyle QA");
+  assert.equal(built.session.checklist[0].status, "pending");
+  assert.deepEqual(built.session.checklist[0].evidence_media, []);
+  assert.equal(built.widgetInstall.review_url, "https://preview.example.com/app");
 });
 
 test("manual QA session can be created, updated, and exported with sensitive URLs redacted", async () => {

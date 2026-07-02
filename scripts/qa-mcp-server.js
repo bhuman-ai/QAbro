@@ -69,7 +69,7 @@ function buildManualReviewWorkflowText(input = {}) {
   return buildText([
     "# BeforeUsersDo Manual Review Workflow",
     "",
-    "Use this whenever the user says they want a manual review, manual QA, human review, or a BeforeUsersDo checklist for work you just changed.",
+    "Use this whenever the user says they want a manual review, manual QA, human review, freestyle QA, or a BeforeUsersDo checklist for work you just changed.",
     "",
     "1. Gather the target URL.",
     "- Prefer the live preview URL the user gave you.",
@@ -85,9 +85,10 @@ function buildManualReviewWorkflowText(input = {}) {
     "- Create explicit checklist items for each changed surface and acceptance criterion.",
     "- If an item starts deep in a flow, set the start URL/path and explain that the human may need to begin earlier if the app blocks deep links.",
     "- Keep checklist item titles human-readable.",
+    "- If the user wants open-ended recording instead of checklist items, set `review_mode: \"freestyle\"` and skip `test_plan`.",
     "",
     "4. Call `qa_start_manual_review`.",
-    "- Use `target_url`, `work_summary`, `changed_files`, `acceptance_criteria`, `scenario_list`, and `test_plan` when you have them.",
+    "- Use `target_url`, `work_summary`, `changed_files`, `acceptance_criteria`, `scenario_list`, `review_mode`, and `test_plan` when you have them.",
     "- If the tool says `needs_input`, ask the user only for the missing fields.",
     "",
     "5. Install the page widget before you tell the user to open anything.",
@@ -135,6 +136,7 @@ function buildManualReviewNeedsInputResult(input = {}) {
       "changed_files",
       "acceptance_criteria",
       "scenario_list",
+      "review_mode",
       "test_plan",
       "repository",
       "branch",
@@ -188,10 +190,11 @@ function buildManualSessionText(payload) {
   const checklist = Array.isArray(session.checklist) ? session.checklist : [];
   const widgetInstall = payload?.widget_install && typeof payload.widget_install === "object" ? payload.widget_install : {};
   const directReviewUrl = widgetInstall.review_url || payload?.review_url || session.target_url;
+  const freestyle = String(session.review_mode || "").toLowerCase() === "freestyle";
   return buildText([
     `Manual QA session ${session.session_id || payload.session_id || "created"}.`,
     session.target_url ? `Target: ${session.target_url}` : "",
-    checklist.length ? `Checklist: ${checklist.length} items.` : "",
+    freestyle ? "Mode: Freestyle capture." : checklist.length ? `Checklist: ${checklist.length} items.` : "",
     session.browser?.status ? `Browser: ${session.browser.status}.` : "",
     widgetInstall.script_tag ? "REQUIRED NEXT STEP FOR THE CODING AGENT:" : "",
     widgetInstall.script_tag ? "1. Inject this exact script tag into the preview/dev build." : "",
@@ -297,6 +300,7 @@ function buildManualQaSessionInputSchema(options = {}) {
     brand: z.string().max(256).optional().describe("Brand slug or project key."),
     brand_name: z.string().max(180).optional(),
     title: z.string().max(180).optional().describe("Short title for the manual QA session."),
+    review_mode: z.enum(["checklist", "freestyle"]).optional().describe("Use freestyle when the human should freely record, speak, draw, and browse without checklist items."),
     feature_name: z.string().max(240).optional().describe("Feature label, for example 'onboarding recommendations'."),
     work_summary: z.string().max(4000).optional().describe("Plain-English summary of what changed."),
     change_summary: z.string().max(4000).optional().describe("Alias for work_summary."),
@@ -649,7 +653,7 @@ function createQaMcpServer(options = {}) {
     {
       title: "Create Manual QA Session",
       description:
-        "Create a BeforeUsersDo manual QA workspace and return a REQUIRED agent-injectable page widget. The coding agent must inject and verify the widget before telling the user to open the target page.",
+        "Create a BeforeUsersDo manual QA workspace and return a REQUIRED agent-injectable page widget. Supports checklist mode and freestyle recording mode. The coding agent must inject and verify the widget before telling the user to open the target page.",
       inputSchema: buildManualQaSessionInputSchema()
     },
     async (input) => {
@@ -666,7 +670,7 @@ function createQaMcpServer(options = {}) {
     {
       title: "Start BeforeUsersDo Manual Review",
       description:
-        "Default tool when the user says 'manual review with BeforeUsersDo', 'manual QA', 'human review', or wants a human checklist for recent code changes. Returns a REQUIRED widget snippet. The coding agent must inject it into the preview/dev build, deploy or refresh the preview, open the target once, verify the Review widget loaded, and only then send the user to the manual QA dashboard. If target_url is missing, returns exactly what to ask for. When available, include preview URL, work_summary, changed_files, acceptance_criteria, scenario_list, repository, branch, commit_sha, pull_request_url, and an explicit test_plan.",
+        "Default tool when the user says 'manual review with BeforeUsersDo', 'manual QA', 'human review', 'freestyle QA', or wants a human checklist for recent code changes. Returns a REQUIRED widget snippet. Use review_mode='freestyle' when the user wants open-ended recording/drawing/speaking without checklist items. The coding agent must inject it into the preview/dev build, deploy or refresh the preview, open the target once, verify the Review widget loaded, and only then send the user to the manual QA dashboard. If target_url is missing, returns exactly what to ask for. When available, include preview URL, work_summary, changed_files, acceptance_criteria, scenario_list, repository, branch, commit_sha, pull_request_url, and an explicit test_plan.",
       inputSchema: buildManualQaSessionInputSchema({ targetRequired: false })
     },
     async (input) => {
