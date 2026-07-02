@@ -297,6 +297,66 @@ test("buildManualQaChecklist uses explicit agent test plan start URLs", () => {
   assert.equal(items[0].expected, "Plan copy is centered.");
 });
 
+test("new manual QA sessions clear copied feedback and evidence from agent plans", () => {
+  const built = buildManualQaSessionPayload(
+    {
+      target_url: "https://preview.example.com/signup",
+      brand: "Example",
+      title: "Fresh QA pass",
+      test_plan: [
+        {
+          id: "account-step",
+          title: "Account step layout",
+          instructions: "Check the account step.",
+          expected: "The form is visible.",
+          status: "fail",
+          note: "Old feedback from the previous run.",
+          evidence_urls: ["https://beforeusersdo.com/api/manual-qa/evidence?session_id=old&token=secret"],
+          evidence_media: [
+            {
+              kind: "video",
+              label: "Old recording",
+              content_type: "video/webm",
+              storage_bucket: "qa-evidence",
+              storage_path: "manual/old/video.webm",
+              url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=old&index=0&token=secret"
+            }
+          ],
+          widget_context: {
+            page_url: "https://preview.example.com/signup?token=old",
+            console_events: [{ type: "error", message: "Old console error" }]
+          },
+          created_at: "2026-01-01T00:00:00.000Z",
+          reviewed_at: "2026-01-01T00:10:00.000Z"
+        }
+      ]
+    },
+    { publicBaseUrl: "https://beforeusersdo.com" }
+  );
+
+  assert.equal(built.ok, true);
+  assert.equal(built.session.status, "manual_ready");
+  assert.deepEqual(built.session.counts, {
+    pending: 1,
+    pass: 0,
+    fail: 0,
+    confusing: 0,
+    blocked: 0,
+    skip: 0
+  });
+  const item = built.session.checklist[0];
+  assert.equal(item.id, "account-step");
+  assert.equal(item.title, "Account step layout");
+  assert.equal(item.status, "pending");
+  assert.equal(item.note, null);
+  assert.deepEqual(item.evidence_urls, []);
+  assert.deepEqual(item.evidence_media, []);
+  assert.equal(item.widget_context.page_url, null);
+  assert.deepEqual(item.widget_context.console_events, []);
+  assert.equal(item.reviewed_at, null);
+  assert.notEqual(item.created_at, "2026-01-01T00:00:00.000Z");
+});
+
 test("manual QA session can be created, updated, and exported with sensitive URLs redacted", async () => {
   const previousEnv = {
     QA_LIVE_STREAM_ENABLED: process.env.QA_LIVE_STREAM_ENABLED,
