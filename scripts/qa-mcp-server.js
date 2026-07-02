@@ -102,11 +102,13 @@ function buildManualReviewWorkflowText(input = {}) {
     "- Keep `manual_session_url` secondary as the report/dashboard link only.",
     "- Do not send the BeforeUsersDo dashboard as the place to start testing.",
     "- If the widget cannot be injected, stop and explain why. Do not fall back silently.",
-    "- Tell the user you can fetch the finished report later with `qa_get_manual_report`.",
+    "- Tell the user to click the widget's Send All control when finished.",
+    "- Then call `qa_wait_for_manual_feedback` and keep waiting for the user's feedback package.",
     "",
     "7. After the human finishes.",
-    "- Call `qa_get_manual_report` with the session id.",
-    "- Send the Markdown report back to the coding agent as implementation feedback.",
+    "- Prefer `qa_wait_for_manual_feedback` so the user's Send All click returns directly to the agent without copy/paste.",
+    "- Use `qa_get_manual_report` only as a fallback or for historical export.",
+    "- Send the returned Markdown back into your implementation loop as feedback.",
     "",
     targetUrl ? `Current target_url: ${targetUrl}` : "",
     featureName ? `Current feature_name: ${featureName}` : "",
@@ -203,6 +205,7 @@ function buildManualSessionText(payload) {
     widgetInstall.verify_selector ? `Verify selector: ${widgetInstall.verify_selector}` : "",
     directReviewUrl ? `Direct review URL: ${directReviewUrl}` : "",
     payload.manual_session_url || session.session_url ? `Report dashboard: ${payload.manual_session_url || session.session_url}` : "",
+    session.session_id ? `No-copy feedback tool: call qa_wait_for_manual_feedback with session_id ${session.session_id} after the user starts testing.` : "",
     session.session_id ? `Report resource: qa://manual/${encodeURIComponent(session.session_id)}/report.md` : ""
   ]);
 }
@@ -743,6 +746,64 @@ function createQaMcpServer(options = {}) {
   );
 
   server.registerTool(
+    "qa_wait_for_manual_feedback",
+    {
+      title: "Wait For Manual QA Feedback",
+      description:
+        "Use after starting a BeforeUsersDo manual review and giving the verified widget page to the user. Waits until the user clicks Send All or Send item in the widget, then returns the redacted Markdown feedback directly to the coding agent so the user does not need to copy/paste.",
+      inputSchema: {
+        session_id: z.string().max(128),
+        scope: z.enum(["all", "item", "any"]).optional().describe("Defaults to all. Use item with item_id for one checklist item, or any for the latest package."),
+        item_id: z.string().max(80).optional(),
+        timeout_seconds: z.number().int().min(1).max(7200).optional(),
+        poll_interval_seconds: z.number().min(0.1).max(120).optional()
+      }
+    },
+    async (input, extra) => {
+      try {
+        const waitResult = await apiClient.waitForManualFeedback(input.session_id, {
+          scope: input.scope || "all",
+          item_id: input.item_id,
+          timeout_seconds: input.timeout_seconds || 1800,
+          poll_interval_seconds: input.poll_interval_seconds || 5,
+          signal: extra.signal,
+          async onPoll(status, meta) {
+            await maybeSendProgress(
+              extra,
+              meta.poll_count,
+              Math.max(2, Math.ceil(Number(input.timeout_seconds || 1800) / Number(input.poll_interval_seconds || 5))),
+              meta.feedback_ready
+                ? `Manual QA feedback received for ${input.session_id}`
+                : `Waiting for user to click Send All for ${input.session_id}`
+            );
+          }
+        });
+
+        if (waitResult.feedback_ready && waitResult.feedback?.markdown) {
+          const text = buildText([
+            `Manual QA feedback received for ${input.session_id}.`,
+            `Feedback id: ${waitResult.feedback.feedback_id || "n/a"}`,
+            "",
+            waitResult.feedback.markdown
+          ]);
+          return makeToolResult(text, waitResult);
+        }
+
+        return makeToolResult(
+          buildText([
+            `Manual QA feedback was not received before the timeout for ${input.session_id}.`,
+            "Ask the user to click Send All in the BeforeUsersDo widget, then call this tool again.",
+            waitResult.session?.session_url ? `Dashboard: ${waitResult.session.session_url}` : ""
+          ]),
+          waitResult
+        );
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
     "qa_run_feature_check",
     {
       title: "Run Feature QA",
@@ -919,6 +980,7 @@ function printHelp() {
     "- qa_manual_review_guide",
     "- qa_get_manual_session",
     "- qa_get_manual_report",
+    "- qa_wait_for_manual_feedback",
     "- qa_run_feature_check",
     "- qa_check_work",
     "",

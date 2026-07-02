@@ -1,6 +1,7 @@
 const { parseRequestBody, sanitizeString } = require("../../lib/qa-core");
 const {
   buildManualQaAgentFeedbackMarkdown,
+  recordManualQaAgentFeedback,
   verifyManualQaWidgetToken
 } = require("../../lib/manual-qa");
 
@@ -61,13 +62,33 @@ module.exports = async (req, res) => {
   const markdown = buildManualQaAgentFeedbackMarkdown(verified.session, {
     item_id: scope === "item" ? itemId : ""
   });
+  const recorded = await recordManualQaAgentFeedback(
+    verified,
+    {
+      scope,
+      item_id: scope === "item" ? itemId : null,
+      markdown,
+      generated_at: new Date().toISOString()
+    },
+    { request: req }
+  );
+  if (!recorded.ok) {
+    return res.status(recorded.status || 500).json({ ok: false, error: recorded.error, data: recorded.data });
+  }
 
   return res.status(200).json({
     ok: true,
     scope,
     session_id: sessionId,
     item_id: scope === "item" ? itemId : null,
+    feedback_id: recorded.feedback.feedback_id,
+    agent_delivery: {
+      ready: true,
+      feedback_id: recorded.feedback.feedback_id,
+      note: "Feedback was saved for the MCP agent. Clipboard copy remains a fallback."
+    },
     generated_at: new Date().toISOString(),
-    markdown
+    markdown,
+    session: recorded.session
   });
 };

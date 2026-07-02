@@ -10,6 +10,7 @@ const {
   buildQaRunRequest,
   createQaApiClient,
   createQaResourceReaders,
+  selectManualFeedbackPackage,
   summarizeCodingAgentQaOutcome
 } = require("../lib/qa-mcp");
 const { readQaMcpStoredAuth, writeQaMcpStoredAuth } = require("../lib/qa-mcp-auth");
@@ -212,6 +213,85 @@ test("qa MCP client waitForRun polls until the report is ready and emits onPoll"
   ]);
 });
 
+test("qa MCP client waitForManualFeedback returns feedback package after Send All", async () => {
+  const states = [
+    {
+      ok: true,
+      session: {
+        session_id: "manual_wait",
+        agent_feedback: { ready: false, latest: null, packages: [] }
+      }
+    },
+    {
+      ok: true,
+      session: {
+        session_id: "manual_wait",
+        agent_feedback: {
+          ready: true,
+          latest: {
+            feedback_id: "feedback_1",
+            scope: "all",
+            markdown: "# BeforeUsersDo Manual QA Feedback\n\nLooks good.",
+            generated_at: "2026-07-02T00:00:00.000Z"
+          },
+          packages: [
+            {
+              feedback_id: "feedback_1",
+              scope: "all",
+              markdown: "# BeforeUsersDo Manual QA Feedback\n\nLooks good.",
+              generated_at: "2026-07-02T00:00:00.000Z"
+            }
+          ]
+        }
+      }
+    }
+  ];
+
+  let index = 0;
+  const observed = [];
+  const client = createQaApiClient({
+    baseUrl: "https://swarmtester.com",
+    serviceToken: "svc_123",
+    ownerUserId: "user_123",
+    ownerEmail: "owner@example.com",
+    fetchImpl: async () => createJsonResponse(states[Math.min(index++, states.length - 1)])
+  });
+
+  const result = await client.waitForManualFeedback("manual_wait", {
+    timeout_seconds: 5,
+    poll_interval_seconds: 0.001,
+    onPoll(_status, meta) {
+      observed.push({ poll_count: meta.poll_count, feedback_ready: meta.feedback_ready });
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.feedback_ready, true);
+  assert.equal(result.timed_out, false);
+  assert.equal(result.feedback.feedback_id, "feedback_1");
+  assert.match(result.feedback.markdown, /Looks good/);
+  assert.deepEqual(observed, [
+    { poll_count: 1, feedback_ready: false },
+    { poll_count: 2, feedback_ready: true }
+  ]);
+});
+
+test("selectManualFeedbackPackage can filter all, item, and any scopes", () => {
+  const session = {
+    agent_feedback: {
+      packages: [
+        { feedback_id: "item_1", scope: "item", item_id: "hero", markdown: "Hero note" },
+        { feedback_id: "all_1", scope: "all", markdown: "All feedback" }
+      ]
+    }
+  };
+
+  assert.equal(selectManualFeedbackPackage(session, { scope: "all" }).feedback_id, "all_1");
+  assert.equal(selectManualFeedbackPackage(session, { scope: "item", item_id: "hero" }).feedback_id, "item_1");
+  assert.equal(selectManualFeedbackPackage(session, { scope: "any" }).feedback_id, "all_1");
+  assert.equal(selectManualFeedbackPackage(session, { scope: "item", item_id: "missing" }), null);
+});
+
 test("qa MCP resource readers expose status, report, and markdown resources", async () => {
   const readers = createQaResourceReaders({
     async getRunStatus(runId) {
@@ -277,6 +357,8 @@ test("manual review workflow tells agents what context to gather", () => {
   assert.match(text, /Do not tell the user to open the target page until the widget is verified/i);
   assert.match(text, /widget_install\.review_url/i);
   assert.match(text, /Do not send the BeforeUsersDo dashboard as the place to start testing/i);
+  assert.match(text, /qa_wait_for_manual_feedback/);
+  assert.match(text, /without copy\/paste/i);
   assert.match(text, /https:\/\/preview\.example\.com/);
 });
 

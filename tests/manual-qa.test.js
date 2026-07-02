@@ -611,6 +611,12 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
     assert.equal(feedback.statusCode, 200);
     assert.equal(feedback.body.ok, true);
     assert.equal(feedback.body.scope, "item");
+    assert.equal(feedback.body.agent_delivery.ready, true);
+    assert.ok(feedback.body.feedback_id);
+    assert.equal(feedback.body.session.agent_feedback.ready, true);
+    assert.equal(feedback.body.session.agent_feedback.latest.scope, "item");
+    assert.equal(feedback.body.session.agent_feedback.latest.item_id, item.id);
+    assert.match(feedback.body.session.agent_feedback.latest.markdown, /BeforeUsersDo Manual QA Feedback/);
     assert.match(feedback.body.markdown, /BeforeUsersDo Manual QA Feedback/);
     assert.match(feedback.body.markdown, /The card still shows generic copy/);
     assert.match(feedback.body.markdown, /Cannot read properties of undefined/);
