@@ -246,6 +246,10 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /const saved = await autoSaveDrawingIfNeeded\(\)/);
   assert.match(script, /normalizeRecordingContentType/);
   assert.match(script, /new Blob\(\[blob\], \{ type: safeContentType \}\)/);
+  assert.match(script, /beforeusersdo:open:/);
+  assert.match(script, /rememberWidgetOpen\(true\)/);
+  assert.match(script, /rememberWidgetOpen\(false\)/);
+  assert.match(script, /openWidget\(\{ load: false \}\)/);
   assert.doesNotMatch(script, /Say what you notice/);
   assert.doesNotMatch(script, /bud-capture-title/);
   assert.doesNotMatch(script, /bud-note-hint/);
@@ -261,6 +265,9 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.doesNotMatch(script, /data-status="fail"/);
   assert.doesNotMatch(script, /data-status="confusing"/);
   assert.doesNotMatch(script, /data-status="blocked"/);
+  assert.doesNotMatch(script, /location\.assign/);
+  assert.doesNotMatch(script, /options\.navigate/);
+  assert.doesNotMatch(script, /navigate: true/);
 });
 
 test("buildManualQaChecklist uses explicit agent test plan start URLs", () => {
