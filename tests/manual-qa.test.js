@@ -243,7 +243,12 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /className = "bud-item-send"/);
   assert.match(script, /Video saved/);
   assert.match(script, /Drawing saved/);
-  assert.match(script, /const saved = await autoSaveDrawingIfNeeded\(\)/);
+  assert.match(script, /const saved = await autoSaveDrawingIfNeeded\(\{ clearAfterSave: true \}\)/);
+  assert.match(script, /resetDrawingSurface/);
+  assert.match(script, /ensureCanvasReady/);
+  assert.match(script, /context\.setTransform\(ratio, 0, 0, ratio, 0, 0\)/);
+  assert.match(script, /context\.lineWidth = 4/);
+  assert.match(script, /context\.quadraticCurveTo/);
   assert.match(script, /normalizeRecordingContentType/);
   assert.match(script, /new Blob\(\[blob\], \{ type: safeContentType \}\)/);
   assert.match(script, /beforeusersdo:open:/);
