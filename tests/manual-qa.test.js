@@ -14,6 +14,7 @@ const {
   updateManualQaItem
 } = require("../lib/manual-qa");
 const widgetEvidenceChunksHandler = require("../api/manual-qa/widget-evidence-chunks");
+const widgetEvidenceHandler = require("../api/manual-qa/widget-evidence");
 const widgetFeedbackHandler = require("../api/manual-qa/widget-feedback");
 const { buildManualQaWidgetScript } = require("../lib/manual-qa-widget");
 
@@ -203,6 +204,22 @@ async function callWidgetChunksHandler(body, token) {
   return res;
 }
 
+async function callWidgetEvidenceHandler(body, token) {
+  const req = {
+    method: "POST",
+    headers: {
+      host: "beforeusersdo.com",
+      "x-forwarded-proto": "https",
+      "x-bud-widget-token": token
+    },
+    query: {},
+    body
+  };
+  const res = createRes();
+  await widgetEvidenceHandler(req, res);
+  return res;
+}
+
 async function callWidgetFeedbackHandler(body, token) {
   const req = {
     method: "POST",
@@ -258,13 +275,18 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /openWidget\(\{ load: false \}\)/);
   assert.match(script, /stopRecordingAndWait/);
   assert.match(script, /recordingSaving: false/);
+  assert.match(script, /RECORDING_SEGMENT_MS = 10000/);
+  assert.match(script, /RECORDING_SAVE_WAIT_MS = 45000/);
   assert.match(script, /Screen sharing stopped\. Saving recording/);
-  assert.match(script, /Recording is still saving\. Keep this tab open and press Send again\./);
+  assert.match(script, /Recording screen and voice\. Video saves automatically\./);
+  assert.match(script, /Recording started\. Segments save automatically\./);
+  assert.match(script, /Video segments are still saving\. Keep this tab open and press Send again\./);
   assert.match(script, /Other feedback will still be sent/);
-  assert.match(script, /Partial recording saved/);
-  assert.match(script, /videoBitsPerSecond: 900000/);
+  assert.match(script, /startRecordingSegment/);
+  assert.match(script, /review-recording-part-/);
+  assert.match(script, /Video recording segment/);
+  assert.match(script, /videoBitsPerSecond: 600000/);
   assert.match(script, /label: "Drawing annotation"/);
-  assert.match(script, /partial \? "Video recording \(partial\)" : "Video recording"/);
   assert.match(script, /isFreestyleMode/);
   assert.match(script, /bud-panel\.is-freestyle/);
   assert.match(script, /page_visits: state\.pageVisits/);
@@ -730,6 +752,74 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
     assert.match(feedback.body.markdown, /Video recording \(Video recording, video\/webm, 2\.0 MB/);
     assert.match(feedback.body.markdown, /token=%5Bredacted%5D/);
     assert.doesNotMatch(feedback.body.markdown, /abc123/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
+test("widget evidence endpoint saves recording segments directly", async () => {
+  const previousEnv = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
+    QA_EVIDENCE_STORAGE_BUCKET: process.env.QA_EVIDENCE_STORAGE_BUCKET
+  };
+  const previousFetch = globalThis.fetch;
+  const mock = createSupabaseAndStorageFetchMock();
+  process.env.SUPABASE_URL = "https://supabase-segments.example.com";
+  process.env.SUPABASE_SERVICE_KEY = "service";
+  process.env.QA_EVIDENCE_STORAGE_BUCKET = "qa-evidence";
+  globalThis.fetch = mock.fetchImpl;
+
+  try {
+    const created = await createManualQaSession(
+      {
+        target_url: "https://preview.example.com",
+        brand: "Example",
+        title: "Segment upload pass",
+        acceptance_criteria: ["Recording segments can be uploaded as evidence."]
+      },
+      {
+        publicBaseUrl: "https://beforeusersdo.com",
+        ownerUserId: "user_1",
+        fetchImpl: mock.fetchImpl,
+        supabaseUrl: "https://supabase-segments.example.com",
+        serviceKey: "service"
+      }
+    );
+    const item = created.session.checklist[0];
+    const widgetToken = new URL(created.widget_install.script_url).searchParams.get("token");
+
+    const uploaded = await callWidgetEvidenceHandler(
+      {
+        session_id: created.session.session_id,
+        token: widgetToken,
+        item_id: item.id,
+        kind: "video",
+        label: "Video recording segment 1",
+        filename: "review-recording-part-001.webm",
+        content_type: "video/webm",
+        data_url: `data:video/webm;base64,${Buffer.from("segment-one").toString("base64")}`
+      },
+      widgetToken
+    );
+
+    assert.equal(uploaded.statusCode, 201);
+    assert.equal(uploaded.body.item.evidence_media.length, 1);
+    assert.equal(uploaded.body.item.evidence_media[0].kind, "video");
+    assert.equal(uploaded.body.item.evidence_media[0].label, "Video recording segment 1");
+    assert.equal(uploaded.body.item.evidence_media[0].byte_length, Buffer.byteLength("segment-one"));
+    assert.match(uploaded.body.evidence_url, /api\/manual-qa\/evidence/);
+    const markdown = buildManualQaAgentFeedbackMarkdown(uploaded.body.session, { item_id: item.id });
+    assert.match(markdown, /Video recording \(Video recording segment 1, video\/webm, 11 B/);
+    const storedVideo = mock.objects.get(uploaded.body.item.evidence_media[0].storage_path);
+    assert.equal(storedVideo.data.toString(), "segment-one");
   } finally {
     globalThis.fetch = previousFetch;
     for (const [key, value] of Object.entries(previousEnv)) {
