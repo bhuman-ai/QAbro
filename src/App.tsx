@@ -2095,6 +2095,27 @@ function LoadingShell({ label }: { label: string }) {
   );
 }
 
+function installBudWidgetFromUrl(search: string) {
+  if (typeof document === "undefined") {
+    return;
+  }
+  const params = new URLSearchParams(search);
+  const sessionId = String(params.get("bud_session_id") || params.get("budSessionId") || "").trim();
+  const token = String(params.get("bud_token") || params.get("budToken") || "").trim();
+  if (!sessionId || !token || document.querySelector("#beforeusersdo-widget-root, script[data-bud-widget-loader='1']")) {
+    return;
+  }
+  const scriptParams = new URLSearchParams({
+    session_id: sessionId,
+    token
+  });
+  const script = document.createElement("script");
+  script.async = true;
+  script.dataset.budWidgetLoader = "1";
+  script.src = `/api/manual-qa/widget.js?${scriptParams.toString()}`;
+  document.head.appendChild(script);
+}
+
 function App() {
   const { route, navigate } = useBrowserRoute();
   const [authState, setAuthState] = useState<AuthState>({
@@ -2107,6 +2128,10 @@ function App() {
 
   const pathname = route.pathname;
   const isWorkspaceRoute = pathname === "/dashboard" || pathname === "/reports";
+
+  useEffect(() => {
+    installBudWidgetFromUrl(route.search);
+  }, [route.search]);
 
   async function refreshSession() {
     try {
