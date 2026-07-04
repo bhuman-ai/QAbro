@@ -229,6 +229,7 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /BeforeUsersDo<\/span>/);
   assert.match(script, /Not recording\. Records screen and voice after Chrome asks\./);
   assert.match(script, /class="bud-capture-panel"/);
+  assert.match(script, /flex-direction: column/);
   assert.match(script, /capturePanel\.classList\.add\("is-open"\)/);
   assert.match(script, /makeDraggable\(pill, pill/);
   assert.match(script, /makeDraggable\(panel, panelDragHandle/);
@@ -256,8 +257,14 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /rememberWidgetOpen\(false\)/);
   assert.match(script, /openWidget\(\{ load: false \}\)/);
   assert.match(script, /stopRecordingAndWait/);
+  assert.match(script, /recordingSaving: false/);
+  assert.match(script, /Screen sharing stopped\. Saving recording/);
+  assert.match(script, /Recording is still saving\. Keep this tab open and press Send again\./);
+  assert.match(script, /Other feedback will still be sent/);
+  assert.match(script, /Partial recording saved/);
+  assert.match(script, /videoBitsPerSecond: 900000/);
   assert.match(script, /label: "Drawing annotation"/);
-  assert.match(script, /label: "Video recording"/);
+  assert.match(script, /partial \? "Video recording \(partial\)" : "Video recording"/);
   assert.match(script, /isFreestyleMode/);
   assert.match(script, /bud-panel\.is-freestyle/);
   assert.match(script, /page_visits: state\.pageVisits/);

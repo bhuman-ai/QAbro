@@ -11,8 +11,8 @@ const {
 } = require("../../lib/manual-qa");
 
 const MAX_WIDGET_CHUNK_BYTES = 2 * 1024 * 1024;
-const MAX_WIDGET_CHUNKS = 240;
-const DEFAULT_MAX_RECORDING_BYTES = 80 * 1024 * 1024;
+const MAX_WIDGET_CHUNKS = 1800;
+const DEFAULT_MAX_RECORDING_BYTES = 160 * 1024 * 1024;
 const ALLOWED_RECORDING_CONTENT_TYPES = {
   video: ["video/webm", "video/mp4", "video/quicktime"],
   audio: ["audio/webm", "audio/mp4", "audio/mpeg", "audio/wav"]
