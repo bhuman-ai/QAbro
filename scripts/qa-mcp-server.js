@@ -10,6 +10,7 @@ const {
   createQaResourceReaders,
   createQaApiClient,
   summarizeCodingAgentQaOutcome,
+  summarizeManualDraftEvidence,
   summarizeReportPayload,
   summarizeStatusPayload
 } = require("../lib/qa-mcp");
@@ -104,10 +105,12 @@ function buildManualReviewWorkflowText(input = {}) {
     "- Do not send the BeforeUsersDo dashboard as the place to start testing.",
     "- If the widget cannot be injected, stop and explain why. Do not fall back silently.",
     "- Tell the user to click the widget's Send All control when finished.",
-    "- Then call `qa_wait_for_manual_feedback` and keep waiting for the user's feedback package.",
+    "- Optional: call `qa_wait_for_manual_evidence` while the user is still recording to see draft video segments and drawings as they are saved.",
+    "- Then call `qa_wait_for_manual_feedback` and keep waiting for the user's final feedback package.",
     "",
     "7. After the human finishes.",
     "- Prefer `qa_wait_for_manual_feedback` so the user's Send All click returns directly to the agent without copy/paste.",
+    "- Use `qa_wait_for_manual_evidence` or `qa://manual/{session_id}/evidence.json` for live draft evidence before Send All.",
     "- Use `qa_get_manual_report` only as a fallback or for historical export.",
     "- Send the returned Markdown back into your implementation loop as feedback.",
     "",
@@ -191,10 +194,12 @@ function buildManualSessionText(payload) {
   const widgetInstall = payload?.widget_install && typeof payload.widget_install === "object" ? payload.widget_install : {};
   const directReviewUrl = widgetInstall.review_url || payload?.review_url || session.target_url;
   const freestyle = String(session.review_mode || "").toLowerCase() === "freestyle";
+  const draftEvidence = payload?.draft_evidence || summarizeManualDraftEvidence(session);
   return buildText([
     `Manual QA session ${session.session_id || payload.session_id || "created"}.`,
     session.target_url ? `Target: ${session.target_url}` : "",
     freestyle ? "Mode: Freestyle capture." : checklist.length ? `Checklist: ${checklist.length} items.` : "",
+    draftEvidence.total_count ? `Draft evidence: ${draftEvidence.total_count} saved (${draftEvidence.video_segment_count || 0} video segments, ${draftEvidence.drawing_count || 0} drawings).` : "",
     session.browser?.status ? `Browser: ${session.browser.status}.` : "",
     widgetInstall.script_tag ? "REQUIRED NEXT STEP FOR THE CODING AGENT:" : "",
     widgetInstall.script_tag ? "1. Inject this exact script tag into the preview/dev build." : "",
@@ -208,8 +213,27 @@ function buildManualSessionText(payload) {
     widgetInstall.verify_selector ? `Verify selector: ${widgetInstall.verify_selector}` : "",
     directReviewUrl ? `Direct review URL: ${directReviewUrl}` : "",
     payload.manual_session_url || session.session_url ? `Report dashboard: ${payload.manual_session_url || session.session_url}` : "",
+    session.session_id ? `Live draft evidence resource: qa://manual/${encodeURIComponent(session.session_id)}/evidence.json` : "",
     session.session_id ? `No-copy feedback tool: call qa_wait_for_manual_feedback with session_id ${session.session_id} after the user starts testing.` : "",
     session.session_id ? `Report resource: qa://manual/${encodeURIComponent(session.session_id)}/report.md` : ""
+  ]);
+}
+
+function buildManualEvidenceText(payload = {}) {
+  const session = payload.session && typeof payload.session === "object" ? payload.session : {};
+  const draftEvidence = payload.draft_evidence || summarizeManualDraftEvidence(session);
+  const latest = Array.isArray(draftEvidence.latest_evidence) ? draftEvidence.latest_evidence : [];
+  return buildText([
+    `Manual QA draft evidence for ${draftEvidence.session_id || session.session_id || "session"}.`,
+    `Saved evidence: ${draftEvidence.total_count || 0} total, ${draftEvidence.video_segment_count || 0} video segments, ${draftEvidence.drawing_count || 0} drawings.`,
+    latest.length ? "Latest evidence:" : "",
+    ...latest.slice(0, 8).map((entry, index) => {
+      const label = entry.label || entry.kind || "Evidence";
+      const item = entry.item_title ? ` (${entry.item_title})` : "";
+      const url = entry.url ? `: ${entry.url}` : "";
+      return `${index + 1}. ${label}${item}${url}`;
+    }),
+    session.session_id ? `Resource: qa://manual/${encodeURIComponent(session.session_id)}/evidence.json` : ""
   ]);
 }
 
@@ -426,6 +450,28 @@ function registerQaResources(server, apiClient) {
         contents: [
           {
             uri: uri.toString(),
+            mimeType: resource.mimeType,
+            text: resource.text
+          }
+        ]
+      };
+    }
+  );
+
+  server.registerResource(
+    "manual-qa-live-evidence",
+    new ResourceTemplate(MCP_QA_RESOURCE_TEMPLATES.manual_qa_live_evidence, { list: undefined }),
+    {
+      title: "Manual QA Live Evidence",
+      description: "Draft video segment, drawing, and evidence links saved by the page widget before Send All.",
+      mimeType: "application/json"
+    },
+    async (uri, variables) => {
+      const resource = await readers.readManualQaLiveEvidence(variables.session_id);
+      return {
+        contents: [
+          {
+            uri: resource.uri,
             mimeType: resource.mimeType,
             text: resource.text
           }
@@ -750,6 +796,60 @@ function createQaMcpServer(options = {}) {
   );
 
   server.registerTool(
+    "qa_wait_for_manual_evidence",
+    {
+      title: "Wait For Manual QA Draft Evidence",
+      description:
+        "Use while the user is still recording in the BeforeUsersDo widget. Polls until saved draft evidence exists, such as 10-second video segments or drawings, without waiting for the user to click Send All.",
+      inputSchema: {
+        session_id: z.string().max(128),
+        item_id: z.string().max(80).optional(),
+        minimum_evidence_count: z.number().int().min(1).max(10000).optional(),
+        since_evidence_count: z.number().int().min(0).max(10000).optional(),
+        timeout_seconds: z.number().int().min(1).max(7200).optional(),
+        poll_interval_seconds: z.number().min(0.1).max(120).optional()
+      }
+    },
+    async (input, extra) => {
+      try {
+        const waitResult = await apiClient.waitForManualEvidence(input.session_id, {
+          item_id: input.item_id,
+          minimum_evidence_count: input.minimum_evidence_count || 1,
+          since_evidence_count: input.since_evidence_count || 0,
+          timeout_seconds: input.timeout_seconds || 300,
+          poll_interval_seconds: input.poll_interval_seconds || 5,
+          signal: extra.signal,
+          async onPoll(status, meta) {
+            await maybeSendProgress(
+              extra,
+              meta.poll_count,
+              Math.max(2, Math.ceil(Number(input.timeout_seconds || 300) / Number(input.poll_interval_seconds || 5))),
+              meta.evidence_ready
+                ? `Manual QA evidence saved for ${input.session_id}`
+                : `Waiting for saved video/drawing evidence for ${input.session_id} (${meta.evidence_count || 0} saved)`
+            );
+          }
+        });
+
+        if (waitResult.evidence_ready) {
+          return makeToolResult(buildManualEvidenceText(waitResult), waitResult);
+        }
+
+        return makeToolResult(
+          buildText([
+            `Manual QA draft evidence was not received before the timeout for ${input.session_id}.`,
+            "The user may not have started recording/drawing yet, or the widget may not be installed.",
+            waitResult.session?.session_url ? `Dashboard: ${waitResult.session.session_url}` : ""
+          ]),
+          waitResult
+        );
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
     "qa_wait_for_manual_feedback",
     {
       title: "Wait For Manual QA Feedback",
@@ -984,6 +1084,7 @@ function printHelp() {
     "- qa_manual_review_guide",
     "- qa_get_manual_session",
     "- qa_get_manual_report",
+    "- qa_wait_for_manual_evidence",
     "- qa_wait_for_manual_feedback",
     "- qa_run_feature_check",
     "- qa_check_work",
@@ -996,6 +1097,7 @@ function printHelp() {
     `- ${MCP_QA_RESOURCE_TEMPLATES.run_report}`,
     `- ${MCP_QA_RESOURCE_TEMPLATES.run_report_markdown}`,
     `- ${MCP_QA_RESOURCE_TEMPLATES.manual_review_workflow}`,
+    `- ${MCP_QA_RESOURCE_TEMPLATES.manual_qa_live_evidence}`,
     `- ${MCP_QA_RESOURCE_TEMPLATES.manual_qa_report_markdown}`
   ]);
   process.stdout.write(`${message}\n`);

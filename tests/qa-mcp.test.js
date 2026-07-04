@@ -11,6 +11,7 @@ const {
   createQaApiClient,
   createQaResourceReaders,
   selectManualFeedbackPackage,
+  summarizeManualDraftEvidence,
   summarizeCodingAgentQaOutcome
 } = require("../lib/qa-mcp");
 const { readQaMcpStoredAuth, writeQaMcpStoredAuth } = require("../lib/qa-mcp-auth");
@@ -276,6 +277,119 @@ test("qa MCP client waitForManualFeedback returns feedback package after Send Al
   ]);
 });
 
+test("summarizeManualDraftEvidence returns compact live evidence links", () => {
+  const summary = summarizeManualDraftEvidence({
+    session_id: "manual_live",
+    review_mode: "freestyle",
+    checklist: [
+      {
+        id: "freestyle",
+        title: "Freestyle capture",
+        evidence_urls: [
+          "https://beforeusersdo.com/api/manual-qa/evidence?session_id=manual_live&item_id=freestyle&index=0"
+        ],
+        evidence_media: [
+          {
+            kind: "video",
+            label: "Video recording segment 1",
+            content_type: "video/webm",
+            byte_length: 123,
+            url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=manual_live&item_id=freestyle&index=0",
+            created_at: "2026-07-04T18:00:00.000Z"
+          },
+          {
+            kind: "screenshot",
+            label: "Drawing annotation",
+            content_type: "image/png",
+            byte_length: 456,
+            url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=manual_live&item_id=freestyle&index=1",
+            created_at: "2026-07-04T18:00:10.000Z"
+          }
+        ]
+      }
+    ]
+  });
+
+  assert.equal(summary.ready, true);
+  assert.equal(summary.total_count, 2);
+  assert.equal(summary.video_count, 1);
+  assert.equal(summary.video_segment_count, 1);
+  assert.equal(summary.drawing_count, 1);
+  assert.equal(summary.link_count, 0);
+  assert.equal(summary.latest_evidence[0].label, "Drawing annotation");
+  assert.equal(summary.latest_evidence[1].label, "Video recording segment 1");
+});
+
+test("qa MCP client waitForManualEvidence returns draft evidence before Send All", async () => {
+  const states = [
+    {
+      ok: true,
+      session: {
+        session_id: "manual_live",
+        checklist: [{ id: "freestyle", title: "Freestyle", evidence_media: [] }],
+        agent_feedback: { ready: false, latest: null, packages: [] }
+      }
+    },
+    {
+      ok: true,
+      session: {
+        session_id: "manual_live",
+        checklist: [
+          {
+            id: "freestyle",
+            title: "Freestyle",
+            evidence_media: [
+              {
+                kind: "video",
+                label: "Video recording segment 1",
+                content_type: "video/webm",
+                byte_length: 100,
+                url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=manual_live&item_id=freestyle&index=0",
+                created_at: "2026-07-04T18:00:00.000Z"
+              }
+            ]
+          }
+        ],
+        agent_feedback: { ready: false, latest: null, packages: [] }
+      }
+    }
+  ];
+
+  let index = 0;
+  const observed = [];
+  const client = createQaApiClient({
+    baseUrl: "https://swarmtester.com",
+    serviceToken: "svc_123",
+    ownerUserId: "user_123",
+    ownerEmail: "owner@example.com",
+    fetchImpl: async () => createJsonResponse(states[Math.min(index++, states.length - 1)])
+  });
+
+  const result = await client.waitForManualEvidence("manual_live", {
+    timeout_seconds: 5,
+    poll_interval_seconds: 0.001,
+    onPoll(_status, meta) {
+      observed.push({
+        poll_count: meta.poll_count,
+        evidence_ready: meta.evidence_ready,
+        evidence_count: meta.evidence_count,
+        video_segment_count: meta.video_segment_count
+      });
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.evidence_ready, true);
+  assert.equal(result.timed_out, false);
+  assert.equal(result.draft_evidence.total_count, 1);
+  assert.equal(result.draft_evidence.video_segment_count, 1);
+  assert.equal(result.draft_evidence.latest_evidence[0].label, "Video recording segment 1");
+  assert.deepEqual(observed, [
+    { poll_count: 1, evidence_ready: false, evidence_count: 0, video_segment_count: 0 },
+    { poll_count: 2, evidence_ready: true, evidence_count: 1, video_segment_count: 1 }
+  ]);
+});
+
 test("selectManualFeedbackPackage can filter all, item, and any scopes", () => {
   const session = {
     agent_feedback: {
@@ -314,12 +428,37 @@ test("qa MCP resource readers expose status, report, and markdown resources", as
         findings: [{ title: "No blocker", observed_behavior: "The feature worked." }],
         markdown: "# Report\n\nEverything worked."
       };
+    },
+    async getManualQaSession(sessionId) {
+      assert.equal(sessionId, "manual_123");
+      return {
+        ok: true,
+        session: {
+          session_id: sessionId,
+          checklist: [
+            {
+              id: "freestyle",
+              title: "Freestyle",
+              evidence_media: [
+                {
+                  kind: "video",
+                  label: "Video recording segment 1",
+                  content_type: "video/webm",
+                  url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=manual_123&item_id=freestyle&index=0",
+                  created_at: "2026-07-04T18:00:00.000Z"
+                }
+              ]
+            }
+          ]
+        }
+      };
     }
   });
 
   const statusResource = await readers.readRunStatus("run_456");
   const reportResource = await readers.readRunReport("run_456");
   const markdownResource = await readers.readRunReportMarkdown("run_456");
+  const liveEvidenceResource = await readers.readManualQaLiveEvidence("manual_123");
 
   assert.equal(statusResource.uri, "qa://runs/run_456/status");
   assert.equal(statusResource.mimeType, "application/json");
@@ -332,6 +471,10 @@ test("qa MCP resource readers expose status, report, and markdown resources", as
   assert.equal(markdownResource.uri, "qa://runs/run_456/report.md");
   assert.equal(markdownResource.mimeType, "text/markdown");
   assert.match(markdownResource.text, /^# Report/m);
+
+  assert.equal(liveEvidenceResource.uri, "qa://manual/manual_123/evidence.json");
+  assert.equal(liveEvidenceResource.mimeType, "application/json");
+  assert.match(liveEvidenceResource.text, /Video recording segment 1/);
 });
 
 test("buildQaResourceUri encodes dynamic run ids", () => {
@@ -339,6 +482,7 @@ test("buildQaResourceUri encodes dynamic run ids", () => {
   assert.equal(buildQaResourceUri("run_report", "run id/with spaces"), "qa://runs/run%20id%2Fwith%20spaces/report");
   assert.equal(buildQaResourceUri("run_report_markdown", "run id/with spaces"), "qa://runs/run%20id%2Fwith%20spaces/report.md");
   assert.equal(buildQaResourceUri("manual_review_workflow", "ignored"), "qa://workflows/manual-review");
+  assert.equal(buildQaResourceUri("manual_qa_live_evidence", "manual id"), "qa://manual/manual%20id/evidence.json");
   assert.equal(buildQaResourceUri("manual_qa_report_markdown", "manual id"), "qa://manual/manual%20id/report.md");
 });
 
@@ -358,6 +502,8 @@ test("manual review workflow tells agents what context to gather", () => {
   assert.match(text, /Do not tell the user to open the target page until the widget is verified/i);
   assert.match(text, /widget_install\.review_url/i);
   assert.match(text, /Do not send the BeforeUsersDo dashboard as the place to start testing/i);
+  assert.match(text, /qa_wait_for_manual_evidence/);
+  assert.match(text, /evidence\.json/);
   assert.match(text, /qa_wait_for_manual_feedback/);
   assert.match(text, /without copy\/paste/i);
   assert.match(text, /https:\/\/preview\.example\.com/);
