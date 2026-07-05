@@ -251,6 +251,9 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /top: 84px;\n        left: 76px;/);
   assert.match(script, /max-height: min\(280px, calc\(100vh - 104px\)\)/);
   assert.match(script, /capturePanel\.classList\.add\("is-open"\)/);
+  assert.match(script, /host\.style\.position = "absolute"/);
+  assert.match(script, /host\.style\.overflow = "visible"/);
+  assert.match(script, /\.bud-canvas \{\n        position: absolute;/);
   assert.match(script, /makeDraggable\(pill, pill/);
   assert.match(script, /makeDraggable\(panel, panelDragHandle/);
   assert.match(script, /makeDraggable\(capturePanel, capturePanel/);
@@ -274,12 +277,17 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /const saved = await autoSaveDrawingIfNeeded\(\{ clearAfterSave: true \}\)/);
   assert.match(script, /resetDrawingSurface/);
   assert.match(script, /ensureCanvasReady/);
+  assert.match(script, /documentCanvasSize/);
+  assert.match(script, /canvas\.style\.width = cssWidth \+ "px"/);
   assert.match(script, /context\.setTransform\(ratio, 0, 0, ratio, 0, 0\)/);
   assert.match(script, /context\.lineWidth = 4/);
   assert.match(script, /context\.quadraticCurveTo/);
   assert.match(script, /attachRecordingFrameSource\(displayStream\)/);
   assert.match(script, /buildDrawingDataUrl/);
-  assert.match(script, /context\.drawImage\(video, 0, 0, output\.width, output\.height\)/);
+  assert.match(script, /drawingCropRect/);
+  assert.match(script, /intersectRects\(crop, viewport\)/);
+  assert.match(script, /video\.videoWidth \/ Math\.max\(1, viewport\.width\)/);
+  assert.match(script, /crop\.x \* ratio/);
   assert.match(script, /Sent\. Agent can start work now/);
   assert.match(script, /normalizeRecordingContentType/);
   assert.match(script, /new Blob\(\[blob\], \{ type: safeContentType \}\)/);
