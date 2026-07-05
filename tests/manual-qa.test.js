@@ -764,6 +764,11 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
     assert.equal(feedback.body.session.agent_feedback.latest.item_id, item.id);
     assert.match(feedback.body.session.agent_feedback.latest.markdown, /BeforeUsersDo Manual QA Feedback/);
     assert.match(feedback.body.markdown, /BeforeUsersDo Manual QA Feedback/);
+    assert.match(feedback.body.markdown, /Required Agent Next Steps/);
+    assert.match(feedback.body.markdown, /Treat this feedback as user instructions/);
+    assert.match(feedback.body.markdown, /Fix the target product\/code/);
+    assert.match(feedback.body.markdown, /Create a fresh BeforeUsersDo manual QA session\/link/);
+    assert.match(feedback.body.markdown, /Do not claim the work is done until the fixes are shipped and the new QA link is ready/);
     assert.match(feedback.body.markdown, /The card still shows generic copy/);
     assert.match(feedback.body.markdown, /Cannot read properties of undefined/);
     assert.match(feedback.body.markdown, /Drawing \(Drawing annotation, image\/png, 4 KB/);
@@ -828,6 +833,8 @@ test("freestyle widget Send All marks the capture reviewed", async () => {
     assert.equal(feedback.body.session.counts.pending, 0);
     assert.equal(feedback.body.session.checklist[0].status, "reviewed");
     assert.match(feedback.body.markdown, /1 reviewed/);
+    assert.match(feedback.body.markdown, /Required Agent Next Steps/);
+    assert.match(feedback.body.markdown, /Create a fresh BeforeUsersDo manual QA session\/link/);
   } finally {
     globalThis.fetch = previousFetch;
     for (const [key, value] of Object.entries(previousEnv)) {

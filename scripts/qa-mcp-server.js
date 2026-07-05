@@ -112,11 +112,54 @@ function buildManualReviewWorkflowText(input = {}) {
     "- Prefer `qa_wait_for_manual_feedback` so the user's Send All click returns directly to the agent without copy/paste.",
     "- Use `qa_wait_for_manual_evidence` or `qa://manual/{session_id}/evidence.json` for live draft evidence before Send All.",
     "- Use `qa_get_manual_report` only as a fallback or for historical export.",
-    "- Send the returned Markdown back into your implementation loop as feedback.",
+    "- Do not only summarize the returned Markdown. Treat it as user instructions.",
+    "- Extract concrete feedback points from notes, transcript, drawings, screenshots, videos, page context, console, and network evidence.",
+    "- Fix the target product/code for every actionable bug, copy issue, confusing UI, or requested change.",
+    "- Run the relevant tests/build checks.",
+    "- Deploy or refresh the preview/production target.",
+    "- Create a fresh BeforeUsersDo manual QA session/link for the fixed version so old evidence does not carry over.",
+    "- Do not mark the work done until the fixes are shipped and the new QA link is ready, unless you clearly state the blocker.",
     "",
     targetUrl ? `Current target_url: ${targetUrl}` : "",
     featureName ? `Current feature_name: ${featureName}` : "",
     workSummary ? `Current work_summary: ${workSummary}` : ""
+  ]);
+}
+
+function buildManualFeedbackRequiredAction(sessionId, feedback = {}) {
+  const safeSessionId = safeText(sessionId, 128);
+  const scope = safeText(feedback.scope || "all", 40) || "all";
+  const itemId = safeText(feedback.item_id || feedback.itemId, 80);
+  return {
+    required: true,
+    status: "fix_or_explain_before_done",
+    session_id: safeSessionId || null,
+    feedback_id: safeText(feedback.feedback_id || feedback.feedbackId, 128) || null,
+    scope,
+    item_id: itemId || null,
+    completion_rule:
+      "Do not claim done after receiving manual QA feedback. Extract the actionable points, fix the target work, verify, deploy or refresh the preview, then create a fresh BeforeUsersDo QA link.",
+    steps: [
+      "Read the full feedback Markdown and evidence links.",
+      "Extract concrete feedback points from notes, transcript, drawings, screenshots, videos, page context, console, and network evidence.",
+      "Turn every actionable bug, copy issue, confusing UI, or requested change into implementation work.",
+      "Update the target code/product instead of only summarizing the feedback.",
+      "Run the relevant tests/build checks and record the result.",
+      "Deploy or refresh the preview/production target the user should retest.",
+      "Call qa_start_manual_review again for the fixed version and give the user the fresh QA link.",
+      "If any step is blocked, say exactly what is blocked and what is needed."
+    ],
+    next_tool_after_fix: "qa_start_manual_review"
+  };
+}
+
+function buildManualFeedbackActionText(sessionId, feedback = {}) {
+  const action = buildManualFeedbackRequiredAction(sessionId, feedback);
+  return buildText([
+    "REQUIRED NEXT STEPS FOR THE CODING AGENT:",
+    "This feedback is not the end of the task.",
+    ...action.steps.map((step, index) => `${index + 1}. ${step}`),
+    `Completion rule: ${action.completion_rule}`
   ]);
 }
 
@@ -884,13 +927,20 @@ function createQaMcpServer(options = {}) {
         });
 
         if (waitResult.feedback_ready && waitResult.feedback?.markdown) {
+          const requiredAgentAction = buildManualFeedbackRequiredAction(input.session_id, waitResult.feedback);
+          const result = {
+            ...waitResult,
+            required_agent_action: requiredAgentAction
+          };
           const text = buildText([
             `Manual QA feedback received for ${input.session_id}.`,
             `Feedback id: ${waitResult.feedback.feedback_id || "n/a"}`,
             "",
+            buildManualFeedbackActionText(input.session_id, waitResult.feedback),
+            "",
             waitResult.feedback.markdown
           ]);
-          return makeToolResult(text, waitResult);
+          return makeToolResult(text, result);
         }
 
         return makeToolResult(
@@ -1123,6 +1173,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildManualFeedbackActionText,
+  buildManualFeedbackRequiredAction,
   buildManualReviewNeedsInputResult,
   buildManualReviewWorkflowText,
   createQaMcpServer,

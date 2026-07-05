@@ -16,6 +16,8 @@ const {
 } = require("../lib/qa-mcp");
 const { readQaMcpStoredAuth, writeQaMcpStoredAuth } = require("../lib/qa-mcp-auth");
 const {
+  buildManualFeedbackActionText,
+  buildManualFeedbackRequiredAction,
   buildManualReviewNeedsInputResult,
   buildManualReviewWorkflowText
 } = require("../scripts/qa-mcp-server");
@@ -506,7 +508,34 @@ test("manual review workflow tells agents what context to gather", () => {
   assert.match(text, /evidence\.json/);
   assert.match(text, /qa_wait_for_manual_feedback/);
   assert.match(text, /without copy\/paste/i);
+  assert.match(text, /Do not only summarize the returned Markdown/i);
+  assert.match(text, /Fix the target product\/code/i);
+  assert.match(text, /Create a fresh BeforeUsersDo manual QA session\/link/i);
+  assert.match(text, /Do not mark the work done until the fixes are shipped and the new QA link is ready/i);
   assert.match(text, /https:\/\/preview\.example\.com/);
+});
+
+test("manual feedback action contract forces fix-deploy-new-QA loop", () => {
+  const action = buildManualFeedbackRequiredAction("manual_123", {
+    feedback_id: "feedback_123",
+    scope: "item",
+    item_id: "hero-copy"
+  });
+  const text = buildManualFeedbackActionText("manual_123", {
+    feedback_id: "feedback_123",
+    scope: "item",
+    item_id: "hero-copy"
+  });
+
+  assert.equal(action.required, true);
+  assert.equal(action.status, "fix_or_explain_before_done");
+  assert.equal(action.next_tool_after_fix, "qa_start_manual_review");
+  assert.match(action.completion_rule, /fresh BeforeUsersDo QA link/);
+  assert.match(action.steps.join(" "), /Update the target code\/product instead of only summarizing/);
+  assert.match(action.steps.join(" "), /Deploy or refresh/);
+  assert.match(text, /REQUIRED NEXT STEPS FOR THE CODING AGENT/);
+  assert.match(text, /This feedback is not the end of the task/);
+  assert.match(text, /Call qa_start_manual_review again/);
 });
 
 test("manual review missing-input result asks only for target_url", () => {
