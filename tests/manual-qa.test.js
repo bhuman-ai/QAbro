@@ -306,6 +306,12 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /isFreestyleMode/);
   assert.match(script, /bud-panel\.is-freestyle/);
   assert.match(script, /page_visits: state\.pageVisits/);
+  assert.match(script, /transcript_events: state\.transcriptEvents/);
+  assert.match(script, /evidence_events: state\.evidenceEvents/);
+  assert.match(script, /SpeechRecognition/);
+  assert.match(script, /pushTranscriptEvent/);
+  assert.match(script, /pushEvidenceEvent\("drawing_saved"/);
+  assert.match(script, /pushEvidenceEvent\("video_saved"/);
   assert.match(script, /recordPageVisit/);
   assert.doesNotMatch(script, /Say what you notice/);
   assert.doesNotMatch(script, /bud-capture-title/);
@@ -708,6 +714,35 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
               url: "https://preview.example.com/api/cards?token=abc123",
               message: "https://preview.example.com/api/cards?token=abc123"
             }
+          ],
+          transcript_events: [
+            {
+              text: "The card copy is still too generic and I circled the headline.",
+              source: "web_speech",
+              confidence: 0.91,
+              is_final: true,
+              at: "2026-07-05T10:00:20.000Z"
+            }
+          ],
+          evidence_events: [
+            {
+              type: "drawing_saved",
+              label: "Drawing annotation",
+              started_at: "2026-07-05T10:00:18.000Z",
+              ended_at: "2026-07-05T10:00:22.000Z",
+              at: "2026-07-05T10:00:22.000Z",
+              stroke_count: 4,
+              bounds: { x: 100, y: 120, width: 320, height: 90 },
+              media_url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=feedback&item_id=item&index=0&token=abc123"
+            },
+            {
+              type: "video_saved",
+              label: "Video recording segment 1",
+              started_at: "2026-07-05T10:00:10.000Z",
+              ended_at: "2026-07-05T10:00:20.000Z",
+              duration_ms: 10000,
+              media_url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=feedback&item_id=item&index=1&token=abc123"
+            }
           ]
         }
       },
@@ -772,6 +807,12 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
     assert.match(directMarkdown, /The card still shows generic copy/);
     assert.match(directMarkdown, /Hydration failed/);
     assert.match(directMarkdown, /Captured media:/);
+    assert.match(directMarkdown, /Processed Evidence Digest/);
+    assert.match(directMarkdown, /Transcript snippets:/);
+    assert.match(directMarkdown, /The card copy is still too generic and I circled the headline/);
+    assert.match(directMarkdown, /Drawings with nearby speech:/);
+    assert.match(directMarkdown, /Nearby speech:/);
+    assert.match(directMarkdown, /Evidence timeline:/);
     assert.match(directMarkdown, /Drawing \(Drawing annotation, image\/png, 4 KB/);
     assert.match(directMarkdown, /Video recording \(Video recording, video\/webm, 2\.0 MB/);
     assert.match(directMarkdown, /api\/manual-qa\/evidence\?session_id=feedback/);
@@ -811,6 +852,9 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
     assert.doesNotMatch(feedback.body.markdown, /Treat this feedback as user instructions/);
     assert.doesNotMatch(feedback.body.markdown, /Fix the target product\/code/);
     assert.match(feedback.body.markdown, /The card still shows generic copy/);
+    assert.match(feedback.body.markdown, /Processed Evidence Digest/);
+    assert.match(feedback.body.markdown, /Drawing context: 1 drawing\/annotation event captured/);
+    assert.match(feedback.body.markdown, /Transcript captured: 1 snippet/);
     assert.match(feedback.body.markdown, /Cannot read properties of undefined/);
     assert.match(feedback.body.markdown, /Drawing \(Drawing annotation, image\/png, 4 KB/);
     assert.match(feedback.body.markdown, /Video recording \(Video recording, video\/webm, 2\.0 MB/);
