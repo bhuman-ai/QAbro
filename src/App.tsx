@@ -1400,7 +1400,7 @@ function HomePage({
           <Logo />
         </div>
         <nav className="hidden md:flex items-center gap-8 font-bold text-sm uppercase tracking-widest">
-          <a href="#install" className="hover:text-brand-accent transition-colors">Install MCP</a>
+          <a href="#install" className="hover:text-brand-accent transition-colors">Install</a>
           <a href="#proof" className="hover:text-brand-accent transition-colors">Proof</a>
           <button className="hover:text-brand-accent transition-colors" onClick={onOpenWorkspace}>Help Center</button>
           <button
@@ -1423,14 +1423,14 @@ function HomePage({
             <div>
               <div className="organic-pill inline-flex items-center gap-2 mb-6 bg-brand-secondary/10 text-brand-ink border-brand-ink">
                 <Code className="h-3.5 w-3.5" />
-                Hosted QA MCP for coding agents
+                QA before your agent says done
               </div>
 
-              <h1 className="text-[clamp(2.5rem,7vw,6.5rem)] font-black mb-8 leading-[0.88] max-w-5xl tracking-tighter text-brand-ink">
-                Let your coding agent QA its own work.
+              <h1 className="text-[clamp(2.75rem,5.6vw,5.25rem)] font-black mb-7 leading-[0.95] max-w-4xl tracking-tighter text-brand-ink">
+                Catch AI-built bugs before users do.
               </h1>
-              <p className="text-xl md:text-2xl text-slate-600 max-w-2xl mb-10 font-medium leading-relaxed">
-                Install the {PUBLIC_BRAND_NAME} MCP once. Codex, Cursor, Claude Desktop, or any Streamable HTTP MCP client can launch a real browser QA run, wait for the result, and return screenshots, console errors, network proof, and a dev-ready report.
+              <p className="text-lg md:text-xl text-slate-600 max-w-2xl mb-9 font-bold leading-relaxed">
+                Your coding agent opens a real browser, tries the preview, and brings back the exact proof a developer needs to fix what broke.
               </p>
 
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -1446,15 +1446,15 @@ function HomePage({
                   href="#install"
                   className="handcrafted-card px-8 py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-2"
                 >
-                  See install steps
+                  See how it works
                   <ChevronRight className="w-5 h-5" />
                 </a>
               </div>
 
               <div className="mt-7 flex flex-wrap gap-3 text-xs font-black uppercase tracking-widest text-slate-500">
-                <span className="inline-flex items-center gap-1 rounded-full border border-brand-line bg-white px-3 py-2"><Shield className="w-3 h-3" /> Revocable keys</span>
-                <span className="inline-flex items-center gap-1 rounded-full border border-brand-line bg-white px-3 py-2"><Clock className="w-3 h-3" /> Hosted endpoint</span>
-                <span className="inline-flex items-center gap-1 rounded-full border border-brand-line bg-white px-3 py-2"><FileText className="w-3 h-3" /> Evidence bundle</span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-brand-line bg-white px-3 py-2"><Globe className="w-3 h-3" /> Real browser</span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-brand-line bg-white px-3 py-2"><Shield className="w-3 h-3" /> Finds blockers</span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-brand-line bg-white px-3 py-2"><FileText className="w-3 h-3" /> Dev-ready proof</span>
               </div>
             </div>
 
@@ -1466,18 +1466,26 @@ function HomePage({
                     <div className="w-3 h-3 rounded-full bg-brand-warning"></div>
                     <div className="w-3 h-3 rounded-full bg-brand-success"></div>
                   </div>
-                  <span className="truncate text-xs font-black uppercase tracking-widest text-white/45">mcp client config</span>
+                  <span className="truncate text-xs font-black uppercase tracking-widest text-white/45">QA result</span>
                 </div>
-                <pre className="mt-5 overflow-x-auto whitespace-pre-wrap break-words text-left font-mono text-[11px] leading-relaxed text-brand-secondary sm:text-xs">
-                  {mcpInstallConfig}
-                </pre>
-                <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="mt-5 rounded-3xl border border-white/10 bg-white/5 p-5">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-brand-secondary">
+                    Needs fix
+                  </div>
+                  <h3 className="mt-2 text-2xl font-black tracking-tight text-white">
+                    Blank screen after OTP
+                  </h3>
+                  <p className="mt-3 text-sm font-semibold leading-relaxed text-white/65">
+                    The tester finished sign-up, then saw a white page instead of the dashboard.
+                  </p>
+                </div>
+                <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
                   <div className="flex items-center gap-3 text-sm font-black text-white">
                     <Check className="h-5 w-5 text-brand-success" />
-                    qa_check_work returned needs_fix
+                    Proof saved for the developer
                   </div>
                   <p className="mt-2 text-sm font-semibold leading-relaxed text-white/60">
-                    Blank white screen after successful OTP verification. Includes final screenshot, page errors, DOM snapshot, network timeline, viewport, browser version, and post-auth state flags.
+                    Final screen, errors, requests, browser details, and safe state notes are packaged together.
                   </p>
                 </div>
               </div>
@@ -1503,19 +1511,19 @@ function HomePage({
             <div className="max-w-3xl">
               <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Install once</span>
               <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
-                Give every coding agent a real QA tool.
+                Make QA the final step before done.
               </h2>
               <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
-                The hosted MCP endpoint is already live. Create a key in your dashboard, paste the config into your coding agent, then ask it to test a preview URL before it calls the work done.
+                Create a key, paste one config, then tell your agent what changed. It tests the preview and sends back proof before you ship.
               </p>
             </div>
 
             <div className="mt-12 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
               <div className="grid gap-4">
                 {[
-                  ["1", "Create a key", "Open Settings, choose Coding agents, then create a revocable MCP key."],
-                  ["2", "Paste the config", "Use the hosted Streamable HTTP URL and Authorization header in your MCP client."],
-                  ["3", "Ask for QA", "Tell the agent what changed, the preview URL, and the task a user should try."]
+                  ["1", "Create a key", "Open settings and create a revocable key for your coding agent."],
+                  ["2", "Paste one config", "Add the hosted MCP config to the agent you already use."],
+                  ["3", "Ask it to test", "Give it the preview URL and the user flow that should work."]
                 ].map(([step, title, body]) => (
                   <div key={step} className="handcrafted-card rounded-3xl p-6">
                     <div className="flex items-start gap-4">
@@ -1542,7 +1550,7 @@ function HomePage({
               <div className="handcrafted-card rounded-3xl !bg-brand-ink p-6 text-white">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-white/40">Hosted MCP URL</div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-white/40">Setup detail</div>
                     <div className="mt-1 max-w-full break-all font-mono text-xs font-bold text-brand-secondary">{HOSTED_MCP_URL}</div>
                   </div>
                   <button
@@ -1560,7 +1568,7 @@ function HomePage({
                 <div className="mt-6 rounded-2xl bg-white p-5 text-brand-ink">
                   <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Try this prompt</div>
                   <p className="mt-2 text-sm font-black leading-relaxed">
-                    Test my preview URL with {PUBLIC_BRAND_NAME} QA. Use qa_check_work, try the signup flow, wait for the verdict, and fix anything marked needs_fix before you finish.
+                    Test my preview URL with {PUBLIC_BRAND_NAME}. Try the signup flow and fix anything that blocks a first-time user before you finish.
                   </p>
                 </div>
               </div>
@@ -1573,20 +1581,20 @@ function HomePage({
             <div>
               <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Dev handoff</span>
               <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
-                Not just screenshots. A report a developer can act on.
+                The developer gets the bug, not a mystery.
               </h2>
               <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
-                Every MCP run returns a plain verdict plus the proof needed to reproduce, diagnose, and prioritize the issue without leaking private tokens.
+                Every run starts with a plain verdict, then includes enough proof to reproduce and fix the problem without exposing secrets.
               </p>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               {[
-                ["Final screenshot", "The terminal state is promoted first so a blank screen or blocked flow is obvious."],
-                ["Page errors", "Uncaught exceptions and console errors are captured beside the user-facing failure."],
-                ["Network timeline", "Requests are ordered by time with misleading transient failures filtered from the diagnosis."],
-                ["DOM snapshot", "The accessibility tree and visible DOM state show what the browser could actually interact with."],
-                ["Environment", "Browser version, viewport, URL, asset hash, and run timing travel with the report."],
-                ["Auth state flags", "Post-auth booleans like need_profile, token_present, and serialized_step are included without secrets."]
+                ["What the user saw", "The final screen is shown first so blank pages and blocked flows are obvious."],
+                ["What broke", "Errors are grouped beside the visible failure instead of buried in logs."],
+                ["What changed on the wire", "Requests are ordered so a developer can spot the bad handoff quickly."],
+                ["What the page exposed", "The visible page state shows what the browser could actually use."],
+                ["Where it happened", "Browser, viewport, URL, and timing travel with the report."],
+                ["What stayed private", "Tokens and sensitive values are redacted before the proof is shared."]
               ].map(([title, body]) => (
                 <div key={title} className="handcrafted-card rounded-3xl p-6">
                   <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-secondary/10 text-brand-secondary">
@@ -1650,24 +1658,24 @@ function HomePage({
               <div className="w-14 h-14 bg-brand-secondary rounded-2xl flex items-center justify-center mb-8 rotate-[-5deg]">
                 <Zap className="text-white w-8 h-8" />
               </div>
-              <h3 className="text-3xl font-black mb-4">Zero-Setup Testing</h3>
+              <h3 className="text-3xl font-black mb-4">Test the preview</h3>
               <p className="text-lg font-bold text-slate-600 leading-relaxed max-w-md">
-                Just drop your URL. Our agents automatically map your site, identify user flows, and start testing. No SDKs, no code, no headaches.
+                Give your agent a URL and the flow that should work. It opens the product like a real user would.
               </p>
             </div>
             <div className="handcrafted-card p-10 rounded-[3rem] bg-brand-accent/5">
               <div className="w-14 h-14 bg-brand-accent rounded-2xl flex items-center justify-center mb-8 rotate-[5deg]">
                 <MessageCircle className="text-white w-8 h-8" />
               </div>
-              <h3 className="text-3xl font-black mb-4">Real Chat Logs</h3>
+              <h3 className="text-3xl font-black mb-4">Clear feedback</h3>
               <p className="text-lg font-bold text-slate-600 leading-relaxed">
-                Read exactly what the agents were thinking as they navigated your product.
+                See the blocker in plain English, with the proof attached.
               </p>
             </div>
             <div className="handcrafted-card p-10 rounded-[3rem] !bg-brand-ink text-white">
-              <h3 className="text-3xl font-black mb-4">15 Min Reports</h3>
+              <h3 className="text-3xl font-black mb-4">Fast reports</h3>
               <p className="text-lg font-bold text-slate-400 mb-8">
-                Why wait weeks for a user study? Get a comprehensive QA report before your coffee gets cold.
+                Get a useful QA handoff while the preview is still fresh.
               </p>
               <div className="flex items-center gap-4">
                 <div className="flex -space-x-3">
@@ -1682,9 +1690,9 @@ function HomePage({
             </div>
             <div className="md:col-span-2 handcrafted-card p-10 rounded-[3rem] flex flex-col md:flex-row items-center gap-10">
               <div className="flex-1">
-                <h3 className="text-3xl font-black mb-4">Visual Friction Maps</h3>
+                <h3 className="text-3xl font-black mb-4">Manual review too</h3>
                 <p className="text-lg font-bold text-slate-600 leading-relaxed">
-                  See exactly where Sarah got confused or where Marcus felt the UI was too slow. Heatmaps, but with actual human reasoning.
+                  Record your screen, draw on the page, and send the same kind of proof back to the agent.
                 </p>
               </div>
               <div className="w-full md:w-64 h-48 bg-brand-muted rounded-2xl border-2 border-brand-ink overflow-hidden relative">
@@ -1699,16 +1707,15 @@ function HomePage({
           <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-16">
             <div className="flex-1">
               <div className="organic-pill inline-block mb-6 bg-brand-ink text-white border-brand-ink">
-                Built for agentic workflows
+                Built for the moment before done
               </div>
               <h2 className="text-4xl md:text-6xl font-black mb-8 leading-tight text-brand-ink">
-                Your AI writes the code. <br />
-                Stop being the <br />
-                <span className="text-brand-accent italic">manual QA</span> <br />
-                for its mistakes.
+                Your AI wrote the code. <br />
+                Now make it prove <br />
+                <span className="text-brand-accent italic">the product works.</span>
               </h2>
               <p className="text-xl font-bold text-slate-600 mb-8 leading-relaxed">
-                You build at the speed of light with Cursor and Claude. Stop slowing down to manually click through every PR. Our agents close the loop by testing AI-generated code against real human behavior.
+                Before the agent says it is finished, it should try the real flow, catch the blocker, and hand you the evidence.
               </p>
 
               <div className="space-y-6">
@@ -1717,8 +1724,8 @@ function HomePage({
                     <Zap className="text-white w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="font-black text-lg">MCP Integration</h4>
-                    <p className="text-slate-500 font-medium">Connect hosted Streamable HTTP MCP to Codex, Cursor, Claude Desktop, or any compatible client. Ask the agent to test the preview before it reports done.</p>
+                    <h4 className="font-black text-lg">Works inside your agent</h4>
+                    <p className="text-slate-500 font-medium">Connect once, then ask your coding agent to test the preview before it reports done.</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-4">
@@ -1726,8 +1733,8 @@ function HomePage({
                     <Shield className="text-white w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="font-black text-lg">Confidence, Not Hope</h4>
-                    <p className="text-slate-500 font-medium">Don&apos;t just hope the LLM got the UI right. Our agents navigate the actual DOM, finding the edge cases your AI missed.</p>
+                    <h4 className="font-black text-lg">Confidence, not hope</h4>
+                    <p className="text-slate-500 font-medium">It clicks through the real page and catches the failures a screenshot review can miss.</p>
                   </div>
                 </div>
               </div>
@@ -1743,9 +1750,9 @@ function HomePage({
                     <span className="text-white/40 ml-2">cursor-terminal</span>
                   </div>
                   <div className="space-y-2">
-                    <p><span className="text-white/40">$</span> qa_check_work target_url=https://preview.example.com</p>
-                    <p className="text-white">Starting persona browser run for the signup flow...</p>
-                    <p className="text-white">Capturing screenshots, console errors, DOM, and network timeline...</p>
+                    <p><span className="text-white/40">$</span> test the signup preview</p>
+                    <p className="text-white">Opening the real page...</p>
+                    <p className="text-white">Trying the first-time user flow...</p>
                     <p className="text-brand-accent">needs_fix: Blank white screen after OTP verification.</p>
                     <p className="text-brand-secondary">share_url: {PUBLIC_BASE_URL}/share/...</p>
                   </div>
@@ -1776,10 +1783,10 @@ function HomePage({
                   Ready to connect an agent?
                 </div>
                 <h2 className="text-4xl md:text-6xl font-black mb-8 leading-none text-white">
-                  Install the QA MCP, then ship with proof.
+                  Make QA the last step before done.
                 </h2>
                 <p className="text-lg md:text-xl font-bold text-white mb-10 max-w-xl leading-relaxed">
-                  The primary path is hosted MCP: create a key, paste the config, and make QA a required step before your agent finishes work.
+                  Create a key, paste the config, and tell your agent to test every preview before it finishes.
                 </p>
                 <button
                   type="button"

@@ -163,13 +163,15 @@ Keep machine terms only where the user truly needs them.
 
 ### Homepage
 
-Use an MCP-first developer launch pattern.
+Use a benefit-first MCP launch pattern.
 
 - Show that the hosted QA MCP is the primary product
-- Put install steps, endpoint shape, and agent prompt above generic testing copy
+- Lead with the outcome: the coding agent tests a preview before it says the work is done
+- Put install steps, endpoint shape, and agent prompt after the value is clear
 - Send the primary CTA to dashboard Settings -> Coding agents
 - Keep the public one-off site test available, but make it clearly secondary
-- Explain evidence bundles in developer language: final screenshot, page errors, DOM/accessibility snapshot, network timeline, asset hash, browser/viewport, and post-auth state flags without secrets
+- Explain evidence bundles in plain benefit language first: what broke, what the user saw, and what the developer needs to fix it
+- Keep technical proof details available, but do not make them the main homepage pitch
 
 ### Dashboard
 
