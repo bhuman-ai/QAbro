@@ -1361,6 +1361,13 @@ function HomePage({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [queued, setQueued] = useState<any | null>(null);
+  const heroPersona = STARTER_PERSONAS[0];
+  const heroPersonaNotes = [
+    "I entered the code, then the screen went blank.",
+    "I expected the dashboard to open next.",
+    "Send this to the developer with proof."
+  ];
+  const [heroNoteIndex, setHeroNoteIndex] = useState(0);
   const mcpInstallConfig = `{
   "mcpServers": {
     "${MCP_CLIENT_SERVER_NAME}": {
@@ -1371,6 +1378,13 @@ function HomePage({
     }
   }
 }`;
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setHeroNoteIndex((index) => (index + 1) % heroPersonaNotes.length);
+    }, 2600);
+    return () => window.clearInterval(interval);
+  }, [heroPersonaNotes.length]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1486,6 +1500,41 @@ function HomePage({
                   <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">
                     The screen, spoken notes, drawings, and page errors are packaged together so the fix is clear.
                   </p>
+                </div>
+                <div className="mt-4 rounded-2xl border border-brand-line bg-white p-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`h-12 w-12 shrink-0 overflow-hidden rounded-2xl border-2 border-brand-ink ${heroPersona.color}`}>
+                      <img
+                        src={heroPersona.avatar}
+                        alt={heroPersona.name}
+                        className="h-full w-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-black text-brand-ink">
+                        {heroPersona.name}
+                      </div>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                        {heroPersona.role}
+                      </div>
+                    </div>
+                    <PenLine className="ml-auto h-5 w-5 shrink-0 text-brand-accent" />
+                  </div>
+                  <div className="mt-3 min-h-[3rem] overflow-hidden rounded-xl bg-brand-secondary/5 px-4 py-3">
+                    <AnimatePresence mode="wait">
+                      <motion.p
+                        key={heroPersonaNotes[heroNoteIndex]}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.25 }}
+                        className="text-sm font-bold leading-relaxed text-slate-700"
+                      >
+                        &ldquo;{heroPersonaNotes[heroNoteIndex]}&rdquo;
+                      </motion.p>
+                    </AnimatePresence>
+                  </div>
                 </div>
               </div>
             </div>
