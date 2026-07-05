@@ -62,6 +62,22 @@ function safeText(value, maxLength = 4000) {
   return String(value || "").trim().slice(0, maxLength);
 }
 
+const AGENT_ACTION_MODES = new Set(["report_only", "fix_and_retest"]);
+
+function normalizeAgentActionMode(input = {}, fallback = "report_only") {
+  const explicit = safeText(input.agent_action_mode || input.agentActionMode, 80).toLowerCase();
+  if (AGENT_ACTION_MODES.has(explicit)) {
+    return explicit;
+  }
+  if (input.auto_start_work === true || input.autoStartWork === true) {
+    return "fix_and_retest";
+  }
+  if (input.auto_start_work === false || input.autoStartWork === false) {
+    return "report_only";
+  }
+  return AGENT_ACTION_MODES.has(fallback) ? fallback : "report_only";
+}
+
 function buildManualReviewWorkflowText(input = {}) {
   const targetUrl = safeText(input.target_url || input.targetUrl, 4096);
   const workSummary = safeText(input.work_summary || input.workSummary || input.change_summary || input.changeSummary, 4000);
@@ -112,13 +128,9 @@ function buildManualReviewWorkflowText(input = {}) {
     "- Prefer `qa_wait_for_manual_feedback` so the user's Send All click returns directly to the agent without copy/paste.",
     "- Use `qa_wait_for_manual_evidence` or `qa://manual/{session_id}/evidence.json` for live draft evidence before Send All.",
     "- Use `qa_get_manual_report` only as a fallback or for historical export.",
-    "- Do not only summarize the returned Markdown. Treat it as user instructions.",
-    "- Extract concrete feedback points from notes, transcript, drawings, screenshots, videos, page context, console, and network evidence.",
-    "- Fix the target product/code for every actionable bug, copy issue, confusing UI, or requested change.",
-    "- Run the relevant tests/build checks.",
-    "- Deploy or refresh the preview/production target.",
-    "- Create a fresh BeforeUsersDo manual QA session/link for the fixed version so old evidence does not carry over.",
-    "- Do not mark the work done until the fixes are shipped and the new QA link is ready, unless you clearly state the blocker.",
+    "- Obey the session's `agent_action_mode`.",
+    "- `fix_and_retest`: treat the feedback as user instructions, fix the target product/code, run checks, deploy or refresh, then create a fresh QA link.",
+    "- `report_only`: extract and summarize the feedback, but do not edit or deploy unless the user explicitly asks you to start work.",
     "",
     targetUrl ? `Current target_url: ${targetUrl}` : "",
     featureName ? `Current feature_name: ${featureName}` : "",
@@ -126,41 +138,123 @@ function buildManualReviewWorkflowText(input = {}) {
   ]);
 }
 
-function buildManualFeedbackRequiredAction(sessionId, feedback = {}) {
-  const safeSessionId = safeText(sessionId, 128);
-  const scope = safeText(feedback.scope || "all", 40) || "all";
-  const itemId = safeText(feedback.item_id || feedback.itemId, 80);
-  return {
+function buildAgentActionContract({
+  source = "qa",
+  id = "",
+  feedback = {},
+  outcome = {},
+  actionMode = "report_only",
+  autoStartWork,
+  nextToolAfterFix = "qa_start_manual_review"
+} = {}) {
+  const mode = normalizeAgentActionMode(
+    {
+      agent_action_mode: actionMode,
+      auto_start_work: autoStartWork
+    },
+    "report_only"
+  );
+  const base = {
     required: true,
-    status: "fix_or_explain_before_done",
-    session_id: safeSessionId || null,
+    source: safeText(source, 80) || "qa",
+    id: safeText(id, 128) || null,
     feedback_id: safeText(feedback.feedback_id || feedback.feedbackId, 128) || null,
-    scope,
-    item_id: itemId || null,
+    verdict: safeText(outcome.verdict, 80) || null,
+    scope: safeText(feedback.scope || "all", 40) || "all",
+    item_id: safeText(feedback.item_id || feedback.itemId, 80) || null,
+    agent_action_mode: mode,
+    auto_start_work: mode === "fix_and_retest",
+    next_tool_after_fix: nextToolAfterFix
+  };
+
+  if (mode === "fix_and_retest") {
+    return {
+      ...base,
+      status: "fix_or_explain_before_done",
+      completion_rule:
+        "Do not claim done after receiving this QA feedback. Extract the actionable points, fix the target work, verify, deploy or refresh the preview, then create a fresh BeforeUsersDo QA link or rerun QA.",
+      steps: [
+        "Read the full QA feedback and evidence links.",
+        "Extract concrete feedback points from notes, transcript, drawings, screenshots, videos, page context, console, network evidence, and report findings.",
+        "Turn every actionable bug, copy issue, confusing UI, blocker, or requested change into implementation work.",
+        "Update the target code/product instead of only summarizing the feedback.",
+        "Run the relevant tests/build checks and record the result.",
+        "Deploy or refresh the preview/production target the user should retest.",
+        "Create a fresh BeforeUsersDo QA link or rerun the relevant QA tool for the fixed version.",
+        "If any step is blocked, say exactly what is blocked and what is needed."
+      ]
+    };
+  }
+
+  return {
+    ...base,
+    status: "report_only",
     completion_rule:
-      "Do not claim done after receiving manual QA feedback. Extract the actionable points, fix the target work, verify, deploy or refresh the preview, then create a fresh BeforeUsersDo QA link.",
+      "Do not start code changes from this QA result unless the user explicitly asks you to start work or rerun with agent_action_mode=fix_and_retest.",
     steps: [
-      "Read the full feedback Markdown and evidence links.",
-      "Extract concrete feedback points from notes, transcript, drawings, screenshots, videos, page context, console, and network evidence.",
-      "Turn every actionable bug, copy issue, confusing UI, or requested change into implementation work.",
-      "Update the target code/product instead of only summarizing the feedback.",
-      "Run the relevant tests/build checks and record the result.",
-      "Deploy or refresh the preview/production target the user should retest.",
-      "Call qa_start_manual_review again for the fixed version and give the user the fresh QA link.",
-      "If any step is blocked, say exactly what is blocked and what is needed."
-    ],
+      "Read the full QA feedback and evidence links.",
+      "Extract concrete feedback points from notes, transcript, drawings, screenshots, videos, page context, console, network evidence, and report findings.",
+      "Summarize what is wrong, what evidence supports it, and what you would fix first.",
+      "Do not edit code, deploy, or create a replacement QA link unless the user asks you to start work.",
+      "If the user asks you to start work, switch to fix-and-retest behavior: fix, verify, deploy or refresh, then create a fresh QA link or rerun QA."
+    ]
+  };
+}
+
+function buildManualFeedbackRequiredAction(sessionId, feedback = {}, options = {}) {
+  const safeSessionId = safeText(sessionId, 128);
+  return {
+    ...buildAgentActionContract({
+      source: "manual_qa",
+      id: safeSessionId,
+      feedback,
+      actionMode: options.agent_action_mode || options.agentActionMode || "fix_and_retest",
+      autoStartWork: options.auto_start_work ?? options.autoStartWork,
+      nextToolAfterFix: "qa_start_manual_review"
+    }),
+    session_id: safeSessionId || null,
     next_tool_after_fix: "qa_start_manual_review"
   };
 }
 
-function buildManualFeedbackActionText(sessionId, feedback = {}) {
-  const action = buildManualFeedbackRequiredAction(sessionId, feedback);
+function buildAgentActionText(action) {
+  const modeLine =
+    action.agent_action_mode === "fix_and_retest"
+      ? "Mode: report and start work."
+      : "Mode: report only. Do not start code changes yet.";
   return buildText([
     "REQUIRED NEXT STEPS FOR THE CODING AGENT:",
-    "This feedback is not the end of the task.",
+    modeLine,
     ...action.steps.map((step, index) => `${index + 1}. ${step}`),
     `Completion rule: ${action.completion_rule}`
   ]);
+}
+
+function buildManualFeedbackActionText(sessionId, feedback = {}, options = {}) {
+  return buildAgentActionText(buildManualFeedbackRequiredAction(sessionId, feedback, options));
+}
+
+function buildAutomatedQaRequiredAction(runId, outcome = {}, options = {}) {
+  return {
+    ...buildAgentActionContract({
+      source: "automated_qa",
+      id: runId,
+      outcome,
+      actionMode: options.agent_action_mode || options.agentActionMode || options.action_mode || "report_only",
+      autoStartWork: options.auto_start_work ?? options.autoStartWork,
+      nextToolAfterFix: "qa_check_work"
+    }),
+    run_id: safeText(runId, 128) || null,
+    next_tool_after_fix: "qa_check_work"
+  };
+}
+
+function buildAutomatedQaActionText(runId, outcome = {}, options = {}) {
+  return buildAgentActionText(buildAutomatedQaRequiredAction(runId, outcome, options));
+}
+
+function shouldReturnQaAction(outcome = {}) {
+  return outcome && outcome.pass !== true;
 }
 
 function buildManualReviewNeedsInputResult(input = {}) {
@@ -313,6 +407,8 @@ function buildRunInputSchema() {
     run_id: z.string().max(128).optional(),
     dry_run: z.boolean().optional(),
     share_after: z.boolean().optional(),
+    agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Defaults to report_only for automated QA. Use fix_and_retest only when the user wants the coding agent to start fixes automatically."),
+    auto_start_work: z.boolean().optional().describe("Alias for agent_action_mode. true means fix_and_retest; false means report_only."),
     credentials: z
       .object({
         login_url: z.string().url().optional(),
@@ -356,6 +452,8 @@ function buildCodingAgentCheckInputSchema() {
     timeout_seconds: z.number().int().min(1).max(7200).optional(),
     poll_interval_seconds: z.number().int().min(1).max(120).optional(),
     share_after: z.boolean().optional(),
+    agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Defaults to report_only for automated QA. Use fix_and_retest only when the user wants the coding agent to start fixes automatically."),
+    auto_start_work: z.boolean().optional().describe("Alias for agent_action_mode. true means fix_and_retest; false means report_only."),
     dry_run: z.boolean().optional()
   };
 }
@@ -379,6 +477,8 @@ function buildManualQaSessionInputSchema(options = {}) {
     commit_sha: z.string().max(120).optional(),
     pull_request_url: z.string().url().optional(),
     developer_notes: z.string().max(4000).optional(),
+    agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Defaults to fix_and_retest for human/manual feedback. Use report_only when the user only wants a summary."),
+    auto_start_work: z.boolean().optional().describe("Alias for agent_action_mode. true means fix_and_retest; false means report_only."),
     entry_path: z.string().max(1000).optional().describe("Optional path to use when generated checklist items need a start URL."),
     test_plan: z
       .array(
@@ -648,10 +748,12 @@ function createQaMcpServer(options = {}) {
         timeout_seconds: z.number().int().min(1).max(7200).optional(),
         poll_interval_seconds: z.number().int().min(1).max(120).optional(),
         include_report: z.boolean().optional(),
-        share_after: z.boolean().optional()
+        share_after: z.boolean().optional(),
+        agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Defaults to report_only. Use fix_and_retest only when the user wants the coding agent to start fixes automatically."),
+        auto_start_work: z.boolean().optional().describe("Alias for agent_action_mode.")
       }
     },
-    async ({ run_id, timeout_seconds, poll_interval_seconds, include_report, share_after }, extra) => {
+    async ({ run_id, timeout_seconds, poll_interval_seconds, include_report, share_after, agent_action_mode, auto_start_work }, extra) => {
       try {
         let tick = 0;
         const pollEvery = Math.max(1, Number(poll_interval_seconds || 5));
@@ -687,7 +789,33 @@ function createQaMcpServer(options = {}) {
           result.share = await apiClient.shareRunReport(run_id, { signal: extra.signal });
         }
 
-        const text = result.report ? buildReportText(result.report) : buildStatusText(waitResult.status || {});
+        const outcome =
+          result.report || result.timed_out
+            ? summarizeCodingAgentQaOutcome({ reportPayload: result.report, waitResult, share: result.share })
+            : null;
+        if (outcome) {
+          result.verdict = outcome.verdict;
+          result.pass = outcome.pass;
+          result.reason = outcome.reason;
+          if (shouldReturnQaAction(outcome)) {
+            result.required_agent_action = buildAutomatedQaRequiredAction(run_id, outcome, {
+              agent_action_mode,
+              auto_start_work
+            });
+          }
+        }
+
+        const text = result.report
+          ? buildText([
+              buildReportText(result.report),
+              result.required_agent_action ? "" : "",
+              result.required_agent_action ? buildAgentActionText(result.required_agent_action) : ""
+            ])
+          : buildText([
+              buildStatusText(waitResult.status || {}),
+              result.required_agent_action ? "" : "",
+              result.required_agent_action ? buildAgentActionText(result.required_agent_action) : ""
+            ]);
         return makeToolResult(text, result);
       } catch (error) {
         return makeToolError(error);
@@ -701,13 +829,33 @@ function createQaMcpServer(options = {}) {
       title: "Get QA Report",
       description: "Fetch the normalized QA report and Markdown for a completed or in-progress run.",
       inputSchema: {
-        run_id: z.string().max(128)
+        run_id: z.string().max(128),
+        agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Defaults to report_only. Use fix_and_retest only when the user wants the coding agent to start fixes automatically."),
+        auto_start_work: z.boolean().optional().describe("Alias for agent_action_mode.")
       }
     },
-    async ({ run_id }) => {
+    async ({ run_id, agent_action_mode, auto_start_work }) => {
       try {
         const response = await apiClient.getRunReport(run_id);
-        return makeToolResult(buildReportText(response), response);
+        const outcome = summarizeCodingAgentQaOutcome({ reportPayload: response });
+        const result = {
+          ...response,
+          verdict: outcome.verdict,
+          pass: outcome.pass,
+          reason: outcome.reason
+        };
+        if (shouldReturnQaAction(outcome)) {
+          result.required_agent_action = buildAutomatedQaRequiredAction(run_id, outcome, {
+            agent_action_mode,
+            auto_start_work
+          });
+        }
+        const text = buildText([
+          buildReportText(response),
+          result.required_agent_action ? "" : "",
+          result.required_agent_action ? buildAgentActionText(result.required_agent_action) : ""
+        ]);
+        return makeToolResult(text, result);
       } catch (error) {
         return makeToolError(error);
       }
@@ -903,7 +1051,9 @@ function createQaMcpServer(options = {}) {
         scope: z.enum(["all", "item", "any"]).optional().describe("Defaults to all. Use item with item_id for one checklist item, or any for the latest package."),
         item_id: z.string().max(80).optional(),
         timeout_seconds: z.number().int().min(1).max(7200).optional(),
-        poll_interval_seconds: z.number().min(0.1).max(120).optional()
+        poll_interval_seconds: z.number().min(0.1).max(120).optional(),
+        agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Overrides the session mode. Defaults to the session setting, usually fix_and_retest for human feedback."),
+        auto_start_work: z.boolean().optional().describe("Alias override for agent_action_mode.")
       }
     },
     async (input, extra) => {
@@ -927,7 +1077,14 @@ function createQaMcpServer(options = {}) {
         });
 
         if (waitResult.feedback_ready && waitResult.feedback?.markdown) {
-          const requiredAgentAction = buildManualFeedbackRequiredAction(input.session_id, waitResult.feedback);
+          const sessionContext =
+            waitResult.session && typeof waitResult.session.context === "object" && waitResult.session.context
+              ? waitResult.session.context
+              : {};
+          const requiredAgentAction = buildManualFeedbackRequiredAction(input.session_id, waitResult.feedback, {
+            agent_action_mode: input.agent_action_mode || sessionContext.agent_action_mode || sessionContext.agentActionMode,
+            auto_start_work: input.auto_start_work ?? sessionContext.auto_start_work ?? sessionContext.autoStartWork
+          });
           const result = {
             ...waitResult,
             required_agent_action: requiredAgentAction
@@ -936,7 +1093,7 @@ function createQaMcpServer(options = {}) {
             `Manual QA feedback received for ${input.session_id}.`,
             `Feedback id: ${waitResult.feedback.feedback_id || "n/a"}`,
             "",
-            buildManualFeedbackActionText(input.session_id, waitResult.feedback),
+            buildAgentActionText(requiredAgentAction),
             "",
             waitResult.feedback.markdown
           ]);
@@ -992,6 +1149,11 @@ function createQaMcpServer(options = {}) {
 
         const report = waitResult.status?.report_ready ? await apiClient.getRunReport(queued.run_id, { signal: extra.signal }) : null;
         const shared = input.share_after ? await apiClient.shareRunReport(queued.run_id, { signal: extra.signal }) : null;
+        const outcome = summarizeCodingAgentQaOutcome({
+          reportPayload: report,
+          waitResult,
+          share: shared
+        });
         await maybeSendProgress(extra, 999, 999, `QA run ${queued.run_id} finished`);
 
         const result = {
@@ -999,18 +1161,28 @@ function createQaMcpServer(options = {}) {
           queued,
           wait: waitResult,
           report,
-          share: shared
+          share: shared,
+          verdict: outcome.verdict,
+          pass: outcome.pass,
+          reason: outcome.reason
         };
+        if (shouldReturnQaAction(outcome)) {
+          result.required_agent_action = buildAutomatedQaRequiredAction(queued.run_id, outcome, input);
+        }
 
         const text = report
           ? buildText([
               `QA run ${queued.run_id} finished.`,
               buildReportText(report),
+              result.required_agent_action ? "" : "",
+              result.required_agent_action ? buildAgentActionText(result.required_agent_action) : "",
               shared?.share_url ? `Share URL: ${shared.share_url}` : ""
             ])
           : buildText([
               `QA run ${queued.run_id} did not finish before the timeout.`,
-              buildStatusText(waitResult.status || {})
+              buildStatusText(waitResult.status || {}),
+              result.required_agent_action ? "" : "",
+              result.required_agent_action ? buildAgentActionText(result.required_agent_action) : ""
             ]);
 
         return makeToolResult(text, result);
@@ -1086,12 +1258,17 @@ function createQaMcpServer(options = {}) {
             markdown_resource: markdownResource
           }
         };
+        if (shouldReturnQaAction(outcome)) {
+          result.required_agent_action = buildAutomatedQaRequiredAction(queued.run_id, outcome, input);
+        }
 
         const text = buildText([
           `QA verdict for ${queued.run_id}: ${outcome.verdict}.`,
           outcome.reason,
           outcome.summary_note ? `Summary: ${outcome.summary_note}` : "",
           outcome.top_finding?.title ? `Top finding: ${outcome.top_finding.title}` : "",
+          result.required_agent_action ? "" : "",
+          result.required_agent_action ? buildAgentActionText(result.required_agent_action) : "",
           result.evidence.ui_report_url ? `Open report: ${result.evidence.ui_report_url}` : "",
           result.evidence.share_url ? `Share URL: ${result.evidence.share_url}` : "",
           `Report resource: ${markdownResource}`
@@ -1173,6 +1350,10 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildAutomatedQaActionText,
+  buildAutomatedQaRequiredAction,
+  buildAgentActionContract,
+  buildAgentActionText,
   buildManualFeedbackActionText,
   buildManualFeedbackRequiredAction,
   buildManualReviewNeedsInputResult,

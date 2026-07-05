@@ -16,6 +16,8 @@ const {
 } = require("../lib/qa-mcp");
 const { readQaMcpStoredAuth, writeQaMcpStoredAuth } = require("../lib/qa-mcp-auth");
 const {
+  buildAutomatedQaActionText,
+  buildAutomatedQaRequiredAction,
   buildManualFeedbackActionText,
   buildManualFeedbackRequiredAction,
   buildManualReviewNeedsInputResult,
@@ -508,14 +510,13 @@ test("manual review workflow tells agents what context to gather", () => {
   assert.match(text, /evidence\.json/);
   assert.match(text, /qa_wait_for_manual_feedback/);
   assert.match(text, /without copy\/paste/i);
-  assert.match(text, /Do not only summarize the returned Markdown/i);
-  assert.match(text, /Fix the target product\/code/i);
-  assert.match(text, /Create a fresh BeforeUsersDo manual QA session\/link/i);
-  assert.match(text, /Do not mark the work done until the fixes are shipped and the new QA link is ready/i);
+  assert.match(text, /Obey the session's `agent_action_mode`/i);
+  assert.match(text, /`fix_and_retest`: treat the feedback as user instructions/i);
+  assert.match(text, /`report_only`: extract and summarize the feedback/i);
   assert.match(text, /https:\/\/preview\.example\.com/);
 });
 
-test("manual feedback action contract forces fix-deploy-new-QA loop", () => {
+test("manual feedback action contract defaults to fix-deploy-new-QA loop", () => {
   const action = buildManualFeedbackRequiredAction("manual_123", {
     feedback_id: "feedback_123",
     scope: "item",
@@ -529,13 +530,57 @@ test("manual feedback action contract forces fix-deploy-new-QA loop", () => {
 
   assert.equal(action.required, true);
   assert.equal(action.status, "fix_or_explain_before_done");
+  assert.equal(action.agent_action_mode, "fix_and_retest");
+  assert.equal(action.auto_start_work, true);
   assert.equal(action.next_tool_after_fix, "qa_start_manual_review");
   assert.match(action.completion_rule, /fresh BeforeUsersDo QA link/);
   assert.match(action.steps.join(" "), /Update the target code\/product instead of only summarizing/);
   assert.match(action.steps.join(" "), /Deploy or refresh/);
   assert.match(text, /REQUIRED NEXT STEPS FOR THE CODING AGENT/);
-  assert.match(text, /This feedback is not the end of the task/);
-  assert.match(text, /Call qa_start_manual_review again/);
+  assert.match(text, /Mode: report and start work/);
+  assert.match(text, /Create a fresh BeforeUsersDo QA link or rerun the relevant QA tool/);
+});
+
+test("manual feedback action contract can be report-only", () => {
+  const action = buildManualFeedbackRequiredAction(
+    "manual_123",
+    { feedback_id: "feedback_123", scope: "all" },
+    { agent_action_mode: "report_only" }
+  );
+  const text = buildManualFeedbackActionText(
+    "manual_123",
+    { feedback_id: "feedback_123", scope: "all" },
+    { agent_action_mode: "report_only" }
+  );
+
+  assert.equal(action.status, "report_only");
+  assert.equal(action.agent_action_mode, "report_only");
+  assert.equal(action.auto_start_work, false);
+  assert.match(action.completion_rule, /Do not start code changes/);
+  assert.match(text, /Mode: report only/);
+  assert.match(text, /Do not edit code/);
+});
+
+test("automated QA action contract defaults to report-only and can opt into fix-and-retest", () => {
+  const reportOnly = buildAutomatedQaRequiredAction("run_123", {
+    verdict: "needs_fix"
+  });
+  const fixAndRetest = buildAutomatedQaRequiredAction(
+    "run_123",
+    { verdict: "needs_fix" },
+    { agent_action_mode: "fix_and_retest" }
+  );
+  const text = buildAutomatedQaActionText("run_123", { verdict: "needs_fix" });
+
+  assert.equal(reportOnly.source, "automated_qa");
+  assert.equal(reportOnly.status, "report_only");
+  assert.equal(reportOnly.agent_action_mode, "report_only");
+  assert.equal(reportOnly.auto_start_work, false);
+  assert.match(reportOnly.completion_rule, /unless the user explicitly asks/);
+  assert.equal(fixAndRetest.status, "fix_or_explain_before_done");
+  assert.equal(fixAndRetest.auto_start_work, true);
+  assert.match(fixAndRetest.completion_rule, /fix the target work/);
+  assert.match(text, /Mode: report only/);
 });
 
 test("manual review missing-input result asks only for target_url", () => {
