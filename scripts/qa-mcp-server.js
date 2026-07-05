@@ -65,9 +65,18 @@ function safeText(value, maxLength = 4000) {
 const AGENT_ACTION_MODES = new Set(["report_only", "fix_and_retest"]);
 
 function normalizeAgentActionMode(input = {}, fallback = "report_only") {
-  const explicit = safeText(input.agent_action_mode || input.agentActionMode, 80).toLowerCase();
+  const explicit = safeText(
+    input.feedback_action || input.feedbackAction || input.feedback_mode || input.feedbackMode || input.agent_action_mode || input.agentActionMode,
+    80
+  ).toLowerCase();
   if (AGENT_ACTION_MODES.has(explicit)) {
     return explicit;
+  }
+  if (["share_feedback", "share_only", "save_feedback", "save_only"].includes(explicit)) {
+    return "report_only";
+  }
+  if (["share_feedback_and_start_work", "share_and_start_work", "auto_start_work", "start_work"].includes(explicit)) {
+    return "fix_and_retest";
   }
   if (input.auto_start_work === true || input.autoStartWork === true) {
     return "fix_and_retest";
@@ -128,9 +137,9 @@ function buildManualReviewWorkflowText(input = {}) {
     "- Prefer `qa_wait_for_manual_feedback` so the user's Send All click returns directly to the agent without copy/paste.",
     "- Use `qa_wait_for_manual_evidence` or `qa://manual/{session_id}/evidence.json` for live draft evidence before Send All.",
     "- Use `qa_get_manual_report` only as a fallback or for historical export.",
-    "- Obey the session's `agent_action_mode`.",
-    "- `fix_and_retest`: treat the feedback as user instructions, fix the target product/code, run checks, deploy or refresh, then create a fresh QA link.",
-    "- `report_only`: extract and summarize the feedback, but do not edit or deploy unless the user explicitly asks you to start work.",
+    "- Obey the session's `feedback_action` setting.",
+    "- `share_feedback_and_start_work`: share feedback with the agent, treat it as user instructions, fix the target product/code, run checks, deploy or refresh, then create a fresh QA link.",
+    "- `share_feedback`: share feedback with the agent for summary/reporting, but do not edit or deploy unless the user explicitly asks you to start work.",
     "",
     targetUrl ? `Current target_url: ${targetUrl}` : "",
     featureName ? `Current feature_name: ${featureName}` : "",
@@ -163,6 +172,7 @@ function buildAgentActionContract({
     scope: safeText(feedback.scope || "all", 40) || "all",
     item_id: safeText(feedback.item_id || feedback.itemId, 80) || null,
     agent_action_mode: mode,
+    feedback_action: mode === "fix_and_retest" ? "share_feedback_and_start_work" : "share_feedback",
     auto_start_work: mode === "fix_and_retest",
     next_tool_after_fix: nextToolAfterFix
   };
@@ -190,7 +200,7 @@ function buildAgentActionContract({
     ...base,
     status: "report_only",
     completion_rule:
-      "Do not start code changes from this QA result unless the user explicitly asks you to start work or rerun with agent_action_mode=fix_and_retest.",
+      "Do not start code changes from this QA result unless the user explicitly asks you to start work or rerun with feedback_action=share_feedback_and_start_work.",
     steps: [
       "Read the full QA feedback and evidence links.",
       "Extract concrete feedback points from notes, transcript, drawings, screenshots, videos, page context, console, network evidence, and report findings.",
@@ -208,7 +218,7 @@ function buildManualFeedbackRequiredAction(sessionId, feedback = {}, options = {
       source: "manual_qa",
       id: safeSessionId,
       feedback,
-      actionMode: options.agent_action_mode || options.agentActionMode || "fix_and_retest",
+      actionMode: options.feedback_action || options.feedbackAction || options.feedback_mode || options.feedbackMode || options.agent_action_mode || options.agentActionMode || "fix_and_retest",
       autoStartWork: options.auto_start_work ?? options.autoStartWork,
       nextToolAfterFix: "qa_start_manual_review"
     }),
@@ -220,8 +230,8 @@ function buildManualFeedbackRequiredAction(sessionId, feedback = {}, options = {
 function buildAgentActionText(action) {
   const modeLine =
     action.agent_action_mode === "fix_and_retest"
-      ? "Mode: report and start work."
-      : "Mode: report only. Do not start code changes yet.";
+      ? "Mode: share feedback and auto-start work."
+      : "Mode: share feedback only. Do not start code changes yet.";
   return buildText([
     "REQUIRED NEXT STEPS FOR THE CODING AGENT:",
     modeLine,
@@ -240,7 +250,7 @@ function buildAutomatedQaRequiredAction(runId, outcome = {}, options = {}) {
       source: "automated_qa",
       id: runId,
       outcome,
-      actionMode: options.agent_action_mode || options.agentActionMode || options.action_mode || "report_only",
+      actionMode: options.feedback_action || options.feedbackAction || options.feedback_mode || options.feedbackMode || options.agent_action_mode || options.agentActionMode || options.action_mode || "report_only",
       autoStartWork: options.auto_start_work ?? options.autoStartWork,
       nextToolAfterFix: "qa_check_work"
     }),
@@ -407,8 +417,9 @@ function buildRunInputSchema() {
     run_id: z.string().max(128).optional(),
     dry_run: z.boolean().optional(),
     share_after: z.boolean().optional(),
-    agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Defaults to report_only for automated QA. Use fix_and_retest only when the user wants the coding agent to start fixes automatically."),
-    auto_start_work: z.boolean().optional().describe("Alias for agent_action_mode. true means fix_and_retest; false means report_only."),
+    feedback_action: z.enum(["share_feedback", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback for automated QA. Use share_feedback_and_start_work only when the user wants the coding agent to start fixes automatically."),
+    agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+    auto_start_work: z.boolean().optional().describe("Boolean alias. true means share_feedback_and_start_work; false means share_feedback."),
     credentials: z
       .object({
         login_url: z.string().url().optional(),
@@ -452,8 +463,9 @@ function buildCodingAgentCheckInputSchema() {
     timeout_seconds: z.number().int().min(1).max(7200).optional(),
     poll_interval_seconds: z.number().int().min(1).max(120).optional(),
     share_after: z.boolean().optional(),
-    agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Defaults to report_only for automated QA. Use fix_and_retest only when the user wants the coding agent to start fixes automatically."),
-    auto_start_work: z.boolean().optional().describe("Alias for agent_action_mode. true means fix_and_retest; false means report_only."),
+    feedback_action: z.enum(["share_feedback", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback for automated QA. Use share_feedback_and_start_work only when the user wants the coding agent to start fixes automatically."),
+    agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+    auto_start_work: z.boolean().optional().describe("Boolean alias. true means share_feedback_and_start_work; false means share_feedback."),
     dry_run: z.boolean().optional()
   };
 }
@@ -477,8 +489,9 @@ function buildManualQaSessionInputSchema(options = {}) {
     commit_sha: z.string().max(120).optional(),
     pull_request_url: z.string().url().optional(),
     developer_notes: z.string().max(4000).optional(),
-    agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Defaults to fix_and_retest for human/manual feedback. Use report_only when the user only wants a summary."),
-    auto_start_work: z.boolean().optional().describe("Alias for agent_action_mode. true means fix_and_retest; false means report_only."),
+    feedback_action: z.enum(["share_feedback", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback_and_start_work for human/manual feedback. Use share_feedback when the user only wants a summary."),
+    agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+    auto_start_work: z.boolean().optional().describe("Boolean alias. true means share_feedback_and_start_work; false means share_feedback."),
     entry_path: z.string().max(1000).optional().describe("Optional path to use when generated checklist items need a start URL."),
     test_plan: z
       .array(
@@ -749,11 +762,12 @@ function createQaMcpServer(options = {}) {
         poll_interval_seconds: z.number().int().min(1).max(120).optional(),
         include_report: z.boolean().optional(),
         share_after: z.boolean().optional(),
-        agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Defaults to report_only. Use fix_and_retest only when the user wants the coding agent to start fixes automatically."),
-        auto_start_work: z.boolean().optional().describe("Alias for agent_action_mode.")
+        feedback_action: z.enum(["share_feedback", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback. Use share_feedback_and_start_work only when the user wants the coding agent to start fixes automatically."),
+        agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+        auto_start_work: z.boolean().optional().describe("Boolean alias.")
       }
     },
-    async ({ run_id, timeout_seconds, poll_interval_seconds, include_report, share_after, agent_action_mode, auto_start_work }, extra) => {
+    async ({ run_id, timeout_seconds, poll_interval_seconds, include_report, share_after, feedback_action, agent_action_mode, auto_start_work }, extra) => {
       try {
         let tick = 0;
         const pollEvery = Math.max(1, Number(poll_interval_seconds || 5));
@@ -799,6 +813,7 @@ function createQaMcpServer(options = {}) {
           result.reason = outcome.reason;
           if (shouldReturnQaAction(outcome)) {
             result.required_agent_action = buildAutomatedQaRequiredAction(run_id, outcome, {
+              feedback_action,
               agent_action_mode,
               auto_start_work
             });
@@ -830,11 +845,12 @@ function createQaMcpServer(options = {}) {
       description: "Fetch the normalized QA report and Markdown for a completed or in-progress run.",
       inputSchema: {
         run_id: z.string().max(128),
-        agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Defaults to report_only. Use fix_and_retest only when the user wants the coding agent to start fixes automatically."),
-        auto_start_work: z.boolean().optional().describe("Alias for agent_action_mode.")
+        feedback_action: z.enum(["share_feedback", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback. Use share_feedback_and_start_work only when the user wants the coding agent to start fixes automatically."),
+        agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+        auto_start_work: z.boolean().optional().describe("Boolean alias.")
       }
     },
-    async ({ run_id, agent_action_mode, auto_start_work }) => {
+    async ({ run_id, feedback_action, agent_action_mode, auto_start_work }) => {
       try {
         const response = await apiClient.getRunReport(run_id);
         const outcome = summarizeCodingAgentQaOutcome({ reportPayload: response });
@@ -846,6 +862,7 @@ function createQaMcpServer(options = {}) {
         };
         if (shouldReturnQaAction(outcome)) {
           result.required_agent_action = buildAutomatedQaRequiredAction(run_id, outcome, {
+            feedback_action,
             agent_action_mode,
             auto_start_work
           });
@@ -1052,8 +1069,9 @@ function createQaMcpServer(options = {}) {
         item_id: z.string().max(80).optional(),
         timeout_seconds: z.number().int().min(1).max(7200).optional(),
         poll_interval_seconds: z.number().min(0.1).max(120).optional(),
-        agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Overrides the session mode. Defaults to the session setting, usually fix_and_retest for human feedback."),
-        auto_start_work: z.boolean().optional().describe("Alias override for agent_action_mode.")
+        feedback_action: z.enum(["share_feedback", "share_feedback_and_start_work"]).optional().describe("Overrides the session setting. Defaults to the session setting, usually share_feedback_and_start_work for human feedback."),
+        agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+        auto_start_work: z.boolean().optional().describe("Boolean alias override.")
       }
     },
     async (input, extra) => {
@@ -1082,6 +1100,7 @@ function createQaMcpServer(options = {}) {
               ? waitResult.session.context
               : {};
           const requiredAgentAction = buildManualFeedbackRequiredAction(input.session_id, waitResult.feedback, {
+            feedback_action: input.feedback_action || sessionContext.feedback_action || sessionContext.feedbackAction,
             agent_action_mode: input.agent_action_mode || sessionContext.agent_action_mode || sessionContext.agentActionMode,
             auto_start_work: input.auto_start_work ?? sessionContext.auto_start_work ?? sessionContext.autoStartWork
           });

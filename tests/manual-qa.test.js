@@ -420,6 +420,7 @@ test("freestyle manual QA sessions create one capture item without checklist set
   assert.equal(built.session.review_mode, "freestyle");
   assert.equal(built.session.context.review_mode, "freestyle");
   assert.equal(built.session.context.agent_action_mode, "fix_and_retest");
+  assert.equal(built.session.context.feedback_action, "share_feedback_and_start_work");
   assert.equal(built.session.context.auto_start_work, true);
   assert.equal(built.session.status, "manual_ready");
   assert.equal(built.session.checklist.length, 1);
@@ -435,7 +436,7 @@ test("manual QA feedback markdown can be report-only instead of auto-fix", () =>
     {
       target_url: "https://preview.example.com",
       review_mode: "freestyle",
-      agent_action_mode: "report_only",
+      feedback_action: "share_feedback",
       work_summary: "Review homepage messaging."
     },
     {
@@ -445,9 +446,10 @@ test("manual QA feedback markdown can be report-only instead of auto-fix", () =>
 
   assert.equal(built.ok, true);
   assert.equal(built.session.context.agent_action_mode, "report_only");
+  assert.equal(built.session.context.feedback_action, "share_feedback");
   assert.equal(built.session.context.auto_start_work, false);
   const markdown = buildManualQaAgentFeedbackMarkdown(built.session);
-  assert.match(markdown, /Mode: report only/);
+  assert.match(markdown, /Mode: share feedback only/);
   assert.match(markdown, /Do not edit code, deploy, or create a replacement QA link/);
   assert.doesNotMatch(markdown, /Fix the target product\/code/);
 });
