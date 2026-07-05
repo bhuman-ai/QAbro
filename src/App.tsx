@@ -1422,8 +1422,8 @@ function HomePage({
           >
             <div>
               <div className="organic-pill inline-flex items-center gap-2 mb-6 bg-brand-secondary/10 text-brand-ink border-brand-ink">
-                <Code className="h-3.5 w-3.5" />
-                QA before your agent says done
+                <Shield className="h-3.5 w-3.5" />
+                Review before done
               </div>
 
               <h1 className="text-[clamp(2.75rem,5.6vw,5.25rem)] font-black mb-7 leading-[0.95] max-w-4xl tracking-tighter text-brand-ink">
@@ -1451,57 +1451,43 @@ function HomePage({
                 </a>
               </div>
 
-              <div className="mt-7 flex flex-wrap gap-3 text-xs font-black uppercase tracking-widest text-slate-500">
-                <span className="inline-flex items-center gap-1 rounded-full border border-brand-line bg-white px-3 py-2"><Globe className="w-3 h-3" /> Real browser</span>
-                <span className="inline-flex items-center gap-1 rounded-full border border-brand-line bg-white px-3 py-2"><Shield className="w-3 h-3" /> Finds blockers</span>
-                <span className="inline-flex items-center gap-1 rounded-full border border-brand-line bg-white px-3 py-2"><FileText className="w-3 h-3" /> Dev-ready proof</span>
-              </div>
+              <p className="mt-6 text-sm font-bold text-slate-500">
+                One review link. Plain feedback. Proof your agent can act on.
+              </p>
             </div>
 
             <div className="relative">
-              <div className="handcrafted-card !bg-brand-ink p-5 sm:p-7 rounded-[2rem] text-white">
-                <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-4">
+              <div className="handcrafted-card bg-white p-5 sm:p-7 rounded-[2rem] text-brand-ink">
+                <div className="flex items-center justify-between gap-3 border-b border-brand-line pb-4">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-brand-danger"></div>
                     <div className="w-3 h-3 rounded-full bg-brand-warning"></div>
                     <div className="w-3 h-3 rounded-full bg-brand-success"></div>
                   </div>
-                  <span className="truncate text-xs font-black uppercase tracking-widest text-white/45">QA result</span>
+                  <span className="truncate text-xs font-black uppercase tracking-widest text-slate-400">Review summary</span>
                 </div>
-                <div className="mt-5 rounded-3xl border border-white/10 bg-white/5 p-5">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-brand-secondary">
-                    Needs fix
+                <div className="mt-5 rounded-3xl border-2 border-brand-ink bg-brand-secondary/5 p-5">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-brand-warning/15 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-ink">
+                    <TriangleAlert className="h-3.5 w-3.5 text-brand-warning" />
+                    Needs a fix
                   </div>
-                  <h3 className="mt-2 text-2xl font-black tracking-tight text-white">
-                    Blank screen after OTP
+                  <h3 className="mt-4 text-2xl font-black tracking-tight text-brand-ink">
+                    Sign-up got stuck
                   </h3>
-                  <p className="mt-3 text-sm font-semibold leading-relaxed text-white/65">
-                    The tester finished sign-up, then saw a white page instead of the dashboard.
+                  <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-600">
+                    A first-time user finished the code step, then landed on a blank page instead of the dashboard.
                   </p>
                 </div>
-                <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <div className="flex items-center gap-3 text-sm font-black text-white">
+                <div className="mt-4 rounded-2xl border border-brand-line bg-brand-bg p-4">
+                  <div className="flex items-center gap-3 text-sm font-black text-brand-ink">
                     <Check className="h-5 w-5 text-brand-success" />
-                    Proof saved for the developer
+                    What the agent sends back
                   </div>
-                  <p className="mt-2 text-sm font-semibold leading-relaxed text-white/60">
-                    Final screen, errors, requests, browser details, and safe state notes are packaged together.
+                  <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">
+                    The screen, spoken notes, drawings, and page errors are packaged together so the fix is clear.
                   </p>
                 </div>
               </div>
-              <motion.div
-                animate={{ y: [0, -8, 0] }}
-                transition={{ duration: 4, repeat: Infinity }}
-                className="absolute -bottom-7 -left-4 hidden rounded-3xl border-4 border-brand-ink bg-white p-3 shadow-2xl sm:flex sm:items-center sm:gap-3"
-              >
-                <div className={`w-12 h-12 rounded-2xl ${STARTER_PERSONAS[1].color} overflow-hidden border-2 border-brand-ink`}>
-                  <img src={STARTER_PERSONAS[1].avatar} alt={STARTER_PERSONAS[1].name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                </div>
-                <div>
-                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Persona run</div>
-                  <div className="text-sm font-black text-brand-ink">First-time user QA</div>
-                </div>
-              </motion.div>
             </div>
           </motion.div>
         </section>
