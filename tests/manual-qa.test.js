@@ -262,6 +262,12 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /bud-note-popover/);
   assert.match(script, /data-action="send-all"/);
   assert.match(script, /className = "bud-item-send"/);
+  assert.match(script, /class="bud-send-menu"/);
+  assert.match(script, /data-feedback-action="share_feedback_and_start_work"/);
+  assert.match(script, /data-feedback-action="share_feedback"/);
+  assert.match(script, /openSendMenu\("all"/);
+  assert.match(script, /openSendMenu\("item", item\.id/);
+  assert.match(script, /chooseSendAction/);
   assert.match(script, /return "Video"/);
   assert.match(script, /return "Drawing"/);
   assert.match(script, /content: "Saved"/);
@@ -775,7 +781,8 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
         session_id: created.session.session_id,
         token: widgetToken,
         scope: "item",
-        item_id: item.id
+        item_id: item.id,
+        feedback_action: "share_feedback"
       },
       widgetToken
     );
@@ -783,18 +790,22 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
     assert.equal(feedback.statusCode, 200);
     assert.equal(feedback.body.ok, true);
     assert.equal(feedback.body.scope, "item");
+    assert.equal(feedback.body.feedback_action, "share_feedback");
     assert.equal(feedback.body.agent_delivery.ready, true);
     assert.ok(feedback.body.feedback_id);
     assert.equal(feedback.body.session.agent_feedback.ready, true);
     assert.equal(feedback.body.session.agent_feedback.latest.scope, "item");
     assert.equal(feedback.body.session.agent_feedback.latest.item_id, item.id);
+    assert.equal(feedback.body.session.agent_feedback.latest.feedback_action, "share_feedback");
+    assert.equal(feedback.body.session.agent_feedback.latest.agent_action_mode, "report_only");
+    assert.equal(feedback.body.session.agent_feedback.latest.auto_start_work, false);
     assert.match(feedback.body.session.agent_feedback.latest.markdown, /BeforeUsersDo Manual QA Feedback/);
     assert.match(feedback.body.markdown, /BeforeUsersDo Manual QA Feedback/);
     assert.match(feedback.body.markdown, /Required Agent Next Steps/);
-    assert.match(feedback.body.markdown, /Treat this feedback as user instructions/);
-    assert.match(feedback.body.markdown, /Fix the target product\/code/);
-    assert.match(feedback.body.markdown, /Create a fresh BeforeUsersDo manual QA session\/link/);
-    assert.match(feedback.body.markdown, /Do not claim the work is done until the fixes are shipped and the new QA link is ready/);
+    assert.match(feedback.body.markdown, /Mode: share feedback only/);
+    assert.match(feedback.body.markdown, /Do not edit code, deploy, or create a replacement QA link/);
+    assert.doesNotMatch(feedback.body.markdown, /Treat this feedback as user instructions/);
+    assert.doesNotMatch(feedback.body.markdown, /Fix the target product\/code/);
     assert.match(feedback.body.markdown, /The card still shows generic copy/);
     assert.match(feedback.body.markdown, /Cannot read properties of undefined/);
     assert.match(feedback.body.markdown, /Drawing \(Drawing annotation, image\/png, 4 KB/);
