@@ -510,6 +510,8 @@ test("manual review workflow tells agents what context to gather", () => {
   assert.match(text, /evidence\.json/);
   assert.match(text, /qa_wait_for_manual_feedback/);
   assert.match(text, /without copy\/paste/i);
+  assert.match(text, /keep the agent turn open/i);
+  assert.match(text, /do not stop after giving the link/i);
   assert.match(text, /Obey the session's `feedback_action`/i);
   assert.match(text, /`share_feedback_and_start_work`: share feedback with the agent/i);
   assert.match(text, /`share_feedback`: share feedback with the agent for summary\/reporting/i);

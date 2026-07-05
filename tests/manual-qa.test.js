@@ -277,6 +277,10 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /context\.setTransform\(ratio, 0, 0, ratio, 0, 0\)/);
   assert.match(script, /context\.lineWidth = 4/);
   assert.match(script, /context\.quadraticCurveTo/);
+  assert.match(script, /attachRecordingFrameSource\(displayStream\)/);
+  assert.match(script, /buildDrawingDataUrl/);
+  assert.match(script, /context\.drawImage\(video, 0, 0, output\.width, output\.height\)/);
+  assert.match(script, /Sent\. Agent can start work now/);
   assert.match(script, /normalizeRecordingContentType/);
   assert.match(script, /new Blob\(\[blob\], \{ type: safeContentType \}\)/);
   assert.match(script, /beforeusersdo:open:/);

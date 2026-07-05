@@ -131,7 +131,7 @@ function buildManualReviewWorkflowText(input = {}) {
     "- If the widget cannot be injected, stop and explain why. Do not fall back silently.",
     "- Tell the user to click the widget's Send All control when finished.",
     "- Optional: call `qa_wait_for_manual_evidence` while the user is still recording to see draft video segments and drawings as they are saved.",
-    "- Then call `qa_wait_for_manual_feedback` and keep waiting for the user's final feedback package.",
+    "- Then immediately call `qa_wait_for_manual_feedback` and keep the agent turn open for the user's final feedback package; do not stop after giving the link.",
     "",
     "7. After the human finishes.",
     "- Prefer `qa_wait_for_manual_feedback` so the user's Send All click returns directly to the agent without copy/paste.",
@@ -353,6 +353,7 @@ function buildManualSessionText(payload) {
     widgetInstall.script_tag ? "2. Deploy or refresh the preview." : "",
     widgetInstall.script_tag ? "3. Open the target once yourself and verify the floating Review button appears." : "",
     widgetInstall.script_tag ? "4. Only then send widget_install.review_url to the user as the test link. Do not use the dashboard as the test entry point." : "",
+    widgetInstall.script_tag ? "5. After sending the test link, immediately call qa_wait_for_manual_feedback for this session and keep the turn open until the user sends feedback or the wait times out." : "",
     widgetInstall.script_tag ? "```html" : "",
     widgetInstall.script_tag || "",
     widgetInstall.script_tag ? "```" : "",
@@ -361,7 +362,7 @@ function buildManualSessionText(payload) {
     directReviewUrl ? `Direct review URL: ${directReviewUrl}` : "",
     payload.manual_session_url || session.session_url ? `Report dashboard: ${payload.manual_session_url || session.session_url}` : "",
     session.session_id ? `Live draft evidence resource: qa://manual/${encodeURIComponent(session.session_id)}/evidence.json` : "",
-    session.session_id ? `No-copy feedback tool: call qa_wait_for_manual_feedback with session_id ${session.session_id} after the user starts testing.` : "",
+    session.session_id ? `No-copy feedback tool: call qa_wait_for_manual_feedback with session_id ${session.session_id} immediately after sending the link; do not just end your turn.` : "",
     session.session_id ? `Report resource: qa://manual/${encodeURIComponent(session.session_id)}/report.md` : ""
   ]);
 }
