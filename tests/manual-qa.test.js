@@ -247,6 +247,9 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /Not recording\. Records screen and voice after Chrome asks\./);
   assert.match(script, /class="bud-capture-panel"/);
   assert.match(script, /flex-direction: column/);
+  assert.match(script, /top: 84px;\n        left: 14px;/);
+  assert.match(script, /top: 84px;\n        left: 76px;/);
+  assert.match(script, /max-height: min\(280px, calc\(100vh - 104px\)\)/);
   assert.match(script, /capturePanel\.classList\.add\("is-open"\)/);
   assert.match(script, /makeDraggable\(pill, pill/);
   assert.match(script, /makeDraggable\(panel, panelDragHandle/);
@@ -259,8 +262,9 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /bud-note-popover/);
   assert.match(script, /data-action="send-all"/);
   assert.match(script, /className = "bud-item-send"/);
-  assert.match(script, /Video saved/);
-  assert.match(script, /Drawing saved/);
+  assert.match(script, /return "Video"/);
+  assert.match(script, /return "Drawing"/);
+  assert.match(script, /content: "Saved"/);
   assert.match(script, /const saved = await autoSaveDrawingIfNeeded\(\{ clearAfterSave: true \}\)/);
   assert.match(script, /resetDrawingSurface/);
   assert.match(script, /ensureCanvasReady/);
