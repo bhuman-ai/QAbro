@@ -289,6 +289,8 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /startRecordingSegment/);
   assert.match(script, /review-recording-part-/);
   assert.match(script, /Video recording segment/);
+  assert.match(script, /savedVideoEvidenceCount/);
+  assert.match(script, /Math\.max\(state\.recordingSegmentIndex, savedVideoEvidenceCount\(selectedItem\(\)\)\)/);
   assert.match(script, /videoBitsPerSecond: 600000/);
   assert.match(script, /label: "Drawing annotation"/);
   assert.match(script, /isFreestyleMode/);
@@ -306,6 +308,7 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.doesNotMatch(script, /class="bud-tool" data-action="record"/);
   assert.doesNotMatch(script, /data-action="save-drawing"/);
   assert.doesNotMatch(script, /Save drawing/);
+  assert.doesNotMatch(script, /state\.recordingSegmentIndex = 0/);
   assert.doesNotMatch(script, /data-status="pass"/);
   assert.doesNotMatch(script, /data-status="fail"/);
   assert.doesNotMatch(script, /data-status="confusing"/);
@@ -375,6 +378,7 @@ test("new manual QA sessions clear copied feedback and evidence from agent plans
   assert.equal(built.session.status, "manual_ready");
   assert.deepEqual(built.session.counts, {
     pending: 1,
+    reviewed: 0,
     pass: 0,
     fail: 0,
     confusing: 0,
@@ -662,7 +666,12 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
           console_events: [{ type: "error", message: "Cannot read properties of undefined" }],
           network_events: [
             { method: "GET", status: 200, url: "https://preview.example.com/api/ok", message: "loaded" },
-            { method: "GET", status: 500, url: "https://preview.example.com/api/cards?token=abc123" }
+            {
+              method: "GET",
+              status: 500,
+              url: "https://preview.example.com/api/cards?token=abc123",
+              message: "https://preview.example.com/api/cards?token=abc123"
+            }
           ]
         }
       },
@@ -674,6 +683,11 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
       }
     );
     assert.equal(updated.ok, true);
+    assert.match(
+      updated.item.widget_context.network_events[1].message,
+      /token=%5Bredacted%5D/
+    );
+    assert.doesNotMatch(updated.item.widget_context.network_events[1].message, /abc123/);
 
     const withDrawing = await appendManualQaItemEvidence(
       created.session.session_id,
@@ -756,6 +770,64 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
     assert.match(feedback.body.markdown, /Video recording \(Video recording, video\/webm, 2\.0 MB/);
     assert.match(feedback.body.markdown, /token=%5Bredacted%5D/);
     assert.doesNotMatch(feedback.body.markdown, /abc123/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
+test("freestyle widget Send All marks the capture reviewed", async () => {
+  const previousEnv = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY
+  };
+  const previousFetch = globalThis.fetch;
+  const mock = createSupabaseFetchMock();
+  process.env.SUPABASE_URL = "https://supabase-freestyle-feedback.example.com";
+  process.env.SUPABASE_SERVICE_KEY = "service";
+  globalThis.fetch = mock.fetchImpl;
+
+  try {
+    const created = await createManualQaSession(
+      {
+        target_url: "https://preview.example.com",
+        brand: "Example",
+        title: "Freestyle feedback pass",
+        review_mode: "freestyle",
+        freestyle_prompt: "Record anything confusing."
+      },
+      {
+        publicBaseUrl: "https://beforeusersdo.com",
+        ownerUserId: "user_1",
+        fetchImpl: mock.fetchImpl,
+        supabaseUrl: "https://supabase-freestyle-feedback.example.com",
+        serviceKey: "service"
+      }
+    );
+    const widgetToken = new URL(created.widget_install.script_url).searchParams.get("token");
+
+    const feedback = await callWidgetFeedbackHandler(
+      {
+        session_id: created.session.session_id,
+        token: widgetToken,
+        scope: "all"
+      },
+      widgetToken
+    );
+
+    assert.equal(feedback.statusCode, 200);
+    assert.equal(feedback.body.ok, true);
+    assert.equal(feedback.body.session.status, "manual_completed");
+    assert.equal(feedback.body.session.counts.reviewed, 1);
+    assert.equal(feedback.body.session.counts.pending, 0);
+    assert.equal(feedback.body.session.checklist[0].status, "reviewed");
+    assert.match(feedback.body.markdown, /1 reviewed/);
   } finally {
     globalThis.fetch = previousFetch;
     for (const [key, value] of Object.entries(previousEnv)) {

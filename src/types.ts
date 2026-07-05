@@ -308,7 +308,7 @@ export interface ManualQaItem {
   start_url?: string | null;
   area?: string | null;
   source?: string | null;
-  status: "pending" | "pass" | "fail" | "confusing" | "blocked" | "skip";
+  status: "pending" | "reviewed" | "pass" | "fail" | "confusing" | "blocked" | "skip";
   note?: string | null;
   evidence_urls?: string[];
   evidence_media?: Array<{

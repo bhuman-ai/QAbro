@@ -88,7 +88,7 @@ module.exports = async (req, res) => {
       note: "Feedback was saved for the MCP agent. Clipboard copy remains a fallback."
     },
     generated_at: new Date().toISOString(),
-    markdown,
+    markdown: recorded.feedback.markdown || markdown,
     session: recorded.session
   });
 };
