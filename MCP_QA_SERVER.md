@@ -109,6 +109,8 @@ Optional:
   - Read checklist status for a manual QA session.
 - `qa_get_manual_report`
   - Export the completed human checklist as redacted Markdown and JSON.
+- `qa_get_manual_work_packets`
+  - Split manual QA notes, transcript, drawings, videos, page anchors, console errors, and network signals into focused agent work packets. Use this after `qa_wait_for_manual_feedback` or `qa_wait_for_manual_evidence` before summarizing, previewing, coding, or spawning sub-agents.
 - `qa_run_feature_check`
   - High-level one-shot tool: queue, wait, and return the final report. This is the best default for preview URLs and PR deploys.
 
@@ -211,7 +213,9 @@ If the user asks for manual QA or says “I want to do a manual review with Befo
 9. Do not send the human to the target page until the widget is verified.
 10. Tell the human to click the floating `Review` button, draw/talk/record there, and mark checklist items.
 11. If widget injection is impossible, stop and explain why. Do not silently fall back.
-12. After the human finishes the checklist, call `qa_get_manual_report` and use the Markdown as implementation feedback.
+12. After the human clicks Send All, call `qa_wait_for_manual_feedback`, then call `qa_get_manual_work_packets`.
+13. Use one work packet per focused task or sub-agent. Keep `packet_id` in your updates so the user can trace each fix back to the evidence.
+14. Use `qa_get_manual_report` as the fallback historical export, not the first choice for active feedback.
 
 Minimal call:
 
