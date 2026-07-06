@@ -10,12 +10,14 @@ const {
   exportManualQaSession,
   getManualQaWidgetSession,
   redactSensitiveUrl,
+  recordManualQaPreviewProposal,
   updateManualQaWidgetItem,
   updateManualQaItem
 } = require("../lib/manual-qa");
 const widgetEvidenceChunksHandler = require("../api/manual-qa/widget-evidence-chunks");
 const widgetEvidenceHandler = require("../api/manual-qa/widget-evidence");
 const widgetFeedbackHandler = require("../api/manual-qa/widget-feedback");
+const widgetPreviewProposalHandler = require("../api/manual-qa/preview-proposal");
 const { buildManualQaWidgetScript } = require("../lib/manual-qa-widget");
 
 function createSupabaseFetchMock() {
@@ -236,6 +238,22 @@ async function callWidgetFeedbackHandler(body, token) {
   return res;
 }
 
+async function callWidgetPreviewProposalHandler(body, token) {
+  const req = {
+    method: "POST",
+    headers: {
+      host: "beforeusersdo.com",
+      "x-forwarded-proto": "https",
+      "x-bud-widget-token": token
+    },
+    query: {},
+    body
+  };
+  const res = createRes();
+  await widgetPreviewProposalHandler(req, res);
+  return res;
+}
+
 test("manual QA widget uses a movable compact capture tray", () => {
   const script = buildManualQaWidgetScript({
     sessionId: "manual-voice-smoke",
@@ -269,6 +287,11 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /data-feedback-action="share_feedback_and_start_work"/);
   assert.match(script, /data-feedback-action="preview_fix_first"/);
   assert.match(script, /Preview fix first/);
+  assert.match(script, /Proposed fix/);
+  assert.match(script, /Looks right/);
+  assert.match(script, /Needs changes/);
+  assert.match(script, /api\/manual-qa\/preview-proposal/);
+  assert.match(script, /scheduleSessionRefresh/);
   assert.match(script, /data-feedback-action="share_feedback"/);
   assert.match(script, /openSendMenu\("all"/);
   assert.match(script, /openSendMenu\("item", item\.id/);
@@ -641,6 +664,97 @@ test("manual QA session can be created, updated, and exported with sensitive URL
     assert.doesNotMatch(exported.markdown, /pw123/);
     assert.equal(exported.session.browser.viewer_url, "[redacted in export]");
   } finally {
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
+test("manual QA preview proposal is saved, shown to widget sessions, and can be approved", async () => {
+  const previousEnv = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY
+  };
+  const previousFetch = globalThis.fetch;
+  const mock = createSupabaseFetchMock();
+  process.env.SUPABASE_URL = "https://supabase-preview.example.com";
+  process.env.SUPABASE_SERVICE_KEY = "service";
+  globalThis.fetch = mock.fetchImpl;
+
+  try {
+    const created = await createManualQaSession(
+      {
+        target_url: "https://preview.example.com/?token=abc123",
+        brand: "Example",
+        title: "Preview proposal pass",
+        work_summary: "User asked to preview the fix before coding.",
+        feedback_action: "preview_fix_first"
+      },
+      {
+        publicBaseUrl: "https://beforeusersdo.com",
+        ownerUserId: "user_preview",
+        ownerEmail: "owner@example.com",
+        fetchImpl: mock.fetchImpl,
+        supabaseUrl: "https://supabase-preview.example.com",
+        serviceKey: "service"
+      }
+    );
+    const widgetToken = new URL(created.widget_install.script_url).searchParams.get("token");
+
+    const saved = await recordManualQaPreviewProposal(
+      created.session.session_id,
+      {
+        title: "Cleaner hero preview",
+        summary: "Replace the confusing top hero with a simpler MCP-first message.",
+        changes: ["Make MCP install the primary CTA.", "Keep proof/report card in the right column."],
+        expected_behavior: ["User can understand what BeforeUsersDo does without reading the whole page."],
+        visual_preview_url: "https://assets.example.com/mock.png?token=secret"
+      },
+      {
+        authOk: true,
+        ownerUserId: "user_preview",
+        ownerEmail: "owner@example.com",
+        fetchImpl: mock.fetchImpl,
+        supabaseUrl: "https://supabase-preview.example.com",
+        serviceKey: "service"
+      }
+    );
+
+    assert.equal(saved.ok, true);
+    assert.equal(saved.proposal.status, "draft");
+    assert.equal(saved.proposal.title, "Cleaner hero preview");
+    assert.deepEqual(saved.proposal.changes, ["Make MCP install the primary CTA.", "Keep proof/report card in the right column."]);
+    assert.match(saved.proposal.visual_preview_url, /token=%5Bredacted%5D/);
+
+    const widgetLoaded = await getManualQaWidgetSession(created.session.session_id, widgetToken, {
+      fetchImpl: mock.fetchImpl,
+      supabaseUrl: "https://supabase-preview.example.com",
+      serviceKey: "service"
+    });
+    assert.equal(widgetLoaded.ok, true);
+    assert.equal(widgetLoaded.session.preview_proposal.title, "Cleaner hero preview");
+    assert.match(widgetLoaded.session.preview_proposal.visual_preview_url, /token=%5Bredacted%5D/);
+
+    const approved = await callWidgetPreviewProposalHandler(
+      {
+        session_id: created.session.session_id,
+        token: widgetToken,
+        status: "approved",
+        response_note: "Looks good."
+      },
+      widgetToken
+    );
+    assert.equal(approved.statusCode, 200);
+    assert.equal(approved.body.ok, true);
+    assert.equal(approved.body.preview_proposal.status, "approved");
+    assert.equal(approved.body.preview_proposal.response_note, "Looks good.");
+    assert.ok(approved.body.preview_proposal.responded_at);
+  } finally {
+    globalThis.fetch = previousFetch;
     for (const [key, value] of Object.entries(previousEnv)) {
       if (value === undefined) {
         delete process.env[key];

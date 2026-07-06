@@ -231,6 +231,7 @@ function buildAgentActionContract({
         "Extract concrete feedback points from notes, transcript, drawings, screenshots, videos, page context, console, network evidence, and report findings.",
         "Create a preview contract before editing code: for UI, generate an edited screenshot/mockup or precise visual description; for backend or flows, write the expected event/API/browser trace.",
         "Map every feedback point to the proposed future result so the user can catch misunderstandings early.",
+        "Call qa_submit_manual_preview with the proposal so it appears inside the BeforeUsersDo widget for the user.",
         "Ask the user to confirm or correct the preview before implementation.",
         "After confirmation, update the target code/product, run relevant tests/build checks, deploy or refresh, then create a fresh BeforeUsersDo QA link or rerun QA.",
         "If any step is blocked, say exactly what is blocked and what is needed."
@@ -1179,6 +1180,53 @@ function createQaMcpServer(options = {}) {
   );
 
   server.registerTool(
+    "qa_submit_manual_preview",
+    {
+      title: "Submit Manual QA Preview Proposal",
+      description:
+        "Use after qa_wait_for_manual_feedback returns preview_required_before_work. Saves the proposed future-state fix into the open BeforeUsersDo widget so the user can approve or request changes before coding.",
+      inputSchema: {
+        session_id: z.string().max(128),
+        title: z.string().max(180).optional().describe("Short preview title, for example 'Cleaner homepage hero'."),
+        summary: z.string().max(2400).optional().describe("Plain-English summary of what the fixed state will look like or do."),
+        changes: z.array(z.string().max(700)).max(12).optional().describe("Concrete proposed changes mapped from the feedback."),
+        expected_behavior: z.array(z.string().max(700)).max(12).optional().describe("Expected visual, browser, API, or state behavior after the fix."),
+        open_questions: z.array(z.string().max(500)).max(6).optional().describe("Optional questions the user should answer before implementation."),
+        visual_preview_url: z.string().url().optional().describe("Optional mockup or edited screenshot URL.")
+      }
+    },
+    async (input) => {
+      try {
+        const proposal = {
+          title: input.title,
+          summary: input.summary,
+          changes: input.changes,
+          expected_behavior: input.expected_behavior,
+          open_questions: input.open_questions,
+          visual_preview_url: input.visual_preview_url,
+          status: "draft"
+        };
+        const response = await apiClient.submitManualPreviewProposal(input.session_id, proposal);
+        const preview = response.preview_proposal || {};
+        return makeToolResult(
+          buildText([
+            `Preview proposal saved for ${input.session_id}.`,
+            preview.title ? `Title: ${preview.title}` : "",
+            "The BeforeUsersDo widget will show it in the Proposed fix panel.",
+            "Wait for the user to approve it or ask for changes before editing code."
+          ]),
+          {
+            ...response,
+            required_next_step: "wait_for_user_preview_response"
+          }
+        );
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
     "qa_run_feature_check",
     {
       title: "Run Feature QA",
@@ -1377,6 +1425,7 @@ function printHelp() {
     "- qa_get_manual_report",
     "- qa_wait_for_manual_evidence",
     "- qa_wait_for_manual_feedback",
+    "- qa_submit_manual_preview",
     "- qa_run_feature_check",
     "- qa_check_work",
     "",

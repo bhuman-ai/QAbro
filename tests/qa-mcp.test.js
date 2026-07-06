@@ -670,3 +670,48 @@ test("qa MCP client loads stored dashboard auth and sends dashboard token header
   assert.equal(stored.ok, true);
   assert.equal(stored.auth.owner_email, "saved@example.com");
 });
+
+test("qa MCP client can submit a manual preview proposal", async () => {
+  const calls = [];
+  const client = createQaApiClient({
+    baseUrl: "https://beforeusersdo.com",
+    serviceToken: "service_123",
+    ownerUserId: "user_123",
+    ownerEmail: "owner@example.com",
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return createJsonResponse({
+        ok: true,
+        session_id: "manual_123",
+        preview_proposal: {
+          proposal_id: "preview_123",
+          status: "draft",
+          title: "Cleaner hero"
+        }
+      });
+    }
+  });
+
+  const response = await client.submitManualPreviewProposal("manual_123", {
+    title: "Cleaner hero",
+    summary: "Make the install path obvious.",
+    changes: ["Make MCP primary.", "Keep proof visible."]
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.preview_proposal.title, "Cleaner hero");
+  assert.equal(calls.length, 1);
+  assert.equal(new URL(calls[0].url).pathname, "/api/manual-qa/preview-proposal");
+  assert.equal(calls[0].options.method, "POST");
+  assert.equal(calls[0].options.headers["x-qa-service-token"], "service_123");
+  assert.equal(calls[0].options.headers["x-owner-user-id"], "user_123");
+  assert.equal(calls[0].options.headers["x-owner-email"], "owner@example.com");
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    session_id: "manual_123",
+    proposal: {
+      title: "Cleaner hero",
+      summary: "Make the install path obvious.",
+      changes: ["Make MCP primary.", "Keep proof visible."]
+    }
+  });
+});
