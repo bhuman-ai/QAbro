@@ -1441,10 +1441,10 @@ function HomePage({
               </div>
 
               <h1 className="text-[clamp(2.75rem,5.6vw,5.25rem)] font-black mb-7 leading-[0.95] max-w-4xl tracking-tighter text-brand-ink">
-                Catch AI-built bugs before users do.
+                Catch bugs before users do.
               </h1>
               <p className="text-lg md:text-xl text-slate-600 max-w-2xl mb-9 font-bold leading-relaxed">
-                Your coding agent opens a real browser, tries the preview, and brings back the exact proof a developer needs to fix what broke.
+                Turn any preview into a real QA pass. Let an agent test it, record your own walkthrough, or send a developer the exact proof when something breaks.
               </p>
 
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -1466,7 +1466,7 @@ function HomePage({
               </div>
 
               <p className="mt-6 text-sm font-bold text-slate-500">
-                One review link. Plain feedback. Proof your agent can act on.
+                Agent QA, manual review, and freestyle feedback in one proof loop.
               </p>
             </div>
 
@@ -1742,15 +1742,13 @@ function HomePage({
           <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-16">
             <div className="flex-1">
               <div className="organic-pill inline-block mb-6 bg-brand-ink text-white border-brand-ink">
-                Built for the moment before done
+                One loop, three ways to test
               </div>
               <h2 className="text-4xl md:text-6xl font-black mb-8 leading-tight text-brand-ink">
-                Your AI wrote the code. <br />
-                Now make it prove <br />
-                <span className="text-brand-accent italic">the product works.</span>
+                Find the problem while it is still easy to fix.
               </h2>
               <p className="text-xl font-bold text-slate-600 mb-8 leading-relaxed">
-                Before the agent says it is finished, it should try the real flow, catch the blocker, and hand you the evidence.
+                Before anything ships, Before Users Do captures what broke, what the user saw, and what the developer needs next.
               </p>
 
               <div className="space-y-6">
@@ -1759,17 +1757,26 @@ function HomePage({
                     <Zap className="text-white w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="font-black text-lg">Works inside your agent</h4>
-                    <p className="text-slate-500 font-medium">Connect once, then ask your coding agent to test the preview before it reports done.</p>
+                    <h4 className="font-black text-lg">Agent QA</h4>
+                    <p className="text-slate-500 font-medium">Your coding agent checks the changed flow before it reports done.</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-4">
                   <div className="w-10 h-10 bg-brand-accent rounded-xl flex items-center justify-center shrink-0">
+                    <MessageCircle className="text-white w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-lg">Manual QA</h4>
+                    <p className="text-slate-500 font-medium">You talk, draw, and record while feedback is saved for the agent.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4">
+                  <div className="w-10 h-10 bg-brand-ink rounded-xl flex items-center justify-center shrink-0">
                     <Shield className="text-white w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="font-black text-lg">Confidence, not hope</h4>
-                    <p className="text-slate-500 font-medium">It clicks through the real page and catches the failures a screenshot review can miss.</p>
+                    <h4 className="font-black text-lg">Developer handoff</h4>
+                    <p className="text-slate-500 font-medium">The fix starts with a clear issue, evidence, and a fresh retest link.</p>
                   </div>
                 </div>
               </div>
@@ -1777,19 +1784,24 @@ function HomePage({
 
             <div className="flex-1 w-full">
               <div className="handcrafted-card bg-white p-8 rounded-[3rem] relative">
-                <div className="bg-brand-ink rounded-2xl p-6 font-mono text-sm text-brand-secondary overflow-hidden">
-                  <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2">
+                <div className="rounded-3xl border-2 border-brand-ink bg-brand-secondary/5 p-6 text-brand-ink">
+                  <div className="flex items-center gap-2 mb-4 border-b border-brand-line pb-2">
                     <div className="w-3 h-3 rounded-full bg-brand-danger"></div>
                     <div className="w-3 h-3 rounded-full bg-brand-warning"></div>
                     <div className="w-3 h-3 rounded-full bg-brand-success"></div>
-                    <span className="text-white/40 ml-2">cursor-terminal</span>
+                    <span className="ml-2 text-xs font-black uppercase tracking-widest text-slate-400">What comes back</span>
                   </div>
-                  <div className="space-y-2">
-                    <p><span className="text-white/40">$</span> test the signup preview</p>
-                    <p className="text-white">Opening the real page...</p>
-                    <p className="text-white">Trying the first-time user flow...</p>
-                    <p className="text-brand-accent">needs_fix: Blank white screen after OTP verification.</p>
-                    <p className="text-brand-secondary">share_url: {PUBLIC_BASE_URL}/share/...</p>
+                  <div className="space-y-3">
+                    {[
+                      ["Problem", "Blank white screen after successful OTP verification."],
+                      ["User saw", "The code step completed, then the dashboard never appeared."],
+                      ["Fix next", "Open the saved proof, patch the blocker, and retest with a clean link."]
+                    ].map(([label, body]) => (
+                      <div key={label} className="rounded-2xl border border-brand-line bg-white p-4">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-brand-accent">{label}</div>
+                        <p className="mt-1 text-sm font-bold leading-relaxed text-slate-700">{body}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
                 <motion.div
