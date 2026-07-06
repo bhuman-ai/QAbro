@@ -344,6 +344,9 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /evidence_events: state\.evidenceEvents/);
   assert.match(script, /SpeechRecognition/);
   assert.match(script, /pushTranscriptEvent/);
+  assert.match(script, /scheduleLiveContextSave/);
+  assert.match(script, /runLiveContextSave/);
+  assert.match(script, /liveSaveInFlight/);
   assert.match(script, /pushEvidenceEvent\("drawing_saved"/);
   assert.match(script, /pushEvidenceEvent\("video_saved"/);
   assert.match(script, /recordPageVisit/);
@@ -631,6 +634,91 @@ test("manual QA evidence becomes agent work packets with page anchors", () => {
   assert.match(markdown, /Packet ID:/);
   assert.match(markdown, /Drawn area: 320x180 at 110,140/);
   assert.doesNotMatch(markdown, /token=secret/);
+});
+
+test("manual QA transcript segments become topic work packets through an LLM segmenter", async () => {
+  const mock = createSupabaseFetchMock();
+  const created = await createManualQaSession(
+    {
+      target_url: "https://beforeusersdo.com/",
+      brand: "beforeusersdo",
+      title: "Freestyle topic pass",
+      review_mode: "freestyle",
+      work_summary: "Open-ended homepage review."
+    },
+    {
+      publicBaseUrl: "https://beforeusersdo.com",
+      ownerUserId: "user_1",
+      ownerEmail: "owner@example.com",
+      fetchImpl: mock.fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      serviceKey: "service"
+    }
+  );
+  const item = created.session.checklist[0];
+  assert.equal(created.ok, true);
+  let segmenterInput = null;
+  const updated = await updateManualQaItem(
+    created.session.session_id,
+    item.id,
+    {
+      widget_context: {
+        page_url: "https://beforeusersdo.com/",
+        page_title: "Before Users Do QA MCP",
+        transcript_events: [
+          { text: "The hero headline is not clear about the MCP.", at: "2026-07-06T03:00:00.000Z", is_final: true },
+          { text: "The main button should say what happens after clicking.", at: "2026-07-06T03:00:07.000Z", is_final: true },
+          { text: "The pricing section later on feels separate and needs a simpler explanation.", at: "2026-07-06T03:00:40.000Z", is_final: true }
+        ],
+        evidence_events: [
+          {
+            type: "drawing_saved",
+            label: "Drawing annotation",
+            at: "2026-07-06T03:00:06.000Z",
+            bounds: { x: 120, y: 90, width: 420, height: 160 }
+          }
+        ]
+      }
+    },
+    {
+      authOk: true,
+      ownerUserId: "user_1",
+      fetchImpl: mock.fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      serviceKey: "service",
+      topicSegmenter(input) {
+        segmenterInput = input;
+        return {
+          topic_segments: [
+            {
+              title: "Hero and primary CTA clarity",
+              summary: "The reviewer is focused on the homepage hero and what the MCP CTA promises.",
+              start_index: 0,
+              end_index: 1,
+              confidence: 0.92
+            },
+            {
+              title: "Pricing explanation",
+              summary: "The reviewer moved to pricing clarity as a separate topic.",
+              start_index: 2,
+              end_index: 2,
+              confidence: 0.86
+            }
+          ]
+        };
+      }
+    }
+  );
+
+  assert.equal(updated.ok, true);
+  assert.equal(segmenterInput.transcript_events.length, 3);
+  assert.equal(updated.item.widget_context.topic_segments.length, 2);
+  assert.equal(updated.item.widget_context.topic_segments[0].title, "Hero and primary CTA clarity");
+  const topicPackets = updated.session.work_packets.filter((packet) => packet.source_kind === "topic");
+  assert.equal(topicPackets.length, 2);
+  assert.equal(topicPackets[0].title, "Hero and primary CTA clarity");
+  assert.match(topicPackets[0].transcript_snippets.join(" "), /main button/);
+  assert.deepEqual(topicPackets[0].page_anchor.bounds, { x: 120, y: 90, width: 420, height: 160 });
 });
 
 test("manual QA session can be created, updated, and exported with sensitive URLs redacted", async () => {
