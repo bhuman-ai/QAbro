@@ -1361,19 +1361,6 @@ function HomePage({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [queued, setQueued] = useState<any | null>(null);
-  const heroPersona = STARTER_PERSONAS[0];
-  const heroPersonaNotes = [
-    "Code accepted. Then I got a blank white screen.",
-    "I drew where the dashboard should have appeared.",
-    "The agent gets the screenshot, logs, and exact broken step."
-  ];
-  const proofPacketItems = [
-    "final screenshot",
-    "console errors",
-    "network timeline",
-    "repro steps"
-  ];
-  const [heroNoteIndex, setHeroNoteIndex] = useState(0);
   const mcpInstallConfig = `{
   "mcpServers": {
     "${MCP_CLIENT_SERVER_NAME}": {
@@ -1384,13 +1371,6 @@ function HomePage({
     }
   }
 }`;
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      setHeroNoteIndex((index) => (index + 1) % heroPersonaNotes.length);
-    }, 2600);
-    return () => window.clearInterval(interval);
-  }, [heroPersonaNotes.length]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1446,11 +1426,11 @@ function HomePage({
                 Review before done
               </div>
 
-              <h1 className="text-[clamp(2.75rem,5.6vw,5.25rem)] font-black mb-7 leading-[0.95] max-w-4xl tracking-tighter text-brand-ink">
-                Catch bugs before users do.
+              <h1 className="text-[clamp(2.75rem,5.6vw,5.25rem)] font-black mb-7 leading-[0.95] max-w-4xl tracking-normal text-brand-ink">
+                Proof your AI before users do.
               </h1>
-              <p className="text-lg md:text-xl text-slate-600 max-w-2xl mb-9 font-bold leading-relaxed">
-                Before you accept &ldquo;done,&rdquo; BUD opens the preview, follows the user flow, and brings back the exact screen, logs, and step that broke.
+              <p className="text-lg md:text-xl text-slate-600 max-w-xl mb-9 font-bold leading-relaxed">
+                BUD tests the preview and returns the broken screen, logs, and exact step.
               </p>
 
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -1471,79 +1451,151 @@ function HomePage({
                 </a>
               </div>
 
-              <p className="mt-6 text-sm font-bold text-slate-500">
-                Agent QA, manual review, and freestyle feedback in one proof loop.
-              </p>
+              <div className="mt-7 grid max-w-xl grid-cols-3 gap-3">
+                <div className="rounded-2xl border-2 border-brand-line bg-white px-3 py-3">
+                  <MonitorUp className="mb-2 h-5 w-5 text-brand-accent" />
+                  <div className="text-xs font-black text-brand-ink">Screen</div>
+                </div>
+                <div className="rounded-2xl border-2 border-brand-line bg-white px-3 py-3">
+                  <Code className="mb-2 h-5 w-5 text-brand-accent" />
+                  <div className="text-xs font-black text-brand-ink">Logs</div>
+                </div>
+                <div className="rounded-2xl border-2 border-brand-line bg-white px-3 py-3">
+                  <MousePointer2 className="mb-2 h-5 w-5 text-brand-accent" />
+                  <div className="text-xs font-black text-brand-ink">Repro</div>
+                </div>
+              </div>
             </div>
 
             <div className="relative">
-              <div className="handcrafted-card bg-white p-5 sm:p-7 rounded-[2rem] text-brand-ink">
-                <div className="flex items-center justify-between gap-3 border-b border-brand-line pb-4">
+              <div className="handcrafted-card overflow-hidden rounded-[2rem] !bg-white text-brand-ink">
+                <div className="flex items-center justify-between gap-3 border-b-2 border-brand-ink px-5 py-4">
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full bg-brand-danger"></div>
                     <div className="w-3 h-3 rounded-full bg-brand-warning"></div>
                     <div className="w-3 h-3 rounded-full bg-brand-success"></div>
                   </div>
-                  <span className="truncate text-xs font-black uppercase tracking-widest text-slate-400">Review summary</span>
-                </div>
-                <div className="mt-5 rounded-3xl border-2 border-brand-ink bg-brand-secondary/5 p-5">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-brand-warning/15 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-ink">
-                    <TriangleAlert className="h-3.5 w-3.5 text-brand-warning" />
-                    Real blocker found
+                  <div className="min-w-0 flex-1 rounded-full border border-brand-line px-3 py-2 text-xs font-black text-slate-400">
+                    app.preview.dev/signup
                   </div>
-                  <h3 className="mt-4 text-2xl font-black tracking-tight text-brand-ink">
-                    OTP worked. The dashboard never loaded.
-                  </h3>
-                  <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-600">
-                    The user finished verification, then hit a white screen. BUD keeps the last good step, the broken screen, and the technical trail together.
-                  </p>
-                </div>
-                <div className="mt-4 rounded-2xl border border-brand-line bg-brand-bg p-4">
-                  <div className="flex items-center gap-3 text-sm font-black text-brand-ink">
-                    <Check className="h-5 w-5 text-brand-success" />
-                    Developer packet
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {proofPacketItems.map((item) => (
-                      <span
-                        key={item}
-                        className="rounded-full border border-brand-line bg-white px-3 py-1.5 text-[11px] font-black text-brand-ink"
-                      >
-                        {item}
-                      </span>
-                    ))}
+                  <div className="rounded-full bg-brand-accent px-3 py-2 text-xs font-black text-white">
+                    QA session
                   </div>
                 </div>
-                <div className="mt-4 rounded-2xl border border-brand-line bg-white p-4">
-                  <div className="flex items-center gap-3">
-                    <div className={`h-12 w-12 shrink-0 overflow-hidden rounded-2xl border-2 border-brand-ink ${heroPersona.color}`}>
-                      <div className="flex h-full w-full items-center justify-center text-lg font-black text-brand-ink">
-                        {heroPersona.name.charAt(0)}
+
+                <div className="grid gap-4 p-4 sm:p-6 lg:grid-cols-[1.35fr_0.9fr]">
+                  <div className="space-y-4">
+                    <div className="relative min-h-[310px] overflow-hidden rounded-3xl border-2 border-brand-line bg-brand-bg">
+                      <div className="flex items-center gap-2 border-b border-brand-line bg-white px-4 py-3">
+                        <div className="h-2.5 w-2.5 rounded-full bg-slate-300"></div>
+                        <div className="h-2.5 w-2.5 rounded-full bg-slate-300"></div>
+                        <div className="h-2.5 w-2.5 rounded-full bg-slate-300"></div>
+                        <div className="ml-3 text-xs font-black text-brand-ink">Create account</div>
+                      </div>
+
+                      <div className="grid min-h-[255px] grid-cols-[0.85fr_1.15fr] items-center gap-2 px-5 py-5">
+                        <div className="space-y-3">
+                          <div className="h-8 rounded-xl border border-brand-line bg-white"></div>
+                          <div className="h-8 rounded-xl border border-brand-line bg-white"></div>
+                          <div className="h-8 rounded-xl border border-brand-line bg-white"></div>
+                          <div className="mt-4 h-9 rounded-xl bg-slate-200"></div>
+                        </div>
+
+                        <div className="relative flex min-h-[205px] items-center justify-center rounded-3xl border-2 border-dashed border-brand-danger/70 bg-white">
+                          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-danger text-white shadow-[4px_4px_0px_0px_rgba(15,23,42,0.16)]">
+                            <TriangleAlert className="h-8 w-8" />
+                          </div>
+                          <div className="absolute bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-brand-danger px-3 py-1.5 text-xs font-black text-white">
+                            Blank screen
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="absolute bottom-5 right-5 max-w-[210px] rotate-[-2deg] rounded-2xl border-2 border-brand-accent bg-white p-3 shadow-[5px_5px_0px_0px_rgba(124,58,237,0.22)]">
+                        <div className="flex items-center gap-2 text-xs font-black text-brand-ink">
+                          <PenLine className="h-4 w-4 text-brand-accent" />
+                          QA note
+                        </div>
+                        <p className="mt-1 text-sm font-black leading-snug text-brand-ink">
+                          Should show dashboard.
+                        </p>
                       </div>
                     </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-black text-brand-ink">
-                        {heroPersona.name}
+
+                    <div className="grid grid-cols-4 gap-2">
+                      {["Email", "OTP", "Account", "Blank"].map((step, index) => (
+                        <div
+                          key={step}
+                          className={`rounded-2xl border px-2 py-3 text-center text-[11px] font-black ${
+                            index === 3
+                              ? "border-brand-danger bg-brand-danger text-white"
+                              : "border-brand-line bg-white text-slate-500"
+                          }`}
+                        >
+                          <div className="mx-auto mb-1 flex h-6 w-6 items-center justify-center rounded-full bg-brand-bg text-[10px] text-brand-ink">
+                            {index + 1}
+                          </div>
+                          {step}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="rounded-3xl bg-brand-ink p-4 text-white shadow-[5px_5px_0px_0px_rgba(124,58,237,0.28)]">
+                      <div className="mb-3 flex items-center gap-2 text-xs font-black text-brand-secondary">
+                        <Code className="h-4 w-4" />
+                        Console
                       </div>
-                      <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                        {heroPersona.role}
+                      <div className="space-y-2 font-mono text-[11px] font-bold">
+                        <div className="rounded-lg bg-white/8 px-3 py-2 text-brand-danger">TypeError at signup.tsx:45</div>
+                        <div className="rounded-lg bg-white/8 px-3 py-2 text-brand-warning">POST /api/session 500</div>
                       </div>
                     </div>
-                    <PenLine className="ml-auto h-5 w-5 shrink-0 text-brand-accent" />
                   </div>
-                  <div className="mt-3 min-h-[3rem] overflow-hidden rounded-xl bg-brand-secondary/5 px-4 py-3">
-                    <AnimatePresence mode="wait">
-                      <motion.p
-                        key={heroPersonaNotes[heroNoteIndex]}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -8 }}
-                        transition={{ duration: 0.25 }}
-                        className="text-sm font-bold leading-relaxed text-slate-700"
-                      >
-                        &ldquo;{heroPersonaNotes[heroNoteIndex]}&rdquo;
-                      </motion.p>
-                    </AnimatePresence>
+
+                  <div className="grid content-start gap-3">
+                    <div className="rounded-3xl border-2 border-brand-line bg-white p-4">
+                      <div className="mb-3 flex items-center gap-2 text-sm font-black text-brand-ink">
+                        <MonitorUp className="h-5 w-5 text-brand-accent" />
+                        Screenshot
+                      </div>
+                      <div className="rounded-2xl border border-brand-line bg-brand-bg p-3">
+                        <div className="h-20 rounded-xl border-2 border-dashed border-slate-300 bg-white"></div>
+                        <div className="mt-2 flex justify-end">
+                          <span className="rounded-full bg-brand-danger px-2 py-1 text-[10px] font-black text-white">12:41 pm</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-3xl border-2 border-brand-line bg-white p-4">
+                      <div className="mb-3 flex items-center gap-2 text-sm font-black text-brand-ink">
+                        <Activity className="h-5 w-5 text-brand-accent" />
+                        Network
+                      </div>
+                      <div className="space-y-2 text-[11px] font-black">
+                        <div className="flex items-center justify-between rounded-xl bg-brand-bg px-3 py-2">
+                          <span>POST /api/signup</span>
+                          <span className="text-brand-danger">500</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-xl bg-brand-bg px-3 py-2">
+                          <span>GET /api/user</span>
+                          <span className="text-brand-danger">500</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-xl bg-brand-bg px-3 py-2">
+                          <span>GET /flags</span>
+                          <span className="text-brand-success">200</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-3xl border-2 border-brand-ink bg-brand-secondary/10 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-sm font-black text-brand-ink">
+                          <Check className="h-5 w-5 text-brand-success" />
+                          Proof ready
+                        </div>
+                        <ArrowRight className="h-5 w-5 text-brand-accent" />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1817,7 +1869,7 @@ function HomePage({
                 <motion.div
                   animate={{ y: [0, -10, 0] }}
                   transition={{ duration: 4, repeat: Infinity }}
-                  className="absolute -top-6 -right-6 w-24 h-24 bg-white rounded-3xl border-4 border-brand-ink p-2 shadow-2xl overflow-hidden"
+                  className="absolute -top-6 right-0 w-24 h-24 overflow-hidden rounded-3xl border-4 border-brand-ink bg-white p-2 shadow-2xl sm:-right-6"
                 >
                   <img
                     src={STARTER_PERSONAS[0].avatar}
