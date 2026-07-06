@@ -11,6 +11,7 @@ const {
   exportManualQaSession,
   getManualQaWidgetSession,
   redactSensitiveUrl,
+  recordManualQaPostFixReview,
   recordManualQaPreviewProposal,
   updateManualQaWidgetItem,
   updateManualQaItem
@@ -18,6 +19,7 @@ const {
 const widgetEvidenceChunksHandler = require("../api/manual-qa/widget-evidence-chunks");
 const widgetEvidenceHandler = require("../api/manual-qa/widget-evidence");
 const widgetFeedbackHandler = require("../api/manual-qa/widget-feedback");
+const widgetPostFixReviewHandler = require("../api/manual-qa/post-fix-review");
 const widgetPreviewProposalHandler = require("../api/manual-qa/preview-proposal");
 const { buildManualQaWidgetScript } = require("../lib/manual-qa-widget");
 
@@ -252,6 +254,25 @@ async function callWidgetPreviewProposalHandler(body, token) {
   };
   const res = createRes();
   await widgetPreviewProposalHandler(req, res);
+  return res;
+}
+
+async function callPostFixReviewHandler(body, headers = {}) {
+  const req = {
+    method: "POST",
+    headers: {
+      host: "beforeusersdo.com",
+      "x-forwarded-proto": "https",
+      "x-qa-service-token": "service-token",
+      "x-owner-user-id": "user_review",
+      "x-owner-email": "owner@example.com",
+      ...headers
+    },
+    query: {},
+    body
+  };
+  const res = createRes();
+  await widgetPostFixReviewHandler(req, res);
   return res;
 }
 
@@ -493,6 +514,10 @@ test("freestyle manual QA sessions create one capture item without checklist set
   assert.equal(built.session.checklist[0].status, "pending");
   assert.deepEqual(built.session.checklist[0].evidence_media, []);
   assert.equal(built.widgetInstall.review_url, "https://preview.example.com/app");
+  const markdown = buildManualQaAgentFeedbackMarkdown(built.session);
+  assert.match(markdown, /Mode: share feedback and auto-start work/);
+  assert.match(markdown, /Independent Post-Fix Review Gate/);
+  assert.match(markdown, /fresh contextless reviewer agent/);
 });
 
 test("first-party manual QA review links open with widget boot params", () => {
@@ -539,6 +564,7 @@ test("manual QA feedback markdown can be report-only instead of auto-fix", () =>
   assert.match(markdown, /Mode: share feedback only/);
   assert.match(markdown, /Do not edit code, deploy, or create a replacement QA link/);
   assert.doesNotMatch(markdown, /Fix the target product\/code/);
+  assert.doesNotMatch(markdown, /Independent Post-Fix Review Gate/);
 });
 
 test("manual QA feedback markdown can request a preview before coding", () => {
@@ -562,6 +588,9 @@ test("manual QA feedback markdown can request a preview before coding", () => {
   assert.match(markdown, /Mode: preview fix first/);
   assert.match(markdown, /Produce a proposed future-state preview before implementation/);
   assert.match(markdown, /Ask the user to confirm or correct the preview/);
+  assert.match(markdown, /Independent Post-Fix Review Gate/);
+  assert.match(markdown, /fresh contextless reviewer agent/);
+  assert.match(markdown, /approved preview\/checklist/);
   assert.doesNotMatch(markdown, /Mode: share feedback and auto-start work/);
 });
 
@@ -866,6 +895,8 @@ test("manual QA session can be created, updated, and exported with sensitive URL
 
     assert.equal(exported.ok, true);
     assert.match(exported.markdown, /token=%5Bredacted%5D/);
+    assert.match(exported.markdown, /Independent Post-Fix Review Gate/);
+    assert.match(exported.markdown, /fresh contextless reviewer agent/);
     assert.doesNotMatch(exported.markdown, /abc123/);
     assert.doesNotMatch(exported.markdown, /pw123/);
     assert.equal(exported.session.browser.viewer_url, "[redacted in export]");
@@ -959,6 +990,88 @@ test("manual QA preview proposal is saved, shown to widget sessions, and can be 
     assert.equal(approved.body.preview_proposal.status, "approved");
     assert.equal(approved.body.preview_proposal.response_note, "Looks good.");
     assert.ok(approved.body.preview_proposal.responded_at);
+  } finally {
+    globalThis.fetch = previousFetch;
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+});
+
+test("manual QA post-fix review is persisted and controls may_mark_done", async () => {
+  const previousFetch = globalThis.fetch;
+  const previousEnv = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
+    QA_SERVICE_TOKEN: process.env.QA_SERVICE_TOKEN
+  };
+  const mock = createSupabaseFetchMock();
+  globalThis.fetch = mock.fetchImpl;
+  process.env.SUPABASE_URL = "https://supabase-postfix.example.com";
+  process.env.SUPABASE_SERVICE_KEY = "service";
+  process.env.QA_SERVICE_TOKEN = "service-token";
+
+  try {
+    const created = await createManualQaSession(
+      {
+        target_url: "https://preview.example.com",
+        brand: "Example",
+        title: "Post-fix review",
+        review_mode: "freestyle",
+        feedback_action: "share_feedback_and_start_work"
+      },
+      {
+        publicBaseUrl: "https://beforeusersdo.com",
+        ownerUserId: "user_review",
+        ownerEmail: "owner@example.com",
+        fetchImpl: mock.fetchImpl,
+        supabaseUrl: "https://supabase-postfix.example.com",
+        serviceKey: "service"
+      }
+    );
+
+    const missed = await recordManualQaPostFixReview(
+      created.session.session_id,
+      {
+        verdict: "missed",
+        fixed_url: "https://preview.example.com?token=secret",
+        missed_items: ["Hero still shows old copy."],
+        changed_files: ["src/App.tsx"]
+      },
+      {
+        authOk: true,
+        ownerUserId: "user_review",
+        fetchImpl: mock.fetchImpl,
+        supabaseUrl: "https://supabase-postfix.example.com",
+        serviceKey: "service"
+      }
+    );
+
+    assert.equal(missed.ok, true);
+    assert.equal(missed.may_mark_done, false);
+    assert.equal(missed.post_fix_review.verdict, "missed");
+    assert.equal(missed.post_fix_review.fixed_url, "https://preview.example.com/?token=%5Bredacted%5D");
+    assert.deepEqual(missed.post_fix_review.missed_items, ["Hero still shows old copy."]);
+
+    const passed = await callPostFixReviewHandler({
+      session_id: created.session.session_id,
+      review: {
+        verdict: "fixed",
+        fixed_url: "https://preview.example.com",
+        fixed_items: ["Hero copy updated."],
+        test_results: ["lint passed"]
+      }
+    });
+
+    assert.equal(passed.statusCode, 200);
+    assert.equal(passed.body.ok, true);
+    assert.equal(passed.body.may_mark_done, true);
+    assert.equal(passed.body.post_fix_review.verdict, "fixed");
+    assert.equal(passed.body.session.post_fix_reviews.may_mark_done, true);
   } finally {
     globalThis.fetch = previousFetch;
     for (const [key, value] of Object.entries(previousEnv)) {
@@ -1273,6 +1386,8 @@ test("freestyle widget Send All marks the capture reviewed", async () => {
     assert.equal(feedback.body.session.checklist[0].status, "reviewed");
     assert.match(feedback.body.markdown, /1 reviewed/);
     assert.match(feedback.body.markdown, /Required Agent Next Steps/);
+    assert.match(feedback.body.markdown, /Independent Post-Fix Review Gate/);
+    assert.match(feedback.body.markdown, /fresh contextless reviewer agent/);
     assert.match(feedback.body.markdown, /Create a fresh BeforeUsersDo manual QA session\/link/);
   } finally {
     globalThis.fetch = previousFetch;

@@ -16,12 +16,15 @@ const {
 } = require("../lib/qa-mcp");
 const { readQaMcpStoredAuth, writeQaMcpStoredAuth } = require("../lib/qa-mcp-auth");
 const {
+  attachPostFixReviewGateToManualPackets,
   buildAutomatedQaActionText,
   buildAutomatedQaRequiredAction,
+  buildPostFixReviewRecord,
   buildManualFeedbackActionText,
   buildManualFeedbackRequiredAction,
   buildManualReviewNeedsInputResult,
-  buildManualReviewWorkflowText
+  buildManualReviewWorkflowText,
+  shouldReturnQaAction
 } = require("../scripts/qa-mcp-server");
 
 function createJsonResponse(payload, status = 200) {
@@ -553,6 +556,8 @@ test("manual review workflow tells agents what context to gather", () => {
   assert.match(text, /do not stop after giving the link/i);
   assert.match(text, /Obey the session's `feedback_action`/i);
   assert.match(text, /`share_feedback_and_start_work`: share feedback with the agent/i);
+  assert.match(text, /fresh contextless reviewer/i);
+  assert.match(text, /continue work/i);
   assert.match(text, /`preview_fix_first`: share feedback with the agent/i);
   assert.match(text, /`share_feedback`: share feedback with the agent for summary\/reporting/i);
   assert.match(text, /https:\/\/preview\.example\.com/);
@@ -576,13 +581,20 @@ test("manual feedback action contract defaults to fix-deploy-new-QA loop", () =>
   assert.equal(action.feedback_action, "share_feedback_and_start_work");
   assert.equal(action.auto_start_work, true);
   assert.equal(action.next_tool_after_fix, "qa_start_manual_review");
+  assert.equal(action.post_fix_review_gate.required, true);
+  assert.equal(action.post_fix_review_gate.reviewer, "fresh_contextless_agent");
+  assert.equal(action.post_fix_review_gate.implementer_may_self_close, false);
+  assert.match(action.post_fix_review_gate.fail_action, /Continue implementation/);
   assert.match(action.completion_rule, /fresh BeforeUsersDo QA link/);
+  assert.match(action.completion_rule, /fresh contextless reviewer/);
   assert.match(action.steps.join(" "), /Update the target code\/product instead of only summarizing/);
   assert.match(action.steps.join(" "), /qa_get_manual_work_packets/);
   assert.match(action.steps.join(" "), /Deploy or refresh/);
+  assert.match(action.steps.join(" "), /fresh contextless reviewer agent/);
+  assert.match(action.steps.join(" "), /continue implementation instead of marking done/);
   assert.match(text, /REQUIRED NEXT STEPS FOR THE CODING AGENT/);
   assert.match(text, /Mode: share feedback and auto-start work/);
-  assert.match(text, /Create a fresh BeforeUsersDo QA link or rerun the relevant QA tool/);
+  assert.match(text, /create a fresh BeforeUsersDo QA link or rerun the relevant QA tool/i);
 });
 
 test("manual feedback action contract can be report-only", () => {
@@ -601,6 +613,7 @@ test("manual feedback action contract can be report-only", () => {
   assert.equal(action.agent_action_mode, "report_only");
   assert.equal(action.feedback_action, "share_feedback");
   assert.equal(action.auto_start_work, false);
+  assert.equal(action.post_fix_review_gate.required, false);
   assert.match(action.completion_rule, /Do not start code changes/);
   assert.match(text, /Mode: share feedback only/);
   assert.match(text, /Do not edit code/);
@@ -622,11 +635,61 @@ test("manual feedback action contract can require preview before work", () => {
   assert.equal(action.agent_action_mode, "preview_then_fix");
   assert.equal(action.feedback_action, "preview_fix_first");
   assert.equal(action.auto_start_work, false);
+  assert.equal(action.post_fix_review_gate.required, true);
+  assert.equal(action.post_fix_review_gate.reviewer, "fresh_contextless_agent");
+  assert.equal(action.post_fix_review_gate.compare_against.includes("approved_preview_or_checklist"), true);
   assert.match(action.completion_rule, /simulated future-state preview/);
+  assert.match(action.completion_rule, /fresh contextless reviewer/);
   assert.match(action.steps.join(" "), /Ask the user to confirm or correct/);
   assert.match(action.steps.join(" "), /qa_get_manual_work_packets/);
+  assert.match(action.steps.join(" "), /Before marking done, start a fresh contextless reviewer/);
   assert.match(text, /Mode: preview fix first/);
   assert.match(text, /Simulate the intended result before code changes/);
+});
+
+test("manual work packets carry structured post-fix review gates", () => {
+  const response = attachPostFixReviewGateToManualPackets({
+    session_id: "manual_123",
+    session: {
+      session_id: "manual_123",
+      context: { feedback_action: "share_feedback_and_start_work" },
+      agent_feedback: {
+        latest: { feedback_id: "feedback_123" }
+      }
+    },
+    work_packets: [
+      {
+        packet_id: "packet_hero",
+        title: "Hero copy"
+      }
+    ]
+  });
+
+  assert.equal(response.post_fix_review_gate.required, true);
+  assert.equal(response.work_packets[0].post_fix_review_gate.required, true);
+  assert.equal(response.work_packets[0].post_fix_review_gate.packet_id, "packet_hero");
+  assert.equal(response.work_packets[0].post_fix_review_gate.feedback_id, "feedback_123");
+  assert.equal(response.work_packets[0].post_fix_review_gate.implementer_may_self_close, false);
+});
+
+test("post-fix review record decides whether work may be marked done", () => {
+  const passed = buildPostFixReviewRecord({
+    run_id: "run_123",
+    verdict: "fixed",
+    fixed_url: "https://preview.example.com",
+    changed_files: ["src/App.tsx"],
+    test_results: ["lint passed"]
+  });
+  const missed = buildPostFixReviewRecord({
+    run_id: "run_123",
+    verdict: "fixed",
+    missed_items: ["Hero still uses old copy."]
+  });
+
+  assert.equal(passed.may_mark_done, true);
+  assert.equal(missed.may_mark_done, false);
+  assert.equal(missed.verdict, "fixed");
+  assert.deepEqual(missed.missed_items, ["Hero still uses old copy."]);
 });
 
 test("automated QA action contract defaults to report-only and can opt into fix-and-retest", () => {
@@ -658,8 +721,23 @@ test("automated QA action contract defaults to report-only and can opt into fix-
   assert.equal(fixAndRetest.status, "fix_or_explain_before_done");
   assert.equal(fixAndRetest.feedback_action, "share_feedback_and_start_work");
   assert.equal(fixAndRetest.auto_start_work, true);
+  assert.equal(fixAndRetest.post_fix_review_gate.required, true);
+  assert.equal(fixAndRetest.post_fix_review_gate.implementer_may_self_close, false);
   assert.match(fixAndRetest.completion_rule, /fix the target work/);
+  assert.match(fixAndRetest.completion_rule, /fresh contextless reviewer/);
   assert.match(text, /Mode: share feedback only/);
+});
+
+test("automated pass still returns a gate when caller requested fix-and-retest", () => {
+  const passOutcome = {
+    verdict: "passed",
+    pass: true,
+    reason: "QA passed."
+  };
+
+  assert.equal(shouldReturnQaAction(passOutcome), false);
+  assert.equal(shouldReturnQaAction(passOutcome, { feedback_action: "share_feedback_and_start_work" }), true);
+  assert.equal(shouldReturnQaAction(passOutcome, { agent_action_mode: "fix_and_retest" }), true);
 });
 
 test("manual review missing-input result asks only for target_url", () => {
@@ -753,6 +831,51 @@ test("qa MCP client can submit a manual preview proposal", async () => {
       title: "Cleaner hero",
       summary: "Make the install path obvious.",
       changes: ["Make MCP primary.", "Keep proof visible."]
+    }
+  });
+});
+
+test("qa MCP client can submit a manual post-fix review", async () => {
+  const calls = [];
+  const client = createQaApiClient({
+    baseUrl: "https://beforeusersdo.com",
+    serviceToken: "service_123",
+    ownerUserId: "user_123",
+    ownerEmail: "owner@example.com",
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return createJsonResponse({
+        ok: true,
+        session_id: "manual_123",
+        may_mark_done: false,
+        post_fix_review: {
+          review_id: "postfix_123",
+          verdict: "missed",
+          may_mark_done: false
+        }
+      });
+    }
+  });
+
+  const response = await client.submitManualPostFixReview("manual_123", {
+    verdict: "missed",
+    fixed_url: "https://preview.example.com",
+    missed_items: ["Hero still has old copy."]
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.may_mark_done, false);
+  assert.equal(response.post_fix_review.verdict, "missed");
+  assert.equal(calls.length, 1);
+  assert.equal(new URL(calls[0].url).pathname, "/api/manual-qa/post-fix-review");
+  assert.equal(calls[0].options.method, "POST");
+  assert.equal(calls[0].options.headers["x-qa-service-token"], "service_123");
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    session_id: "manual_123",
+    review: {
+      verdict: "missed",
+      fixed_url: "https://preview.example.com",
+      missed_items: ["Hero still has old copy."]
     }
   });
 });
