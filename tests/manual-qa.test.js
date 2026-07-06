@@ -481,6 +481,29 @@ test("freestyle manual QA sessions create one capture item without checklist set
   assert.equal(built.widgetInstall.review_url, "https://preview.example.com/app");
 });
 
+test("first-party manual QA review links open with widget boot params", () => {
+  const built = buildManualQaSessionPayload(
+    {
+      session_id: "manual_first_party",
+      target_url: "https://beforeusersdo.com/?existing=1",
+      review_mode: "freestyle",
+      work_summary: "Review homepage."
+    },
+    {
+      publicBaseUrl: "https://beforeusersdo.com"
+    }
+  );
+
+  assert.equal(built.ok, true);
+  const scriptUrl = new URL(built.widgetInstall.script_url);
+  const reviewUrl = new URL(built.widgetInstall.review_url);
+  assert.equal(reviewUrl.origin, "https://beforeusersdo.com");
+  assert.equal(reviewUrl.searchParams.get("existing"), "1");
+  assert.equal(reviewUrl.searchParams.get("bud_session_id"), "manual_first_party");
+  assert.equal(reviewUrl.searchParams.get("bud_token"), scriptUrl.searchParams.get("token"));
+  assert.equal(built.widgetInstall.checklist_review_urls[0].review_url, built.widgetInstall.review_url);
+});
+
 test("manual QA feedback markdown can be report-only instead of auto-fix", () => {
   const built = buildManualQaSessionPayload(
     {
