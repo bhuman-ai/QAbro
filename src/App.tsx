@@ -1363,9 +1363,15 @@ function HomePage({
   const [queued, setQueued] = useState<any | null>(null);
   const heroPersona = STARTER_PERSONAS[0];
   const heroPersonaNotes = [
-    "I entered the code, then the screen went blank.",
-    "I expected the dashboard to open next.",
-    "Send this to the developer with proof."
+    "Code accepted. Then I got a blank white screen.",
+    "I drew where the dashboard should have appeared.",
+    "The agent gets the screenshot, logs, and exact broken step."
+  ];
+  const proofPacketItems = [
+    "final screenshot",
+    "console errors",
+    "network timeline",
+    "repro steps"
   ];
   const [heroNoteIndex, setHeroNoteIndex] = useState(0);
   const mcpInstallConfig = `{
@@ -1444,7 +1450,7 @@ function HomePage({
                 Catch bugs before users do.
               </h1>
               <p className="text-lg md:text-xl text-slate-600 max-w-2xl mb-9 font-bold leading-relaxed">
-                Turn any preview into a real QA pass. Let an agent test it, record your own walkthrough, or send a developer the exact proof when something breaks.
+                Before you accept &ldquo;done,&rdquo; BUD opens the preview, follows the user flow, and brings back the exact screen, logs, and step that broke.
               </p>
 
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -1483,33 +1489,37 @@ function HomePage({
                 <div className="mt-5 rounded-3xl border-2 border-brand-ink bg-brand-secondary/5 p-5">
                   <div className="inline-flex items-center gap-2 rounded-full bg-brand-warning/15 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-ink">
                     <TriangleAlert className="h-3.5 w-3.5 text-brand-warning" />
-                    Needs a fix
+                    Real blocker found
                   </div>
                   <h3 className="mt-4 text-2xl font-black tracking-tight text-brand-ink">
-                    Sign-up got stuck
+                    OTP worked. The dashboard never loaded.
                   </h3>
                   <p className="mt-3 text-sm font-semibold leading-relaxed text-slate-600">
-                    A first-time user finished the code step, then landed on a blank page instead of the dashboard.
+                    The user finished verification, then hit a white screen. BUD keeps the last good step, the broken screen, and the technical trail together.
                   </p>
                 </div>
                 <div className="mt-4 rounded-2xl border border-brand-line bg-brand-bg p-4">
                   <div className="flex items-center gap-3 text-sm font-black text-brand-ink">
                     <Check className="h-5 w-5 text-brand-success" />
-                    What the agent sends back
+                    Developer packet
                   </div>
-                  <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-600">
-                    The screen, spoken notes, drawings, and page errors are packaged together so the fix is clear.
-                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {proofPacketItems.map((item) => (
+                      <span
+                        key={item}
+                        className="rounded-full border border-brand-line bg-white px-3 py-1.5 text-[11px] font-black text-brand-ink"
+                      >
+                        {item}
+                      </span>
+                    ))}
+                  </div>
                 </div>
                 <div className="mt-4 rounded-2xl border border-brand-line bg-white p-4">
                   <div className="flex items-center gap-3">
                     <div className={`h-12 w-12 shrink-0 overflow-hidden rounded-2xl border-2 border-brand-ink ${heroPersona.color}`}>
-                      <img
-                        src={heroPersona.avatar}
-                        alt={heroPersona.name}
-                        className="h-full w-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
+                      <div className="flex h-full w-full items-center justify-center text-lg font-black text-brand-ink">
+                        {heroPersona.name.charAt(0)}
+                      </div>
                     </div>
                     <div className="min-w-0">
                       <div className="text-sm font-black text-brand-ink">
