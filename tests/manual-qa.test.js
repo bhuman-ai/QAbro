@@ -267,6 +267,8 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /className = "bud-item-send"/);
   assert.match(script, /class="bud-send-menu"/);
   assert.match(script, /data-feedback-action="share_feedback_and_start_work"/);
+  assert.match(script, /data-feedback-action="preview_fix_first"/);
+  assert.match(script, /Preview fix first/);
   assert.match(script, /data-feedback-action="share_feedback"/);
   assert.match(script, /openSendMenu\("all"/);
   assert.match(script, /openSendMenu\("item", item\.id/);
@@ -476,6 +478,30 @@ test("manual QA feedback markdown can be report-only instead of auto-fix", () =>
   assert.match(markdown, /Mode: share feedback only/);
   assert.match(markdown, /Do not edit code, deploy, or create a replacement QA link/);
   assert.doesNotMatch(markdown, /Fix the target product\/code/);
+});
+
+test("manual QA feedback markdown can request a preview before coding", () => {
+  const built = buildManualQaSessionPayload(
+    {
+      target_url: "https://preview.example.com",
+      review_mode: "freestyle",
+      feedback_action: "preview_fix_first",
+      work_summary: "User gave design feedback that needs confirmation before implementation."
+    },
+    {
+      publicBaseUrl: "https://beforeusersdo.com"
+    }
+  );
+
+  assert.equal(built.ok, true);
+  assert.equal(built.session.context.agent_action_mode, "preview_then_fix");
+  assert.equal(built.session.context.feedback_action, "preview_fix_first");
+  assert.equal(built.session.context.auto_start_work, false);
+  const markdown = buildManualQaAgentFeedbackMarkdown(built.session);
+  assert.match(markdown, /Mode: preview fix first/);
+  assert.match(markdown, /Produce a proposed future-state preview before implementation/);
+  assert.match(markdown, /Ask the user to confirm or correct the preview/);
+  assert.doesNotMatch(markdown, /Mode: share feedback and auto-start work/);
 });
 
 test("manual QA session can be created, updated, and exported with sensitive URLs redacted", async () => {

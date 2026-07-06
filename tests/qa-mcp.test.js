@@ -514,6 +514,7 @@ test("manual review workflow tells agents what context to gather", () => {
   assert.match(text, /do not stop after giving the link/i);
   assert.match(text, /Obey the session's `feedback_action`/i);
   assert.match(text, /`share_feedback_and_start_work`: share feedback with the agent/i);
+  assert.match(text, /`preview_fix_first`: share feedback with the agent/i);
   assert.match(text, /`share_feedback`: share feedback with the agent for summary\/reporting/i);
   assert.match(text, /https:\/\/preview\.example\.com/);
 });
@@ -565,10 +566,37 @@ test("manual feedback action contract can be report-only", () => {
   assert.match(text, /Do not edit code/);
 });
 
+test("manual feedback action contract can require preview before work", () => {
+  const action = buildManualFeedbackRequiredAction(
+    "manual_123",
+    { feedback_id: "feedback_123", scope: "all" },
+    { feedback_action: "preview_fix_first" }
+  );
+  const text = buildManualFeedbackActionText(
+    "manual_123",
+    { feedback_id: "feedback_123", scope: "all" },
+    { feedback_action: "preview_fix_first" }
+  );
+
+  assert.equal(action.status, "preview_required_before_work");
+  assert.equal(action.agent_action_mode, "preview_then_fix");
+  assert.equal(action.feedback_action, "preview_fix_first");
+  assert.equal(action.auto_start_work, false);
+  assert.match(action.completion_rule, /simulated future-state preview/);
+  assert.match(action.steps.join(" "), /Ask the user to confirm or correct/);
+  assert.match(text, /Mode: preview fix first/);
+  assert.match(text, /Simulate the intended result before code changes/);
+});
+
 test("automated QA action contract defaults to report-only and can opt into fix-and-retest", () => {
   const reportOnly = buildAutomatedQaRequiredAction("run_123", {
     verdict: "needs_fix"
   });
+  const previewFirst = buildAutomatedQaRequiredAction(
+    "run_123",
+    { verdict: "needs_fix" },
+    { feedback_action: "preview_fix_first" }
+  );
   const fixAndRetest = buildAutomatedQaRequiredAction(
     "run_123",
     { verdict: "needs_fix" },
@@ -582,6 +610,10 @@ test("automated QA action contract defaults to report-only and can opt into fix-
   assert.equal(reportOnly.feedback_action, "share_feedback");
   assert.equal(reportOnly.auto_start_work, false);
   assert.match(reportOnly.completion_rule, /unless the user explicitly asks/);
+  assert.equal(previewFirst.status, "preview_required_before_work");
+  assert.equal(previewFirst.agent_action_mode, "preview_then_fix");
+  assert.equal(previewFirst.feedback_action, "preview_fix_first");
+  assert.equal(previewFirst.auto_start_work, false);
   assert.equal(fixAndRetest.status, "fix_or_explain_before_done");
   assert.equal(fixAndRetest.feedback_action, "share_feedback_and_start_work");
   assert.equal(fixAndRetest.auto_start_work, true);

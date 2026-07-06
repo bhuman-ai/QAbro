@@ -62,7 +62,7 @@ function safeText(value, maxLength = 4000) {
   return String(value || "").trim().slice(0, maxLength);
 }
 
-const AGENT_ACTION_MODES = new Set(["report_only", "fix_and_retest"]);
+const AGENT_ACTION_MODES = new Set(["report_only", "preview_then_fix", "fix_and_retest"]);
 
 function normalizeAgentActionMode(input = {}, fallback = "report_only") {
   const explicit = safeText(
@@ -75,6 +75,19 @@ function normalizeAgentActionMode(input = {}, fallback = "report_only") {
   if (["share_feedback", "share_only", "save_feedback", "save_only"].includes(explicit)) {
     return "report_only";
   }
+  if (
+    [
+      "preview_then_fix",
+      "preview_fix_first",
+      "preview_first",
+      "simulate_first",
+      "simulate_fix",
+      "mockup_first",
+      "mock_first"
+    ].includes(explicit)
+  ) {
+    return "preview_then_fix";
+  }
   if (["share_feedback_and_start_work", "share_and_start_work", "auto_start_work", "start_work"].includes(explicit)) {
     return "fix_and_retest";
   }
@@ -85,6 +98,16 @@ function normalizeAgentActionMode(input = {}, fallback = "report_only") {
     return "report_only";
   }
   return AGENT_ACTION_MODES.has(fallback) ? fallback : "report_only";
+}
+
+function feedbackActionForAgentMode(mode) {
+  if (mode === "fix_and_retest") return "share_feedback_and_start_work";
+  if (mode === "preview_then_fix") return "preview_fix_first";
+  return "share_feedback";
+}
+
+function shouldAutoStartWorkForAgentMode(mode) {
+  return mode === "fix_and_retest";
 }
 
 function buildManualReviewWorkflowText(input = {}) {
@@ -139,6 +162,7 @@ function buildManualReviewWorkflowText(input = {}) {
     "- Use `qa_get_manual_report` only as a fallback or for historical export.",
     "- Obey the session's `feedback_action` setting.",
     "- `share_feedback_and_start_work`: share feedback with the agent, treat it as user instructions, fix the target product/code, run checks, deploy or refresh, then create a fresh QA link.",
+    "- `preview_fix_first`: share feedback with the agent, produce a simulated future-state preview/mockup or expected behavior trace first, ask the user to confirm, then code only after confirmation.",
     "- `share_feedback`: share feedback with the agent for summary/reporting, but do not edit or deploy unless the user explicitly asks you to start work.",
     "",
     targetUrl ? `Current target_url: ${targetUrl}` : "",
@@ -172,8 +196,8 @@ function buildAgentActionContract({
     scope: safeText(feedback.scope || "all", 40) || "all",
     item_id: safeText(feedback.item_id || feedback.itemId, 80) || null,
     agent_action_mode: mode,
-    feedback_action: mode === "fix_and_retest" ? "share_feedback_and_start_work" : "share_feedback",
-    auto_start_work: mode === "fix_and_retest",
+    feedback_action: feedbackActionForAgentMode(mode),
+    auto_start_work: shouldAutoStartWorkForAgentMode(mode),
     next_tool_after_fix: nextToolAfterFix
   };
 
@@ -191,6 +215,24 @@ function buildAgentActionContract({
         "Run the relevant tests/build checks and record the result.",
         "Deploy or refresh the preview/production target the user should retest.",
         "Create a fresh BeforeUsersDo QA link or rerun the relevant QA tool for the fixed version.",
+        "If any step is blocked, say exactly what is blocked and what is needed."
+      ]
+    };
+  }
+
+  if (mode === "preview_then_fix") {
+    return {
+      ...base,
+      status: "preview_required_before_work",
+      completion_rule:
+        "Do not start code changes from this QA result yet. Extract the actionable points, create a simulated future-state preview or behavior trace, ask the user to confirm or correct it, then after confirmation fix, verify, deploy or refresh, and create a fresh BeforeUsersDo QA link or rerun QA.",
+      steps: [
+        "Read the full QA feedback and evidence links.",
+        "Extract concrete feedback points from notes, transcript, drawings, screenshots, videos, page context, console, network evidence, and report findings.",
+        "Create a preview contract before editing code: for UI, generate an edited screenshot/mockup or precise visual description; for backend or flows, write the expected event/API/browser trace.",
+        "Map every feedback point to the proposed future result so the user can catch misunderstandings early.",
+        "Ask the user to confirm or correct the preview before implementation.",
+        "After confirmation, update the target code/product, run relevant tests/build checks, deploy or refresh, then create a fresh BeforeUsersDo QA link or rerun QA.",
         "If any step is blocked, say exactly what is blocked and what is needed."
       ]
     };
@@ -231,6 +273,8 @@ function buildAgentActionText(action) {
   const modeLine =
     action.agent_action_mode === "fix_and_retest"
       ? "Mode: share feedback and auto-start work."
+      : action.agent_action_mode === "preview_then_fix"
+        ? "Mode: preview fix first. Simulate the intended result before code changes."
       : "Mode: share feedback only. Do not start code changes yet.";
   return buildText([
     "REQUIRED NEXT STEPS FOR THE CODING AGENT:",
@@ -418,8 +462,8 @@ function buildRunInputSchema() {
     run_id: z.string().max(128).optional(),
     dry_run: z.boolean().optional(),
     share_after: z.boolean().optional(),
-    feedback_action: z.enum(["share_feedback", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback for automated QA. Use share_feedback_and_start_work only when the user wants the coding agent to start fixes automatically."),
-    agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+    feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback for automated QA. Use preview_fix_first when the user wants a simulated fix preview before coding, or share_feedback_and_start_work when they want fixes to start automatically."),
+    agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
     auto_start_work: z.boolean().optional().describe("Boolean alias. true means share_feedback_and_start_work; false means share_feedback."),
     credentials: z
       .object({
@@ -464,8 +508,8 @@ function buildCodingAgentCheckInputSchema() {
     timeout_seconds: z.number().int().min(1).max(7200).optional(),
     poll_interval_seconds: z.number().int().min(1).max(120).optional(),
     share_after: z.boolean().optional(),
-    feedback_action: z.enum(["share_feedback", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback for automated QA. Use share_feedback_and_start_work only when the user wants the coding agent to start fixes automatically."),
-    agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+    feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback for automated QA. Use preview_fix_first when the user wants a simulated fix preview before coding, or share_feedback_and_start_work when they want fixes to start automatically."),
+    agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
     auto_start_work: z.boolean().optional().describe("Boolean alias. true means share_feedback_and_start_work; false means share_feedback."),
     dry_run: z.boolean().optional()
   };
@@ -490,8 +534,8 @@ function buildManualQaSessionInputSchema(options = {}) {
     commit_sha: z.string().max(120).optional(),
     pull_request_url: z.string().url().optional(),
     developer_notes: z.string().max(4000).optional(),
-    feedback_action: z.enum(["share_feedback", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback_and_start_work for human/manual feedback. Use share_feedback when the user only wants a summary."),
-    agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+    feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback_and_start_work for human/manual feedback. Use preview_fix_first when the user wants a simulated fix preview before coding, or share_feedback when they only want a summary."),
+    agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
     auto_start_work: z.boolean().optional().describe("Boolean alias. true means share_feedback_and_start_work; false means share_feedback."),
     entry_path: z.string().max(1000).optional().describe("Optional path to use when generated checklist items need a start URL."),
     test_plan: z
@@ -763,8 +807,8 @@ function createQaMcpServer(options = {}) {
         poll_interval_seconds: z.number().int().min(1).max(120).optional(),
         include_report: z.boolean().optional(),
         share_after: z.boolean().optional(),
-        feedback_action: z.enum(["share_feedback", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback. Use share_feedback_and_start_work only when the user wants the coding agent to start fixes automatically."),
-        agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+        feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback. Use preview_fix_first when the user wants a simulated fix preview before coding, or share_feedback_and_start_work when they want fixes to start automatically."),
+        agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
         auto_start_work: z.boolean().optional().describe("Boolean alias.")
       }
     },
@@ -846,8 +890,8 @@ function createQaMcpServer(options = {}) {
       description: "Fetch the normalized QA report and Markdown for a completed or in-progress run.",
       inputSchema: {
         run_id: z.string().max(128),
-        feedback_action: z.enum(["share_feedback", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback. Use share_feedback_and_start_work only when the user wants the coding agent to start fixes automatically."),
-        agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+        feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback. Use preview_fix_first when the user wants a simulated fix preview before coding, or share_feedback_and_start_work when they want fixes to start automatically."),
+        agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
         auto_start_work: z.boolean().optional().describe("Boolean alias.")
       }
     },
@@ -1070,8 +1114,8 @@ function createQaMcpServer(options = {}) {
         item_id: z.string().max(80).optional(),
         timeout_seconds: z.number().int().min(1).max(7200).optional(),
         poll_interval_seconds: z.number().min(0.1).max(120).optional(),
-        feedback_action: z.enum(["share_feedback", "share_feedback_and_start_work"]).optional().describe("Overrides the session setting. Defaults to the session setting, usually share_feedback_and_start_work for human feedback."),
-        agent_action_mode: z.enum(["report_only", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+        feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Overrides the session setting. Defaults to the session setting, usually share_feedback_and_start_work for human feedback. Use preview_fix_first to ask the agent for a simulated fix preview before coding."),
+        agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
         auto_start_work: z.boolean().optional().describe("Boolean alias override.")
       }
     },
