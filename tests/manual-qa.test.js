@@ -283,6 +283,7 @@ test("manual QA widget uses a movable compact capture tray", () => {
     apiBaseUrl: "https://beforeusersdo.com"
   });
 
+  assert.doesNotThrow(() => new Function(script));
   assert.match(script, /BeforeUsersDo<\/span>/);
   assert.match(script, /Not recording\. Records screen and voice after Chrome asks\./);
   assert.match(script, /class="bud-capture-panel"/);
