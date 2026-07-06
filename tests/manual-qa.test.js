@@ -6,6 +6,7 @@ const {
   buildManualQaAgentFeedbackMarkdown,
   buildManualQaChecklist,
   buildManualQaSessionPayload,
+  buildManualQaWorkPackets,
   createManualQaSession,
   exportManualQaSession,
   getManualQaWidgetSession,
@@ -525,6 +526,88 @@ test("manual QA feedback markdown can request a preview before coding", () => {
   assert.match(markdown, /Produce a proposed future-state preview before implementation/);
   assert.match(markdown, /Ask the user to confirm or correct the preview/);
   assert.doesNotMatch(markdown, /Mode: share feedback and auto-start work/);
+});
+
+test("manual QA evidence becomes agent work packets with page anchors", () => {
+  const session = {
+    session_id: "manual_packets",
+    title: "Packet test",
+    target_url: "https://preview.example.com/app?token=secret",
+    checklist: [
+      {
+        id: "freestyle",
+        title: "Freestyle capture",
+        status: "reviewed",
+        start_url: "https://preview.example.com/app?token=secret",
+        note: "The hero top section still feels wrong and the CTA copy is unclear.",
+        evidence_urls: ["https://beforeusersdo.com/api/manual-qa/evidence?session_id=manual_packets&item_id=freestyle&index=0&token=secret"],
+        evidence_media: [
+          {
+            kind: "video",
+            label: "Video recording segment 1",
+            content_type: "video/webm",
+            url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=manual_packets&item_id=freestyle&index=1&token=secret"
+          }
+        ],
+        widget_context: {
+          page_url: "https://preview.example.com/app?token=secret",
+          page_title: "Preview App",
+          viewport: { width: 1512, height: 772, device_pixel_ratio: 2 },
+          transcript_events: [
+            {
+              text: "This top section is the part that feels wrong. It should explain the MCP first.",
+              at: "2026-07-05T17:12:20.000Z"
+            }
+          ],
+          evidence_events: [
+            {
+              type: "drawing_saved",
+              label: "Drawing annotation",
+              at: "2026-07-05T17:12:24.000Z",
+              media_url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=manual_packets&item_id=freestyle&index=0&token=secret",
+              bounds: { x: 110, y: 140, width: 320, height: 180 },
+              stroke_count: 3
+            },
+            {
+              type: "video_segment_saved",
+              label: "Video recording segment 1",
+              at: "2026-07-05T17:12:30.000Z",
+              duration_ms: 10000
+            }
+          ],
+          network_events: [
+            {
+              type: "fetch",
+              method: "GET",
+              status: 500,
+              url: "https://preview.example.com/api/hero?token=secret",
+              at: "2026-07-05T17:12:28.000Z"
+            }
+          ]
+        }
+      }
+    ]
+  };
+
+  const packets = buildManualQaWorkPackets(session);
+  assert.equal(packets.length >= 2, true);
+  const drawingPacket = packets.find((packet) => packet.source_kind === "drawing");
+  const technicalPacket = packets.find((packet) => packet.source_kind === "technical");
+  assert.ok(drawingPacket);
+  assert.ok(technicalPacket);
+  assert.match(drawingPacket.page_anchor.url, /token=%5Bredacted%5D/);
+  assert.deepEqual(drawingPacket.page_anchor.bounds, { x: 110, y: 140, width: 320, height: 180 });
+  assert.match(drawingPacket.transcript_snippets.join(" "), /MCP first/);
+  assert.match(drawingPacket.evidence_urls[0], /token=%5Bredacted%5D/);
+  assert.match(technicalPacket.technical_signals[0].url, /token=%5Bredacted%5D/);
+  assert.match(technicalPacket.agent_task, /Investigate and fix/);
+
+  const markdown = buildManualQaAgentFeedbackMarkdown(session);
+  assert.match(markdown, /## Work Packets/);
+  assert.match(markdown, /Use these as separate agent or sub-agent tasks/);
+  assert.match(markdown, /Packet ID:/);
+  assert.match(markdown, /Drawn area: 320x180 at 110,140/);
+  assert.doesNotMatch(markdown, /token=secret/);
 });
 
 test("manual QA session can be created, updated, and exported with sensitive URLs redacted", async () => {

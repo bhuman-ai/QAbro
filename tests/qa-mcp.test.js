@@ -394,6 +394,42 @@ test("qa MCP client waitForManualEvidence returns draft evidence before Send All
   ]);
 });
 
+test("qa MCP client returns manual work packets from the session", async () => {
+  const calls = [];
+  const client = createQaApiClient({
+    baseUrl: "https://swarmtester.com",
+    serviceToken: "svc_123",
+    ownerUserId: "user_123",
+    ownerEmail: "owner@example.com",
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return createJsonResponse({
+        ok: true,
+        session: {
+          session_id: "manual_packets",
+          work_packets: [
+            {
+              packet_id: "packet_1",
+              title: "Hero feels wrong",
+              suggested_owner: "frontend_or_product",
+              page_anchor: { url: "https://preview.example.com/" },
+              agent_task: "Fix the hero copy."
+            }
+          ]
+        }
+      });
+    }
+  });
+
+  const result = await client.getManualQaWorkPackets("manual_packets");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.session_id, "manual_packets");
+  assert.equal(result.work_packets.length, 1);
+  assert.equal(result.work_packets[0].packet_id, "packet_1");
+  assert.equal(new URL(calls[0].url).pathname, "/api/manual-qa/sessions");
+});
+
 test("selectManualFeedbackPackage can filter all, item, and any scopes", () => {
   const session = {
     agent_feedback: {
@@ -509,6 +545,7 @@ test("manual review workflow tells agents what context to gather", () => {
   assert.match(text, /qa_wait_for_manual_evidence/);
   assert.match(text, /evidence\.json/);
   assert.match(text, /qa_wait_for_manual_feedback/);
+  assert.match(text, /qa_get_manual_work_packets/);
   assert.match(text, /without copy\/paste/i);
   assert.match(text, /keep the agent turn open/i);
   assert.match(text, /do not stop after giving the link/i);
@@ -539,6 +576,7 @@ test("manual feedback action contract defaults to fix-deploy-new-QA loop", () =>
   assert.equal(action.next_tool_after_fix, "qa_start_manual_review");
   assert.match(action.completion_rule, /fresh BeforeUsersDo QA link/);
   assert.match(action.steps.join(" "), /Update the target code\/product instead of only summarizing/);
+  assert.match(action.steps.join(" "), /qa_get_manual_work_packets/);
   assert.match(action.steps.join(" "), /Deploy or refresh/);
   assert.match(text, /REQUIRED NEXT STEPS FOR THE CODING AGENT/);
   assert.match(text, /Mode: share feedback and auto-start work/);
@@ -584,6 +622,7 @@ test("manual feedback action contract can require preview before work", () => {
   assert.equal(action.auto_start_work, false);
   assert.match(action.completion_rule, /simulated future-state preview/);
   assert.match(action.steps.join(" "), /Ask the user to confirm or correct/);
+  assert.match(action.steps.join(" "), /qa_get_manual_work_packets/);
   assert.match(text, /Mode: preview fix first/);
   assert.match(text, /Simulate the intended result before code changes/);
 });

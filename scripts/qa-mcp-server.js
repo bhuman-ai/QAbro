@@ -158,6 +158,7 @@ function buildManualReviewWorkflowText(input = {}) {
     "",
     "7. After the human finishes.",
     "- Prefer `qa_wait_for_manual_feedback` so the user's Send All click returns directly to the agent without copy/paste.",
+    "- Call `qa_get_manual_work_packets` to split the feedback into focused task packets before summarizing, previewing, or coding.",
     "- Use `qa_wait_for_manual_evidence` or `qa://manual/{session_id}/evidence.json` for live draft evidence before Send All.",
     "- Use `qa_get_manual_report` only as a fallback or for historical export.",
     "- Obey the session's `feedback_action` setting.",
@@ -210,6 +211,7 @@ function buildAgentActionContract({
       steps: [
         "Read the full QA feedback and evidence links.",
         "Extract concrete feedback points from notes, transcript, drawings, screenshots, videos, page context, console, network evidence, and report findings.",
+        "Call qa_get_manual_work_packets for manual QA sessions and use packet_id as the task boundary for focused work or sub-agents.",
         "Turn every actionable bug, copy issue, confusing UI, blocker, or requested change into implementation work.",
         "Update the target code/product instead of only summarizing the feedback.",
         "Run the relevant tests/build checks and record the result.",
@@ -229,6 +231,7 @@ function buildAgentActionContract({
       steps: [
         "Read the full QA feedback and evidence links.",
         "Extract concrete feedback points from notes, transcript, drawings, screenshots, videos, page context, console, network evidence, and report findings.",
+        "Call qa_get_manual_work_packets for manual QA sessions and use packet_id as the task boundary for preview proposals or sub-agents.",
         "Create a preview contract before editing code: for UI, generate an edited screenshot/mockup or precise visual description; for backend or flows, write the expected event/API/browser trace.",
         "Map every feedback point to the proposed future result so the user can catch misunderstandings early.",
         "Call qa_submit_manual_preview with the proposal so it appears inside the BeforeUsersDo widget for the user.",
@@ -247,6 +250,7 @@ function buildAgentActionContract({
     steps: [
       "Read the full QA feedback and evidence links.",
       "Extract concrete feedback points from notes, transcript, drawings, screenshots, videos, page context, console, network evidence, and report findings.",
+      "Call qa_get_manual_work_packets for manual QA sessions when available, and summarize by packet_id.",
       "Summarize what is wrong, what evidence supports it, and what you would fix first.",
       "Do not edit code, deploy, or create a replacement QA link unless the user asks you to start work.",
       "If the user asks you to start work, switch to fix-and-retest behavior: fix, verify, deploy or refresh, then create a fresh QA link or rerun QA."
@@ -408,6 +412,7 @@ function buildManualSessionText(payload) {
     payload.manual_session_url || session.session_url ? `Report dashboard: ${payload.manual_session_url || session.session_url}` : "",
     session.session_id ? `Live draft evidence resource: qa://manual/${encodeURIComponent(session.session_id)}/evidence.json` : "",
     session.session_id ? `No-copy feedback tool: call qa_wait_for_manual_feedback with session_id ${session.session_id} immediately after sending the link; do not just end your turn.` : "",
+    session.session_id ? `After feedback: call qa_get_manual_work_packets with session_id ${session.session_id} before splitting work across agents.` : "",
     session.session_id ? `Report resource: qa://manual/${encodeURIComponent(session.session_id)}/report.md` : ""
   ]);
 }
@@ -427,6 +432,29 @@ function buildManualEvidenceText(payload = {}) {
       return `${index + 1}. ${label}${item}${url}`;
     }),
     session.session_id ? `Resource: qa://manual/${encodeURIComponent(session.session_id)}/evidence.json` : ""
+  ]);
+}
+
+function buildManualWorkPacketsText(payload = {}) {
+  const packets = Array.isArray(payload.work_packets)
+    ? payload.work_packets
+    : Array.isArray(payload.session?.work_packets)
+      ? payload.session.work_packets
+      : [];
+  const sessionId = payload.session_id || payload.session?.session_id || "session";
+  return buildText([
+    `Manual QA work packets for ${sessionId}: ${packets.length}.`,
+    packets.length ? "Use one packet per focused agent/sub-agent task. Keep the packet_id in updates and commits." : "",
+    ...packets.slice(0, 12).flatMap((packet, index) => [
+      `${index + 1}. ${packet.title || "Work packet"} (${packet.packet_id || "packet"})`,
+      packet.suggested_owner ? `   Owner: ${packet.suggested_owner}` : "",
+      packet.page_anchor?.url ? `   Page: ${packet.page_anchor.url}` : "",
+      packet.summary ? `   Summary: ${packet.summary}` : "",
+      packet.agent_task ? `   Task: ${packet.agent_task}` : ""
+    ]),
+    packets.length
+      ? "If a packet is ambiguous, ask the user a packet-specific question before editing. If multiple packets are independent, spawn separate sub-agents for them."
+      : "No packets yet. Wait for user evidence/feedback first or ask the user to Send All."
   ]);
 }
 
@@ -1050,6 +1078,26 @@ function createQaMcpServer(options = {}) {
   );
 
   server.registerTool(
+    "qa_get_manual_work_packets",
+    {
+      title: "Get Manual QA Work Packets",
+      description:
+        "Fetches BeforeUsersDo work packets derived from manual QA notes, transcript, drawings, videos, page anchors, console errors, and network signals. Use after qa_wait_for_manual_feedback or qa_wait_for_manual_evidence when the agent should split feedback into focused tasks or sub-agents.",
+      inputSchema: {
+        session_id: z.string().max(128)
+      }
+    },
+    async ({ session_id }) => {
+      try {
+        const response = await apiClient.getManualQaWorkPackets(session_id);
+        return makeToolResult(buildManualWorkPacketsText(response), response);
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
     "qa_wait_for_manual_evidence",
     {
       title: "Wait For Manual QA Draft Evidence",
@@ -1423,6 +1471,7 @@ function printHelp() {
     "- qa_manual_review_guide",
     "- qa_get_manual_session",
     "- qa_get_manual_report",
+    "- qa_get_manual_work_packets",
     "- qa_wait_for_manual_evidence",
     "- qa_wait_for_manual_feedback",
     "- qa_submit_manual_preview",
