@@ -314,7 +314,12 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /intersectRects\(crop, viewport\)/);
   assert.match(script, /video\.videoWidth \/ Math\.max\(1, viewport\.width\)/);
   assert.match(script, /crop\.x \* ratio/);
-  assert.match(script, /Sent\. Agent can start work now/);
+  assert.match(script, /bud-agent-modal/);
+  assert.match(script, /Copy feedback/);
+  assert.match(script, /If your agent is sleeping/);
+  assert.match(script, /writeClipboardText/);
+  assert.match(script, /document\.execCommand\("copy"\)/);
+  assert.match(script, /Copied\. Paste it to your agent\./);
   assert.match(script, /normalizeRecordingContentType/);
   assert.match(script, /new Blob\(\[blob\], \{ type: safeContentType \}\)/);
   assert.match(script, /beforeusersdo:open:/);
