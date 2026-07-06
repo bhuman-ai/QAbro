@@ -301,8 +301,14 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /Record video/);
   assert.match(script, /data-action="draw"/);
   assert.match(script, /data-action="clear"/);
-  assert.match(script, /data-action="note-toggle"/);
-  assert.match(script, /bud-note-popover/);
+  assert.match(script, /data-action="comment"/);
+  assert.match(script, /data-role="comment-surface"/);
+  assert.match(script, /data-role="comment-box"/);
+  assert.match(script, /data-role="comment-input"/);
+  assert.match(script, /What should change here\?/);
+  assert.match(script, /Click anywhere to add a comment\./);
+  assert.match(script, /pushEvidenceEvent\("comment_saved"/);
+  assert.match(script, /saveOpenCommentIfNeeded/);
   assert.match(script, /data-action="send-all"/);
   assert.match(script, /className = "bud-item-send"/);
   assert.match(script, /class="bud-send-menu"/);
@@ -381,10 +387,14 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /liveSaveInFlight/);
   assert.match(script, /pushEvidenceEvent\("drawing_saved"/);
   assert.match(script, /pushEvidenceEvent\("video_saved"/);
+  assert.match(script, /return "Comment"/);
+  assert.match(script, /targetContextFromPoint/);
   assert.match(script, /recordPageVisit/);
   assert.doesNotMatch(script, /Say what you notice/);
   assert.doesNotMatch(script, /bud-capture-title/);
   assert.doesNotMatch(script, /bud-note-hint/);
+  assert.doesNotMatch(script, /data-action="note-toggle"/);
+  assert.doesNotMatch(script, /bud-note-popover/);
   assert.doesNotMatch(script, /data-action="toggle-tools"/);
   assert.doesNotMatch(script, /id="bud-tools-panel"/);
   assert.doesNotMatch(script, /toolsOpen: false/);
@@ -1209,6 +1219,20 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
               ended_at: "2026-07-05T10:00:20.000Z",
               duration_ms: 10000,
               media_url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=feedback&item_id=item&index=1&token=abc123"
+            },
+            {
+              type: "comment_saved",
+              label: "Page comment",
+              comment_text: "This specific pricing label should say free trial instead of start now.",
+              at: "2026-07-05T10:00:24.000Z",
+              page_x: 414,
+              page_y: 260,
+              client_x: 414,
+              client_y: 260,
+              target_selector: "button.cta \"Start now\"",
+              selected_text: "Start now",
+              viewport: { width: 1440, height: 900, device_pixel_ratio: 2 },
+              page_url: "https://preview.example.com/onboarding?token=abc123"
             }
           ]
         }
@@ -1280,6 +1304,9 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
     assert.match(directMarkdown, /Drawings with nearby speech:/);
     assert.match(directMarkdown, /Nearby speech:/);
     assert.match(directMarkdown, /Evidence timeline:/);
+    assert.match(directMarkdown, /Comment: This specific pricing label should say free trial instead of start now/);
+    assert.match(directMarkdown, /at 414,260/);
+    assert.match(directMarkdown, /near button\.cta/);
     assert.match(directMarkdown, /Drawing \(Drawing annotation, image\/png, 4 KB/);
     assert.match(directMarkdown, /Video recording \(Video recording, video\/webm, 2\.0 MB/);
     assert.match(directMarkdown, /api\/manual-qa\/evidence\?session_id=feedback/);
@@ -1322,6 +1349,7 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
     assert.match(feedback.body.markdown, /Processed Evidence Digest/);
     assert.match(feedback.body.markdown, /Drawing context: 1 drawing\/annotation event captured/);
     assert.match(feedback.body.markdown, /Transcript captured: 1 snippet/);
+    assert.match(feedback.body.markdown, /Comment: This specific pricing label should say free trial instead of start now/);
     assert.match(feedback.body.markdown, /Cannot read properties of undefined/);
     assert.match(feedback.body.markdown, /Drawing \(Drawing annotation, image\/png, 4 KB/);
     assert.match(feedback.body.markdown, /Video recording \(Video recording, video\/webm, 2\.0 MB/);
