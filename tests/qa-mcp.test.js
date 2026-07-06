@@ -263,6 +263,7 @@ test("qa MCP client waitForManualFeedback returns feedback package after Send Al
   });
 
   const result = await client.waitForManualFeedback("manual_wait", {
+    wait_forever: true,
     timeout_seconds: 5,
     poll_interval_seconds: 0.001,
     onPoll(_status, meta) {
@@ -545,6 +546,7 @@ test("manual review workflow tells agents what context to gather", () => {
   assert.match(text, /qa_wait_for_manual_evidence/);
   assert.match(text, /evidence\.json/);
   assert.match(text, /qa_wait_for_manual_feedback/);
+  assert.match(text, /wait_forever: true/);
   assert.match(text, /qa_get_manual_work_packets/);
   assert.match(text, /without copy\/paste/i);
   assert.match(text, /keep the agent turn open/i);

@@ -342,6 +342,12 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /page_visits: state\.pageVisits/);
   assert.match(script, /transcript_events: state\.transcriptEvents/);
   assert.match(script, /evidence_events: state\.evidenceEvents/);
+  assert.match(script, /topic_segments: Array\.isArray\(existingContext\.topic_segments\)/);
+  assert.match(script, /data-role="live"/);
+  assert.match(script, /Live items/);
+  assert.match(script, /workPacketsForItem/);
+  assert.match(script, /renderLiveItems/);
+  assert.match(script, /Live item ready for agent/);
   assert.match(script, /SpeechRecognition/);
   assert.match(script, /pushTranscriptEvent/);
   assert.match(script, /scheduleLiveContextSave/);
@@ -719,6 +725,7 @@ test("manual QA transcript segments become topic work packets through an LLM seg
   assert.equal(topicPackets[0].title, "Hero and primary CTA clarity");
   assert.match(topicPackets[0].transcript_snippets.join(" "), /main button/);
   assert.deepEqual(topicPackets[0].page_anchor.bounds, { x: 120, y: 90, width: 420, height: 160 });
+  assert.equal(updated.session.work_packets.some((packet) => packet.source_kind === "feedback"), false);
 });
 
 test("manual QA session can be created, updated, and exported with sensitive URLs redacted", async () => {

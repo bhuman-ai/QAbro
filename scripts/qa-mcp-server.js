@@ -154,10 +154,11 @@ function buildManualReviewWorkflowText(input = {}) {
     "- If the widget cannot be injected, stop and explain why. Do not fall back silently.",
     "- Tell the user to click the widget's Send All control when finished.",
     "- Optional: call `qa_wait_for_manual_evidence` while the user is still recording to see draft video segments and drawings as they are saved.",
-    "- Then immediately call `qa_wait_for_manual_feedback` and keep the agent turn open for the user's final feedback package; do not stop after giving the link.",
+    "- Then immediately call `qa_wait_for_manual_feedback` with `wait_forever: true` and keep the agent turn open for the user's final feedback package; do not stop after giving the link.",
     "",
     "7. After the human finishes.",
-    "- Prefer `qa_wait_for_manual_feedback` so the user's Send All click returns directly to the agent without copy/paste.",
+    "- Prefer `qa_wait_for_manual_feedback` with `wait_forever: true` so the user's Send All click returns directly to the agent without copy/paste.",
+    "- If the host/client aborts the wait, call `qa_wait_for_manual_feedback` again with the same `session_id` instead of asking the user to copy/paste.",
     "- Call `qa_get_manual_work_packets` to split the feedback into focused task packets before summarizing, previewing, or coding.",
     "- Use `qa_wait_for_manual_evidence` or `qa://manual/{session_id}/evidence.json` for live draft evidence before Send All.",
     "- Use `qa_get_manual_report` only as a fallback or for historical export.",
@@ -402,7 +403,7 @@ function buildManualSessionText(payload) {
     widgetInstall.script_tag ? "2. Deploy or refresh the preview." : "",
     widgetInstall.script_tag ? "3. Open the target once yourself and verify the floating Review button appears." : "",
     widgetInstall.script_tag ? "4. Only then send widget_install.review_url to the user as the test link. Do not use the dashboard as the test entry point." : "",
-    widgetInstall.script_tag ? "5. After sending the test link, immediately call qa_wait_for_manual_feedback for this session and keep the turn open until the user sends feedback or the wait times out." : "",
+    widgetInstall.script_tag ? "5. After sending the test link, immediately call qa_wait_for_manual_feedback with wait_forever=true for this session and keep the turn open until the user sends feedback or the client aborts." : "",
     widgetInstall.script_tag ? "```html" : "",
     widgetInstall.script_tag || "",
     widgetInstall.script_tag ? "```" : "",
@@ -411,7 +412,7 @@ function buildManualSessionText(payload) {
     directReviewUrl ? `Direct review URL: ${directReviewUrl}` : "",
     payload.manual_session_url || session.session_url ? `Report dashboard: ${payload.manual_session_url || session.session_url}` : "",
     session.session_id ? `Live draft evidence resource: qa://manual/${encodeURIComponent(session.session_id)}/evidence.json` : "",
-    session.session_id ? `No-copy feedback tool: call qa_wait_for_manual_feedback with session_id ${session.session_id} immediately after sending the link; do not just end your turn.` : "",
+    session.session_id ? `No-copy feedback tool: call qa_wait_for_manual_feedback with session_id ${session.session_id} and wait_forever=true immediately after sending the link; do not just end your turn.` : "",
     session.session_id ? `After feedback: call qa_get_manual_work_packets with session_id ${session.session_id} before splitting work across agents.` : "",
     session.session_id ? `Report resource: qa://manual/${encodeURIComponent(session.session_id)}/report.md` : ""
   ]);
@@ -421,9 +422,15 @@ function buildManualEvidenceText(payload = {}) {
   const session = payload.session && typeof payload.session === "object" ? payload.session : {};
   const draftEvidence = payload.draft_evidence || summarizeManualDraftEvidence(session);
   const latest = Array.isArray(draftEvidence.latest_evidence) ? draftEvidence.latest_evidence : [];
+  const packets = Array.isArray(session.work_packets) ? session.work_packets : [];
   return buildText([
     `Manual QA draft evidence for ${draftEvidence.session_id || session.session_id || "session"}.`,
     `Saved evidence: ${draftEvidence.total_count || 0} total, ${draftEvidence.video_segment_count || 0} video segments, ${draftEvidence.drawing_count || 0} drawings.`,
+    packets.length ? `Live work packets: ${packets.length}. The agent can start on stable packets before Send All if auto-start work is enabled.` : "",
+    ...packets.slice(0, 5).flatMap((packet, index) => [
+      `${index + 1}. ${packet.title || "Work packet"} (${packet.packet_id || "packet"})`,
+      packet.summary ? `   Summary: ${packet.summary}` : ""
+    ]),
     latest.length ? "Latest evidence:" : "",
     ...latest.slice(0, 8).map((entry, index) => {
       const label = entry.label || entry.kind || "Evidence";
@@ -1102,7 +1109,7 @@ function createQaMcpServer(options = {}) {
     {
       title: "Wait For Manual QA Draft Evidence",
       description:
-        "Use while the user is still recording in the BeforeUsersDo widget. Polls until saved draft evidence exists, such as 10-second video segments or drawings, without waiting for the user to click Send All.",
+        "Use while the user is still recording in the BeforeUsersDo widget. Polls until saved draft evidence exists, such as 10-second video segments, drawings, or live work packets, without waiting for the user to click Send All. If auto-start work is enabled, begin work from stable packets while continuing to poll.",
       inputSchema: {
         session_id: z.string().max(128),
         item_id: z.string().max(80).optional(),
@@ -1156,12 +1163,13 @@ function createQaMcpServer(options = {}) {
     {
       title: "Wait For Manual QA Feedback",
       description:
-        "Use after starting a BeforeUsersDo manual review and giving the verified widget page to the user. Waits until the user clicks Send All or Send item in the widget, then returns the redacted Markdown feedback directly to the coding agent so the user does not need to copy/paste.",
+        "Use after starting a BeforeUsersDo manual review and giving the verified widget page to the user. Defaults to wait_forever=true: keep the agent turn alive until the user clicks Send All or Send item, then return the redacted Markdown feedback directly so the user does not need to copy/paste.",
       inputSchema: {
         session_id: z.string().max(128),
         scope: z.enum(["all", "item", "any"]).optional().describe("Defaults to all. Use item with item_id for one checklist item, or any for the latest package."),
         item_id: z.string().max(80).optional(),
         timeout_seconds: z.number().int().min(1).max(7200).optional(),
+        wait_forever: z.boolean().optional().describe("Defaults to true for manual QA. Keep polling until feedback arrives or the MCP client aborts. Set false only if the user explicitly wants a bounded wait."),
         poll_interval_seconds: z.number().min(0.1).max(120).optional(),
         feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Overrides the session setting. Defaults to the session setting, usually share_feedback_and_start_work for human feedback. Use preview_fix_first to ask the agent for a simulated fix preview before coding."),
         agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
@@ -1173,14 +1181,16 @@ function createQaMcpServer(options = {}) {
         const waitResult = await apiClient.waitForManualFeedback(input.session_id, {
           scope: input.scope || "all",
           item_id: input.item_id,
+          wait_forever: input.wait_forever !== false,
           timeout_seconds: input.timeout_seconds || 1800,
           poll_interval_seconds: input.poll_interval_seconds || 5,
           signal: extra.signal,
           async onPoll(status, meta) {
+            const boundedTotal = Math.max(2, Math.ceil(Number(input.timeout_seconds || 1800) / Number(input.poll_interval_seconds || 5)));
             await maybeSendProgress(
               extra,
               meta.poll_count,
-              Math.max(2, Math.ceil(Number(input.timeout_seconds || 1800) / Number(input.poll_interval_seconds || 5))),
+              input.wait_forever === false ? boundedTotal : Math.max(meta.poll_count + 1, 2),
               meta.feedback_ready
                 ? `Manual QA feedback received for ${input.session_id}`
                 : `Waiting for user to click Send All for ${input.session_id}`
@@ -1216,7 +1226,7 @@ function createQaMcpServer(options = {}) {
         return makeToolResult(
           buildText([
             `Manual QA feedback was not received before the timeout for ${input.session_id}.`,
-            "Ask the user to click Send All in the BeforeUsersDo widget, then call this tool again.",
+            "This should only happen when wait_forever=false. Ask the user to click Send All in the BeforeUsersDo widget, then call this tool again with wait_forever=true.",
             waitResult.session?.session_url ? `Dashboard: ${waitResult.session.session_url}` : ""
           ]),
           waitResult
