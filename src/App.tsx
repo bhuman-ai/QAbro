@@ -1438,14 +1438,14 @@ function HomePage({
           <Logo />
         </div>
         <nav className="hidden md:flex items-center gap-8 font-bold text-sm uppercase tracking-widest">
-          <a href="#install" className="hover:text-brand-accent transition-colors">Install</a>
-          <a href="#proof" className="hover:text-brand-accent transition-colors">Proof</a>
+          <a href="#install" className="hover:text-brand-accent transition-colors">Set up</a>
+          <a href="#proof" className="hover:text-brand-accent transition-colors">See proof</a>
           <button className="hover:text-brand-accent transition-colors" onClick={onOpenWorkspace}>Help Center</button>
           <button
             onClick={onOpenMcpSettings}
             className="bg-brand-ink text-white px-6 py-2 rounded-full hover:bg-brand-accent transition-all"
           >
-            {authorized ? "Create MCP key" : "Login"}
+            {authorized ? "Create testing key" : "Sign in"}
           </button>
         </nav>
       </header>
@@ -1461,7 +1461,7 @@ function HomePage({
             <div>
               <div className="organic-pill inline-flex items-center gap-2 mb-6 bg-brand-secondary/10 text-brand-ink border-brand-ink">
                 <Shield className="h-3.5 w-3.5" />
-                Review before done
+                Check before launch
               </div>
 
               <h1
@@ -1476,7 +1476,7 @@ function HomePage({
                 before users do.
               </h1>
               <p className="text-lg md:text-xl text-slate-600 max-w-xl mb-9 font-bold leading-relaxed">
-                BUD tests the preview and returns the broken screen, logs, and exact step.
+                BUD shows the broken screen, what happened right before it, and the note your team needs to fix it.
               </p>
 
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -1485,7 +1485,7 @@ function HomePage({
                   onClick={onOpenMcpSettings}
                   className="bg-brand-accent text-white px-8 py-5 rounded-2xl font-black text-lg hover:bg-brand-ink transition-all flex items-center justify-center gap-2 shadow-[6px_6px_0px_0px_rgba(15,23,42,1)]"
                 >
-                  {authorized ? "Create MCP key" : "Sign in to create key"}
+                  {authorized ? "Create testing key" : "Sign in to start"}
                   <ArrowRight className="w-5 h-5" />
                 </button>
                 <a
@@ -1500,15 +1500,15 @@ function HomePage({
               <div className="mt-7 grid max-w-xl grid-cols-3 gap-3">
                 <div className="rounded-2xl border-2 border-brand-line bg-white px-3 py-3">
                   <MonitorUp className="mb-2 h-5 w-5 text-brand-accent" />
-                  <div className="text-xs font-black text-brand-ink">Screen</div>
+                  <div className="text-xs font-black text-brand-ink">Broken screen</div>
                 </div>
                 <div className="rounded-2xl border-2 border-brand-line bg-white px-3 py-3">
                   <Code className="mb-2 h-5 w-5 text-brand-accent" />
-                  <div className="text-xs font-black text-brand-ink">Logs</div>
+                  <div className="text-xs font-black text-brand-ink">Error clues</div>
                 </div>
                 <div className="rounded-2xl border-2 border-brand-line bg-white px-3 py-3">
                   <MousePointer2 className="mb-2 h-5 w-5 text-brand-accent" />
-                  <div className="text-xs font-black text-brand-ink">Repro</div>
+                  <div className="text-xs font-black text-brand-ink">Steps</div>
                 </div>
               </div>
             </div>
@@ -1522,10 +1522,10 @@ function HomePage({
                     <div className="w-3 h-3 rounded-full bg-brand-success"></div>
                   </div>
                   <div className="min-w-0 flex-1 rounded-full border border-brand-line px-3 py-2 text-xs font-black text-slate-400">
-                    app.preview.dev/signup
+                    your-app.com/signup
                   </div>
                   <div className="rounded-full bg-brand-accent px-3 py-2 text-xs font-black text-white">
-                    QA session
+                    Test run
                   </div>
                 </div>
 
@@ -1560,10 +1560,10 @@ function HomePage({
                       <div className="absolute bottom-5 right-5 max-w-[210px] rotate-[-2deg] rounded-2xl border-2 border-brand-accent bg-white p-3 shadow-[5px_5px_0px_0px_rgba(124,58,237,0.22)]">
                         <div className="flex items-center gap-2 text-xs font-black text-brand-ink">
                           <PenLine className="h-4 w-4 text-brand-accent" />
-                          QA note
+                          User note
                         </div>
                         <p className="mt-1 text-sm font-black leading-snug text-brand-ink">
-                          Should show dashboard.
+                          User expected the dashboard here.
                         </p>
                       </div>
                     </div>
@@ -1589,7 +1589,7 @@ function HomePage({
                     <div className="rounded-3xl bg-brand-ink p-4 text-white shadow-[5px_5px_0px_0px_rgba(124,58,237,0.28)]">
                       <div className="mb-3 flex items-center gap-2 text-xs font-black text-brand-secondary">
                         <Code className="h-4 w-4" />
-                        Console
+                        Page error
                       </div>
                       <div className="space-y-2 font-mono text-[11px] font-bold">
                         <div className="rounded-lg bg-white/8 px-3 py-2 text-brand-danger">TypeError at signup.tsx:45</div>
@@ -1615,7 +1615,7 @@ function HomePage({
                     <div className="rounded-3xl border-2 border-brand-line bg-white p-4">
                       <div className="mb-3 flex items-center gap-2 text-sm font-black text-brand-ink">
                         <Activity className="h-5 w-5 text-brand-accent" />
-                        Network
+                        Server clue
                       </div>
                       <div className="space-y-2 text-[11px] font-black">
                         <div className="flex items-center justify-between rounded-xl bg-brand-bg px-3 py-2">
@@ -1637,7 +1637,7 @@ function HomePage({
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2 text-sm font-black text-brand-ink">
                           <Check className="h-5 w-5 text-brand-success" />
-                          Proof ready
+                          Ready to fix
                         </div>
                         <ArrowRight className="h-5 w-5 text-brand-accent" />
                       </div>
@@ -1653,12 +1653,12 @@ function HomePage({
           <div className="max-w-7xl mx-auto">
             <div className="grid gap-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-end">
               <div>
-                <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Install once</span>
+                <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Set up once</span>
                 <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
-                  Key. Config. Test.
+                  Ask for a check before &quot;done.&quot;
                 </h2>
                 <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
-                  Connect once. Every preview can come back with proof.
+                  Connect your coding tool once. After that, every preview can come back with the exact thing that broke.
                 </p>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
@@ -1667,7 +1667,7 @@ function HomePage({
                   onClick={onOpenMcpSettings}
                   className="bg-brand-ink text-white px-7 py-5 rounded-2xl font-black text-lg hover:bg-brand-accent transition-all flex items-center justify-center gap-2"
                 >
-                  Open MCP settings
+                  Open setup
                   <ExternalLink className="h-5 w-5" />
                 </button>
                 <button
@@ -1676,7 +1676,7 @@ function HomePage({
                   className="handcrafted-card px-7 py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-2"
                 >
                   <Copy className="h-5 w-5" />
-                  Copy config
+                  Copy setup
                 </button>
               </div>
             </div>
@@ -1685,10 +1685,10 @@ function HomePage({
               <div className="handcrafted-card overflow-hidden rounded-[2rem] !bg-brand-bg">
                 <div className="grid md:grid-cols-4">
                   {[
-                    ["Key", Lock, "bg-brand-accent"],
-                    ["Config", Code, "bg-brand-ink"],
-                    ["Ask agent", MessageCircle, "bg-brand-secondary"],
-                    ["Preview", MonitorUp, "bg-brand-success"]
+                    ["Create key", Lock, "bg-brand-accent"],
+                    ["Paste setup", Code, "bg-brand-ink"],
+                    ["Ask for a check", MessageCircle, "bg-brand-secondary"],
+                    ["Open proof", MonitorUp, "bg-brand-success"]
                   ].map(([label, Icon, tone], index) => (
                     <div key={label as string} className="relative border-b-2 border-brand-line bg-white p-5 md:border-b-0 md:border-r-2 last:md:border-r-0">
                       <div className={`mb-4 flex h-12 w-12 items-center justify-center rounded-2xl ${tone as string} text-white shadow-[4px_4px_0px_0px_rgba(15,23,42,0.16)]`}>
@@ -1704,19 +1704,19 @@ function HomePage({
                   <div className="rounded-3xl border-2 border-brand-line bg-brand-secondary/5 p-5">
                     <div className="mb-4 flex items-center gap-2 text-sm font-black text-brand-ink">
                       <MessageCircle className="h-5 w-5 text-brand-accent" />
-                      Agent prompt
+                      What to ask
                     </div>
                     <p className="text-lg font-black leading-snug text-brand-ink">
                       Test this preview before you say done.
                     </p>
                     <div className="mt-5 flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-500">
                       <Globe className="h-4 w-4 text-brand-accent" />
-                      preview.app/signup
+                      your-app.com/signup
                     </div>
                   </div>
                   <div className="rounded-3xl bg-brand-ink p-5 text-white">
                     <div className="mb-3 flex items-center justify-between gap-3">
-                      <div className="text-xs font-black uppercase tracking-widest text-white/40">MCP config</div>
+                      <div className="text-xs font-black uppercase tracking-widest text-white/40">Setup snippet</div>
                       <div className="rounded-full bg-brand-accent px-3 py-1 text-[10px] font-black text-white">Hosted</div>
                     </div>
                     <pre className="max-h-40 overflow-hidden whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-brand-secondary">
@@ -1731,10 +1731,10 @@ function HomePage({
                   <div>
                     <div className="inline-flex items-center gap-2 rounded-full border-2 border-brand-ink bg-white px-3 py-1 text-xs font-black uppercase tracking-widest text-brand-ink">
                       <Zap className="h-4 w-4 text-brand-accent" />
-                      Ready
+                      Done once
                     </div>
                     <h3 className="mt-5 text-4xl font-black leading-none">
-                      One setup. Every preview.
+                      One setup. Every launch.
                     </h3>
                   </div>
                   <div className="relative min-h-32">
@@ -1746,7 +1746,7 @@ function HomePage({
                     <div className="absolute left-[20%] top-16 h-1 w-[60%] rounded-full bg-white/45"></div>
                   </div>
                   <div className="grid grid-cols-3 gap-3">
-                    {["Agent", "Browser", "Proof"].map((item) => (
+                    {["Ask", "Test", "Fix"].map((item) => (
                       <div key={item} className="rounded-2xl border-2 border-white/40 bg-white/15 px-3 py-4 text-center text-xs font-black">
                         {item}
                       </div>
@@ -1761,12 +1761,12 @@ function HomePage({
         <section id="proof" className="py-24 px-4 max-w-7xl mx-auto">
           <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
             <div>
-              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Dev handoff</span>
+              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Clear handoff</span>
               <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
-                Proof first.
+                Show the moment it broke.
               </h2>
               <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
-                The bug report starts with the screen, then shows the technical trail.
+                Your team gets the failed screen first, then the clues they need to fix it without guessing.
               </p>
             </div>
 
@@ -1805,10 +1805,10 @@ function HomePage({
                 <div className="grid content-start gap-3">
                   {[
                     ["Screenshot", MonitorUp, "12:41 pm"],
-                    ["Console", Code, "TypeError"],
-                    ["Network", Activity, "500"],
-                    ["State", PanelRight, "token: yes"],
-                    ["Repro", MousePointer2, "OTP to blank"],
+                    ["Page error", Code, "TypeError"],
+                    ["Request", Activity, "500"],
+                    ["Page state", PanelRight, "signed in"],
+                    ["Steps", MousePointer2, "OTP to blank"],
                     ["Redacted", Lock, "safe"]
                   ].map(([label, Icon, value]) => (
                     <div key={label as string} className="rounded-2xl border-2 border-brand-line bg-white p-4">
@@ -1832,12 +1832,12 @@ function HomePage({
         <section id="personas" className="py-24 px-4 bg-brand-ink text-white overflow-hidden">
           <div className="max-w-7xl mx-auto">
             <div className="mb-12 max-w-3xl">
-              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">The test fleet</span>
+              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Real reactions</span>
               <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight">
-                More than scripts.
+                Different people get stuck in different places.
               </h2>
               <p className="mt-5 text-lg font-bold leading-relaxed text-slate-400">
-                Different users try the same flow and surface different failures.
+                BUD checks the same flow from more than one point of view, so you catch confusion a happy-path test misses.
               </p>
             </div>
 
@@ -1849,7 +1849,7 @@ function HomePage({
                       <div className="h-3 w-3 rounded-full bg-brand-danger"></div>
                       <div className="h-3 w-3 rounded-full bg-brand-warning"></div>
                       <div className="h-3 w-3 rounded-full bg-brand-success"></div>
-                      <span className="ml-2 text-xs font-black text-slate-400">checkout preview</span>
+                      <span className="ml-2 text-xs font-black text-slate-400">checkout page</span>
                     </div>
                     <div className="space-y-3">
                       <div className="h-10 rounded-2xl border border-brand-line bg-brand-bg"></div>
@@ -1901,12 +1901,12 @@ function HomePage({
         <section id="how" className="py-24 px-4 max-w-7xl mx-auto">
           <div className="grid gap-10 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">
             <div>
-              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Manual QA</span>
+              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Human feedback</span>
               <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
                 Talk. Draw. Send.
               </h2>
               <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
-                The widget saves evidence while the user moves through the product.
+                Record what feels wrong while you use the page. Your notes, voice, drawings, and screen are saved together.
               </p>
             </div>
 
@@ -1916,7 +1916,7 @@ function HomePage({
                   <div className="h-3 w-3 rounded-full bg-brand-danger"></div>
                   <div className="h-3 w-3 rounded-full bg-brand-warning"></div>
                   <div className="h-3 w-3 rounded-full bg-brand-success"></div>
-                  <span className="ml-2 text-xs font-black text-slate-400">preview page</span>
+                  <span className="ml-2 text-xs font-black text-slate-400">product page</span>
                 </div>
                 <div className="grid gap-4 md:grid-cols-[0.85fr_1.15fr]">
                   <div className="space-y-3">
@@ -1969,17 +1969,17 @@ function HomePage({
               <div className="relative z-10">
                 <div className="organic-pill inline-flex items-center gap-2 mb-6 bg-white text-brand-ink border-brand-ink shadow-[2px_2px_0px_0px_rgba(18,18,18,1)]">
                   <Code className="h-3.5 w-3.5" />
-                  Agent path
+                  Setup path
                 </div>
                 <h2 className="text-4xl md:text-6xl font-black mb-8 leading-none text-white">
-                  Connect BUD.
+                  Let BUD check the work.
                 </h2>
                 <button
                   type="button"
                   onClick={onOpenMcpSettings}
                   className="bg-brand-ink text-white px-9 py-5 rounded-3xl font-black text-xl hover:scale-[1.02] transition-all shadow-[8px_8px_0px_0px_rgba(255,255,255,0.3)] flex items-center gap-3"
                 >
-                  Create MCP key
+                  Create testing key
                   <ArrowRight className="w-6 h-6" />
                 </button>
 
@@ -1997,7 +1997,7 @@ function HomePage({
               <div className="mb-6 flex items-center justify-between gap-6">
                 <div>
                   <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-xs">Quick path</span>
-                  <h3 className="mt-2 text-3xl font-black text-brand-ink">One site report</h3>
+                  <h3 className="mt-2 text-3xl font-black text-brand-ink">Try one page</h3>
                 </div>
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brand-secondary/10 text-brand-secondary">
                   <Globe className="h-7 w-7" />
@@ -2039,7 +2039,7 @@ function HomePage({
                     disabled={loading}
                     className="mt-2 bg-brand-ink text-white px-8 py-5 rounded-2xl font-black text-lg hover:bg-brand-accent transition-all flex items-center justify-center gap-2"
                   >
-                    {loading ? "Starting report..." : "Start report"}
+                    {loading ? "Starting check..." : "Check my site"}
                     <ArrowRight className="w-5 h-5" />
                   </button>
                 </form>
@@ -2054,7 +2054,7 @@ function HomePage({
                   </div>
                   <h3 className="text-2xl font-black mb-2">Report started</h3>
                   <p className="font-bold text-slate-600">
-                    {queued.message || `Our agents are checking ${site} now. Watch your inbox for the report.`}
+                    {queued.message || `BUD is checking ${site} now. Watch your inbox for what broke and where.`}
                   </p>
                   {queued.share_url ? (
                     <div className="mt-6 flex flex-wrap gap-3">
