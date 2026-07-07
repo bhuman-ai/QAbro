@@ -197,6 +197,25 @@ const PUBLIC_BASE_URL = "https://beforeusersdo.com";
 const MCP_CLIENT_SERVER_NAME = "beforeusersdo-qa";
 const HOSTED_MCP_URL = "https://mcp.beforeusersdo.com/mcp";
 const HOME_HERO_WORDS = ["bugs", "frustrations", "confusion", "bad patterns", "blank screens", "dead ends"];
+const makeTesterAvatar = (skin: string, hair: string, shirt: string) => (
+  `data:image/svg+xml;utf8,${encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
+      <rect width="96" height="96" rx="48" fill="#f8fafc"/>
+      <circle cx="48" cy="42" r="23" fill="${skin}"/>
+      <path d="M25 42c1-20 16-31 33-26 9 3 15 11 15 24-13-6-27-8-48 2Z" fill="${hair}"/>
+      <path d="M29 88c3-18 14-27 19-27s16 9 19 27H29Z" fill="${shirt}"/>
+      <circle cx="39" cy="44" r="3" fill="#0f172a"/>
+      <circle cx="57" cy="44" r="3" fill="#0f172a"/>
+      <path d="M40 55c4 4 12 4 16 0" fill="none" stroke="#0f172a" stroke-width="4" stroke-linecap="round"/>
+    </svg>
+  `)}`
+);
+const HUMAN_QA_TESTERS = [
+  { name: "Maya", avatar: makeTesterAvatar("#f4c7a1", "#2f221c", "#8b5cf6") },
+  { name: "Jordan", avatar: makeTesterAvatar("#8d5524", "#151515", "#0ea5e9") },
+  { name: "Nina", avatar: makeTesterAvatar("#f1b989", "#6b3f22", "#10b981") },
+  { name: "Alex", avatar: makeTesterAvatar("#d9a679", "#29313d", "#f59e0b") }
+];
 
 type AdvancedBrowserRuntimeState = {
   status: "ready" | "blocked" | "checking";
@@ -1676,6 +1695,33 @@ function HomePage({
               <p className="mt-5 max-w-xl text-lg font-bold leading-relaxed text-white/70">
                 Send the feature to a real person. They click through it, record what feels broken or confusing, and send back proof your team can act on.
               </p>
+              <div className="mt-7 inline-flex max-w-xl flex-col gap-3 rounded-3xl border-2 border-white/20 bg-white/10 p-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex -space-x-3" aria-label="Internal QA testers">
+                    {HUMAN_QA_TESTERS.map((tester) => (
+                      <img
+                        key={tester.name}
+                        src={tester.avatar}
+                        alt={`${tester.name}, internal QA tester`}
+                        className="h-14 w-14 rounded-full border-4 border-brand-ink bg-white object-cover"
+                      />
+                    ))}
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full border-4 border-brand-ink bg-white text-sm font-black text-brand-ink">
+                      +10
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-white px-4 py-3 text-brand-ink">
+                    <div className="flex items-center gap-2 text-sm font-black">
+                      <span className="relative flex h-3 w-3" aria-hidden="true">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-success opacity-60" />
+                        <span className="relative inline-flex h-3 w-3 rounded-full bg-brand-success" />
+                      </span>
+                      14 online now
+                    </div>
+                    <div className="mt-1 text-xs font-bold text-slate-500">Dedicated QA testers ready today</div>
+                  </div>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={onOpenMcpSettings}
