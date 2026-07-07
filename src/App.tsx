@@ -196,6 +196,7 @@ const PUBLIC_BRAND_NAME = "Before Users Do";
 const PUBLIC_BASE_URL = "https://beforeusersdo.com";
 const MCP_CLIENT_SERVER_NAME = "beforeusersdo-qa";
 const HOSTED_MCP_URL = "https://mcp.beforeusersdo.com/mcp";
+const HOME_HERO_WORDS = ["bugs", "frustrations", "confusion", "bad patterns", "blank screens", "dead ends"];
 
 type AdvancedBrowserRuntimeState = {
   status: "ready" | "blocked" | "checking";
@@ -1361,6 +1362,9 @@ function HomePage({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [queued, setQueued] = useState<any | null>(null);
+  const [heroWordIndex, setHeroWordIndex] = useState(0);
+  const [heroTypedWord, setHeroTypedWord] = useState(HOME_HERO_WORDS[0]);
+  const [heroDeleting, setHeroDeleting] = useState(false);
   const mcpInstallConfig = `{
   "mcpServers": {
     "${MCP_CLIENT_SERVER_NAME}": {
@@ -1371,6 +1375,40 @@ function HomePage({
     }
   }
 }`;
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+
+    const fullWord = HOME_HERO_WORDS[heroWordIndex];
+    const isComplete = heroTypedWord === fullWord;
+    const shouldAdvanceWord = heroDeleting && heroTypedWord.length <= 1;
+    const delay = isComplete && !heroDeleting ? 1400 : shouldAdvanceWord ? 220 : heroDeleting ? 42 : 82;
+
+    const timeout = window.setTimeout(() => {
+      if (!heroDeleting && isComplete) {
+        setHeroDeleting(true);
+        return;
+      }
+
+      if (shouldAdvanceWord) {
+        const nextIndex = (heroWordIndex + 1) % HOME_HERO_WORDS.length;
+        setHeroWordIndex(nextIndex);
+        setHeroDeleting(false);
+        setHeroTypedWord(HOME_HERO_WORDS[nextIndex].slice(0, 1));
+        return;
+      }
+
+      setHeroTypedWord((current) => (
+        heroDeleting
+          ? fullWord.slice(0, Math.max(0, current.length - 1))
+          : fullWord.slice(0, Math.min(fullWord.length, current.length + 1))
+      ));
+    }, delay);
+
+    return () => window.clearTimeout(timeout);
+  }, [heroDeleting, heroTypedWord, heroWordIndex]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1426,8 +1464,16 @@ function HomePage({
                 Review before done
               </div>
 
-              <h1 className="text-[clamp(2.75rem,5.6vw,5.25rem)] font-black mb-7 leading-[0.95] max-w-4xl tracking-normal text-brand-ink">
-                Proof your AI before users do.
+              <h1
+                className="text-[clamp(2.75rem,5.6vw,5.25rem)] font-black mb-7 leading-[0.95] max-w-4xl tracking-normal text-brand-ink"
+                aria-label={`Catch ${HOME_HERO_WORDS[heroWordIndex]} before users do.`}
+              >
+                Catch{" "}
+                <span className="inline-flex min-w-[12ch] items-baseline text-brand-accent" aria-hidden="true">
+                  {heroTypedWord}
+                  <span className="ml-1 inline-block h-[0.78em] w-[0.08em] translate-y-[0.08em] animate-pulse rounded-full bg-brand-accent" />
+                </span>{" "}
+                before users do.
               </h1>
               <p className="text-lg md:text-xl text-slate-600 max-w-xl mb-9 font-bold leading-relaxed">
                 BUD tests the preview and returns the broken screen, logs, and exact step.
