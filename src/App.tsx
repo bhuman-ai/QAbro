@@ -1437,7 +1437,8 @@ function HomePage({
         <div className="cursor-pointer">
           <Logo />
         </div>
-        <nav className="hidden md:flex items-center gap-8 font-bold text-sm uppercase tracking-widest">
+        <nav className="hidden lg:flex items-center gap-8 font-bold text-sm uppercase tracking-widest">
+          <a href="#human-testers" className="hover:text-brand-accent transition-colors">Human testers</a>
           <a href="#install" className="hover:text-brand-accent transition-colors">Set up</a>
           <a href="#proof" className="hover:text-brand-accent transition-colors">See proof</a>
           <button className="hover:text-brand-accent transition-colors" onClick={onOpenWorkspace}>Help Center</button>
@@ -1476,7 +1477,7 @@ function HomePage({
                 before users do.
               </h1>
               <p className="text-lg md:text-xl text-slate-600 max-w-xl mb-9 font-bold leading-relaxed">
-                BUD shows the broken screen, what happened right before it, and the note your team needs to fix it.
+                Run an automatic check, review it yourself, or send it to a real human tester on standby.
               </p>
 
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -1511,6 +1512,19 @@ function HomePage({
                   <div className="text-xs font-black text-brand-ink">Steps</div>
                 </div>
               </div>
+
+              <a
+                href="#human-testers"
+                className="mt-4 flex max-w-xl items-center justify-between gap-3 rounded-2xl border-2 border-brand-ink bg-white px-4 py-3 font-black text-brand-ink transition-all hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]"
+              >
+                <span className="inline-flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-accent text-white">
+                    <Users className="h-5 w-5" />
+                  </span>
+                  Human QA testers available
+                </span>
+                <ChevronRight className="h-5 w-5" />
+              </a>
             </div>
 
             <div className="relative">
@@ -1647,6 +1661,66 @@ function HomePage({
               </div>
             </div>
           </motion.div>
+        </section>
+
+        <section id="human-testers" className="bg-brand-ink px-4 py-20 text-white">
+          <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+            <div>
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border-2 border-white/30 bg-white/10 px-4 py-1 text-xs font-black uppercase tracking-widest text-white">
+                <Users className="h-4 w-4 text-brand-accent" />
+                Human testers on standby
+              </div>
+              <h2 className="text-4xl font-black leading-tight md:text-6xl">
+                Don&apos;t want to QA it yourself?
+              </h2>
+              <p className="mt-5 max-w-xl text-lg font-bold leading-relaxed text-white/70">
+                Send the feature to a real person. They click through it, record what feels broken or confusing, and send back proof your team can act on.
+              </p>
+              <button
+                type="button"
+                onClick={onOpenMcpSettings}
+                className="mt-8 inline-flex items-center gap-3 rounded-2xl bg-white px-7 py-5 text-lg font-black text-brand-ink transition-all hover:bg-brand-accent hover:text-white"
+              >
+                Request a human tester
+                <ArrowRight className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="text-brand-ink">
+              <div className="grid gap-4 md:grid-cols-3">
+                {[
+                  { step: "1", title: "Send the page", body: "Share a preview or feature URL.", icon: Globe },
+                  { step: "2", title: "Tester tries it", body: "A real person records the rough spots.", icon: MonitorUp },
+                  { step: "3", title: "You get the fix list", body: "Screen, voice, notes, and steps come back together.", icon: Check }
+                ].map(({ step, title, body, icon: Icon }) => (
+                  <div key={title} className="rounded-3xl border-2 border-brand-line bg-brand-bg p-5">
+                    <div className="mb-5 flex items-center justify-between gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-accent text-lg font-black text-white">
+                        {step}
+                      </div>
+                      <Icon className="h-6 w-6 text-brand-accent" />
+                    </div>
+                    <h3 className="text-xl font-black leading-tight text-brand-ink">{title}</h3>
+                    <p className="mt-3 text-sm font-bold leading-6 text-slate-600">{body}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 rounded-3xl border-2 border-brand-ink bg-white p-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-widest text-brand-accent">Best when</div>
+                    <p className="mt-1 text-lg font-black text-brand-ink">
+                      You need another set of eyes before customers see it.
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-brand-secondary/10 px-4 py-3 text-sm font-black text-brand-ink">
+                    Real tester + recorded proof
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section id="install" className="py-20 px-4 bg-white border-y-2 border-brand-ink">
