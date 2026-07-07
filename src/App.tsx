@@ -1605,35 +1605,17 @@ function HomePage({
 
         <section id="install" className="py-20 px-4 bg-white border-y-2 border-brand-ink">
           <div className="max-w-7xl mx-auto">
-            <div className="max-w-3xl">
-              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Install once</span>
-              <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
-                Make QA the final step before done.
-              </h2>
-              <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
-                Create a key, paste one config, then tell your agent what changed. It tests the preview and sends back proof before you ship.
-              </p>
-            </div>
-
-            <div className="mt-12 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-              <div className="grid gap-4">
-                {[
-                  ["1", "Create a key", "Open settings and create a revocable key for your coding agent."],
-                  ["2", "Paste one config", "Add the hosted MCP config to the agent you already use."],
-                  ["3", "Ask it to test", "Give it the preview URL and the user flow that should work."]
-                ].map(([step, title, body]) => (
-                  <div key={step} className="handcrafted-card rounded-3xl p-6">
-                    <div className="flex items-start gap-4">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-ink font-black text-white">
-                        {step}
-                      </div>
-                      <div>
-                        <h3 className="text-xl font-black text-brand-ink">{title}</h3>
-                        <p className="mt-2 text-sm font-bold leading-relaxed text-slate-600">{body}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+            <div className="grid gap-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-end">
+              <div>
+                <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Install once</span>
+                <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
+                  Key. Config. Test.
+                </h2>
+                <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
+                  Connect once. Every preview can come back with proof.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
                 <button
                   type="button"
                   onClick={onOpenMcpSettings}
@@ -1642,31 +1624,88 @@ function HomePage({
                   Open MCP settings
                   <ExternalLink className="h-5 w-5" />
                 </button>
+                <button
+                  type="button"
+                  onClick={() => copyText(mcpInstallConfig)}
+                  className="handcrafted-card px-7 py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-2"
+                >
+                  <Copy className="h-5 w-5" />
+                  Copy config
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-12 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+              <div className="handcrafted-card overflow-hidden rounded-[2rem] !bg-brand-bg">
+                <div className="grid md:grid-cols-4">
+                  {[
+                    ["Key", Lock, "bg-brand-accent"],
+                    ["Config", Code, "bg-brand-ink"],
+                    ["Ask agent", MessageCircle, "bg-brand-secondary"],
+                    ["Preview", MonitorUp, "bg-brand-success"]
+                  ].map(([label, Icon, tone], index) => (
+                    <div key={label as string} className="relative border-b-2 border-brand-line bg-white p-5 md:border-b-0 md:border-r-2 last:md:border-r-0">
+                      <div className={`mb-4 flex h-12 w-12 items-center justify-center rounded-2xl ${tone as string} text-white shadow-[4px_4px_0px_0px_rgba(15,23,42,0.16)]`}>
+                        <Icon className="h-6 w-6" />
+                      </div>
+                      <div className="text-xs font-black uppercase tracking-widest text-slate-400">Step {index + 1}</div>
+                      <div className="mt-1 text-xl font-black text-brand-ink">{label as string}</div>
+                      {index < 3 ? <ArrowRight className="absolute right-4 top-6 hidden h-5 w-5 text-brand-accent md:block" /> : null}
+                    </div>
+                  ))}
+                </div>
+                <div className="grid gap-4 border-t-2 border-brand-ink bg-white p-5 lg:grid-cols-[0.95fr_1.05fr]">
+                  <div className="rounded-3xl border-2 border-brand-line bg-brand-secondary/5 p-5">
+                    <div className="mb-4 flex items-center gap-2 text-sm font-black text-brand-ink">
+                      <MessageCircle className="h-5 w-5 text-brand-accent" />
+                      Agent prompt
+                    </div>
+                    <p className="text-lg font-black leading-snug text-brand-ink">
+                      Test this preview before you say done.
+                    </p>
+                    <div className="mt-5 flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-500">
+                      <Globe className="h-4 w-4 text-brand-accent" />
+                      preview.app/signup
+                    </div>
+                  </div>
+                  <div className="rounded-3xl bg-brand-ink p-5 text-white">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="text-xs font-black uppercase tracking-widest text-white/40">MCP config</div>
+                      <div className="rounded-full bg-brand-accent px-3 py-1 text-[10px] font-black text-white">Hosted</div>
+                    </div>
+                    <pre className="max-h-40 overflow-hidden whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-brand-secondary">
+                      {mcpInstallConfig}
+                    </pre>
+                  </div>
+                </div>
               </div>
 
-              <div className="handcrafted-card rounded-3xl !bg-brand-ink p-6 text-white">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="handcrafted-card rounded-[2rem] !bg-brand-accent p-6 text-white">
+                <div className="flex h-full flex-col justify-between gap-10">
                   <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-white/40">Setup detail</div>
-                    <div className="mt-1 max-w-full break-all font-mono text-xs font-bold text-brand-secondary">{HOSTED_MCP_URL}</div>
+                    <div className="inline-flex items-center gap-2 rounded-full border-2 border-brand-ink bg-white px-3 py-1 text-xs font-black uppercase tracking-widest text-brand-ink">
+                      <Zap className="h-4 w-4 text-brand-accent" />
+                      Ready
+                    </div>
+                    <h3 className="mt-5 text-4xl font-black leading-none">
+                      One setup. Every preview.
+                    </h3>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => copyText(mcpInstallConfig)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs font-black uppercase tracking-widest text-brand-ink"
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                    Copy
-                  </button>
-                </div>
-                <pre className="mt-6 overflow-x-auto whitespace-pre-wrap break-words rounded-2xl border border-white/10 bg-white/5 p-4 text-left font-mono text-[11px] leading-relaxed text-brand-secondary sm:text-xs">
-                  {mcpInstallConfig}
-                </pre>
-                <div className="mt-6 rounded-2xl bg-white p-5 text-brand-ink">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Try this prompt</div>
-                  <p className="mt-2 text-sm font-black leading-relaxed">
-                    Test my preview URL with {PUBLIC_BRAND_NAME}. Try the signup flow and fix anything that blocks a first-time user before you finish.
-                  </p>
+                  <div className="relative min-h-32">
+                    <div className="absolute left-0 top-7 h-20 w-20 rounded-[2rem] border-2 border-white/50 bg-white/15"></div>
+                    <div className="absolute left-1/2 top-0 flex h-24 w-24 -translate-x-1/2 items-center justify-center rounded-full border-2 border-white/60 bg-white text-brand-accent">
+                      <Zap className="h-10 w-10 fill-current" />
+                    </div>
+                    <div className="absolute right-0 top-7 h-20 w-20 rounded-[2rem] border-2 border-white/50 bg-white/15"></div>
+                    <div className="absolute left-[20%] top-16 h-1 w-[60%] rounded-full bg-white/45"></div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    {["Agent", "Browser", "Proof"].map((item) => (
+                      <div key={item} className="rounded-2xl border-2 border-white/40 bg-white/15 px-3 py-4 text-center text-xs font-black">
+                        {item}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1674,210 +1713,205 @@ function HomePage({
         </section>
 
         <section id="proof" className="py-24 px-4 max-w-7xl mx-auto">
-          <div className="grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
+          <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
             <div>
               <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Dev handoff</span>
               <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
-                The developer gets the bug, not a mystery.
+                Proof first.
               </h2>
               <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
-                Every run starts with a plain verdict, then includes enough proof to reproduce and fix the problem without exposing secrets.
+                The bug report starts with the screen, then shows the technical trail.
               </p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {[
-                ["What the user saw", "The final screen is shown first so blank pages and blocked flows are obvious."],
-                ["What broke", "Errors are grouped beside the visible failure instead of buried in logs."],
-                ["What changed on the wire", "Requests are ordered so a developer can spot the bad handoff quickly."],
-                ["What the page exposed", "The visible page state shows what the browser could actually use."],
-                ["Where it happened", "Browser, viewport, URL, and timing travel with the report."],
-                ["What stayed private", "Tokens and sensitive values are redacted before the proof is shared."]
-              ].map(([title, body]) => (
-                <div key={title} className="handcrafted-card rounded-3xl p-6">
-                  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-secondary/10 text-brand-secondary">
-                    <Check className="h-5 w-5" />
-                  </div>
-                  <h3 className="text-lg font-black text-brand-ink">{title}</h3>
-                  <p className="mt-2 text-sm font-bold leading-relaxed text-slate-600">{body}</p>
+
+            <div className="handcrafted-card overflow-hidden rounded-[2rem] !bg-white text-brand-ink">
+              <div className="flex items-center justify-between gap-3 border-b-2 border-brand-ink px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-brand-danger"></div>
+                  <div className="h-3 w-3 rounded-full bg-brand-warning"></div>
+                  <div className="h-3 w-3 rounded-full bg-brand-success"></div>
                 </div>
-              ))}
+                <div className="rounded-full bg-brand-warning/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-ink">
+                  Needs fix
+                </div>
+              </div>
+
+              <div className="grid gap-4 p-5 lg:grid-cols-[1.15fr_0.85fr]">
+                <div className="rounded-3xl border-2 border-brand-ink bg-brand-bg p-5">
+                  <div className="mb-4 flex items-center gap-2 text-sm font-black text-brand-ink">
+                    <MonitorUp className="h-5 w-5 text-brand-accent" />
+                    Final screen
+                  </div>
+                  <div className="relative flex min-h-[265px] items-center justify-center rounded-3xl border-2 border-dashed border-brand-danger bg-white">
+                    <div className="absolute left-5 top-5 h-20 w-32 rounded-2xl border border-brand-line bg-brand-bg"></div>
+                    <div className="absolute bottom-5 left-5 h-9 w-40 rounded-2xl bg-slate-200"></div>
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-brand-danger text-white shadow-[5px_5px_0px_0px_rgba(15,23,42,0.16)]">
+                        <TriangleAlert className="h-10 w-10" />
+                      </div>
+                      <div className="rounded-full bg-brand-danger px-4 py-2 text-sm font-black text-white">
+                        Blank screen after OTP
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid content-start gap-3">
+                  {[
+                    ["Screenshot", MonitorUp, "12:41 pm"],
+                    ["Console", Code, "TypeError"],
+                    ["Network", Activity, "500"],
+                    ["State", PanelRight, "token: yes"],
+                    ["Repro", MousePointer2, "OTP to blank"],
+                    ["Redacted", Lock, "safe"]
+                  ].map(([label, Icon, value]) => (
+                    <div key={label as string} className="rounded-2xl border-2 border-brand-line bg-white p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-sm font-black text-brand-ink">
+                          <Icon className="h-4 w-4 text-brand-accent" />
+                          {label as string}
+                        </div>
+                        <span className="rounded-full bg-brand-bg px-2 py-1 text-[10px] font-black text-slate-500">
+                          {value as string}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
         <section id="personas" className="py-24 px-4 bg-brand-ink text-white overflow-hidden">
           <div className="max-w-7xl mx-auto">
-            <div className="mb-16">
-              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">The Test Fleet</span>
-              <h2 className="text-4xl md:text-6xl font-black mt-4 mb-6 leading-tight">
-                AI agents that feel <br />
-                <span className="text-brand-secondary italic">actually human.</span>
+            <div className="mb-12 max-w-3xl">
+              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">The test fleet</span>
+              <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight">
+                More than scripts.
               </h2>
-              <p className="text-slate-400 text-xl max-w-2xl font-medium">
-                We don&apos;t just run scripts. We deploy personalities. Our agents have goals, frustrations, and varying levels of tech-savviness.
+              <p className="mt-5 text-lg font-bold leading-relaxed text-slate-400">
+                Different users try the same flow and surface different failures.
               </p>
             </div>
 
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-              {STARTER_PERSONAS.map((persona, index) => (
-                <motion.div
-                  key={persona.id}
-                  whileHover={{ y: -10, rotate: index % 2 === 0 ? 1 : -1 }}
-                  className="bg-white text-brand-ink p-8 rounded-[2.5rem] border-4 border-brand-accent relative group"
-                >
-                  <div className={`w-24 h-24 rounded-3xl ${persona.color} mb-6 overflow-hidden border-2 border-brand-ink`}>
-                    <img
-                      src={persona.avatar}
-                      alt={persona.name}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
+            <div className="handcrafted-card overflow-hidden rounded-[2rem] !bg-white text-brand-ink">
+              <div className="grid gap-0 lg:grid-cols-[1fr_1.15fr]">
+                <div className="border-b-2 border-brand-ink bg-brand-bg p-5 lg:border-b-0 lg:border-r-2">
+                  <div className="rounded-3xl border-2 border-brand-ink bg-white p-5">
+                    <div className="mb-4 flex items-center gap-2">
+                      <div className="h-3 w-3 rounded-full bg-brand-danger"></div>
+                      <div className="h-3 w-3 rounded-full bg-brand-warning"></div>
+                      <div className="h-3 w-3 rounded-full bg-brand-success"></div>
+                      <span className="ml-2 text-xs font-black text-slate-400">checkout preview</span>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="h-10 rounded-2xl border border-brand-line bg-brand-bg"></div>
+                      <div className="h-10 rounded-2xl border border-brand-line bg-brand-bg"></div>
+                      <div className="h-20 rounded-3xl border-2 border-dashed border-brand-accent bg-brand-accent/5"></div>
+                    </div>
                   </div>
-                  <h3 className="text-2xl font-black mb-1">{persona.name}</h3>
-                  <div className="text-xs font-black uppercase tracking-widest text-brand-accent mb-4">{persona.role}</div>
-                  <div className="bg-brand-muted/30 p-4 rounded-2xl mb-6 relative">
-                    <Quote className="absolute -top-2 -left-2 w-6 h-6 text-brand-accent opacity-20" />
-                    <p className="text-sm font-bold leading-relaxed italic">&quot;{persona.quote}&quot;</p>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    {["Speed", "Clarity", "Mobile", "Edge case"].map((item) => (
+                      <div key={item} className="rounded-2xl border-2 border-brand-line bg-white px-4 py-3 text-center text-sm font-black">
+                        {item}
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-tighter">
-                    <Zap className="w-3 h-3 text-brand-secondary" />
-                    Trait: {persona.trait}
-                  </div>
-                </motion.div>
-              ))}
+                </div>
+
+                <div className="grid gap-4 p-5 sm:grid-cols-2">
+                  {STARTER_PERSONAS.map((persona, index) => (
+                    <motion.div
+                      key={persona.id}
+                      whileHover={{ y: -6 }}
+                      className="rounded-3xl border-2 border-brand-line bg-white p-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`h-14 w-14 overflow-hidden rounded-2xl border-2 border-brand-ink ${persona.color}`}>
+                          <div className="flex h-full w-full items-center justify-center text-xl font-black text-brand-ink">
+                            {persona.name.charAt(0)}
+                          </div>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-black text-brand-ink">{persona.name}</div>
+                          <div className="text-[10px] font-black uppercase tracking-widest text-brand-accent">
+                            {["Busy parent", "Speed user", "Clarity user", "Edge case"][index]}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex items-center justify-between rounded-2xl bg-brand-bg px-4 py-3 text-xs font-black text-slate-500">
+                        <span>Path tested</span>
+                        <Check className="h-4 w-4 text-brand-success" />
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
         <section id="how" className="py-24 px-4 max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2 handcrafted-card p-10 rounded-[3rem] bg-brand-secondary/5">
-              <div className="w-14 h-14 bg-brand-secondary rounded-2xl flex items-center justify-center mb-8 rotate-[-5deg]">
-                <Zap className="text-white w-8 h-8" />
-              </div>
-              <h3 className="text-3xl font-black mb-4">Test the preview</h3>
-              <p className="text-lg font-bold text-slate-600 leading-relaxed max-w-md">
-                Give your agent a URL and the flow that should work. It opens the product like a real user would.
-              </p>
-            </div>
-            <div className="handcrafted-card p-10 rounded-[3rem] bg-brand-accent/5">
-              <div className="w-14 h-14 bg-brand-accent rounded-2xl flex items-center justify-center mb-8 rotate-[5deg]">
-                <MessageCircle className="text-white w-8 h-8" />
-              </div>
-              <h3 className="text-3xl font-black mb-4">Clear feedback</h3>
-              <p className="text-lg font-bold text-slate-600 leading-relaxed">
-                See the blocker in plain English, with the proof attached.
-              </p>
-            </div>
-            <div className="handcrafted-card p-10 rounded-[3rem] !bg-brand-ink text-white">
-              <h3 className="text-3xl font-black mb-4">Fast reports</h3>
-              <p className="text-lg font-bold text-slate-400 mb-8">
-                Get a useful QA handoff while the preview is still fresh.
-              </p>
-              <div className="flex items-center gap-4">
-                <div className="flex -space-x-3">
-                  {STARTER_PERSONAS.slice(0, 3).map((persona) => (
-                    <div key={persona.id} className={`w-10 h-10 rounded-full border-2 border-brand-ink ${persona.color} overflow-hidden`}>
-                      <img src={persona.avatar} alt={persona.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    </div>
-                  ))}
-                </div>
-                <span className="text-xs font-black uppercase tracking-widest text-brand-accent">Active Agents</span>
-              </div>
-            </div>
-            <div className="md:col-span-2 handcrafted-card p-10 rounded-[3rem] flex flex-col md:flex-row items-center gap-10">
-              <div className="flex-1">
-                <h3 className="text-3xl font-black mb-4">Manual review too</h3>
-                <p className="text-lg font-bold text-slate-600 leading-relaxed">
-                  Record your screen, draw on the page, and send the same kind of proof back to the agent.
-                </p>
-              </div>
-              <div className="w-full md:w-64 h-48 bg-brand-muted rounded-2xl border-2 border-brand-ink overflow-hidden relative">
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-brand-accent rounded-full animate-ping opacity-20"></div>
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-brand-accent rounded-full"></div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="py-24 px-4 bg-brand-muted/30">
-          <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-16">
-            <div className="flex-1">
-              <div className="organic-pill inline-block mb-6 bg-brand-ink text-white border-brand-ink">
-                One loop, three ways to test
-              </div>
-              <h2 className="text-4xl md:text-6xl font-black mb-8 leading-tight text-brand-ink">
-                Find the problem while it is still easy to fix.
+          <div className="grid gap-10 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">
+            <div>
+              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Manual QA</span>
+              <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
+                Talk. Draw. Send.
               </h2>
-              <p className="text-xl font-bold text-slate-600 mb-8 leading-relaxed">
-                Before anything ships, Before Users Do captures what broke, what the user saw, and what the developer needs next.
+              <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
+                The widget saves evidence while the user moves through the product.
               </p>
+            </div>
 
-              <div className="space-y-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 bg-brand-secondary rounded-xl flex items-center justify-center shrink-0">
-                    <Zap className="text-white w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-black text-lg">Agent QA</h4>
-                    <p className="text-slate-500 font-medium">Your coding agent checks the changed flow before it reports done.</p>
-                  </div>
+            <div className="handcrafted-card relative min-h-[500px] overflow-hidden rounded-[2rem] !bg-brand-bg p-5">
+              <div className="rounded-[2rem] border-2 border-brand-ink bg-white p-5">
+                <div className="mb-4 flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-brand-danger"></div>
+                  <div className="h-3 w-3 rounded-full bg-brand-warning"></div>
+                  <div className="h-3 w-3 rounded-full bg-brand-success"></div>
+                  <span className="ml-2 text-xs font-black text-slate-400">preview page</span>
                 </div>
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 bg-brand-accent rounded-xl flex items-center justify-center shrink-0">
-                    <MessageCircle className="text-white w-5 h-5" />
+                <div className="grid gap-4 md:grid-cols-[0.85fr_1.15fr]">
+                  <div className="space-y-3">
+                    <div className="h-10 rounded-2xl bg-brand-bg"></div>
+                    <div className="h-10 rounded-2xl bg-brand-bg"></div>
+                    <div className="h-28 rounded-3xl bg-brand-secondary/10"></div>
                   </div>
-                  <div>
-                    <h4 className="font-black text-lg">Manual QA</h4>
-                    <p className="text-slate-500 font-medium">You talk, draw, and record while feedback is saved for the agent.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 bg-brand-ink rounded-xl flex items-center justify-center shrink-0">
-                    <Shield className="text-white w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-black text-lg">Developer handoff</h4>
-                    <p className="text-slate-500 font-medium">The fix starts with a clear issue, evidence, and a fresh retest link.</p>
+                  <div className="relative min-h-[230px] rounded-3xl bg-brand-muted/40">
+                    <div className="absolute left-8 top-8 h-28 w-40 rounded-[2rem] border-4 border-brand-accent"></div>
+                    <div className="absolute bottom-8 right-8 rounded-2xl border-2 border-brand-ink bg-white px-4 py-3 text-sm font-black">
+                      Comment pinned
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="flex-1 w-full">
-              <div className="handcrafted-card bg-white p-8 rounded-[3rem] relative">
-                <div className="rounded-3xl border-2 border-brand-ink bg-brand-secondary/5 p-6 text-brand-ink">
-                  <div className="flex items-center gap-2 mb-4 border-b border-brand-line pb-2">
-                    <div className="w-3 h-3 rounded-full bg-brand-danger"></div>
-                    <div className="w-3 h-3 rounded-full bg-brand-warning"></div>
-                    <div className="w-3 h-3 rounded-full bg-brand-success"></div>
-                    <span className="ml-2 text-xs font-black uppercase tracking-widest text-slate-400">What comes back</span>
+              <div className="absolute left-5 top-1/2 flex -translate-y-1/2 flex-col gap-2 rounded-3xl border-2 border-white/20 bg-brand-ink/85 p-2 text-white shadow-2xl backdrop-blur-xl">
+                {[MonitorUp, PenLine, MessageCircle, Eraser].map((Icon, index) => (
+                  <div
+                    key={index}
+                    className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 ${
+                      index === 1 ? "bg-brand-accent" : "bg-white/10"
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" />
                   </div>
-                  <div className="space-y-3">
-                    {[
-                      ["Problem", "Blank white screen after successful OTP verification."],
-                      ["User saw", "The code step completed, then the dashboard never appeared."],
-                      ["Fix next", "Open the saved proof, patch the blocker, and retest with a clean link."]
-                    ].map(([label, body]) => (
-                      <div key={label} className="rounded-2xl border border-brand-line bg-white p-4">
-                        <div className="text-[10px] font-black uppercase tracking-widest text-brand-accent">{label}</div>
-                        <p className="mt-1 text-sm font-bold leading-relaxed text-slate-700">{body}</p>
-                      </div>
-                    ))}
+                ))}
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-4">
+                {[
+                  ["Record", MonitorUp],
+                  ["Mark", PenLine],
+                  ["Send", ArrowRight],
+                  ["Retest", Check]
+                ].map(([label, Icon]) => (
+                  <div key={label as string} className="rounded-2xl border-2 border-brand-line bg-white px-4 py-4 text-center">
+                    <Icon className="mx-auto mb-2 h-5 w-5 text-brand-accent" />
+                    <div className="text-xs font-black text-brand-ink">{label as string}</div>
                   </div>
-                </div>
-                <motion.div
-                  animate={{ y: [0, -10, 0] }}
-                  transition={{ duration: 4, repeat: Infinity }}
-                  className="absolute -top-6 right-0 w-24 h-24 overflow-hidden rounded-3xl border-4 border-brand-ink bg-white p-2 shadow-2xl sm:-right-6"
-                >
-                  <img
-                    src={STARTER_PERSONAS[0].avatar}
-                    alt="Sarah"
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                </motion.div>
+                ))}
               </div>
             </div>
           </div>
@@ -1885,18 +1919,15 @@ function HomePage({
 
         <section className="py-24 px-4">
           <div className="max-w-7xl mx-auto grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-            <div className="handcrafted-card !bg-brand-accent p-10 md:p-14 rounded-[3rem] relative overflow-hidden">
+            <div className="handcrafted-card !bg-brand-accent p-8 md:p-12 rounded-[3rem] relative overflow-hidden">
               <div className="relative z-10">
                 <div className="organic-pill inline-flex items-center gap-2 mb-6 bg-white text-brand-ink border-brand-ink shadow-[2px_2px_0px_0px_rgba(18,18,18,1)]">
                   <Code className="h-3.5 w-3.5" />
-                  Ready to connect an agent?
+                  Agent path
                 </div>
                 <h2 className="text-4xl md:text-6xl font-black mb-8 leading-none text-white">
-                  Make QA the last step before done.
+                  Connect BUD.
                 </h2>
-                <p className="text-lg md:text-xl font-bold text-white mb-10 max-w-xl leading-relaxed">
-                  Create a key, paste the config, and tell your agent to test every preview before it finishes.
-                </p>
                 <button
                   type="button"
                   onClick={onOpenMcpSettings}
@@ -1906,37 +1937,29 @@ function HomePage({
                   <ArrowRight className="w-6 h-6" />
                 </button>
 
-                <div className="mt-10 flex items-center gap-4">
-                  <div className="flex -space-x-3">
-                    {STARTER_PERSONAS.map((persona) => (
-                      <img
-                        key={persona.id}
-                        src={persona.avatar}
-                        className="w-12 h-12 rounded-full border-2 border-brand-ink bg-white shadow-sm"
-                        alt="Agent"
-                        referrerPolicy="no-referrer"
-                      />
-                    ))}
-                  </div>
-                  <span className="text-sm font-black uppercase tracking-widest text-brand-ink">Personas ready</span>
+                <div className="mt-10 grid max-w-xl grid-cols-3 gap-3">
+                  {["Key", "Preview", "Proof"].map((item) => (
+                    <div key={item} className="rounded-2xl border-2 border-white/40 bg-white/15 px-4 py-4 text-center text-sm font-black text-white">
+                      {item}
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
 
-            <div className="handcrafted-card rounded-[3rem] bg-white p-8 md:p-10">
-              <div className="flex items-start justify-between gap-6">
+            <div className="handcrafted-card rounded-[3rem] bg-white p-6 md:p-8">
+              <div className="mb-6 flex items-center justify-between gap-6">
                 <div>
-                  <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-xs">Secondary path</span>
-                  <h3 className="mt-3 text-3xl font-black text-brand-ink">Need one quick site report?</h3>
-                  <p className="mt-3 text-sm font-bold leading-relaxed text-slate-600">
-                    Use this when you are not installing MCP yet. Agents still run a real browser test and email a shareable report.
-                  </p>
+                  <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-xs">Quick path</span>
+                  <h3 className="mt-2 text-3xl font-black text-brand-ink">One site report</h3>
                 </div>
-                <Globe className="hidden h-10 w-10 shrink-0 text-brand-secondary sm:block" />
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brand-secondary/10 text-brand-secondary">
+                  <Globe className="h-7 w-7" />
+                </div>
               </div>
 
               {!queued ? (
-                <form onSubmit={handleSubmit} className="mt-8 grid gap-3">
+                <form onSubmit={handleSubmit} className="grid gap-3">
                   <label className="grid gap-2">
                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Website</span>
                     <div className="flex items-center gap-3 rounded-2xl border-2 border-brand-ink bg-white px-4 py-4">
@@ -1970,7 +1993,7 @@ function HomePage({
                     disabled={loading}
                     className="mt-2 bg-brand-ink text-white px-8 py-5 rounded-2xl font-black text-lg hover:bg-brand-accent transition-all flex items-center justify-center gap-2"
                   >
-                    {loading ? "Starting report..." : "Start one-off report"}
+                    {loading ? "Starting report..." : "Start report"}
                     <ArrowRight className="w-5 h-5" />
                   </button>
                 </form>
@@ -1978,7 +2001,7 @@ function HomePage({
                 <motion.div
                   initial={{ scale: 0.96, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  className="mt-8 rounded-3xl border-2 border-brand-secondary bg-brand-secondary/10 p-6"
+                  className="rounded-3xl border-2 border-brand-secondary bg-brand-secondary/10 p-6"
                 >
                   <div className="w-14 h-14 bg-brand-secondary rounded-2xl flex items-center justify-center mb-4">
                     <Clock className="text-white w-7 h-7" />
