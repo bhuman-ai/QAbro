@@ -111,6 +111,10 @@ import type {
   WorkerInfo,
   WorkerSummary
 } from "@/types";
+import alexTesterPhoto from "./assets/testers/alex.jpg";
+import jordanTesterPhoto from "./assets/testers/jordan.jpg";
+import mayaTesterPhoto from "./assets/testers/maya.jpg";
+import ninaTesterPhoto from "./assets/testers/nina.jpg";
 
 const PERSONA_PRESETS = [
   {
@@ -197,24 +201,11 @@ const PUBLIC_BASE_URL = "https://beforeusersdo.com";
 const MCP_CLIENT_SERVER_NAME = "beforeusersdo-qa";
 const HOSTED_MCP_URL = "https://mcp.beforeusersdo.com/mcp";
 const HOME_HERO_WORDS = ["bugs", "frustrations", "confusion", "bad patterns", "blank screens", "dead ends"];
-const makeTesterAvatar = (skin: string, hair: string, shirt: string) => (
-  `data:image/svg+xml;utf8,${encodeURIComponent(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
-      <rect width="96" height="96" rx="48" fill="#f8fafc"/>
-      <circle cx="48" cy="42" r="23" fill="${skin}"/>
-      <path d="M25 42c1-20 16-31 33-26 9 3 15 11 15 24-13-6-27-8-48 2Z" fill="${hair}"/>
-      <path d="M29 88c3-18 14-27 19-27s16 9 19 27H29Z" fill="${shirt}"/>
-      <circle cx="39" cy="44" r="3" fill="#0f172a"/>
-      <circle cx="57" cy="44" r="3" fill="#0f172a"/>
-      <path d="M40 55c4 4 12 4 16 0" fill="none" stroke="#0f172a" stroke-width="4" stroke-linecap="round"/>
-    </svg>
-  `)}`
-);
 const HUMAN_QA_TESTERS = [
-  { name: "Maya", avatar: makeTesterAvatar("#f4c7a1", "#2f221c", "#8b5cf6") },
-  { name: "Jordan", avatar: makeTesterAvatar("#8d5524", "#151515", "#0ea5e9") },
-  { name: "Nina", avatar: makeTesterAvatar("#f1b989", "#6b3f22", "#10b981") },
-  { name: "Alex", avatar: makeTesterAvatar("#d9a679", "#29313d", "#f59e0b") }
+  { name: "Maya", avatar: mayaTesterPhoto },
+  { name: "Jordan", avatar: jordanTesterPhoto },
+  { name: "Nina", avatar: ninaTesterPhoto },
+  { name: "Alex", avatar: alexTesterPhoto }
 ];
 
 type AdvancedBrowserRuntimeState = {
