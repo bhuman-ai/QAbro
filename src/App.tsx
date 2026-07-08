@@ -200,7 +200,6 @@ const PUBLIC_BRAND_NAME = "Before Users Do";
 const PUBLIC_BASE_URL = "https://beforeusersdo.com";
 const MCP_CLIENT_SERVER_NAME = "beforeusersdo-qa";
 const HOSTED_MCP_URL = "https://mcp.beforeusersdo.com/mcp";
-const HOME_HERO_WORDS = ["bugs", "frustrations", "confusion", "bad patterns", "blank screens", "dead ends"];
 const HUMAN_QA_TESTERS = [
   { name: "Maya", avatar: mayaTesterPhoto },
   { name: "Jordan", avatar: jordanTesterPhoto },
@@ -1360,21 +1359,17 @@ function BrandMark() {
 
 function HomePage({
   authorized,
-  onOpenWorkspace,
   onOpenMcpSettings
 }: {
   authorized: boolean;
-  onOpenWorkspace: () => void;
   onOpenMcpSettings: () => void;
 }) {
   const [site, setSite] = useState("");
   const [email, setEmail] = useState("");
+  const [expectedBehavior, setExpectedBehavior] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [queued, setQueued] = useState<any | null>(null);
-  const [heroWordIndex, setHeroWordIndex] = useState(0);
-  const [heroTypedWord, setHeroTypedWord] = useState(HOME_HERO_WORDS[0]);
-  const [heroDeleting, setHeroDeleting] = useState(false);
   const mcpInstallConfig = `{
   "mcpServers": {
     "${MCP_CLIENT_SERVER_NAME}": {
@@ -1386,40 +1381,6 @@ function HomePage({
   }
 }`;
 
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
-
-    const fullWord = HOME_HERO_WORDS[heroWordIndex];
-    const isComplete = heroTypedWord === fullWord;
-    const shouldAdvanceWord = heroDeleting && heroTypedWord.length <= 1;
-    const delay = isComplete && !heroDeleting ? 1400 : shouldAdvanceWord ? 220 : heroDeleting ? 42 : 82;
-
-    const timeout = window.setTimeout(() => {
-      if (!heroDeleting && isComplete) {
-        setHeroDeleting(true);
-        return;
-      }
-
-      if (shouldAdvanceWord) {
-        const nextIndex = (heroWordIndex + 1) % HOME_HERO_WORDS.length;
-        setHeroWordIndex(nextIndex);
-        setHeroDeleting(false);
-        setHeroTypedWord(HOME_HERO_WORDS[nextIndex].slice(0, 1));
-        return;
-      }
-
-      setHeroTypedWord((current) => (
-        heroDeleting
-          ? fullWord.slice(0, Math.max(0, current.length - 1))
-          : fullWord.slice(0, Math.min(fullWord.length, current.length + 1))
-      ));
-    }, delay);
-
-    return () => window.clearTimeout(timeout);
-  }, [heroDeleting, heroTypedWord, heroWordIndex]);
-
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
@@ -1429,7 +1390,8 @@ function HomePage({
         method: "POST",
         body: {
           url: site,
-          email
+          email,
+          expected_behavior: expectedBehavior
         }
       });
       setQueued(response);
@@ -1448,15 +1410,15 @@ function HomePage({
           <Logo />
         </div>
         <nav className="hidden lg:flex items-center gap-8 font-bold text-sm uppercase tracking-widest">
-          <a href="#human-testers" className="hover:text-brand-accent transition-colors">Human testers</a>
+          <a href="#how-it-works" className="hover:text-brand-accent transition-colors">How it works</a>
+          <a href="#testing-modes" className="hover:text-brand-accent transition-colors">Testing modes</a>
           <a href="#install" className="hover:text-brand-accent transition-colors">Set up</a>
-          <a href="#proof" className="hover:text-brand-accent transition-colors">See proof</a>
-          <button className="hover:text-brand-accent transition-colors" onClick={onOpenWorkspace}>Help Center</button>
+          <a href="#proof" className="hover:text-brand-accent transition-colors">Reports</a>
           <button
             onClick={onOpenMcpSettings}
             className="bg-brand-ink text-white px-6 py-2 rounded-full hover:bg-brand-accent transition-all"
           >
-            {authorized ? "Create testing key" : "Sign in"}
+            {authorized ? "Connect BUD MCP" : "Sign in"}
           </button>
         </nav>
       </header>
@@ -1472,22 +1434,15 @@ function HomePage({
             <div>
               <div className="organic-pill inline-flex items-center gap-2 mb-6 bg-brand-secondary/10 text-brand-ink border-brand-ink">
                 <Shield className="h-3.5 w-3.5" />
-                Check before launch
+                MCP for AI-coded apps
               </div>
 
-              <h1
-                className="text-[clamp(2.75rem,5.6vw,5.25rem)] font-black mb-7 leading-[0.95] max-w-4xl tracking-normal text-brand-ink"
-                aria-label={`Catch ${HOME_HERO_WORDS[heroWordIndex]} before users do.`}
-              >
-                Catch{" "}
-                <span className="inline-flex min-w-[12ch] items-baseline text-brand-accent" aria-hidden="true">
-                  {heroTypedWord}
-                  <span className="ml-1 inline-block h-[0.78em] w-[0.08em] translate-y-[0.08em] animate-pulse rounded-full bg-brand-accent" />
-                </span>{" "}
-                before users do.
+              <h1 className="text-[clamp(2.75rem,5.6vw,5.25rem)] font-black mb-7 leading-[0.95] max-w-4xl tracking-normal text-brand-ink">
+                Your AI coder can build it.
+                <span className="block text-brand-accent">BUD makes it testable.</span>
               </h1>
               <p className="text-lg md:text-xl text-slate-600 max-w-xl mb-9 font-bold leading-relaxed">
-                Run an automatic check, review it yourself, or send it to a real human tester on standby.
+                Connect the BUD MCP to your AI coding workflow. Every feature gets a clean QA handoff with preview links, expected behavior, test notes, screenshots, logs, and fix-ready context.
               </p>
 
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -1496,42 +1451,35 @@ function HomePage({
                   onClick={onOpenMcpSettings}
                   className="bg-brand-accent text-white px-8 py-5 rounded-2xl font-black text-lg hover:bg-brand-ink transition-all flex items-center justify-center gap-2 shadow-[6px_6px_0px_0px_rgba(15,23,42,1)]"
                 >
-                  {authorized ? "Create testing key" : "Sign in to start"}
+                  {authorized ? "Connect BUD MCP" : "Sign in to start"}
                   <ArrowRight className="w-5 h-5" />
                 </button>
                 <a
-                  href="#install"
+                  href="#how-it-works"
                   className="handcrafted-card px-8 py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-2"
                 >
-                  See how it works
+                  View testing flow
                   <ChevronRight className="w-5 h-5" />
                 </a>
               </div>
 
-              <div className="mt-7 grid max-w-xl grid-cols-3 gap-3">
-                <div className="rounded-2xl border-2 border-brand-line bg-white px-3 py-3">
-                  <MonitorUp className="mb-2 h-5 w-5 text-brand-accent" />
-                  <div className="text-xs font-black text-brand-ink">Broken screen</div>
-                </div>
-                <div className="rounded-2xl border-2 border-brand-line bg-white px-3 py-3">
-                  <Code className="mb-2 h-5 w-5 text-brand-accent" />
-                  <div className="text-xs font-black text-brand-ink">Error clues</div>
-                </div>
-                <div className="rounded-2xl border-2 border-brand-line bg-white px-3 py-3">
-                  <MousePointer2 className="mb-2 h-5 w-5 text-brand-accent" />
-                  <div className="text-xs font-black text-brand-ink">Steps</div>
-                </div>
+              <div className="mt-7 flex max-w-xl flex-wrap gap-3">
+                {["MCP setup", "AI-ready QA", "Self testing", "Team handoff", "QA on call"].map((pill) => (
+                  <div key={pill} className="rounded-2xl border-2 border-brand-line bg-white px-4 py-3 text-xs font-black text-brand-ink">
+                    {pill}
+                  </div>
+                ))}
               </div>
 
               <a
-                href="#human-testers"
+                href="#how-it-works"
                 className="mt-4 flex max-w-xl items-center justify-between gap-3 rounded-2xl border-2 border-brand-ink bg-white px-4 py-3 font-black text-brand-ink transition-all hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]"
               >
                 <span className="inline-flex items-center gap-3">
                   <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-accent text-white">
-                    <Users className="h-5 w-5" />
+                    <Zap className="h-5 w-5" />
                   </span>
-                  Human QA testers available
+                  AI, you, your team, or QA on call
                 </span>
                 <ChevronRight className="h-5 w-5" />
               </a>
@@ -1546,10 +1494,10 @@ function HomePage({
                     <div className="w-3 h-3 rounded-full bg-brand-success"></div>
                   </div>
                   <div className="min-w-0 flex-1 rounded-full border border-brand-line px-3 py-2 text-xs font-black text-slate-400">
-                    your-app.com/signup
+                    AI coding tool
                   </div>
                   <div className="rounded-full bg-brand-accent px-3 py-2 text-xs font-black text-white">
-                    Test run
+                    BUD MCP
                   </div>
                 </div>
 
@@ -1560,45 +1508,55 @@ function HomePage({
                         <div className="h-2.5 w-2.5 rounded-full bg-slate-300"></div>
                         <div className="h-2.5 w-2.5 rounded-full bg-slate-300"></div>
                         <div className="h-2.5 w-2.5 rounded-full bg-slate-300"></div>
-                        <div className="ml-3 text-xs font-black text-brand-ink">Create account</div>
+                        <div className="ml-3 text-xs font-black text-brand-ink">QA handoff prepared</div>
                       </div>
 
-                      <div className="grid min-h-[255px] grid-cols-[0.85fr_1.15fr] items-center gap-2 px-5 py-5">
-                        <div className="space-y-3">
-                          <div className="h-8 rounded-xl border border-brand-line bg-white"></div>
-                          <div className="h-8 rounded-xl border border-brand-line bg-white"></div>
-                          <div className="h-8 rounded-xl border border-brand-line bg-white"></div>
-                          <div className="mt-4 h-9 rounded-xl bg-slate-200"></div>
+                      <div className="grid min-h-[255px] gap-3 px-5 py-5">
+                        <div className="rounded-3xl border-2 border-brand-ink bg-white p-4">
+                          <div className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-brand-accent">
+                            <Code className="h-4 w-4" />
+                            AI coder
+                          </div>
+                          <p className="text-xl font-black leading-tight text-brand-ink">
+                            Feature complete. BUD prepared the QA handoff before marking done.
+                          </p>
                         </div>
 
-                        <div className="relative flex min-h-[205px] items-center justify-center rounded-3xl border-2 border-dashed border-brand-danger/70 bg-white">
-                          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-danger text-white shadow-[4px_4px_0px_0px_rgba(15,23,42,0.16)]">
-                            <TriangleAlert className="h-8 w-8" />
-                          </div>
-                          <div className="absolute bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-brand-danger px-3 py-1.5 text-xs font-black text-white">
-                            Blank screen
-                          </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {[
+                            ["Preview URL", "ready"],
+                            ["Expected behavior", "added"],
+                            ["Test steps", "generated"],
+                            ["Edge cases", "listed"],
+                            ["Screenshots", "marked"],
+                            ["Fix notes", "ready"]
+                          ].map(([label, value]) => (
+                            <div key={label} className="rounded-2xl border border-brand-line bg-white px-3 py-3">
+                              <div className="text-xs font-black text-brand-ink">{label}</div>
+                              <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-brand-success">{value}</div>
+                            </div>
+                          ))}
                         </div>
                       </div>
 
                       <div className="absolute bottom-5 right-5 max-w-[210px] rotate-[-2deg] rounded-2xl border-2 border-brand-accent bg-white p-3 shadow-[5px_5px_0px_0px_rgba(124,58,237,0.22)]">
                         <div className="flex items-center gap-2 text-xs font-black text-brand-ink">
                           <PenLine className="h-4 w-4 text-brand-accent" />
-                          User note
+                          Fix-ready context
                         </div>
                         <p className="mt-1 text-sm font-black leading-snug text-brand-ink">
-                          User expected the dashboard here.
+                          Ready for AI, you, team, or QA.
                         </p>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-4 gap-2">
-                      {["Email", "OTP", "Account", "Blank"].map((step, index) => (
+                      {["AI coder", "BUD MCP", "QA handoff", "Test"].map((step, index) => (
                         <div
                           key={step}
                           className={`rounded-2xl border px-2 py-3 text-center text-[11px] font-black ${
                             index === 3
-                              ? "border-brand-danger bg-brand-danger text-white"
+                              ? "border-brand-success bg-brand-success text-white"
                               : "border-brand-line bg-white text-slate-500"
                           }`}
                         >
@@ -1613,11 +1571,11 @@ function HomePage({
                     <div className="rounded-3xl bg-brand-ink p-4 text-white shadow-[5px_5px_0px_0px_rgba(124,58,237,0.28)]">
                       <div className="mb-3 flex items-center gap-2 text-xs font-black text-brand-secondary">
                         <Code className="h-4 w-4" />
-                        Page error
+                        Agent instruction
                       </div>
                       <div className="space-y-2 font-mono text-[11px] font-bold">
-                        <div className="rounded-lg bg-white/8 px-3 py-2 text-brand-danger">TypeError at signup.tsx:45</div>
-                        <div className="rounded-lg bg-white/8 px-3 py-2 text-brand-warning">POST /api/session 500</div>
+                        <div className="rounded-lg bg-white/8 px-3 py-2 text-brand-secondary">Before marking done, prepare the QA handoff.</div>
+                        <div className="rounded-lg bg-white/8 px-3 py-2 text-brand-warning">Include preview, expected behavior, steps, logs.</div>
                       </div>
                     </div>
                   </div>
@@ -1626,12 +1584,14 @@ function HomePage({
                     <div className="rounded-3xl border-2 border-brand-line bg-white p-4">
                       <div className="mb-3 flex items-center gap-2 text-sm font-black text-brand-ink">
                         <MonitorUp className="h-5 w-5 text-brand-accent" />
-                        Screenshot
+                        Preview URL
                       </div>
                       <div className="rounded-2xl border border-brand-line bg-brand-bg p-3">
-                        <div className="h-20 rounded-xl border-2 border-dashed border-slate-300 bg-white"></div>
+                        <div className="rounded-xl border-2 border-dashed border-slate-300 bg-white px-3 py-5 text-xs font-black text-slate-500">
+                          your-app.com/signup
+                        </div>
                         <div className="mt-2 flex justify-end">
-                          <span className="rounded-full bg-brand-danger px-2 py-1 text-[10px] font-black text-white">12:41 pm</span>
+                          <span className="rounded-full bg-brand-success px-2 py-1 text-[10px] font-black text-white">Ready</span>
                         </div>
                       </div>
                     </div>
@@ -1639,19 +1599,19 @@ function HomePage({
                     <div className="rounded-3xl border-2 border-brand-line bg-white p-4">
                       <div className="mb-3 flex items-center gap-2 text-sm font-black text-brand-ink">
                         <Activity className="h-5 w-5 text-brand-accent" />
-                        Server clue
+                        Handoff checklist
                       </div>
                       <div className="space-y-2 text-[11px] font-black">
                         <div className="flex items-center justify-between rounded-xl bg-brand-bg px-3 py-2">
-                          <span>POST /api/signup</span>
-                          <span className="text-brand-danger">500</span>
+                          <span>Expected</span>
+                          <span className="text-brand-success">set</span>
                         </div>
                         <div className="flex items-center justify-between rounded-xl bg-brand-bg px-3 py-2">
-                          <span>GET /api/user</span>
-                          <span className="text-brand-danger">500</span>
+                          <span>Steps</span>
+                          <span className="text-brand-success">set</span>
                         </div>
                         <div className="flex items-center justify-between rounded-xl bg-brand-bg px-3 py-2">
-                          <span>GET /flags</span>
+                          <span>Logs</span>
                           <span className="text-brand-success">200</span>
                         </div>
                       </div>
@@ -1661,7 +1621,7 @@ function HomePage({
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2 text-sm font-black text-brand-ink">
                           <Check className="h-5 w-5 text-brand-success" />
-                          Ready to fix
+                          Send to test
                         </div>
                         <ArrowRight className="h-5 w-5 text-brand-accent" />
                       </div>
@@ -1673,18 +1633,18 @@ function HomePage({
           </motion.div>
         </section>
 
-        <section id="human-testers" className="bg-brand-ink px-4 py-20 text-white">
-          <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+        <section id="how-it-works" className="bg-brand-ink px-4 py-20 text-white">
+          <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
             <div>
               <div className="mb-6 inline-flex items-center gap-2 rounded-full border-2 border-white/30 bg-white/10 px-4 py-1 text-xs font-black uppercase tracking-widest text-white">
-                <Users className="h-4 w-4 text-brand-accent" />
-                Human testers on standby
+                <Zap className="h-4 w-4 text-brand-accent" />
+                QA layer for AI coding
               </div>
               <h2 className="text-4xl font-black leading-tight md:text-6xl">
-                Don&apos;t want to QA it yourself?
+                One MCP. Four ways to test.
               </h2>
               <p className="mt-5 max-w-xl text-lg font-bold leading-relaxed text-white/70">
-                Send the feature to a real person. They click through it, record what feels broken or confusing, and send back proof your team can act on.
+                BUD adds a QA layer to your AI coding workflow. Once connected, your AI coder can prepare every feature for AI testing, self review, team QA, or QA on call.
               </p>
               <div className="mt-7 inline-flex max-w-xl flex-col gap-3 rounded-3xl border-2 border-white/20 bg-white/10 p-4">
                 <div className="flex flex-wrap items-center gap-3">
@@ -1709,7 +1669,7 @@ function HomePage({
                       </span>
                       14 online now
                     </div>
-                    <div className="mt-1 text-xs font-bold text-slate-500">Dedicated QA testers ready today</div>
+                    <div className="mt-1 text-xs font-bold text-slate-500">Human QA testers ready today</div>
                   </div>
                 </div>
               </div>
@@ -1718,17 +1678,18 @@ function HomePage({
                 onClick={onOpenMcpSettings}
                 className="mt-8 inline-flex items-center gap-3 rounded-2xl bg-white px-7 py-5 text-lg font-black text-brand-ink transition-all hover:bg-brand-accent hover:text-white"
               >
-                Request a human tester
+                Connect BUD MCP
                 <ArrowRight className="h-5 w-5" />
               </button>
             </div>
 
             <div className="text-brand-ink">
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-2">
                 {[
-                  { step: "1", title: "Send the page", body: "Share a preview or feature URL.", icon: Globe },
-                  { step: "2", title: "Tester tries it", body: "A real person records the rough spots.", icon: MonitorUp },
-                  { step: "3", title: "You get the fix list", body: "Screen, voice, notes, and steps come back together.", icon: Check }
+                  { step: "1", title: "AI testing", body: "Let an AI agent check the preview against the expected behavior.", icon: WandSparkles },
+                  { step: "2", title: "You testing", body: "Open the preview and follow the generated test path yourself.", icon: MousePointer2 },
+                  { step: "3", title: "Team testing", body: "Send a clean handoff to someone on your team.", icon: MessageCircle },
+                  { step: "4", title: "QA on call", body: "Get a dedicated tester or QA agent to try the feature and report what broke.", icon: Users }
                 ].map(({ step, title, body, icon: Icon }) => (
                   <div key={title} className="rounded-3xl border-2 border-brand-line bg-brand-bg p-5">
                     <div className="mb-5 flex items-center justify-between gap-3">
@@ -1746,13 +1707,13 @@ function HomePage({
               <div className="mt-4 rounded-3xl border-2 border-brand-ink bg-white p-5">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <div className="text-xs font-black uppercase tracking-widest text-brand-accent">Best when</div>
+                    <div className="text-xs font-black uppercase tracking-widest text-brand-accent">What BUD organizes</div>
                     <p className="mt-1 text-lg font-black text-brand-ink">
-                      You need another set of eyes before customers see it.
+                      Preview URL, expected behavior, test steps, notes, screenshots, logs, and fix-ready context.
                     </p>
                   </div>
                   <div className="rounded-2xl bg-brand-secondary/10 px-4 py-3 text-sm font-black text-brand-ink">
-                    Real tester + recorded proof
+                    One QA handoff
                   </div>
                 </div>
               </div>
@@ -1766,10 +1727,10 @@ function HomePage({
               <div>
                 <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Set up once</span>
                 <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
-                  Ask for a check before &quot;done.&quot;
+                  Your AI coder should not say &quot;done&quot; without a QA handoff.
                 </h2>
                 <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
-                  Connect your coding tool once. After that, every preview can come back with the exact thing that broke.
+                  BUD gives your AI coder a simple testing protocol. Before a feature is finished, it prepares the preview, expected behavior, test steps, edge cases, and context needed to verify the work.
                 </p>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
@@ -1778,7 +1739,7 @@ function HomePage({
                   onClick={onOpenMcpSettings}
                   className="bg-brand-ink text-white px-7 py-5 rounded-2xl font-black text-lg hover:bg-brand-accent transition-all flex items-center justify-center gap-2"
                 >
-                  Open setup
+                  Connect BUD MCP
                   <ExternalLink className="h-5 w-5" />
                 </button>
                 <button
@@ -1787,7 +1748,7 @@ function HomePage({
                   className="handcrafted-card px-7 py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-2"
                 >
                   <Copy className="h-5 w-5" />
-                  Copy setup
+                  Copy setup command
                 </button>
               </div>
             </div>
@@ -1796,10 +1757,10 @@ function HomePage({
               <div className="handcrafted-card overflow-hidden rounded-[2rem] !bg-brand-bg">
                 <div className="grid md:grid-cols-4">
                   {[
-                    ["Create key", Lock, "bg-brand-accent"],
-                    ["Paste setup", Code, "bg-brand-ink"],
-                    ["Ask for a check", MessageCircle, "bg-brand-secondary"],
-                    ["Open proof", MonitorUp, "bg-brand-success"]
+                    ["Connect MCP", Lock, "bg-brand-accent"],
+                    ["Build feature", Code, "bg-brand-ink"],
+                    ["Prepare QA handoff", MessageCircle, "bg-brand-secondary"],
+                    ["Send for testing", MonitorUp, "bg-brand-success"]
                   ].map(([label, Icon, tone], index) => (
                     <div key={label as string} className="relative border-b-2 border-brand-line bg-white p-5 md:border-b-0 md:border-r-2 last:md:border-r-0">
                       <div className={`mb-4 flex h-12 w-12 items-center justify-center rounded-2xl ${tone as string} text-white shadow-[4px_4px_0px_0px_rgba(15,23,42,0.16)]`}>
@@ -1815,10 +1776,10 @@ function HomePage({
                   <div className="rounded-3xl border-2 border-brand-line bg-brand-secondary/5 p-5">
                     <div className="mb-4 flex items-center gap-2 text-sm font-black text-brand-ink">
                       <MessageCircle className="h-5 w-5 text-brand-accent" />
-                      What to ask
+                      What BUD prepares
                     </div>
                     <p className="text-lg font-black leading-snug text-brand-ink">
-                      Test this preview before you say done.
+                      Preview URL, expected behavior, test steps, edge cases, and useful context.
                     </p>
                     <div className="mt-5 flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-500">
                       <Globe className="h-4 w-4 text-brand-accent" />
@@ -1845,7 +1806,7 @@ function HomePage({
                       Done once
                     </div>
                     <h3 className="mt-5 text-4xl font-black leading-none">
-                      One setup. Every launch.
+                      One setup. Every feature.
                     </h3>
                   </div>
                   <div className="relative min-h-32">
@@ -1857,7 +1818,7 @@ function HomePage({
                     <div className="absolute left-[20%] top-16 h-1 w-[60%] rounded-full bg-white/45"></div>
                   </div>
                   <div className="grid grid-cols-3 gap-3">
-                    {["Ask", "Test", "Fix"].map((item) => (
+                    {["Build", "Test", "Fix"].map((item) => (
                       <div key={item} className="rounded-2xl border-2 border-white/40 bg-white/15 px-3 py-4 text-center text-xs font-black">
                         {item}
                       </div>
@@ -1874,10 +1835,10 @@ function HomePage({
             <div>
               <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Clear handoff</span>
               <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
-                Show the moment it broke.
+                When something breaks, your AI coder gets the full context.
               </h2>
               <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
-                Your team gets the failed screen first, then the clues they need to fix it without guessing.
+                Bugs should not come back as vague comments. BUD captures the broken screen, tester notes, console errors, network requests, page state, and steps to reproduce.
               </p>
             </div>
 
@@ -1897,7 +1858,7 @@ function HomePage({
                 <div className="rounded-3xl border-2 border-brand-ink bg-brand-bg p-5">
                   <div className="mb-4 flex items-center gap-2 text-sm font-black text-brand-ink">
                     <MonitorUp className="h-5 w-5 text-brand-accent" />
-                    Final screen
+                    Broken screen
                   </div>
                   <div className="relative flex min-h-[265px] items-center justify-center rounded-3xl border-2 border-dashed border-brand-danger bg-white">
                     <div className="absolute left-5 top-5 h-20 w-32 rounded-2xl border border-brand-line bg-brand-bg"></div>
@@ -1907,7 +1868,7 @@ function HomePage({
                         <TriangleAlert className="h-10 w-10" />
                       </div>
                       <div className="rounded-full bg-brand-danger px-4 py-2 text-sm font-black text-white">
-                        Blank screen after OTP
+                        Checkout button disabled
                       </div>
                     </div>
                   </div>
@@ -1915,12 +1876,12 @@ function HomePage({
 
                 <div className="grid content-start gap-3">
                   {[
-                    ["Screenshot", MonitorUp, "12:41 pm"],
-                    ["Page error", Code, "TypeError"],
-                    ["Request", Activity, "500"],
-                    ["Page state", PanelRight, "signed in"],
-                    ["Steps", MousePointer2, "OTP to blank"],
-                    ["Redacted", Lock, "safe"]
+                    ["What happened", MonitorUp, "button stayed disabled"],
+                    ["Expected", Check, "button activates"],
+                    ["Repro", MousePointer2, "plan → email"],
+                    ["Console error", Code, "TypeError"],
+                    ["Network request", Activity, "POST 500"],
+                    ["Suggested fix prompt", WandSparkles, "ready"]
                   ].map(([label, Icon, value]) => (
                     <div key={label as string} className="rounded-2xl border-2 border-brand-line bg-white p-4">
                       <div className="flex items-center justify-between gap-3">
@@ -1940,15 +1901,15 @@ function HomePage({
           </div>
         </section>
 
-        <section id="personas" className="py-24 px-4 bg-brand-ink text-white overflow-hidden">
+        <section id="testing-modes" className="py-24 px-4 bg-brand-ink text-white overflow-hidden">
           <div className="max-w-7xl mx-auto">
             <div className="mb-12 max-w-3xl">
-              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Real reactions</span>
+              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Testing modes</span>
               <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight">
-                Different people get stuck in different places.
+                Test the same feature from different angles.
               </h2>
               <p className="mt-5 text-lg font-bold leading-relaxed text-slate-400">
-                BUD checks the same flow from more than one point of view, so you catch confusion a happy-path test misses.
+                AI catches obvious failures. You catch product intent. Your team catches edge cases. Human testers catch confusion.
               </p>
             </div>
 
@@ -1978,27 +1939,33 @@ function HomePage({
                 </div>
 
                 <div className="grid gap-4 p-5 sm:grid-cols-2">
-                  {STARTER_PERSONAS.map((persona, index) => (
+                  {[
+                    { title: "AI Agent", label: "AI check", body: "Checks the feature against the expected behavior.", status: "Passed", icon: WandSparkles },
+                    { title: "You", label: "Founder review", body: "Reviews the product experience before shipping.", status: "Needs change", icon: Eye },
+                    { title: "Team", label: "Team QA", body: "Leaves comments, screenshots, and notes in context.", status: "Comment added", icon: MessageCircle },
+                    { title: "QA on call", label: "Human tester", body: "Tries the feature like a real user and reports where they got stuck.", status: "Confused at step 3", icon: Users }
+                  ].map(({ title, label, body, status, icon: Icon }) => (
                     <motion.div
-                      key={persona.id}
+                      key={title}
                       whileHover={{ y: -6 }}
                       className="rounded-3xl border-2 border-brand-line bg-white p-4"
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`h-14 w-14 overflow-hidden rounded-2xl border-2 border-brand-ink ${persona.color}`}>
-                          <div className="flex h-full w-full items-center justify-center text-xl font-black text-brand-ink">
-                            {persona.name.charAt(0)}
+                        <div className="h-14 w-14 overflow-hidden rounded-2xl border-2 border-brand-ink bg-brand-bg">
+                          <div className="flex h-full w-full items-center justify-center text-brand-accent">
+                            <Icon className="h-7 w-7" />
                           </div>
                         </div>
                         <div className="min-w-0">
-                          <div className="font-black text-brand-ink">{persona.name}</div>
+                          <div className="font-black text-brand-ink">{title}</div>
                           <div className="text-[10px] font-black uppercase tracking-widest text-brand-accent">
-                            {["Busy parent", "Speed user", "Clarity user", "Edge case"][index]}
+                            {label}
                           </div>
                         </div>
                       </div>
+                      <p className="mt-4 min-h-[48px] text-sm font-bold leading-6 text-slate-600">{body}</p>
                       <div className="mt-4 flex items-center justify-between rounded-2xl bg-brand-bg px-4 py-3 text-xs font-black text-slate-500">
-                        <span>Path tested</span>
+                        <span>{status}</span>
                         <Check className="h-4 w-4 text-brand-success" />
                       </div>
                     </motion.div>
@@ -2012,12 +1979,12 @@ function HomePage({
         <section id="how" className="py-24 px-4 max-w-7xl mx-auto">
           <div className="grid gap-10 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">
             <div>
-              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Human feedback</span>
+              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Feature feedback</span>
               <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
-                Talk. Draw. Send.
+                Feedback stays attached to the feature.
               </h2>
               <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
-                Record what feels wrong while you use the page. Your notes, voice, drawings, and screen are saved together.
+                Testers can leave notes, voice comments, drawings, screenshots, and recordings. BUD keeps everything together so the next AI fix has the right context.
               </p>
             </div>
 
@@ -2045,7 +2012,7 @@ function HomePage({
               </div>
 
               <div className="absolute left-5 top-1/2 flex -translate-y-1/2 flex-col gap-2 rounded-3xl border-2 border-white/20 bg-brand-ink/85 p-2 text-white shadow-2xl backdrop-blur-xl">
-                {[MonitorUp, PenLine, MessageCircle, Eraser].map((Icon, index) => (
+                {[MonitorUp, PenLine, MessageCircle, ArrowRight].map((Icon, index) => (
                   <div
                     key={index}
                     className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 ${
@@ -2060,9 +2027,9 @@ function HomePage({
               <div className="mt-5 grid gap-3 sm:grid-cols-4">
                 {[
                   ["Record", MonitorUp],
-                  ["Mark", PenLine],
-                  ["Send", ArrowRight],
-                  ["Retest", Check]
+                  ["Draw", PenLine],
+                  ["Comment", MessageCircle],
+                  ["Send to AI coder", ArrowRight]
                 ].map(([label, Icon]) => (
                   <div key={label as string} className="rounded-2xl border-2 border-brand-line bg-white px-4 py-4 text-center">
                     <Icon className="mx-auto mb-2 h-5 w-5 text-brand-accent" />
@@ -2080,22 +2047,25 @@ function HomePage({
               <div className="relative z-10">
                 <div className="organic-pill inline-flex items-center gap-2 mb-6 bg-white text-brand-ink border-brand-ink shadow-[2px_2px_0px_0px_rgba(18,18,18,1)]">
                   <Code className="h-3.5 w-3.5" />
-                  Setup path
+                  QA workflow
                 </div>
                 <h2 className="text-4xl md:text-6xl font-black mb-8 leading-none text-white">
-                  Let BUD check the work.
+                  Let BUD make the work testable.
                 </h2>
+                <p className="mb-8 max-w-xl text-lg font-bold leading-relaxed text-white/75">
+                  Connect one MCP and give your AI coder a QA workflow for every feature it builds.
+                </p>
                 <button
                   type="button"
                   onClick={onOpenMcpSettings}
                   className="bg-brand-ink text-white px-9 py-5 rounded-3xl font-black text-xl hover:scale-[1.02] transition-all shadow-[8px_8px_0px_0px_rgba(255,255,255,0.3)] flex items-center gap-3"
                 >
-                  Create testing key
+                  Connect BUD MCP
                   <ArrowRight className="w-6 h-6" />
                 </button>
 
                 <div className="mt-10 grid max-w-xl grid-cols-3 gap-3">
-                  {["Key", "Preview", "Proof"].map((item) => (
+                  {["MCP", "Handoff", "Fix-ready"].map((item) => (
                     <div key={item} className="rounded-2xl border-2 border-white/40 bg-white/15 px-4 py-4 text-center text-sm font-black text-white">
                       {item}
                     </div>
@@ -2108,7 +2078,7 @@ function HomePage({
               <div className="mb-6 flex items-center justify-between gap-6">
                 <div>
                   <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-xs">Quick path</span>
-                  <h3 className="mt-2 text-3xl font-black text-brand-ink">Try one page</h3>
+                  <h3 className="mt-2 text-3xl font-black text-brand-ink">Try a QA handoff on one page</h3>
                 </div>
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brand-secondary/10 text-brand-secondary">
                   <Globe className="h-7 w-7" />
@@ -2118,7 +2088,7 @@ function HomePage({
               {!queued ? (
                 <form onSubmit={handleSubmit} className="grid gap-3">
                   <label className="grid gap-2">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Website</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Preview URL</span>
                     <div className="flex items-center gap-3 rounded-2xl border-2 border-brand-ink bg-white px-4 py-4">
                       <Globe className="text-slate-400 w-5 h-5" />
                       <span className="text-slate-300 font-bold">https://</span>
@@ -2131,6 +2101,16 @@ function HomePage({
                         onChange={(event) => setSite(event.target.value.replace(/^https?:\/\//, ""))}
                       />
                     </div>
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">What should happen?</span>
+                    <textarea
+                      placeholder="Example: Checkout button should activate after plan and email are selected."
+                      required
+                      className="min-h-28 w-full rounded-2xl border-2 border-brand-ink bg-white px-4 py-4 font-bold outline-none placeholder:text-slate-300"
+                      value={expectedBehavior}
+                      onChange={(event) => setExpectedBehavior(event.target.value)}
+                    />
                   </label>
                   <label className="grid gap-2">
                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Email</span>
@@ -2150,7 +2130,7 @@ function HomePage({
                     disabled={loading}
                     className="mt-2 bg-brand-ink text-white px-8 py-5 rounded-2xl font-black text-lg hover:bg-brand-accent transition-all flex items-center justify-center gap-2"
                   >
-                    {loading ? "Starting check..." : "Check my site"}
+                    {loading ? "Generating handoff..." : "Generate QA handoff"}
                     <ArrowRight className="w-5 h-5" />
                   </button>
                 </form>
@@ -2163,9 +2143,9 @@ function HomePage({
                   <div className="w-14 h-14 bg-brand-secondary rounded-2xl flex items-center justify-center mb-4">
                     <Clock className="text-white w-7 h-7" />
                   </div>
-                  <h3 className="text-2xl font-black mb-2">Report started</h3>
+                  <h3 className="text-2xl font-black mb-2">QA handoff started</h3>
                   <p className="font-bold text-slate-600">
-                    {queued.message || `BUD is checking ${site} now. Watch your inbox for what broke and where.`}
+                    {queued.message || `BUD is preparing a QA handoff for ${site}. Watch your inbox for the report.`}
                   </p>
                   {queued.share_url ? (
                     <div className="mt-6 flex flex-wrap gap-3">
@@ -2555,7 +2535,6 @@ function App() {
     return (
       <HomePage
         authorized={authState.authorized}
-        onOpenWorkspace={() => navigate("/dashboard")}
         onOpenMcpSettings={() => {
           const next = new URLSearchParams();
           next.set("panel", "settings");
