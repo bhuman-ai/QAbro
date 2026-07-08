@@ -284,6 +284,9 @@ test("manual QA widget uses a movable compact capture tray", () => {
   });
 
   assert.doesNotThrow(() => new Function(script));
+  assert.match(script, /replace\(\/\\s\+\/g, " "\)/);
+  assert.doesNotMatch(script, /replace\(\/s\+\/g/);
+  assert.doesNotMatch(script, /split\(\/s\+\//);
   assert.match(script, /BeforeUsersDo<\/span>/);
   assert.match(script, /Not recording\. Records screen and voice after Chrome asks\./);
   assert.match(script, /class="bud-capture-panel"/);
@@ -304,11 +307,14 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /data-action="clear"/);
   assert.match(script, /data-action="comment"/);
   assert.match(script, /data-role="comment-surface"/);
+  assert.match(script, /data-role="comment-pins"/);
   assert.match(script, /data-role="comment-box"/);
   assert.match(script, /data-role="comment-input"/);
   assert.match(script, /What should change here\?/);
   assert.match(script, /Click anywhere to add a comment\./);
   assert.match(script, /pushEvidenceEvent\("comment_saved"/);
+  assert.match(script, /openExistingComment/);
+  assert.match(script, /Comment updated/);
   assert.match(script, /saveOpenCommentIfNeeded/);
   assert.match(script, /data-action="send-all"/);
   assert.match(script, /className = "bud-item-send"/);
@@ -374,7 +380,8 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /bud-panel\.is-freestyle/);
   assert.match(script, /page_visits: state\.pageVisits/);
   assert.match(script, /transcript_events: state\.transcriptEvents/);
-  assert.match(script, /evidence_events: state\.evidenceEvents/);
+  assert.match(script, /const evidenceEvents = mergeEvidenceEvents/);
+  assert.match(script, /evidence_events: evidenceEvents/);
   assert.match(script, /topic_segments: Array\.isArray\(existingContext\.topic_segments\)/);
   assert.match(script, /data-role="live"/);
   assert.match(script, /Live items/);

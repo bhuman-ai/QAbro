@@ -1519,8 +1519,7 @@ function HomePage({
                   <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 text-slate-400">
                     <Code className="h-7 w-7" strokeWidth={1.8} />
                   </div>
-                  <div className="text-sm font-black uppercase text-slate-400">your</div>
-                  <div className="text-2xl font-black leading-tight">vibecoded app</div>
+                  <div className="text-xl font-black leading-tight text-brand-ink">Your vibecoded app</div>
                 </motion.div>
 
                 <div className="relative z-10 flex items-center justify-center text-slate-300">
@@ -1552,8 +1551,7 @@ function HomePage({
                   <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-success/10 text-brand-success">
                     <Users className="h-7 w-7" strokeWidth={1.8} />
                   </div>
-                  <div className="text-sm font-black uppercase text-slate-400">happy</div>
-                  <div className="text-2xl font-black leading-tight">customers</div>
+                  <div className="text-xl font-black leading-tight text-brand-ink">Happy customers</div>
                 </motion.div>
               </div>
             </div>
@@ -1631,31 +1629,20 @@ function HomePage({
                 ))}
               </div>
 
-              <div className="mt-4 rounded-3xl border-2 border-brand-ink bg-white p-5">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="text-xs font-black uppercase tracking-widest text-brand-accent">What BUD organizes</div>
-                    <p className="mt-1 text-lg font-black text-brand-ink">
-                      Preview URL, expected behavior, test steps, notes, screenshots, logs, and fix-ready context.
-                    </p>
-                  </div>
-                  <div className="rounded-2xl bg-brand-secondary/10 px-4 py-3 text-sm font-black text-brand-ink">
-                    One QA handoff
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </section>
 
         <section id="install" className="py-20 px-4 bg-white border-y-2 border-brand-ink">
           <div className="max-w-7xl mx-auto">
-            <div className="grid gap-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-end">
-              <div>
+            <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-end">
+              <div className="lg:col-span-2">
                 <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Set up once</span>
                 <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
                   Your AI coder should not say &quot;done&quot; without a QA handoff.
                 </h2>
+              </div>
+              <div>
                 <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
                   BUD gives your AI coder a simple testing protocol. Before a feature is finished, it prepares the preview, expected behavior, test steps, edge cases, and context needed to verify the work.
                 </p>
