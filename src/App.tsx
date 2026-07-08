@@ -1456,7 +1456,7 @@ function HomePage({
             onClick={onOpenMcpSettings}
             className="bg-brand-ink text-white px-6 py-2 rounded-full hover:bg-brand-accent transition-all"
           >
-            {authorized ? "Connect BUD MCP" : "Sign in"}
+            {authorized ? "Connect MCP" : "Sign in"}
           </button>
         </nav>
       </header>
@@ -1487,7 +1487,7 @@ function HomePage({
                 before users do.
               </h1>
               <p className="text-lg md:text-xl text-slate-600 max-w-xl mb-9 font-bold leading-relaxed">
-                Your AI coder can build it. BUD makes it testable with a clean QA handoff: preview links, expected behavior, test notes, screenshots, logs, and fix-ready context.
+                Your AI coder can build it. We help you catch bugs, frustration points, and confusing UI before users do.
               </p>
 
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -1496,38 +1496,17 @@ function HomePage({
                   onClick={onOpenMcpSettings}
                   className="bg-brand-accent text-white px-8 py-5 rounded-2xl font-black text-lg hover:bg-brand-ink transition-all flex items-center justify-center gap-2 shadow-[6px_6px_0px_0px_rgba(15,23,42,1)]"
                 >
-                  {authorized ? "Connect BUD MCP" : "Sign in to start"}
+                  {authorized ? "Connect MCP" : "Connect MCP"}
                   <ArrowRight className="w-5 h-5" />
                 </button>
                 <a
-                  href="#how-it-works"
+                  href="#testing-modes"
                   className="handcrafted-card px-8 py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-2"
                 >
-                  View testing flow
+                  Earn money by testing
                   <ChevronRight className="w-5 h-5" />
                 </a>
               </div>
-
-              <div className="mt-7 flex max-w-xl flex-wrap gap-3">
-                {["MCP setup", "AI-ready QA", "Self testing", "Team handoff", "QA on call"].map((pill) => (
-                  <div key={pill} className="rounded-2xl border-2 border-brand-line bg-white px-4 py-3 text-xs font-black text-brand-ink">
-                    {pill}
-                  </div>
-                ))}
-              </div>
-
-              <a
-                href="#how-it-works"
-                className="mt-4 flex max-w-xl items-center justify-between gap-3 rounded-2xl border-2 border-brand-ink bg-white px-4 py-3 font-black text-brand-ink transition-all hover:-translate-y-0.5 hover:shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]"
-              >
-                <span className="inline-flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-accent text-white">
-                    <Zap className="h-5 w-5" />
-                  </span>
-                  AI, you, your team, or QA on call
-                </span>
-                <ChevronRight className="h-5 w-5" />
-              </a>
             </div>
 
             <div className="relative">
@@ -1546,129 +1525,80 @@ function HomePage({
                   </div>
                 </div>
 
-                <div className="grid gap-4 p-4 sm:p-6 lg:grid-cols-[1.35fr_0.9fr]">
-                  <div className="space-y-4">
-                    <div className="relative min-h-[310px] overflow-hidden rounded-3xl border-2 border-brand-line bg-brand-bg">
-                      <div className="flex items-center gap-2 border-b border-brand-line bg-white px-4 py-3">
-                        <div className="h-2.5 w-2.5 rounded-full bg-slate-300"></div>
-                        <div className="h-2.5 w-2.5 rounded-full bg-slate-300"></div>
-                        <div className="h-2.5 w-2.5 rounded-full bg-slate-300"></div>
-                        <div className="ml-3 text-xs font-black text-brand-ink">QA handoff prepared</div>
+                <div className="relative bg-brand-bg p-4 sm:min-h-[540px] sm:p-6">
+                  <div className="rounded-[2rem] border-2 border-brand-ink bg-white p-4 sm:p-5">
+                    <div className="mb-5 flex items-center gap-2">
+                      <div className="h-3 w-3 rounded-full bg-brand-danger"></div>
+                      <div className="h-3 w-3 rounded-full bg-brand-warning"></div>
+                      <div className="h-3 w-3 rounded-full bg-brand-success"></div>
+                      <span className="ml-2 text-xs font-black text-slate-400">your preview</span>
+                    </div>
+                    <div className="relative min-h-[330px] overflow-hidden rounded-[1.75rem] border-2 border-brand-line bg-white p-5">
+                      <div className="max-w-[320px] space-y-4">
+                        <div className="h-12 rounded-2xl bg-brand-ink"></div>
+                        <div className="h-4 w-2/3 rounded-full bg-slate-200"></div>
+                        <div className="h-4 w-1/2 rounded-full bg-slate-200"></div>
+                        <button className="mt-5 rounded-2xl bg-brand-accent px-7 py-4 text-sm font-black text-white">
+                          Start free trial
+                        </button>
                       </div>
 
-                      <div className="grid min-h-[255px] gap-3 px-5 py-5">
-                        <div className="rounded-3xl border-2 border-brand-ink bg-white p-4">
-                          <div className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-brand-accent">
-                            <Code className="h-4 w-4" />
-                            AI coder
-                          </div>
-                          <p className="text-xl font-black leading-tight text-brand-ink">
-                            Feature complete. BUD prepared the QA handoff before marking done.
-                          </p>
-                        </div>
-
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {[
-                            ["Preview URL", "ready"],
-                            ["Expected behavior", "added"],
-                            ["Test steps", "generated"],
-                            ["Edge cases", "listed"],
-                            ["Screenshots", "marked"],
-                            ["Fix notes", "ready"]
-                          ].map(([label, value]) => (
-                            <div key={label} className="rounded-2xl border border-brand-line bg-white px-3 py-3">
-                              <div className="text-xs font-black text-brand-ink">{label}</div>
-                              <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-brand-success">{value}</div>
-                            </div>
-                          ))}
-                        </div>
+                      <div className="absolute right-7 top-20 flex h-28 w-28 rotate-[-8deg] items-center justify-center rounded-[2rem] border-4 border-brand-danger bg-brand-danger/5">
+                        <CircleAlert className="h-12 w-12 text-brand-danger" />
                       </div>
-
-                      <div className="absolute bottom-5 right-5 max-w-[210px] rotate-[-2deg] rounded-2xl border-2 border-brand-accent bg-white p-3 shadow-[5px_5px_0px_0px_rgba(124,58,237,0.22)]">
-                        <div className="flex items-center gap-2 text-xs font-black text-brand-ink">
-                          <PenLine className="h-4 w-4 text-brand-accent" />
-                          Fix-ready context
+                      <div className="absolute bottom-8 left-8 right-8 rounded-3xl border-2 border-brand-ink bg-white p-4 shadow-[5px_5px_0px_0px_rgba(15,23,42,0.18)]">
+                        <div className="flex items-center gap-2 text-sm font-black text-brand-ink">
+                          <MessageCircle className="h-5 w-5 text-brand-accent" />
+                          This part confused me.
                         </div>
-                        <p className="mt-1 text-sm font-black leading-snug text-brand-ink">
-                          Ready for AI, you, team, or QA.
+                        <p className="mt-2 text-sm font-bold text-slate-500">
+                          The note stays attached to the exact spot on the page.
                         </p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-4 gap-2">
-                      {["AI coder", "BUD MCP", "QA handoff", "Test"].map((step, index) => (
-                        <div
-                          key={step}
-                          className={`rounded-2xl border px-2 py-3 text-center text-[11px] font-black ${
-                            index === 3
-                              ? "border-brand-success bg-brand-success text-white"
-                              : "border-brand-line bg-white text-slate-500"
-                          }`}
-                        >
-                          <div className="mx-auto mb-1 flex h-6 w-6 items-center justify-center rounded-full bg-brand-bg text-[10px] text-brand-ink">
-                            {index + 1}
-                          </div>
-                          {step}
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="rounded-3xl bg-brand-ink p-4 text-white shadow-[5px_5px_0px_0px_rgba(124,58,237,0.28)]">
-                      <div className="mb-3 flex items-center gap-2 text-xs font-black text-brand-secondary">
-                        <Code className="h-4 w-4" />
-                        Agent instruction
-                      </div>
-                      <div className="space-y-2 font-mono text-[11px] font-bold">
-                        <div className="rounded-lg bg-white/8 px-3 py-2 text-brand-secondary">Before marking done, prepare the QA handoff.</div>
-                        <div className="rounded-lg bg-white/8 px-3 py-2 text-brand-warning">Include preview, expected behavior, steps, logs.</div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="grid content-start gap-3">
-                    <div className="rounded-3xl border-2 border-brand-line bg-white p-4">
-                      <div className="mb-3 flex items-center gap-2 text-sm font-black text-brand-ink">
-                        <MonitorUp className="h-5 w-5 text-brand-accent" />
-                        Preview URL
+                  <div className="mt-4 rounded-[1.75rem] border border-white/15 bg-brand-ink/90 p-3 text-white shadow-2xl backdrop-blur-xl sm:absolute sm:right-6 sm:top-8 sm:mt-0 sm:w-[260px]">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-black">BeforeUsersDo review</div>
+                        <div className="text-xs font-bold text-white/55">Record, draw, comment.</div>
                       </div>
-                      <div className="rounded-2xl border border-brand-line bg-brand-bg p-3">
-                        <div className="rounded-xl border-2 border-dashed border-slate-300 bg-white px-3 py-5 text-xs font-black text-slate-500">
-                          your-app.com/signup
-                        </div>
-                        <div className="mt-2 flex justify-end">
-                          <span className="rounded-full bg-brand-success px-2 py-1 text-[10px] font-black text-white">Ready</span>
-                        </div>
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-accent">
+                        <Mic className="h-5 w-5" />
                       </div>
                     </div>
-
-                    <div className="rounded-3xl border-2 border-brand-line bg-white p-4">
-                      <div className="mb-3 flex items-center gap-2 text-sm font-black text-brand-ink">
-                        <Activity className="h-5 w-5 text-brand-accent" />
-                        Handoff checklist
-                      </div>
-                      <div className="space-y-2 text-[11px] font-black">
-                        <div className="flex items-center justify-between rounded-xl bg-brand-bg px-3 py-2">
-                          <span>Expected</span>
-                          <span className="text-brand-success">set</span>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[MonitorUp, PenLine, MessageCircle, Eraser].map((Icon, index) => (
+                        <div
+                          key={index}
+                          className={`flex h-11 items-center justify-center rounded-2xl border border-white/15 ${
+                            index === 1 ? "bg-brand-accent" : "bg-white/10"
+                          }`}
+                        >
+                          <Icon className="h-5 w-5" />
                         </div>
-                        <div className="flex items-center justify-between rounded-xl bg-brand-bg px-3 py-2">
-                          <span>Steps</span>
-                          <span className="text-brand-success">set</span>
-                        </div>
-                        <div className="flex items-center justify-between rounded-xl bg-brand-bg px-3 py-2">
-                          <span>Logs</span>
-                          <span className="text-brand-success">200</span>
-                        </div>
-                      </div>
+                      ))}
                     </div>
+                    <div className="mt-3 rounded-2xl bg-white/10 px-3 py-2 text-xs font-black text-white/80">
+                      Voice, drawing, and page context saved.
+                    </div>
+                  </div>
 
-                    <div className="rounded-3xl border-2 border-brand-ink bg-brand-secondary/10 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 text-sm font-black text-brand-ink">
-                          <Check className="h-5 w-5 text-brand-success" />
-                          Send to test
-                        </div>
-                        <ArrowRight className="h-5 w-5 text-brand-accent" />
+                  <div className="mt-4 rounded-[1.75rem] border-2 border-brand-ink bg-white p-4 sm:absolute sm:bottom-6 sm:left-6 sm:right-6 sm:mt-0">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="text-xs font-black uppercase tracking-widest text-brand-accent">Sent to your agent</div>
+                        <p className="mt-1 text-xl font-black leading-tight text-brand-ink">
+                          The issue, proof, and page context arrive together.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {["Screen", "Voice", "Comment"].map((item) => (
+                          <span key={item} className="rounded-full bg-brand-bg px-3 py-2 text-xs font-black text-slate-500">
+                            {item}
+                          </span>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -1723,7 +1653,7 @@ function HomePage({
                 onClick={onOpenMcpSettings}
                 className="mt-8 inline-flex items-center gap-3 rounded-2xl bg-white px-7 py-5 text-lg font-black text-brand-ink transition-all hover:bg-brand-accent hover:text-white"
               >
-                Connect BUD MCP
+                Connect MCP
                 <ArrowRight className="h-5 w-5" />
               </button>
             </div>
@@ -1784,7 +1714,7 @@ function HomePage({
                   onClick={onOpenMcpSettings}
                   className="bg-brand-ink text-white px-7 py-5 rounded-2xl font-black text-lg hover:bg-brand-accent transition-all flex items-center justify-center gap-2"
                 >
-                  Connect BUD MCP
+                  Connect MCP
                   <ExternalLink className="h-5 w-5" />
                 </button>
                 <button
@@ -2105,7 +2035,7 @@ function HomePage({
                   onClick={onOpenMcpSettings}
                   className="bg-brand-ink text-white px-9 py-5 rounded-3xl font-black text-xl hover:scale-[1.02] transition-all shadow-[8px_8px_0px_0px_rgba(255,255,255,0.3)] flex items-center gap-3"
                 >
-                  Connect BUD MCP
+                  Connect MCP
                   <ArrowRight className="w-6 h-6" />
                 </button>
 
