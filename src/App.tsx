@@ -1510,98 +1510,64 @@ function HomePage({
             </div>
 
             <div className="relative">
-              <div className="handcrafted-card overflow-hidden rounded-[2rem] !bg-white text-brand-ink">
-                <div className="flex items-center justify-between gap-3 border-b-2 border-brand-ink px-5 py-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-brand-danger"></div>
-                    <div className="w-3 h-3 rounded-full bg-brand-warning"></div>
-                    <div className="w-3 h-3 rounded-full bg-brand-success"></div>
-                  </div>
-                  <div className="min-w-0 flex-1 rounded-full border border-brand-line px-3 py-2 text-xs font-black text-slate-400">
-                    AI coding tool
-                  </div>
-                  <div className="rounded-full bg-brand-accent px-3 py-2 text-xs font-black text-white">
-                    BUD MCP
-                  </div>
-                </div>
+              <div className="handcrafted-card relative min-h-[500px] overflow-hidden rounded-[2rem] !bg-brand-ink p-5 text-white sm:p-7">
+                <div className="pointer-events-none absolute inset-5 rounded-[1.5rem] border border-white/10"></div>
+                <div className="pointer-events-none absolute left-8 right-8 top-1/2 hidden h-px bg-white/25 lg:block"></div>
+                <div className="pointer-events-none absolute bottom-8 left-1/2 top-8 block w-px bg-white/18 lg:hidden"></div>
 
-                <div className="relative bg-brand-bg p-4 sm:min-h-[540px] sm:p-6">
-                  <div className="rounded-[2rem] border-2 border-brand-ink bg-white p-4 sm:p-5">
-                    <div className="mb-5 flex items-center gap-2">
-                      <div className="h-3 w-3 rounded-full bg-brand-danger"></div>
-                      <div className="h-3 w-3 rounded-full bg-brand-warning"></div>
-                      <div className="h-3 w-3 rounded-full bg-brand-success"></div>
-                      <span className="ml-2 text-xs font-black text-slate-400">your preview</span>
+                <div className="relative grid min-h-[450px] gap-5 lg:grid-cols-[1fr_auto_1fr_auto_1fr] lg:items-center">
+                  <motion.div
+                    animate={{ y: [0, -10, 0] }}
+                    transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+                    className="relative z-10 flex flex-col items-center justify-center rounded-[1.5rem] border-2 border-white/20 bg-white px-5 py-6 text-center text-brand-ink shadow-[6px_6px_0px_0px_rgba(139,92,246,0.35)]"
+                  >
+                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-bg text-brand-accent">
+                      <Code className="h-7 w-7" />
                     </div>
-                    <div className="relative min-h-[330px] overflow-hidden rounded-[1.75rem] border-2 border-brand-line bg-white p-5">
-                      <div className="max-w-[320px] space-y-4">
-                        <div className="h-12 rounded-2xl bg-brand-ink"></div>
-                        <div className="h-4 w-2/3 rounded-full bg-slate-200"></div>
-                        <div className="h-4 w-1/2 rounded-full bg-slate-200"></div>
-                        <button className="mt-5 rounded-2xl bg-brand-accent px-7 py-4 text-sm font-black text-white">
-                          Start free trial
-                        </button>
-                      </div>
+                    <div className="text-sm font-black uppercase text-slate-400">your</div>
+                    <div className="text-2xl font-black leading-tight">vibecoded app</div>
+                  </motion.div>
 
-                      <div className="absolute right-7 top-20 flex h-28 w-28 rotate-[-8deg] items-center justify-center rounded-[2rem] border-4 border-brand-danger bg-brand-danger/5">
-                        <CircleAlert className="h-12 w-12 text-brand-danger" />
-                      </div>
-                      <div className="absolute bottom-8 left-8 right-8 rounded-3xl border-2 border-brand-ink bg-white p-4 shadow-[5px_5px_0px_0px_rgba(15,23,42,0.18)]">
-                        <div className="flex items-center gap-2 text-sm font-black text-brand-ink">
-                          <MessageCircle className="h-5 w-5 text-brand-accent" />
-                          This part confused me.
-                        </div>
-                        <p className="mt-2 text-sm font-bold text-slate-500">
-                          The note stays attached to the exact spot on the page.
-                        </p>
-                      </div>
+                  <div className="relative z-10 flex items-center justify-center">
+                    <div className="hidden items-center gap-3 text-white/55 lg:flex">
+                      <ArrowRight className="h-9 w-9" />
+                    </div>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-white/20 bg-white/10 text-white/70 lg:hidden">
+                      <ChevronDown className="h-5 w-5" />
                     </div>
                   </div>
 
-                  <div className="mt-4 rounded-[1.75rem] border border-white/15 bg-brand-ink/90 p-3 text-white shadow-2xl backdrop-blur-xl sm:absolute sm:right-6 sm:top-8 sm:mt-0 sm:w-[260px]">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-black">BeforeUsersDo review</div>
-                        <div className="text-xs font-bold text-white/55">Record, draw, comment.</div>
-                      </div>
-                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-accent">
-                        <Mic className="h-5 w-5" />
-                      </div>
+                  <motion.div
+                    animate={{ y: [0, 12, 0] }}
+                    transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut", delay: 0.35 }}
+                    className="relative z-10 order-3 flex flex-col items-center justify-center rounded-[1.5rem] border-2 border-brand-accent bg-brand-accent px-6 py-7 text-center text-white shadow-[6px_6px_0px_0px_rgba(255,255,255,0.2)] lg:order-none lg:-translate-y-16"
+                  >
+                    <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-brand-accent">
+                      <Zap className="h-8 w-8 fill-current" />
                     </div>
-                    <div className="grid grid-cols-4 gap-2">
-                      {[MonitorUp, PenLine, MessageCircle, Eraser].map((Icon, index) => (
-                        <div
-                          key={index}
-                          className={`flex h-11 items-center justify-center rounded-2xl border border-white/15 ${
-                            index === 1 ? "bg-brand-accent" : "bg-white/10"
-                          }`}
-                        >
-                          <Icon className="h-5 w-5" />
-                        </div>
-                      ))}
+                    <div className="text-4xl font-black leading-none">BUD</div>
+                  </motion.div>
+
+                  <div className="relative z-10 order-4 flex items-center justify-center lg:order-none">
+                    <div className="hidden items-center gap-3 text-white/55 lg:flex">
+                      <ArrowRight className="h-9 w-9" />
                     </div>
-                    <div className="mt-3 rounded-2xl bg-white/10 px-3 py-2 text-xs font-black text-white/80">
-                      Voice, drawing, and page context saved.
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-white/20 bg-white/10 text-white/70 lg:hidden">
+                      <ChevronDown className="h-5 w-5" />
                     </div>
                   </div>
 
-                  <div className="mt-4 rounded-[1.75rem] border-2 border-brand-ink bg-white p-4 sm:absolute sm:bottom-6 sm:left-6 sm:right-6 sm:mt-0">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <div className="text-xs font-black uppercase tracking-widest text-brand-accent">Sent to your agent</div>
-                        <p className="mt-1 text-xl font-black leading-tight text-brand-ink">
-                          The issue, proof, and page context arrive together.
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {["Screen", "Voice", "Comment"].map((item) => (
-                          <span key={item} className="rounded-full bg-brand-bg px-3 py-2 text-xs font-black text-slate-500">
-                            {item}
-                          </span>
-                        ))}
-                      </div>
+                  <motion.div
+                    animate={{ y: [0, -8, 0] }}
+                    transition={{ duration: 4.8, repeat: Infinity, ease: "easeInOut", delay: 0.7 }}
+                    className="relative z-10 order-5 flex flex-col items-center justify-center rounded-[1.5rem] border-2 border-white/20 bg-white px-5 py-6 text-center text-brand-ink shadow-[6px_6px_0px_0px_rgba(16,185,129,0.35)] lg:order-none"
+                  >
+                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-success/10 text-brand-success">
+                      <Users className="h-7 w-7" />
                     </div>
-                  </div>
+                    <div className="text-sm font-black uppercase text-slate-400">happy</div>
+                    <div className="text-2xl font-black leading-tight">customers</div>
+                  </motion.div>
                 </div>
               </div>
             </div>
