@@ -1241,6 +1241,21 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
               selected_text: "Start now",
               viewport: { width: 1440, height: 900, device_pixel_ratio: 2 },
               page_url: "https://preview.example.com/onboarding?token=abc123"
+            },
+            {
+              event_id: "comment_price_label_1",
+              type: "comment_saved",
+              label: "Page comment",
+              comment_text: "This specific pricing label should say free trial instead of start now.",
+              at: "2026-07-05T10:00:24.000Z",
+              page_x: 414,
+              page_y: 260,
+              client_x: 414,
+              client_y: 260,
+              target_selector: "button.cta \"Start now\"",
+              selected_text: "Start now",
+              viewport: { width: 1440, height: 900, device_pixel_ratio: 2 },
+              page_url: "https://preview.example.com/onboarding?token=abc123"
             }
           ]
         }
@@ -1258,6 +1273,9 @@ test("widget feedback endpoint returns redacted agent feedback for one item", as
       /token=%5Bredacted%5D/
     );
     assert.doesNotMatch(updated.item.widget_context.network_events[1].message, /abc123/);
+    const commentEvents = updated.item.widget_context.evidence_events.filter((entry) => entry.type === "comment_saved");
+    assert.equal(commentEvents.length, 1);
+    assert.equal(commentEvents[0].event_id, "comment_price_label_1");
 
     const withDrawing = await appendManualQaItemEvidence(
       created.session.session_id,
