@@ -1509,66 +1509,52 @@ function HomePage({
               </div>
             </div>
 
-            <div className="relative">
-              <div className="relative min-h-[500px] overflow-hidden rounded-[2rem] border border-brand-line bg-white/80 p-5 text-brand-ink shadow-[0_34px_90px_-58px_rgba(15,23,42,0.45)] sm:p-7">
-                <div className="pointer-events-none absolute inset-5 rounded-[1.5rem] border border-brand-line/60"></div>
-                <div className="pointer-events-none absolute left-10 right-10 top-1/2 hidden h-px bg-slate-200 lg:block"></div>
-                <div className="pointer-events-none absolute bottom-10 left-1/2 top-10 block w-px bg-slate-200 lg:hidden"></div>
-
-                <div className="relative grid min-h-[450px] gap-5 lg:grid-cols-[1fr_auto_1fr_auto_1fr] lg:items-center">
-                  <motion.div
-                    animate={{ y: [0, -10, 0] }}
-                    transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-                    className="relative z-10 flex flex-col items-center justify-center rounded-[1.5rem] border border-brand-line bg-white px-5 py-6 text-center shadow-[0_24px_65px_-38px_rgba(15,23,42,0.45)]"
-                  >
-                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 text-slate-400">
-                      <Code className="h-7 w-7" strokeWidth={1.8} />
-                    </div>
-                    <div className="text-sm font-black uppercase text-slate-400">your</div>
-                    <div className="text-2xl font-black leading-tight">vibecoded app</div>
-                  </motion.div>
-
-                  <div className="relative z-10 flex items-center justify-center">
-                    <div className="hidden items-center gap-3 text-slate-300 lg:flex">
-                      <ArrowRight className="h-9 w-9" strokeWidth={1.6} />
-                    </div>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-brand-line bg-white text-slate-300 lg:hidden">
-                      <ChevronDown className="h-5 w-5" strokeWidth={1.8} />
-                    </div>
+            <div className="relative min-h-[500px] text-brand-ink">
+              <div className="relative grid min-h-[450px] gap-5 lg:grid-cols-[1fr_auto_1fr_auto_1fr] lg:items-center">
+                <motion.div
+                  animate={{ y: [0, -10, 0] }}
+                  transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+                  className="relative z-10 flex flex-col items-center justify-center rounded-[1.5rem] bg-white px-5 py-6 text-center shadow-[0_24px_65px_-38px_rgba(15,23,42,0.45)]"
+                >
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 text-slate-400">
+                    <Code className="h-7 w-7" strokeWidth={1.8} />
                   </div>
+                  <div className="text-sm font-black uppercase text-slate-400">your</div>
+                  <div className="text-2xl font-black leading-tight">vibecoded app</div>
+                </motion.div>
 
-                  <motion.div
-                    animate={{ y: [0, 12, 0] }}
-                    transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut", delay: 0.35 }}
-                    className="relative z-10 order-3 flex flex-col items-center justify-center rounded-[1.5rem] border border-brand-accent/20 bg-white px-6 py-7 text-center shadow-[0_28px_75px_-42px_rgba(139,92,246,0.7)] lg:order-none lg:-translate-y-16"
-                  >
-                    <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-accent/10 text-brand-accent">
-                      <Zap className="h-8 w-8 fill-current" />
-                    </div>
-                    <div className="text-4xl font-black leading-none text-brand-accent">BUD</div>
-                  </motion.div>
-
-                  <div className="relative z-10 order-4 flex items-center justify-center lg:order-none">
-                    <div className="hidden items-center gap-3 text-slate-300 lg:flex">
-                      <ArrowRight className="h-9 w-9" strokeWidth={1.6} />
-                    </div>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full border border-brand-line bg-white text-slate-300 lg:hidden">
-                      <ChevronDown className="h-5 w-5" strokeWidth={1.8} />
-                    </div>
-                  </div>
-
-                  <motion.div
-                    animate={{ y: [0, -8, 0] }}
-                    transition={{ duration: 4.8, repeat: Infinity, ease: "easeInOut", delay: 0.7 }}
-                    className="relative z-10 order-5 flex flex-col items-center justify-center rounded-[1.5rem] border border-brand-line bg-white px-5 py-6 text-center shadow-[0_24px_65px_-38px_rgba(16,185,129,0.55)] lg:order-none"
-                  >
-                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-success/10 text-brand-success">
-                      <Users className="h-7 w-7" strokeWidth={1.8} />
-                    </div>
-                    <div className="text-sm font-black uppercase text-slate-400">happy</div>
-                    <div className="text-2xl font-black leading-tight">customers</div>
-                  </motion.div>
+                <div className="relative z-10 flex items-center justify-center text-slate-300">
+                  <ArrowRight className="hidden h-9 w-9 lg:block" strokeWidth={1.6} />
+                  <ChevronDown className="h-7 w-7 lg:hidden" strokeWidth={1.8} />
                 </div>
+
+                <motion.div
+                  animate={{ y: [0, 12, 0] }}
+                  transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut", delay: 0.35 }}
+                  className="relative z-10 order-3 flex flex-col items-center justify-center rounded-[1.5rem] bg-white px-6 py-7 text-center shadow-[0_28px_75px_-42px_rgba(139,92,246,0.7)] lg:order-none lg:-translate-y-16"
+                >
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-accent/10 text-brand-accent">
+                    <Zap className="h-8 w-8 fill-current" />
+                  </div>
+                  <div className="text-4xl font-black leading-none text-brand-accent">BUD</div>
+                </motion.div>
+
+                <div className="relative z-10 order-4 flex items-center justify-center text-slate-300 lg:order-none">
+                  <ArrowRight className="hidden h-9 w-9 lg:block" strokeWidth={1.6} />
+                  <ChevronDown className="h-7 w-7 lg:hidden" strokeWidth={1.8} />
+                </div>
+
+                <motion.div
+                  animate={{ y: [0, -8, 0] }}
+                  transition={{ duration: 4.8, repeat: Infinity, ease: "easeInOut", delay: 0.7 }}
+                  className="relative z-10 order-5 flex flex-col items-center justify-center rounded-[1.5rem] bg-white px-5 py-6 text-center shadow-[0_24px_65px_-38px_rgba(16,185,129,0.55)] lg:order-none"
+                >
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-success/10 text-brand-success">
+                    <Users className="h-7 w-7" strokeWidth={1.8} />
+                  </div>
+                  <div className="text-sm font-black uppercase text-slate-400">happy</div>
+                  <div className="text-2xl font-black leading-tight">customers</div>
+                </motion.div>
               </div>
             </div>
           </motion.div>
