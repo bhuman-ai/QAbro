@@ -298,6 +298,8 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /host\.style\.position = "absolute"/);
   assert.match(script, /host\.style\.overflow = "visible"/);
   assert.match(script, /\.bud-canvas \{\n        position: absolute;/);
+  assert.match(script, /\.bud-canvas\.is-visible/);
+  assert.match(script, /state\.drawingHasInk = true/);
   assert.match(script, /makeDraggable\(pill, pill/);
   assert.match(script, /makeDraggable\(panel, panelDragHandle/);
   assert.match(script, /makeDraggable\(capturePanel, capturePanel/);
@@ -306,6 +308,11 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /data-action="draw"/);
   assert.match(script, /data-action="clear"/);
   assert.match(script, /data-action="comment"/);
+  assert.match(script, /key === "d"/);
+  assert.match(script, /key === "c"/);
+  assert.match(script, /key === "e"/);
+  assert.match(script, /key === "r"/);
+  assert.match(script, /isTypingTarget\(event\.target\)/);
   assert.match(script, /data-role="comment-surface"/);
   assert.match(script, /data-role="comment-pins"/);
   assert.match(script, /data-role="comment-box"/);
