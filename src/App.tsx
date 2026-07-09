@@ -1823,7 +1823,7 @@ function HomePage({
                 Test the same feature from different angles.
               </h2>
               <p className="mt-5 text-lg font-bold leading-relaxed text-slate-400">
-                AI catches obvious failures. You catch product intent. Your team catches edge cases. Human testers catch confusion.
+                Cover every layer of the experience: technical testing, UI/UX patterns, product psychology, and real human QA.
               </p>
             </div>
 
@@ -1835,16 +1835,25 @@ function HomePage({
                       <div className="h-3 w-3 rounded-full bg-brand-danger"></div>
                       <div className="h-3 w-3 rounded-full bg-brand-warning"></div>
                       <div className="h-3 w-3 rounded-full bg-brand-success"></div>
-                      <span className="ml-2 text-xs font-black text-slate-400">checkout page</span>
+                      <span className="ml-2 text-xs font-black text-slate-400">feature preview</span>
                     </div>
                     <div className="space-y-3">
-                      <div className="h-10 rounded-2xl border border-brand-line bg-brand-bg"></div>
-                      <div className="h-10 rounded-2xl border border-brand-line bg-brand-bg"></div>
-                      <div className="h-20 rounded-3xl border-2 border-dashed border-brand-accent bg-brand-accent/5"></div>
+                      <div className="flex items-center justify-between rounded-2xl border border-brand-line bg-brand-bg px-4 py-3 text-xs font-black text-slate-500">
+                        <span>Console</span>
+                        <span className="text-brand-success">clean</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-2xl border border-brand-line bg-brand-bg px-4 py-3 text-xs font-black text-slate-500">
+                        <span>Mobile layout</span>
+                        <span className="text-brand-warning">review</span>
+                      </div>
+                      <div className="rounded-3xl border-2 border-dashed border-brand-accent bg-brand-accent/5 px-4 py-5">
+                        <div className="text-xs font-black uppercase tracking-widest text-brand-accent">User psychology</div>
+                        <div className="mt-2 text-sm font-black text-brand-ink">Trust, motivation, confusion</div>
+                      </div>
                     </div>
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-3">
-                    {["Speed", "Clarity", "Mobile", "Edge case"].map((item) => (
+                    {["Technical", "UI / UX", "Psychology", "Human QA"].map((item) => (
                       <div key={item} className="rounded-2xl border-2 border-brand-line bg-white px-4 py-3 text-center text-sm font-black">
                         {item}
                       </div>
@@ -1854,10 +1863,10 @@ function HomePage({
 
                 <div className="grid gap-4 p-5 sm:grid-cols-2">
                   {[
-                    { title: "AI Agent", label: "AI check", body: "Checks the feature against the expected behavior.", status: "Passed", icon: WandSparkles },
-                    { title: "You", label: "Founder review", body: "Reviews the product experience before shipping.", status: "Needs change", icon: Eye },
-                    { title: "Team", label: "Team QA", body: "Leaves comments, screenshots, and notes in context.", status: "Comment added", icon: MessageCircle },
-                    { title: "QA on call", label: "Human tester", body: "Tries the feature like a real user and reports where they got stuck.", status: "Confused at step 3", icon: Users }
+                    { title: "Technical testing", label: "Automated checks", body: "Runs the flow and captures console errors, network failures, and broken states.", status: "No crash found", icon: Code },
+                    { title: "UI/UX patterns", label: "Interface review", body: "Checks layout, hierarchy, mobile behavior, copy, and confusing patterns.", status: "Pattern flagged", icon: LayoutDashboard },
+                    { title: "Psychology", label: "User friction", body: "Looks for hesitation, weak trust cues, unclear value, and motivation gaps.", status: "Trust issue", icon: Eye },
+                    { title: "Human QA", label: "Tester on call", body: "A real person tries the feature and reports where they got confused or stuck.", status: "Stuck at step 3", icon: Users }
                   ].map(({ title, label, body, status, icon: Icon }) => (
                     <motion.div
                       key={title}
