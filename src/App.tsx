@@ -1644,7 +1644,7 @@ function HomePage({
               </div>
               <div>
                 <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
-                  BUD gives your AI coder a simple testing protocol. Before a feature is finished, it prepares the preview, expected behavior, test steps, edge cases, and context needed to verify the work.
+                  BUD gives your AI coder a simple testing workflow. Before a feature is finished, it opens the preview and shares it with your team, AI reviewers, and real human QA testers so the work actually gets checked.
                 </p>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
@@ -1664,81 +1664,6 @@ function HomePage({
                   <Copy className="h-5 w-5" />
                   Copy setup command
                 </button>
-              </div>
-            </div>
-
-            <div className="mt-12 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
-              <div className="handcrafted-card overflow-hidden rounded-[2rem] !bg-brand-bg">
-                <div className="grid md:grid-cols-4">
-                  {[
-                    ["Connect MCP", Lock, "bg-brand-accent"],
-                    ["Build feature", Code, "bg-brand-ink"],
-                    ["Prepare QA handoff", MessageCircle, "bg-brand-secondary"],
-                    ["Send for testing", MonitorUp, "bg-brand-success"]
-                  ].map(([label, Icon, tone], index) => (
-                    <div key={label as string} className="relative border-b-2 border-brand-line bg-white p-5 md:border-b-0 md:border-r-2 last:md:border-r-0">
-                      <div className={`mb-4 flex h-12 w-12 items-center justify-center rounded-2xl ${tone as string} text-white shadow-[4px_4px_0px_0px_rgba(15,23,42,0.16)]`}>
-                        <Icon className="h-6 w-6" />
-                      </div>
-                      <div className="text-xs font-black uppercase tracking-widest text-slate-400">Step {index + 1}</div>
-                      <div className="mt-1 text-xl font-black text-brand-ink">{label as string}</div>
-                      {index < 3 ? <ArrowRight className="absolute right-4 top-6 hidden h-5 w-5 text-brand-accent md:block" /> : null}
-                    </div>
-                  ))}
-                </div>
-                <div className="grid gap-4 border-t-2 border-brand-ink bg-white p-5 lg:grid-cols-[0.95fr_1.05fr]">
-                  <div className="rounded-3xl border-2 border-brand-line bg-brand-secondary/5 p-5">
-                    <div className="mb-4 flex items-center gap-2 text-sm font-black text-brand-ink">
-                      <MessageCircle className="h-5 w-5 text-brand-accent" />
-                      What BUD prepares
-                    </div>
-                    <p className="text-lg font-black leading-snug text-brand-ink">
-                      Preview URL, expected behavior, test steps, edge cases, and useful context.
-                    </p>
-                    <div className="mt-5 flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-500">
-                      <Globe className="h-4 w-4 text-brand-accent" />
-                      your-app.com/signup
-                    </div>
-                  </div>
-                  <div className="rounded-3xl bg-brand-ink p-5 text-white">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div className="text-xs font-black uppercase tracking-widest text-white/40">Setup snippet</div>
-                      <div className="rounded-full bg-brand-accent px-3 py-1 text-[10px] font-black text-white">Hosted</div>
-                    </div>
-                    <pre className="max-h-40 overflow-hidden whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-brand-secondary">
-                      {mcpInstallConfig}
-                    </pre>
-                  </div>
-                </div>
-              </div>
-
-              <div className="handcrafted-card rounded-[2rem] !bg-brand-accent p-6 text-white">
-                <div className="flex h-full flex-col justify-between gap-10">
-                  <div>
-                    <div className="inline-flex items-center gap-2 rounded-full border-2 border-brand-ink bg-white px-3 py-1 text-xs font-black uppercase tracking-widest text-brand-ink">
-                      <Zap className="h-4 w-4 text-brand-accent" />
-                      Done once
-                    </div>
-                    <h3 className="mt-5 text-4xl font-black leading-none">
-                      One setup. Every feature.
-                    </h3>
-                  </div>
-                  <div className="relative min-h-32">
-                    <div className="absolute left-0 top-7 h-20 w-20 rounded-[2rem] border-2 border-white/50 bg-white/15"></div>
-                    <div className="absolute left-1/2 top-0 flex h-24 w-24 -translate-x-1/2 items-center justify-center rounded-full border-2 border-white/60 bg-white text-brand-accent">
-                      <Zap className="h-10 w-10 fill-current" />
-                    </div>
-                    <div className="absolute right-0 top-7 h-20 w-20 rounded-[2rem] border-2 border-white/50 bg-white/15"></div>
-                    <div className="absolute left-[20%] top-16 h-1 w-[60%] rounded-full bg-white/45"></div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    {["Build", "Test", "Fix"].map((item) => (
-                      <div key={item} className="rounded-2xl border-2 border-white/40 bg-white/15 px-3 py-4 text-center text-xs font-black">
-                        {item}
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
             </div>
           </div>
