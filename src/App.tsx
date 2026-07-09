@@ -1639,7 +1639,7 @@ function HomePage({
               <div className="lg:col-span-2">
                 <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Set up once</span>
                 <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
-                  Your AI coder should not say &quot;done&quot; without a QA handoff.
+                  Your AI coder should not say &quot;done&quot; without a proper test. We take that off your hands.
                 </h2>
               </div>
               <div>
