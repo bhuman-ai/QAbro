@@ -12,7 +12,6 @@ const {
   normalizeFinding,
   normalizeExecutionEngine,
   normalizeReport,
-  parseBoolean,
   resolveRunWebhookConfig,
   sanitizeArtifactsForCallback,
   sanitizeOptionalString,
@@ -42,7 +41,6 @@ const {
   upsertQaWorkerHeartbeat
 } = require("../lib/qa-workers");
 const { executeLocalAgentQaRun } = require("../lib/qa-local-agent");
-const { executeBrowserbaseQaRun } = require("../lib/qa-browserbase");
 const repoTriageWorker = require("./qa-repo-triage-worker");
 const {
   buildEmbeddedEvidenceMedia,
@@ -396,19 +394,6 @@ function buildExecutionPlan(runRequest, env = process.env) {
   const requestedEngine = resolveRequestedExecutionEngine(runRequest, env);
   const localAgent = getLocalAgentAvailability(env);
 
-  if (requestedEngine === "browserbase") {
-    return {
-      requestedEngine,
-      localAgent,
-      attempts: [
-        {
-          engine: "browserbase",
-          reason: "requested"
-        }
-      ]
-    };
-  }
-
   if (requestedEngine === "local_vision_agent") {
     return {
       requestedEngine,
@@ -482,29 +467,16 @@ function resolveRunnerForEngine(engine) {
   if (engine === "local_vision_agent") {
     return executeLocalAgentQaRun;
   }
-  if (engine === "browserbase") {
-    return executeBrowserbaseQaRun;
-  }
   throw new Error(`Unsupported execution engine: ${engine}`);
 }
 
 function buildRunnerOptions(runRequest, engine, liveProgress, reportUrl) {
-  const metadata = isPlainObject(runRequest?.metadata) ? runRequest.metadata : {};
-  const options = {
+  return {
     reportUrl,
     skipCallbackPublication: true,
     onRunLog: liveProgress.onRunLog,
     onCandidateReport: liveProgress.onCandidateReport
   };
-
-  if (engine === "browserbase") {
-    options.browserbaseAdvancedStealth =
-      parseBoolean(metadata.browserbase_advanced_stealth ?? metadata.browserbaseAdvancedStealth ?? true) !== false;
-    options.browserbaseSolveCaptchas =
-      parseBoolean(metadata.browserbase_solve_captchas ?? metadata.browserbaseSolveCaptchas ?? true) !== false;
-  }
-
-  return options;
 }
 
 async function executeRunWithPlan(claimed, workerId, liveProgress) {

@@ -54,6 +54,7 @@ const ISOLATED_TEST_ENV_KEYS = [
   "QA_COORDINATE_OCR_JUDGE_ENABLED",
   "QA_COORDINATE_OCR_JUDGE_MODEL",
   "QA_COORDINATE_UI_TARS_API_KEY",
+  "QA_COORDINATE_UI_TARS_ENABLED",
   "QA_COORDINATE_UI_TARS_BASE_URL",
   "QA_COORDINATE_UI_TARS_MAX_TOKENS",
   "QA_COORDINATE_UI_TARS_MODEL",
@@ -508,6 +509,7 @@ test("resolveVisionOnlyConfig strips openai provider for official OpenAI base UR
 test("resolveCoordinateClickFallbackConfig supports explicitly configured UI-TARS localization", async () => {
   await withEnv(
     {
+      QA_COORDINATE_UI_TARS_ENABLED: "1",
       QA_COORDINATE_UI_TARS_API_KEY: "test-ui-tars-key",
       QA_COORDINATE_UI_TARS_BASE_URL: "https://ui-tars.example.com/v1/",
       QA_COORDINATE_UI_TARS_MODEL: "bytedance/ui-tars-1.5-7b",
@@ -857,6 +859,7 @@ test("coordinate localizeBox uses UI-TARS before yellow-box diff when configured
   let yellowFallbackCalled = false;
   const config = resolveCoordinateClickFallbackConfig({
     coordinateClickFallbackEnabled: true,
+    coordinateUiTarsEnabled: true,
     coordinateLocalizationOrder: "ui_tars,yellow_box_diff",
     coordinateUiTarsClient: async () => ({
       box: {
@@ -897,6 +900,7 @@ test("coordinate localizeBox falls through from UI-TARS to vision LLM before yel
   let yellowFallbackCalled = false;
   const config = resolveCoordinateClickFallbackConfig({
     coordinateClickFallbackEnabled: true,
+    coordinateUiTarsEnabled: true,
     coordinateLocalizationOrder: "ui_tars,vision_llm,yellow_box_diff",
     coordinateUiTarsClient: async () => {
       throw new Error("ui-tars missed");

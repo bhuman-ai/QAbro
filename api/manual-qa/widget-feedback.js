@@ -45,6 +45,10 @@ module.exports = async (req, res) => {
     body?.feedback_action || body?.feedbackAction || body?.feedback_mode || body?.feedbackMode || body?.agent_action_mode || body?.agentActionMode,
     80
   );
+  const feedbackId = sanitizeString(
+    body?.feedback_id || body?.feedbackId || body?.client_event_id || body?.clientEventId || body?.event_id || body?.eventId,
+    128
+  );
   if (!sessionId || !token) {
     return res.status(400).json({ ok: false, error: "session_id and token are required" });
   }
@@ -70,6 +74,7 @@ module.exports = async (req, res) => {
   const recorded = await recordManualQaAgentFeedback(
     verified,
     {
+      feedback_id: feedbackId || undefined,
       scope,
       item_id: scope === "item" ? itemId : null,
       feedback_action: feedbackAction,

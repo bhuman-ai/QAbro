@@ -1,5 +1,6 @@
 const { getPublicBaseUrl, parseRequestBody, sanitizeString } = require("../../lib/qa-core");
 const { uploadBufferToEvidenceStorage } = require("../../lib/qa-evidence-storage");
+const { createManualQaEventId } = require("../../lib/manual-qa-event-store");
 const {
   appendManualQaItemEvidence,
   verifyManualQaWidgetToken
@@ -56,6 +57,11 @@ module.exports = async (req, res) => {
   const itemId = sanitizeString(body?.item_id || body?.itemId, 80);
   const token = sanitizeString(req.headers?.["x-bud-widget-token"] || body?.token, 512);
   const kind = sanitizeString(body?.kind || body?.type || "screenshot", 32).toLowerCase();
+  const evidenceId =
+    sanitizeString(
+      body?.evidence_id || body?.evidenceId || body?.client_event_id || body?.clientEventId || body?.event_id || body?.eventId,
+      160
+    ) || createManualQaEventId("evidence");
   if (!sessionId || !itemId || !token) {
     return res.status(400).json({ ok: false, error: "session_id, item_id, and token are required" });
   }
@@ -95,13 +101,12 @@ module.exports = async (req, res) => {
     return res.status(500).json({ ok: false, error: "Evidence storage is not configured" });
   }
 
-  const currentItem = verified.session.checklist.find((item) => item.id === itemId);
-  const mediaIndex = Array.isArray(currentItem?.evidence_media) ? currentItem.evidence_media.length : 0;
-  const evidenceUrl = `${getPublicBaseUrl(req).replace(/\/$/, "")}/api/manual-qa/evidence?session_id=${encodeURIComponent(sessionId)}&item_id=${encodeURIComponent(itemId)}&index=${mediaIndex}`;
+  const evidenceUrl = `${getPublicBaseUrl(req).replace(/\/$/, "")}/api/manual-qa/evidence?session_id=${encodeURIComponent(sessionId)}&item_id=${encodeURIComponent(itemId)}&evidence_id=${encodeURIComponent(evidenceId)}`;
   const appended = await appendManualQaItemEvidence(
     sessionId,
     itemId,
     {
+      evidence_id: evidenceId,
       kind,
       label: sanitizeString(body?.label || body?.filename || body?.fileName, 240) || `${kind} evidence`,
       content_type: contentType,
@@ -122,8 +127,12 @@ module.exports = async (req, res) => {
 
   return res.status(201).json({
     ok: true,
+    evidence_id: evidenceId,
     evidence_url: evidenceUrl,
-    evidence: appended.item?.evidence_media?.[mediaIndex] || null,
+    evidence:
+      appended.item?.evidence_media?.find((entry) => entry.evidence_id === evidenceId) ||
+      appended.item?.evidence_media?.find((entry) => entry.storage_path === uploaded.storage_path) ||
+      null,
     session: appended.session,
     item: appended.item
   });

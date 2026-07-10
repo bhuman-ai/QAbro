@@ -9,6 +9,7 @@ const {
   buildManualQaWorkPackets,
   createManualQaSession,
   exportManualQaSession,
+  getManualQaSession,
   getManualQaWidgetSession,
   redactSensitiveUrl,
   recordManualQaPostFixReview,
@@ -25,11 +26,41 @@ const { buildManualQaWidgetScript } = require("../lib/manual-qa-widget");
 
 function createSupabaseFetchMock() {
   const rows = new Map();
+  const events = [];
   const calls = [];
+  const controls = { failNextReportPatch: false };
 
   async function fetchImpl(url, options = {}) {
     calls.push({ url, options });
     const parsed = new URL(url);
+    if (parsed.pathname === "/rest/v1/swarmtest_manual_qa_events") {
+      if (options.method === "POST") {
+        const body = JSON.parse(options.body || "[]");
+        const inserted = [];
+        for (const candidate of body) {
+          if (events.some((entry) => entry.event_id === candidate.event_id)) continue;
+          const row = { id: events.length + 1, ...candidate };
+          events.push(row);
+          inserted.push(row);
+        }
+        return {
+          ok: true,
+          status: 201,
+          async json() {
+            return inserted;
+          }
+        };
+      }
+      const sessionFilter = parsed.searchParams.get("session_id") || "";
+      const sessionId = sessionFilter.startsWith("eq.") ? sessionFilter.slice(3) : "";
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return events.filter((entry) => !sessionId || entry.session_id === sessionId);
+        }
+      };
+    }
     const runFilter = parsed.searchParams.get("run_id") || "";
     const runId = runFilter.startsWith("eq.") ? runFilter.slice(3) : "";
 
@@ -47,6 +78,16 @@ function createSupabaseFetchMock() {
     }
 
     if (options.method === "PATCH") {
+      if (controls.failNextReportPatch) {
+        controls.failNextReportPatch = false;
+        return {
+          ok: false,
+          status: 503,
+          async json() {
+            return { message: "temporary snapshot failure" };
+          }
+        };
+      }
       const current = rows.get(runId);
       const body = JSON.parse(options.body || "{}");
       const next = { ...current, ...body, updated_at: "2026-07-01T00:01:00.000Z" };
@@ -70,7 +111,7 @@ function createSupabaseFetchMock() {
     };
   }
 
-  return { fetchImpl, rows, calls };
+  return { fetchImpl, rows, events, calls, controls };
 }
 
 function createRes() {
@@ -98,12 +139,42 @@ function createRes() {
 
 function createSupabaseAndStorageFetchMock() {
   const rows = new Map();
+  const events = [];
   const objects = new Map();
   const calls = [];
 
   async function fetchImpl(url, options = {}) {
     calls.push({ url, options });
     const parsed = new URL(url);
+
+    if (parsed.pathname === "/rest/v1/swarmtest_manual_qa_events") {
+      if (options.method === "POST") {
+        const body = JSON.parse(options.body || "[]");
+        const inserted = [];
+        for (const candidate of body) {
+          if (events.some((entry) => entry.event_id === candidate.event_id)) continue;
+          const row = { id: events.length + 1, ...candidate };
+          events.push(row);
+          inserted.push(row);
+        }
+        return {
+          ok: true,
+          status: 201,
+          async json() {
+            return inserted;
+          }
+        };
+      }
+      const sessionFilter = parsed.searchParams.get("session_id") || "";
+      const sessionId = sessionFilter.startsWith("eq.") ? sessionFilter.slice(3) : "";
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return events.filter((entry) => !sessionId || entry.session_id === sessionId);
+        }
+      };
+    }
 
     if (parsed.pathname === "/storage/v1/bucket") {
       return {
@@ -190,7 +261,7 @@ function createSupabaseAndStorageFetchMock() {
     };
   }
 
-  return { fetchImpl, rows, objects, calls };
+  return { fetchImpl, rows, events, objects, calls };
 }
 
 async function callWidgetChunksHandler(body, token) {
@@ -313,6 +384,11 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /key === "e"/);
   assert.match(script, /key === "r"/);
   assert.match(script, /isTypingTarget\(event\.target\)/);
+  assert.match(script, /indexedDB\.open\(EVIDENCE_DB_NAME, 1\)/);
+  assert.match(script, /EVIDENCE_STORE_NAME = "pending-uploads"/);
+  assert.match(script, /widget-evidence-chunks/);
+  assert.match(script, /ensurePendingEvidenceUploaded/);
+  assert.match(script, /evidence_id: evidenceId/);
   assert.match(script, /data-role="comment-surface"/);
   assert.match(script, /data-role="comment-pins"/);
   assert.match(script, /data-role="comment-box"/);
@@ -936,6 +1012,57 @@ test("manual QA session can be created, updated, and exported with sensitive URL
   }
 });
 
+test("manual QA event journal recovers a widget update when the session snapshot write fails", async () => {
+  const mock = createSupabaseFetchMock();
+  const options = {
+    publicBaseUrl: "https://beforeusersdo.com",
+    ownerUserId: "user_recovery",
+    ownerEmail: "owner@example.com",
+    fetchImpl: mock.fetchImpl,
+    supabaseUrl: "https://supabase-recovery.example.com",
+    serviceKey: "service"
+  };
+  const created = await createManualQaSession(
+    {
+      target_url: "https://preview.example.com",
+      title: "Recovery pass",
+      acceptance_criteria: ["Feedback survives a stale session snapshot."]
+    },
+    options
+  );
+  const item = created.session.checklist[0];
+
+  mock.controls.failNextReportPatch = true;
+  const updated = await updateManualQaItem(
+    created.session.session_id,
+    item.id,
+    {
+      client_event_id: "context-recovery-1",
+      note: "This note must survive the failed snapshot write.",
+      widget_context: {
+        page_url: "https://preview.example.com/checkout",
+        transcript_events: [
+          { text: "The checkout button did not move forward.", at: "2026-07-09T12:00:00.000Z", is_final: true }
+        ]
+      }
+    },
+    options
+  );
+
+  assert.equal(updated.ok, true);
+  assert.equal(updated.status, 202);
+  assert.equal(updated.snapshot_pending, true);
+  assert.equal(mock.events.length, 1);
+  assert.equal(mock.events[0].event_id, "context-recovery-1");
+
+  const recovered = await getManualQaSession(created.session.session_id, options);
+  assert.equal(recovered.ok, true);
+  const recoveredItem = recovered.session.checklist.find((candidate) => candidate.id === item.id);
+  assert.equal(recoveredItem.note, "This note must survive the failed snapshot write.");
+  assert.match(recoveredItem.widget_context.transcript_events[0].text, /checkout button/);
+  assert.equal(recovered.session.event_journal.event_count, 1);
+});
+
 test("manual QA preview proposal is saved, shown to widget sessions, and can be approved", async () => {
   const previousEnv = {
     SUPABASE_URL: process.env.SUPABASE_URL,
@@ -1499,6 +1626,7 @@ test("widget evidence endpoint saves recording segments directly", async () => {
         session_id: created.session.session_id,
         token: widgetToken,
         item_id: item.id,
+        evidence_id: "video-segment-retry-1",
         kind: "video",
         label: "Video recording segment 1",
         filename: "review-recording-part-001.webm",
@@ -1511,6 +1639,7 @@ test("widget evidence endpoint saves recording segments directly", async () => {
     assert.equal(uploaded.statusCode, 201);
     assert.equal(uploaded.body.item.evidence_media.length, 1);
     assert.equal(uploaded.body.item.evidence_media[0].kind, "video");
+    assert.equal(uploaded.body.item.evidence_media[0].evidence_id, "video-segment-retry-1");
     assert.equal(uploaded.body.item.evidence_media[0].label, "Video recording segment 1");
     assert.equal(uploaded.body.item.evidence_media[0].byte_length, Buffer.byteLength("segment-one"));
     assert.match(uploaded.body.evidence_url, /api\/manual-qa\/evidence/);
@@ -1518,6 +1647,24 @@ test("widget evidence endpoint saves recording segments directly", async () => {
     assert.match(markdown, /Video recording \(Video recording segment 1, video\/webm, 11 B/);
     const storedVideo = mock.objects.get(uploaded.body.item.evidence_media[0].storage_path);
     assert.equal(storedVideo.data.toString(), "segment-one");
+
+    const retried = await callWidgetEvidenceHandler(
+      {
+        session_id: created.session.session_id,
+        token: widgetToken,
+        item_id: item.id,
+        evidence_id: "video-segment-retry-1",
+        kind: "video",
+        label: "Video recording segment 1",
+        filename: "review-recording-part-001.webm",
+        content_type: "video/webm",
+        data_url: `data:video/webm;base64,${Buffer.from("segment-one").toString("base64")}`
+      },
+      widgetToken
+    );
+    assert.equal(retried.statusCode, 201);
+    assert.equal(retried.body.item.evidence_media.length, 1);
+    assert.equal(mock.events.filter((entry) => entry.event_id === "video-segment-retry-1").length, 1);
   } finally {
     globalThis.fetch = previousFetch;
     for (const [key, value] of Object.entries(previousEnv)) {

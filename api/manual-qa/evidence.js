@@ -19,9 +19,10 @@ module.exports = async (req, res) => {
 
   const sessionId = sanitizeString(req.query?.session_id || req.query?.sessionId, 128);
   const itemId = sanitizeString(req.query?.item_id || req.query?.itemId, 80);
+  const evidenceId = sanitizeString(req.query?.evidence_id || req.query?.evidenceId, 160);
   const index = Number.parseInt(sanitizeString(req.query?.index, 16), 10);
-  if (!sessionId || !itemId || !Number.isFinite(index) || index < 0) {
-    return res.status(400).json({ ok: false, error: "session_id, item_id, and index are required" });
+  if (!sessionId || !itemId || (!evidenceId && (!Number.isFinite(index) || index < 0))) {
+    return res.status(400).json({ ok: false, error: "session_id, item_id, and evidence_id or index are required" });
   }
 
   let loaded;
@@ -44,7 +45,9 @@ module.exports = async (req, res) => {
   }
 
   const item = loaded.session.checklist.find((candidate) => candidate.id === itemId);
-  const evidence = item?.evidence_media?.[index];
+  const evidence = evidenceId
+    ? item?.evidence_media?.find((candidate) => candidate.evidence_id === evidenceId)
+    : item?.evidence_media?.[index];
   if (!evidence) {
     return res.status(404).json({ ok: false, error: "Evidence item not found" });
   }

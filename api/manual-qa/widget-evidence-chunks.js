@@ -9,6 +9,7 @@ const {
   appendManualQaItemEvidence,
   verifyManualQaWidgetToken
 } = require("../../lib/manual-qa");
+const { createManualQaEventId } = require("../../lib/manual-qa-event-store");
 
 const MAX_WIDGET_CHUNK_BYTES = 2 * 1024 * 1024;
 const MAX_WIDGET_CHUNKS = 1800;
@@ -171,6 +172,11 @@ async function handleFinish(body, verified, req, res) {
   const itemId = sanitizeString(body?.item_id || body?.itemId, 80);
   const kind = sanitizeString(body?.kind || "video", 32).toLowerCase();
   const contentType = sanitizeString(body?.content_type || body?.contentType || "video/webm", 128).toLowerCase();
+  const evidenceId =
+    sanitizeString(
+      body?.evidence_id || body?.evidenceId || body?.client_event_id || body?.clientEventId || body?.event_id || body?.eventId,
+      160
+    ) || createManualQaEventId(kind || "evidence");
   const chunkRefs = normalizeChunkRefs(body?.chunks || body?.chunk_refs || body?.chunkRefs);
   if (!itemId) {
     return res.status(400).json({ ok: false, error: "item_id is required" });
@@ -211,13 +217,12 @@ async function handleFinish(body, verified, req, res) {
     return res.status(500).json({ ok: false, error: "Evidence storage is not configured" });
   }
 
-  const currentItem = verified.session.checklist.find((item) => item.id === itemId);
-  const mediaIndex = Array.isArray(currentItem?.evidence_media) ? currentItem.evidence_media.length : 0;
-  const evidenceUrl = `${getPublicBaseUrl(req).replace(/\/$/, "")}/api/manual-qa/evidence?session_id=${encodeURIComponent(sessionId)}&item_id=${encodeURIComponent(itemId)}&index=${mediaIndex}`;
+  const evidenceUrl = `${getPublicBaseUrl(req).replace(/\/$/, "")}/api/manual-qa/evidence?session_id=${encodeURIComponent(sessionId)}&item_id=${encodeURIComponent(itemId)}&evidence_id=${encodeURIComponent(evidenceId)}`;
   const appended = await appendManualQaItemEvidence(
     sessionId,
     itemId,
     {
+      evidence_id: evidenceId,
       kind,
       label: sanitizeString(body?.label || body?.filename || body?.fileName, 240) || `${kind} recording`,
       content_type: contentType,
@@ -238,8 +243,12 @@ async function handleFinish(body, verified, req, res) {
 
   return res.status(201).json({
     ok: true,
+    evidence_id: evidenceId,
     evidence_url: evidenceUrl,
-    evidence: appended.item?.evidence_media?.[mediaIndex] || null,
+    evidence:
+      appended.item?.evidence_media?.find((entry) => entry.evidence_id === evidenceId) ||
+      appended.item?.evidence_media?.find((entry) => entry.storage_path === uploaded.storage_path) ||
+      null,
     session: appended.session,
     item: appended.item
   });
