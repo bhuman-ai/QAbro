@@ -10,6 +10,7 @@ const {
   createQaResourceReaders,
   createQaApiClient,
   summarizeCodingAgentQaOutcome,
+  summarizeManualDraftEvidence,
   summarizeReportPayload,
   summarizeStatusPayload
 } = require("../lib/qa-mcp");
@@ -57,6 +58,423 @@ function buildText(lines) {
     .join("\n");
 }
 
+function safeText(value, maxLength = 4000) {
+  return String(value || "").trim().slice(0, maxLength);
+}
+
+function normalizeStringList(value, maxItems = 20, maxLength = 800) {
+  const source = Array.isArray(value)
+    ? value
+    : safeText(value, maxItems * maxLength)
+        .split(/\r?\n/)
+        .map((line) => line.replace(/^\s*[-*0-9.)]+\s*/, ""));
+  return source
+    .map((item) => safeText(item, maxLength))
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+const AGENT_ACTION_MODES = new Set(["report_only", "preview_then_fix", "fix_and_retest"]);
+
+function normalizeAgentActionMode(input = {}, fallback = "report_only") {
+  const explicit = safeText(
+    input.feedback_action || input.feedbackAction || input.feedback_mode || input.feedbackMode || input.agent_action_mode || input.agentActionMode,
+    80
+  ).toLowerCase();
+  if (AGENT_ACTION_MODES.has(explicit)) {
+    return explicit;
+  }
+  if (["share_feedback", "share_only", "save_feedback", "save_only"].includes(explicit)) {
+    return "report_only";
+  }
+  if (
+    [
+      "preview_then_fix",
+      "preview_fix_first",
+      "preview_first",
+      "simulate_first",
+      "simulate_fix",
+      "mockup_first",
+      "mock_first"
+    ].includes(explicit)
+  ) {
+    return "preview_then_fix";
+  }
+  if (["share_feedback_and_start_work", "share_and_start_work", "auto_start_work", "start_work"].includes(explicit)) {
+    return "fix_and_retest";
+  }
+  if (input.auto_start_work === true || input.autoStartWork === true) {
+    return "fix_and_retest";
+  }
+  if (input.auto_start_work === false || input.autoStartWork === false) {
+    return "report_only";
+  }
+  return AGENT_ACTION_MODES.has(fallback) ? fallback : "report_only";
+}
+
+function feedbackActionForAgentMode(mode) {
+  if (mode === "fix_and_retest") return "share_feedback_and_start_work";
+  if (mode === "preview_then_fix") return "preview_fix_first";
+  return "share_feedback";
+}
+
+function shouldAutoStartWorkForAgentMode(mode) {
+  return mode === "fix_and_retest";
+}
+
+function buildPostFixReviewGate(mode) {
+  if (mode === "fix_and_retest") {
+    return {
+      required: true,
+      reviewer: "fresh_contextless_agent",
+      implementer_may_self_close: false,
+      compare_against: ["original_feedback", "work_packets", "fixed_url", "changed_files_or_commit"],
+      required_inputs: [
+        "original feedback package or report",
+        "manual work packets when available",
+        "changed files or commit SHA",
+        "fixed preview or production URL",
+        "test/build results"
+      ],
+      verdicts: ["fixed", "missed", "still_unclear"],
+      pass_condition: "Every actionable original feedback point is fixed or explicitly marked non-actionable with evidence.",
+      fail_action: "Continue implementation; do not mark done.",
+      pass_action: "Create or share a fresh BeforeUsersDo QA link for the fixed version, then summarize the reviewer verdict."
+    };
+  }
+  if (mode === "preview_then_fix") {
+    return {
+      required: true,
+      reviewer: "fresh_contextless_agent",
+      implementer_may_self_close: false,
+      compare_against: ["original_feedback", "work_packets", "approved_preview_or_checklist", "fixed_url", "changed_files_or_commit"],
+      required_inputs: [
+        "original feedback package or report",
+        "manual work packets when available",
+        "approved preview/checklist",
+        "changed files or commit SHA",
+        "fixed preview or production URL",
+        "test/build results"
+      ],
+      verdicts: ["fixed", "missed", "still_unclear"],
+      pass_condition: "Every actionable original feedback point and approved preview item is reflected in the fixed result.",
+      fail_action: "Continue implementation; do not mark done.",
+      pass_action: "Create or share a fresh BeforeUsersDo QA link for the fixed version, then summarize the reviewer verdict."
+    };
+  }
+  return {
+    required: false,
+    reviewer: "not_required_until_work_starts",
+    implementer_may_self_close: false,
+    reason: "Report-only feedback does not authorize implementation. If the user asks to start work, switch to fix-and-retest and require this gate."
+  };
+}
+
+function buildPostFixReviewRecord(input = {}) {
+  const verdict = safeText(input.verdict || input.status, 40).toLowerCase();
+  const safeVerdict = ["fixed", "missed", "still_unclear"].includes(verdict) ? verdict : "still_unclear";
+  const missedItems = normalizeStringList(input.missed_items || input.missedItems || input.misses, 24, 900);
+  const unclearItems = normalizeStringList(input.unclear_items || input.unclearItems || input.still_unclear, 24, 900);
+  const mayMarkDone = safeVerdict === "fixed" && !missedItems.length && !unclearItems.length;
+  return {
+    review_id: safeText(input.review_id || input.reviewId, 128) || null,
+    session_id: safeText(input.session_id || input.sessionId, 128) || null,
+    run_id: safeText(input.run_id || input.runId, 128) || null,
+    feedback_id: safeText(input.feedback_id || input.feedbackId, 128) || null,
+    reviewer: safeText(input.reviewer || input.reviewer_agent || input.reviewerAgent, 160) || "fresh_contextless_agent",
+    verdict: safeVerdict,
+    may_mark_done: mayMarkDone,
+    fixed_url: safeText(input.fixed_url || input.fixedUrl || input.url, 4096) || null,
+    changed_files: normalizeStringList(input.changed_files || input.changedFiles, 80, 500),
+    commit_sha: safeText(input.commit_sha || input.commitSha, 120) || null,
+    packet_ids: normalizeStringList(input.packet_ids || input.packetIds || input.packet_id || input.packetId, 24, 128),
+    fixed_items: normalizeStringList(input.fixed_items || input.fixedItems, 24, 900),
+    missed_items: missedItems,
+    unclear_items: unclearItems,
+    summary: safeText(input.summary || input.reviewer_summary || input.reviewerSummary || input.note, 4000) || null,
+    evidence_urls: normalizeStringList(input.evidence_urls || input.evidenceUrls || input.proof_urls || input.proofUrls, 24, 4096),
+    test_results: normalizeStringList(input.test_results || input.testResults || input.checks, 24, 500),
+    created_at: new Date().toISOString()
+  };
+}
+
+function attachPostFixReviewGateToManualPackets(response = {}) {
+  const session = response.session && typeof response.session === "object" ? response.session : {};
+  const mode = normalizeAgentActionMode(session.context || {}, "fix_and_retest");
+  const baseGate = buildPostFixReviewGate(mode);
+  const feedbackId = safeText(session.agent_feedback?.latest?.feedback_id || session.agentFeedback?.latest?.feedback_id, 128) || null;
+  const packets = Array.isArray(response.work_packets) ? response.work_packets : [];
+  return {
+    ...response,
+    post_fix_review_gate: baseGate,
+    work_packets: packets.map((packet) => ({
+      ...packet,
+      post_fix_review_gate: {
+        ...baseGate,
+        packet_id: safeText(packet.packet_id || packet.packetId, 128) || null,
+        feedback_id: feedbackId
+      }
+    }))
+  };
+}
+
+function buildManualReviewWorkflowText(input = {}) {
+  const targetUrl = safeText(input.target_url || input.targetUrl, 4096);
+  const workSummary = safeText(input.work_summary || input.workSummary || input.change_summary || input.changeSummary, 4000);
+  const featureName = safeText(input.feature_name || input.featureName || input.title, 240);
+
+  return buildText([
+    "# BeforeUsersDo Manual Review Workflow",
+    "",
+    "Use this whenever the user says they want a manual review, manual QA, human review, freestyle QA, or a BeforeUsersDo checklist for work you just changed.",
+    "",
+    "1. Gather the target URL.",
+    "- Prefer the live preview URL the user gave you.",
+    "- If you just deployed a preview, use that preview URL.",
+    "- If no reachable URL exists, ask for one before creating the session.",
+    "",
+    "2. Gather implementation context automatically when available.",
+    "- Include what changed in plain English.",
+    "- Include changed files, branch, commit SHA, PR URL, repository, acceptance criteria, and any user instructions.",
+    "- Do not leak tokens, secrets, private cookies, or credentials.",
+    "",
+    "3. Build the manual checklist.",
+    "- Create explicit checklist items for each changed surface and acceptance criterion.",
+    "- If an item starts deep in a flow, set the start URL/path and explain that the human may need to begin earlier if the app blocks deep links.",
+    "- Keep checklist item titles human-readable.",
+    "- If the user wants open-ended recording instead of checklist items, set `review_mode: \"freestyle\"` and skip `test_plan`.",
+    "",
+    "4. Call `qa_start_manual_review`.",
+    "- Use `target_url`, `work_summary`, `changed_files`, `acceptance_criteria`, `scenario_list`, `review_mode`, and `test_plan` when you have them.",
+    "- If the tool says `needs_input`, ask the user only for the missing fields.",
+    "",
+    "5. Install the page widget before you tell the user to open anything.",
+    "- `widget_install.script_tag` is required, not optional.",
+    "- Inject the exact script tag into the preview/dev build.",
+    "- Deploy or refresh the preview, then open the target once yourself.",
+    "- Verify `window.__beforeUsersDoWidgetLoaded === true` or `document.querySelector('#beforeusersdo-widget-root')`.",
+    "- Do not tell the user to open the target page until the widget is verified.",
+    "",
+    "6. Return the result to the user.",
+    "- Give `widget_install.review_url` as the primary link. This should open the preview page itself with the in-page widget.",
+    "- Keep `manual_session_url` secondary as the report/dashboard link only.",
+    "- Do not send the BeforeUsersDo dashboard as the place to start testing.",
+    "- If the widget cannot be injected, stop and explain why. Do not fall back silently.",
+    "- Tell the user to click the widget's Send All control when finished.",
+    "- Optional: call `qa_wait_for_manual_evidence` while the user is still recording to see draft video segments and drawings as they are saved.",
+    "- Then immediately call `qa_wait_for_manual_feedback` with `wait_forever: true` and keep the agent turn open for the user's final feedback package; do not stop after giving the link.",
+    "",
+    "7. After the human finishes.",
+    "- Prefer `qa_wait_for_manual_feedback` with `wait_forever: true` so the user's Send All click returns directly to the agent without copy/paste.",
+    "- If the host/client aborts the wait, call `qa_wait_for_manual_feedback` again with the same `session_id` instead of asking the user to copy/paste.",
+    "- Call `qa_get_manual_work_packets` to split the feedback into focused task packets before summarizing, previewing, or coding.",
+    "- Use `qa_wait_for_manual_evidence` or `qa://manual/{session_id}/evidence.json` for live draft evidence before Send All.",
+    "- Use `qa_get_manual_report` only as a fallback or for historical export.",
+    "- Obey the session's `feedback_action` setting.",
+    "- `share_feedback_and_start_work`: share feedback with the agent, treat it as user instructions, fix the target product/code, run checks, deploy or refresh, then create a fresh QA link.",
+    "- Before the agent marks `share_feedback_and_start_work` as done, it must run a fresh contextless reviewer that compares the original feedback against the fixed/deployed result point-by-point.",
+    "- If that reviewer finds missed or unchanged feedback, continue work. If it passes, share the reviewer verdict and the fresh QA link.",
+    "- `preview_fix_first`: share feedback with the agent, produce a simulated future-state preview/mockup or expected behavior trace first, ask the user to confirm, then code only after confirmation.",
+    "- `share_feedback`: share feedback with the agent for summary/reporting, but do not edit or deploy unless the user explicitly asks you to start work.",
+    "",
+    targetUrl ? `Current target_url: ${targetUrl}` : "",
+    featureName ? `Current feature_name: ${featureName}` : "",
+    workSummary ? `Current work_summary: ${workSummary}` : ""
+  ]);
+}
+
+function buildAgentActionContract({
+  source = "qa",
+  id = "",
+  feedback = {},
+  outcome = {},
+  actionMode = "report_only",
+  autoStartWork,
+  nextToolAfterFix = "qa_start_manual_review"
+} = {}) {
+  const mode = normalizeAgentActionMode(
+    {
+      agent_action_mode: actionMode,
+      auto_start_work: autoStartWork
+    },
+    "report_only"
+  );
+  const base = {
+    required: true,
+    source: safeText(source, 80) || "qa",
+    id: safeText(id, 128) || null,
+    feedback_id: safeText(feedback.feedback_id || feedback.feedbackId, 128) || null,
+    verdict: safeText(outcome.verdict, 80) || null,
+    scope: safeText(feedback.scope || "all", 40) || "all",
+    item_id: safeText(feedback.item_id || feedback.itemId, 80) || null,
+    agent_action_mode: mode,
+    feedback_action: feedbackActionForAgentMode(mode),
+    auto_start_work: shouldAutoStartWorkForAgentMode(mode),
+    next_tool_after_fix: nextToolAfterFix
+  };
+  base.post_fix_review_gate = buildPostFixReviewGate(mode);
+
+  if (mode === "fix_and_retest") {
+    return {
+      ...base,
+      status: "fix_or_explain_before_done",
+      completion_rule:
+        "Do not claim done after receiving this QA feedback. Extract the actionable points, fix the target work, verify, deploy or refresh the preview, then run a fresh contextless reviewer that compares the original feedback against the fixed result. If it misses anything, continue work. If it passes, create a fresh BeforeUsersDo QA link or rerun QA.",
+      steps: [
+        "Read the full QA feedback and evidence links.",
+        "Extract concrete feedback points from notes, transcript, drawings, screenshots, videos, page context, console, network evidence, and report findings.",
+        "Call qa_get_manual_work_packets for manual QA sessions and use packet_id as the task boundary for focused work or sub-agents.",
+        "Turn every actionable bug, copy issue, confusing UI, blocker, or requested change into implementation work.",
+        "Update the target code/product instead of only summarizing the feedback.",
+        "Run the relevant tests/build checks and record the result.",
+        "Deploy or refresh the preview/production target the user should retest.",
+        "Start a fresh contextless reviewer agent with only the original feedback package/work packets, changed files or commit, and the fixed URL.",
+        "Require the reviewer to compare each original feedback point against the fixed result and return fixed, missed, or still unclear.",
+        "If the reviewer finds missed or unchanged feedback, continue implementation instead of marking done.",
+        "If the reviewer passes, create a fresh BeforeUsersDo QA link or rerun the relevant QA tool for the fixed version.",
+        "If any step is blocked, say exactly what is blocked and what is needed."
+      ]
+    };
+  }
+
+  if (mode === "preview_then_fix") {
+    return {
+      ...base,
+      status: "preview_required_before_work",
+      completion_rule:
+        "Do not start code changes from this QA result yet. Extract the actionable points, create a simulated future-state preview or behavior trace, ask the user to confirm or correct it, then after confirmation fix, verify, deploy or refresh. Before done, run a fresh contextless reviewer against the original feedback and approved preview. If it passes, create a fresh BeforeUsersDo QA link or rerun QA.",
+      steps: [
+        "Read the full QA feedback and evidence links.",
+        "Extract concrete feedback points from notes, transcript, drawings, screenshots, videos, page context, console, network evidence, and report findings.",
+        "Call qa_get_manual_work_packets for manual QA sessions and use packet_id as the task boundary for preview proposals or sub-agents.",
+        "Create a preview contract before editing code: for UI, generate an edited screenshot/mockup or precise visual description; for backend or flows, write the expected event/API/browser trace.",
+        "Map every feedback point to the proposed future result so the user can catch misunderstandings early.",
+        "Call qa_submit_manual_preview with the proposal so it appears inside the BeforeUsersDo widget for the user.",
+        "Ask the user to confirm or correct the preview before implementation.",
+        "After confirmation, update the target code/product, run relevant tests/build checks, deploy or refresh, then create a fresh BeforeUsersDo QA link or rerun QA.",
+        "Before marking done, start a fresh contextless reviewer agent with only the original feedback package/work packets, approved preview/checklist, changed files or commit, and the fixed URL.",
+        "If the reviewer finds missed or unchanged feedback, continue implementation instead of marking done.",
+        "If any step is blocked, say exactly what is blocked and what is needed."
+      ]
+    };
+  }
+
+  return {
+    ...base,
+    status: "report_only",
+    completion_rule:
+      "Do not start code changes from this QA result unless the user explicitly asks you to start work or rerun with feedback_action=share_feedback_and_start_work.",
+    steps: [
+      "Read the full QA feedback and evidence links.",
+      "Extract concrete feedback points from notes, transcript, drawings, screenshots, videos, page context, console, network evidence, and report findings.",
+      "Call qa_get_manual_work_packets for manual QA sessions when available, and summarize by packet_id.",
+      "Summarize what is wrong, what evidence supports it, and what you would fix first.",
+      "Do not edit code, deploy, or create a replacement QA link unless the user asks you to start work.",
+      "If the user asks you to start work, switch to fix-and-retest behavior: fix, verify, deploy or refresh, then create a fresh QA link or rerun QA."
+    ]
+  };
+}
+
+function buildManualFeedbackRequiredAction(sessionId, feedback = {}, options = {}) {
+  const safeSessionId = safeText(sessionId, 128);
+  return {
+    ...buildAgentActionContract({
+      source: "manual_qa",
+      id: safeSessionId,
+      feedback,
+      actionMode: options.feedback_action || options.feedbackAction || options.feedback_mode || options.feedbackMode || options.agent_action_mode || options.agentActionMode || "fix_and_retest",
+      autoStartWork: options.auto_start_work ?? options.autoStartWork,
+      nextToolAfterFix: "qa_start_manual_review"
+    }),
+    session_id: safeSessionId || null,
+    next_tool_after_fix: "qa_start_manual_review"
+  };
+}
+
+function buildAgentActionText(action) {
+  const modeLine =
+    action.agent_action_mode === "fix_and_retest"
+      ? "Mode: share feedback and auto-start work."
+      : action.agent_action_mode === "preview_then_fix"
+        ? "Mode: preview fix first. Simulate the intended result before code changes."
+      : "Mode: share feedback only. Do not start code changes yet.";
+  return buildText([
+    "REQUIRED NEXT STEPS FOR THE CODING AGENT:",
+    modeLine,
+    ...action.steps.map((step, index) => `${index + 1}. ${step}`),
+    `Completion rule: ${action.completion_rule}`
+  ]);
+}
+
+function buildManualFeedbackActionText(sessionId, feedback = {}, options = {}) {
+  return buildAgentActionText(buildManualFeedbackRequiredAction(sessionId, feedback, options));
+}
+
+function buildAutomatedQaRequiredAction(runId, outcome = {}, options = {}) {
+  return {
+    ...buildAgentActionContract({
+      source: "automated_qa",
+      id: runId,
+      outcome,
+      actionMode: options.feedback_action || options.feedbackAction || options.feedback_mode || options.feedbackMode || options.agent_action_mode || options.agentActionMode || options.action_mode || "report_only",
+      autoStartWork: options.auto_start_work ?? options.autoStartWork,
+      nextToolAfterFix: "qa_check_work"
+    }),
+    run_id: safeText(runId, 128) || null,
+    next_tool_after_fix: "qa_check_work"
+  };
+}
+
+function buildAutomatedQaActionText(runId, outcome = {}, options = {}) {
+  return buildAgentActionText(buildAutomatedQaRequiredAction(runId, outcome, options));
+}
+
+function shouldReturnQaAction(outcome = {}, options = {}) {
+  const mode = normalizeAgentActionMode(options, "report_only");
+  if (mode !== "report_only") {
+    return true;
+  }
+  return outcome && outcome.pass !== true;
+}
+
+function buildManualReviewNeedsInputResult(input = {}) {
+  const targetUrl = safeText(input.target_url || input.targetUrl, 4096);
+  if (targetUrl) {
+    return null;
+  }
+
+  const result = {
+    ok: false,
+    needs_input: true,
+    missing_fields: ["target_url"],
+    prompt: "I can start a BeforeUsersDo manual review. Send me the preview/staging/production URL you want reviewed.",
+    recommended_tool: "qa_start_manual_review",
+    workflow_prompt: "manual_review_workflow",
+    workflow_resource: MCP_QA_RESOURCE_TEMPLATES.manual_review_workflow,
+    optional_context_to_collect: [
+      "work_summary",
+      "changed_files",
+      "acceptance_criteria",
+      "scenario_list",
+      "review_mode",
+      "test_plan",
+      "repository",
+      "branch",
+      "commit_sha",
+      "pull_request_url"
+    ]
+  };
+
+  return makeToolResult(
+    buildText([
+      "BeforeUsersDo manual review needs a target URL.",
+      result.prompt,
+      "If you just deployed a preview, call this tool again with that preview URL and the work summary."
+    ]),
+    result
+  );
+}
+
 function buildRequestedRunText(payload) {
   return buildText([
     `Queued QA run ${payload.run_id}.`,
@@ -84,6 +502,90 @@ function buildReportText(payload) {
     summary.top_finding_title ? `Top finding: ${summary.top_finding_title}` : "",
     summary.top_finding_observed_behavior ? `What happened: ${summary.top_finding_observed_behavior}` : "",
     summary.ui_report_url ? `Open report: ${summary.ui_report_url}` : ""
+  ]);
+}
+
+function buildManualSessionText(payload) {
+  const session = payload?.session && typeof payload.session === "object" ? payload.session : {};
+  const checklist = Array.isArray(session.checklist) ? session.checklist : [];
+  const widgetInstall = payload?.widget_install && typeof payload.widget_install === "object" ? payload.widget_install : {};
+  const directReviewUrl = widgetInstall.review_url || payload?.review_url || session.target_url;
+  const freestyle = String(session.review_mode || "").toLowerCase() === "freestyle";
+  const draftEvidence = payload?.draft_evidence || summarizeManualDraftEvidence(session);
+  return buildText([
+    `Manual QA session ${session.session_id || payload.session_id || "created"}.`,
+    session.target_url ? `Target: ${session.target_url}` : "",
+    freestyle ? "Mode: Freestyle capture." : checklist.length ? `Checklist: ${checklist.length} items.` : "",
+    draftEvidence.total_count ? `Draft evidence: ${draftEvidence.total_count} saved (${draftEvidence.video_segment_count || 0} video segments, ${draftEvidence.drawing_count || 0} drawings).` : "",
+    session.browser?.status ? `Browser: ${session.browser.status}.` : "",
+    widgetInstall.script_tag ? "REQUIRED NEXT STEP FOR THE CODING AGENT:" : "",
+    widgetInstall.script_tag ? "1. Inject this exact script tag into the preview/dev build." : "",
+    widgetInstall.script_tag ? "2. Deploy or refresh the preview." : "",
+    widgetInstall.script_tag ? "3. Open the target once yourself and verify the floating Review button appears." : "",
+    widgetInstall.script_tag ? "4. Only then send widget_install.review_url to the user as the test link. Do not use the dashboard as the test entry point." : "",
+    widgetInstall.script_tag ? "5. After sending the test link, immediately call qa_wait_for_manual_feedback with wait_forever=true for this session and keep the turn open until the user sends feedback or the client aborts." : "",
+    widgetInstall.script_tag ? "```html" : "",
+    widgetInstall.script_tag || "",
+    widgetInstall.script_tag ? "```" : "",
+    widgetInstall.verify_expression ? `Verify expression: ${widgetInstall.verify_expression}` : "",
+    widgetInstall.verify_selector ? `Verify selector: ${widgetInstall.verify_selector}` : "",
+    directReviewUrl ? `Direct review URL: ${directReviewUrl}` : "",
+    payload.manual_session_url || session.session_url ? `Report dashboard: ${payload.manual_session_url || session.session_url}` : "",
+    session.session_id ? `Live draft evidence resource: qa://manual/${encodeURIComponent(session.session_id)}/evidence.json` : "",
+    session.session_id ? `No-copy feedback tool: call qa_wait_for_manual_feedback with session_id ${session.session_id} and wait_forever=true immediately after sending the link; do not just end your turn.` : "",
+    session.session_id ? `After feedback: call qa_get_manual_work_packets with session_id ${session.session_id} before splitting work across agents.` : "",
+    session.session_id ? "After fixes: run a fresh contextless reviewer against the original feedback and fixed URL before saying done; continue work if that reviewer finds misses." : "",
+    session.session_id ? `Report resource: qa://manual/${encodeURIComponent(session.session_id)}/report.md` : ""
+  ]);
+}
+
+function buildManualEvidenceText(payload = {}) {
+  const session = payload.session && typeof payload.session === "object" ? payload.session : {};
+  const draftEvidence = payload.draft_evidence || summarizeManualDraftEvidence(session);
+  const latest = Array.isArray(draftEvidence.latest_evidence) ? draftEvidence.latest_evidence : [];
+  const packets = Array.isArray(session.work_packets) ? session.work_packets : [];
+  return buildText([
+    `Manual QA draft evidence for ${draftEvidence.session_id || session.session_id || "session"}.`,
+    `Saved evidence: ${draftEvidence.total_count || 0} total, ${draftEvidence.video_segment_count || 0} video segments, ${draftEvidence.drawing_count || 0} drawings.`,
+    packets.length ? `Live work packets: ${packets.length}. The agent can start on stable packets before Send All if auto-start work is enabled.` : "",
+    ...packets.slice(0, 5).flatMap((packet, index) => [
+      `${index + 1}. ${packet.title || "Work packet"} (${packet.packet_id || "packet"})`,
+      packet.summary ? `   Summary: ${packet.summary}` : ""
+    ]),
+    latest.length ? "Latest evidence:" : "",
+    ...latest.slice(0, 8).map((entry, index) => {
+      const label = entry.label || entry.kind || "Evidence";
+      const item = entry.item_title ? ` (${entry.item_title})` : "";
+      const url = entry.url ? `: ${entry.url}` : "";
+      return `${index + 1}. ${label}${item}${url}`;
+    }),
+    session.session_id ? `Resource: qa://manual/${encodeURIComponent(session.session_id)}/evidence.json` : ""
+  ]);
+}
+
+function buildManualWorkPacketsText(payload = {}) {
+  const packets = Array.isArray(payload.work_packets)
+    ? payload.work_packets
+    : Array.isArray(payload.session?.work_packets)
+      ? payload.session.work_packets
+      : [];
+  const sessionId = payload.session_id || payload.session?.session_id || "session";
+  return buildText([
+    `Manual QA work packets for ${sessionId}: ${packets.length}.`,
+    packets.length ? "Use one packet per focused agent/sub-agent task. Keep the packet_id in updates and commits." : "",
+    packets.length
+      ? "A packet is not done just because the implementing agent says so. After fixes, a fresh contextless reviewer must compare the original packet feedback against the fixed result."
+      : "",
+    ...packets.slice(0, 12).flatMap((packet, index) => [
+      `${index + 1}. ${packet.title || "Work packet"} (${packet.packet_id || "packet"})`,
+      packet.suggested_owner ? `   Owner: ${packet.suggested_owner}` : "",
+      packet.page_anchor?.url ? `   Page: ${packet.page_anchor.url}` : "",
+      packet.summary ? `   Summary: ${packet.summary}` : "",
+      packet.agent_task ? `   Task: ${packet.agent_task}` : ""
+    ]),
+    packets.length
+      ? "If a packet is ambiguous, ask the user a packet-specific question before editing. If multiple packets are independent, spawn separate sub-agents for them. If the reviewer finds a miss, continue work on that packet instead of marking it done."
+      : "No packets yet. Wait for user evidence/feedback first or ask the user to Send All."
   ]);
 }
 
@@ -120,6 +622,9 @@ function buildRunInputSchema() {
     run_id: z.string().max(128).optional(),
     dry_run: z.boolean().optional(),
     share_after: z.boolean().optional(),
+    feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback for automated QA. Use preview_fix_first when the user wants a simulated fix preview before coding, or share_feedback_and_start_work when they want fixes to start automatically."),
+    agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+    auto_start_work: z.boolean().optional().describe("Boolean alias. true means share_feedback_and_start_work; false means share_feedback."),
     credentials: z
       .object({
         login_url: z.string().url().optional(),
@@ -163,8 +668,64 @@ function buildCodingAgentCheckInputSchema() {
     timeout_seconds: z.number().int().min(1).max(7200).optional(),
     poll_interval_seconds: z.number().int().min(1).max(120).optional(),
     share_after: z.boolean().optional(),
+    feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback for automated QA. Use preview_fix_first when the user wants a simulated fix preview before coding, or share_feedback_and_start_work when they want fixes to start automatically."),
+    agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+    auto_start_work: z.boolean().optional().describe("Boolean alias. true means share_feedback_and_start_work; false means share_feedback."),
     dry_run: z.boolean().optional()
   };
+}
+
+function buildManualQaSessionInputSchema(options = {}) {
+  const targetUrlSchema = z.string().url().describe("Preview, staging, localhost tunnel, or production URL the human should test.");
+  return {
+    target_url: options.targetRequired === false ? targetUrlSchema.optional() : targetUrlSchema,
+    brand: z.string().max(256).optional().describe("Brand slug or project key."),
+    brand_name: z.string().max(180).optional(),
+    title: z.string().max(180).optional().describe("Short title for the manual QA session."),
+    review_mode: z.enum(["checklist", "freestyle"]).optional().describe("Use freestyle when the human should freely record, speak, draw, and browse without checklist items."),
+    feature_name: z.string().max(240).optional().describe("Feature label, for example 'onboarding recommendations'."),
+    work_summary: z.string().max(4000).optional().describe("Plain-English summary of what changed."),
+    change_summary: z.string().max(4000).optional().describe("Alias for work_summary."),
+    acceptance_criteria: z.array(z.string().max(900)).max(24).optional(),
+    scenario_list: z.array(z.string().max(1000)).max(24).optional(),
+    changed_files: z.array(z.string().max(400)).max(60).optional(),
+    repository: z.string().max(500).optional(),
+    branch: z.string().max(240).optional(),
+    commit_sha: z.string().max(120).optional(),
+    pull_request_url: z.string().url().optional(),
+    developer_notes: z.string().max(4000).optional(),
+    feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback_and_start_work for human/manual feedback. Use preview_fix_first when the user wants a simulated fix preview before coding, or share_feedback when they only want a summary."),
+    agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+    auto_start_work: z.boolean().optional().describe("Boolean alias. true means share_feedback_and_start_work; false means share_feedback."),
+    entry_path: z.string().max(1000).optional().describe("Optional path to use when generated checklist items need a start URL."),
+    test_plan: z
+      .array(
+        z.object({
+          id: z.string().max(80).optional(),
+          title: z.string().max(180).optional(),
+          instructions: z.string().max(1600).optional(),
+          expected: z.string().max(1200).optional(),
+          start_url: z.string().max(4096).optional(),
+          path: z.string().max(1000).optional(),
+          area: z.string().max(180).optional()
+        })
+      )
+      .max(24)
+      .optional()
+      .describe("Explicit human checklist. Use this when you know exactly where each test should start.")
+  };
+}
+
+async function createManualSessionToolResult(apiClient, input, options = {}) {
+  if (options.allowMissingTargetUrl) {
+    const needsInput = buildManualReviewNeedsInputResult(input);
+    if (needsInput) {
+      return needsInput;
+    }
+  }
+
+  const response = await apiClient.createManualQaSession(input);
+  return makeToolResult(buildManualSessionText(response), response);
 }
 
 function registerQaResources(server, apiClient) {
@@ -235,6 +796,101 @@ function registerQaResources(server, apiClient) {
       };
     }
   );
+
+  server.registerResource(
+    "manual-qa-report-markdown",
+    new ResourceTemplate(MCP_QA_RESOURCE_TEMPLATES.manual_qa_report_markdown, { list: undefined }),
+    {
+      title: "Manual QA Report Markdown",
+      description: "Human tester feedback exported as Markdown for a coding agent.",
+      mimeType: "text/markdown"
+    },
+    async (uri, variables) => {
+      const resource = await readers.readManualQaReportMarkdown(variables.session_id);
+      return {
+        contents: [
+          {
+            uri: uri.toString(),
+            mimeType: resource.mimeType,
+            text: resource.text
+          }
+        ]
+      };
+    }
+  );
+
+  server.registerResource(
+    "manual-qa-live-evidence",
+    new ResourceTemplate(MCP_QA_RESOURCE_TEMPLATES.manual_qa_live_evidence, { list: undefined }),
+    {
+      title: "Manual QA Live Evidence",
+      description: "Draft video segment, drawing, and evidence links saved by the page widget before Send All.",
+      mimeType: "application/json"
+    },
+    async (uri, variables) => {
+      const resource = await readers.readManualQaLiveEvidence(variables.session_id);
+      return {
+        contents: [
+          {
+            uri: resource.uri,
+            mimeType: resource.mimeType,
+            text: resource.text
+          }
+        ]
+      };
+    }
+  );
+
+  server.registerResource(
+    "manual-review-workflow",
+    MCP_QA_RESOURCE_TEMPLATES.manual_review_workflow,
+    {
+      title: "Manual Review Workflow",
+      description: "Instructions for agents when the user asks for a BeforeUsersDo manual review.",
+      mimeType: "text/markdown"
+    },
+    async (uri) => {
+      return {
+        contents: [
+          {
+            uri: uri.toString(),
+            mimeType: "text/markdown",
+            text: buildManualReviewWorkflowText()
+          }
+        ]
+      };
+    }
+  );
+}
+
+function registerQaPrompts(server) {
+  server.registerPrompt(
+    "manual_review_workflow",
+    {
+      title: "BeforeUsersDo Manual Review",
+      description:
+        "Use when the user says 'manual review with BeforeUsersDo', 'manual QA', 'human review', or asks for a checklist plus a browser-side recorder.",
+      argsSchema: {
+        target_url: z.string().url().optional().describe("Preview, staging, production, or tunnel URL to review."),
+        work_summary: z.string().max(4000).optional().describe("Plain-English summary of what changed."),
+        feature_name: z.string().max(240).optional().describe("Feature or flow name.")
+      }
+    },
+    async (args = {}) => {
+      return {
+        description: "Guide the coding agent through creating a BeforeUsersDo manual QA session.",
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: buildManualReviewWorkflowText(args)
+            }
+          }
+        ]
+      };
+    }
+  );
 }
 
 function createQaMcpServer(options = {}) {
@@ -252,6 +908,7 @@ function createQaMcpServer(options = {}) {
   );
 
   registerQaResources(server, apiClient);
+  registerQaPrompts(server);
 
   server.registerTool(
     "qa_request_run",
@@ -309,10 +966,13 @@ function createQaMcpServer(options = {}) {
         timeout_seconds: z.number().int().min(1).max(7200).optional(),
         poll_interval_seconds: z.number().int().min(1).max(120).optional(),
         include_report: z.boolean().optional(),
-        share_after: z.boolean().optional()
+        share_after: z.boolean().optional(),
+        feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback. Use preview_fix_first when the user wants a simulated fix preview before coding, or share_feedback_and_start_work when they want fixes to start automatically."),
+        agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+        auto_start_work: z.boolean().optional().describe("Boolean alias.")
       }
     },
-    async ({ run_id, timeout_seconds, poll_interval_seconds, include_report, share_after }, extra) => {
+    async ({ run_id, timeout_seconds, poll_interval_seconds, include_report, share_after, feedback_action, agent_action_mode, auto_start_work }, extra) => {
       try {
         let tick = 0;
         const pollEvery = Math.max(1, Number(poll_interval_seconds || 5));
@@ -348,7 +1008,34 @@ function createQaMcpServer(options = {}) {
           result.share = await apiClient.shareRunReport(run_id, { signal: extra.signal });
         }
 
-        const text = result.report ? buildReportText(result.report) : buildStatusText(waitResult.status || {});
+        const outcome =
+          result.report || result.timed_out
+            ? summarizeCodingAgentQaOutcome({ reportPayload: result.report, waitResult, share: result.share })
+            : null;
+        if (outcome) {
+          result.verdict = outcome.verdict;
+          result.pass = outcome.pass;
+          result.reason = outcome.reason;
+          if (shouldReturnQaAction(outcome, { feedback_action, agent_action_mode, auto_start_work })) {
+            result.required_agent_action = buildAutomatedQaRequiredAction(run_id, outcome, {
+              feedback_action,
+              agent_action_mode,
+              auto_start_work
+            });
+          }
+        }
+
+        const text = result.report
+          ? buildText([
+              buildReportText(result.report),
+              result.required_agent_action ? "" : "",
+              result.required_agent_action ? buildAgentActionText(result.required_agent_action) : ""
+            ])
+          : buildText([
+              buildStatusText(waitResult.status || {}),
+              result.required_agent_action ? "" : "",
+              result.required_agent_action ? buildAgentActionText(result.required_agent_action) : ""
+            ]);
         return makeToolResult(text, result);
       } catch (error) {
         return makeToolError(error);
@@ -362,13 +1049,35 @@ function createQaMcpServer(options = {}) {
       title: "Get QA Report",
       description: "Fetch the normalized QA report and Markdown for a completed or in-progress run.",
       inputSchema: {
-        run_id: z.string().max(128)
+        run_id: z.string().max(128),
+        feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback. Use preview_fix_first when the user wants a simulated fix preview before coding, or share_feedback_and_start_work when they want fixes to start automatically."),
+        agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+        auto_start_work: z.boolean().optional().describe("Boolean alias.")
       }
     },
-    async ({ run_id }) => {
+    async ({ run_id, feedback_action, agent_action_mode, auto_start_work }) => {
       try {
         const response = await apiClient.getRunReport(run_id);
-        return makeToolResult(buildReportText(response), response);
+        const outcome = summarizeCodingAgentQaOutcome({ reportPayload: response });
+        const result = {
+          ...response,
+          verdict: outcome.verdict,
+          pass: outcome.pass,
+          reason: outcome.reason
+        };
+        if (shouldReturnQaAction(outcome, { feedback_action, agent_action_mode, auto_start_work })) {
+          result.required_agent_action = buildAutomatedQaRequiredAction(run_id, outcome, {
+            feedback_action,
+            agent_action_mode,
+            auto_start_work
+          });
+        }
+        const text = buildText([
+          buildReportText(response),
+          result.required_agent_action ? "" : "",
+          result.required_agent_action ? buildAgentActionText(result.required_agent_action) : ""
+        ]);
+        return makeToolResult(text, result);
       } catch (error) {
         return makeToolError(error);
       }
@@ -392,6 +1101,385 @@ function createQaMcpServer(options = {}) {
           response.share_url ? `Share URL: ${response.share_url}` : ""
         ]);
         return makeToolResult(text, response);
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_create_manual_session",
+    {
+      title: "Create Manual QA Session",
+      description:
+        "Create a BeforeUsersDo manual QA workspace and return a REQUIRED agent-injectable page widget. Supports checklist mode and freestyle recording mode. The coding agent must inject and verify the widget before telling the user to open the target page.",
+      inputSchema: buildManualQaSessionInputSchema()
+    },
+    async (input) => {
+      try {
+        return await createManualSessionToolResult(apiClient, input);
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_start_manual_review",
+    {
+      title: "Start BeforeUsersDo Manual Review",
+      description:
+        "Default tool when the user says 'manual review with BeforeUsersDo', 'manual QA', 'human review', 'freestyle QA', or wants a human checklist for recent code changes. Returns a REQUIRED widget snippet. Use review_mode='freestyle' when the user wants open-ended recording/drawing/speaking without checklist items. The coding agent must inject it into the preview/dev build, deploy or refresh the preview, open the target once, verify the Review widget loaded, and only then send the user to the manual QA dashboard. If target_url is missing, returns exactly what to ask for. When available, include preview URL, work_summary, changed_files, acceptance_criteria, scenario_list, repository, branch, commit_sha, pull_request_url, and an explicit test_plan.",
+      inputSchema: buildManualQaSessionInputSchema({ targetRequired: false })
+    },
+    async (input) => {
+      try {
+        return await createManualSessionToolResult(apiClient, input, { allowMissingTargetUrl: true });
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_manual_review_guide",
+    {
+      title: "BeforeUsersDo Manual Review Guide",
+      description:
+        "Explains exactly what context an agent should gather and which tool to call for a BeforeUsersDo manual review. Use this if the request is ambiguous.",
+      inputSchema: {
+        target_url: z.string().url().optional(),
+        work_summary: z.string().max(4000).optional(),
+        feature_name: z.string().max(240).optional()
+      }
+    },
+    async (input = {}) => {
+      const text = buildManualReviewWorkflowText(input);
+      return makeToolResult(text, {
+        ok: true,
+        recommended_tool: "qa_start_manual_review",
+        workflow_prompt: "manual_review_workflow",
+        workflow_resource: MCP_QA_RESOURCE_TEMPLATES.manual_review_workflow,
+        instructions: text
+      });
+    }
+  );
+
+  server.registerTool(
+    "qa_get_manual_session",
+    {
+      title: "Get Manual QA Session",
+      description: "Fetch checklist status for a manual QA session.",
+      inputSchema: {
+        session_id: z.string().max(128)
+      }
+    },
+    async ({ session_id }) => {
+      try {
+        const response = await apiClient.getManualQaSession(session_id);
+        return makeToolResult(buildManualSessionText(response), response);
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_get_manual_report",
+    {
+      title: "Get Manual QA Report",
+      description: "Export the human manual QA checklist as redacted Markdown and JSON.",
+      inputSchema: {
+        session_id: z.string().max(128)
+      }
+    },
+    async ({ session_id }) => {
+      try {
+        const response = await apiClient.exportManualQaSession(session_id);
+        const text = buildText([
+          `Manual QA report for ${session_id}.`,
+          response.markdown || "",
+          `Resource: qa://manual/${encodeURIComponent(session_id)}/report.md`
+        ]);
+        return makeToolResult(text, response);
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_get_manual_work_packets",
+    {
+      title: "Get Manual QA Work Packets",
+      description:
+        "Fetches BeforeUsersDo work packets derived from manual QA notes, transcript, drawings, videos, page anchors, console errors, and network signals. Use after qa_wait_for_manual_feedback or qa_wait_for_manual_evidence when the agent should split feedback into focused tasks or sub-agents.",
+      inputSchema: {
+        session_id: z.string().max(128)
+      }
+    },
+    async ({ session_id }) => {
+      try {
+        const response = await apiClient.getManualQaWorkPackets(session_id);
+        const gatedResponse = attachPostFixReviewGateToManualPackets(response);
+        return makeToolResult(buildManualWorkPacketsText(gatedResponse), gatedResponse);
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_wait_for_manual_evidence",
+    {
+      title: "Wait For Manual QA Draft Evidence",
+      description:
+        "Use while the user is still recording in the BeforeUsersDo widget. Polls until saved draft evidence exists, such as 10-second video segments, drawings, or live work packets, without waiting for the user to click Send All. If auto-start work is enabled, begin work from stable packets while continuing to poll.",
+      inputSchema: {
+        session_id: z.string().max(128),
+        item_id: z.string().max(80).optional(),
+        minimum_evidence_count: z.number().int().min(1).max(10000).optional(),
+        since_evidence_count: z.number().int().min(0).max(10000).optional(),
+        timeout_seconds: z.number().int().min(1).max(7200).optional(),
+        poll_interval_seconds: z.number().min(0.1).max(120).optional()
+      }
+    },
+    async (input, extra) => {
+      try {
+        const waitResult = await apiClient.waitForManualEvidence(input.session_id, {
+          item_id: input.item_id,
+          minimum_evidence_count: input.minimum_evidence_count || 1,
+          since_evidence_count: input.since_evidence_count || 0,
+          timeout_seconds: input.timeout_seconds || 300,
+          poll_interval_seconds: input.poll_interval_seconds || 5,
+          signal: extra.signal,
+          async onPoll(status, meta) {
+            await maybeSendProgress(
+              extra,
+              meta.poll_count,
+              Math.max(2, Math.ceil(Number(input.timeout_seconds || 300) / Number(input.poll_interval_seconds || 5))),
+              meta.evidence_ready
+                ? `Manual QA evidence saved for ${input.session_id}`
+                : `Waiting for saved video/drawing evidence for ${input.session_id} (${meta.evidence_count || 0} saved)`
+            );
+          }
+        });
+
+        if (waitResult.evidence_ready) {
+          return makeToolResult(buildManualEvidenceText(waitResult), waitResult);
+        }
+
+        return makeToolResult(
+          buildText([
+            `Manual QA draft evidence was not received before the timeout for ${input.session_id}.`,
+            "The user may not have started recording/drawing yet, or the widget may not be installed.",
+            waitResult.session?.session_url ? `Dashboard: ${waitResult.session.session_url}` : ""
+          ]),
+          waitResult
+        );
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_wait_for_manual_feedback",
+    {
+      title: "Wait For Manual QA Feedback",
+      description:
+        "Use after starting a BeforeUsersDo manual review and giving the verified widget page to the user. Defaults to wait_forever=true: keep the agent turn alive until the user clicks Send All or Send item, then return the redacted Markdown feedback directly so the user does not need to copy/paste.",
+      inputSchema: {
+        session_id: z.string().max(128),
+        scope: z.enum(["all", "item", "any"]).optional().describe("Defaults to all. Use item with item_id for one checklist item, or any for the latest package."),
+        item_id: z.string().max(80).optional(),
+        timeout_seconds: z.number().int().min(1).max(7200).optional(),
+        wait_forever: z.boolean().optional().describe("Defaults to true for manual QA. Keep polling until feedback arrives or the MCP client aborts. Set false only if the user explicitly wants a bounded wait."),
+        poll_interval_seconds: z.number().min(0.1).max(120).optional(),
+        feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Overrides the session setting. Defaults to the session setting, usually share_feedback_and_start_work for human feedback. Use preview_fix_first to ask the agent for a simulated fix preview before coding."),
+        agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
+        auto_start_work: z.boolean().optional().describe("Boolean alias override.")
+      }
+    },
+    async (input, extra) => {
+      try {
+        const waitResult = await apiClient.waitForManualFeedback(input.session_id, {
+          scope: input.scope || "all",
+          item_id: input.item_id,
+          wait_forever: input.wait_forever !== false,
+          timeout_seconds: input.timeout_seconds || 1800,
+          poll_interval_seconds: input.poll_interval_seconds || 5,
+          signal: extra.signal,
+          async onPoll(status, meta) {
+            const boundedTotal = Math.max(2, Math.ceil(Number(input.timeout_seconds || 1800) / Number(input.poll_interval_seconds || 5)));
+            await maybeSendProgress(
+              extra,
+              meta.poll_count,
+              input.wait_forever === false ? boundedTotal : Math.max(meta.poll_count + 1, 2),
+              meta.feedback_ready
+                ? `Manual QA feedback received for ${input.session_id}`
+                : `Waiting for user to click Send All for ${input.session_id}`
+            );
+          }
+        });
+
+        if (waitResult.feedback_ready && waitResult.feedback?.markdown) {
+          const sessionContext =
+            waitResult.session && typeof waitResult.session.context === "object" && waitResult.session.context
+              ? waitResult.session.context
+              : {};
+          const requiredAgentAction = buildManualFeedbackRequiredAction(input.session_id, waitResult.feedback, {
+            feedback_action: input.feedback_action || sessionContext.feedback_action || sessionContext.feedbackAction,
+            agent_action_mode: input.agent_action_mode || sessionContext.agent_action_mode || sessionContext.agentActionMode,
+            auto_start_work: input.auto_start_work ?? sessionContext.auto_start_work ?? sessionContext.autoStartWork
+          });
+          const result = {
+            ...waitResult,
+            required_agent_action: requiredAgentAction
+          };
+          const text = buildText([
+            `Manual QA feedback received for ${input.session_id}.`,
+            `Feedback id: ${waitResult.feedback.feedback_id || "n/a"}`,
+            "",
+            buildAgentActionText(requiredAgentAction),
+            "",
+            waitResult.feedback.markdown
+          ]);
+          return makeToolResult(text, result);
+        }
+
+        return makeToolResult(
+          buildText([
+            `Manual QA feedback was not received before the timeout for ${input.session_id}.`,
+            "This should only happen when wait_forever=false. Ask the user to click Send All in the BeforeUsersDo widget, then call this tool again with wait_forever=true.",
+            waitResult.session?.session_url ? `Dashboard: ${waitResult.session.session_url}` : ""
+          ]),
+          waitResult
+        );
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_submit_manual_preview",
+    {
+      title: "Submit Manual QA Preview Proposal",
+      description:
+        "Use after qa_wait_for_manual_feedback returns preview_required_before_work. Saves the proposed future-state fix into the open BeforeUsersDo widget so the user can approve or request changes before coding.",
+      inputSchema: {
+        session_id: z.string().max(128),
+        title: z.string().max(180).optional().describe("Short preview title, for example 'Cleaner homepage hero'."),
+        summary: z.string().max(2400).optional().describe("Plain-English summary of what the fixed state will look like or do."),
+        changes: z.array(z.string().max(700)).max(12).optional().describe("Concrete proposed changes mapped from the feedback."),
+        expected_behavior: z.array(z.string().max(700)).max(12).optional().describe("Expected visual, browser, API, or state behavior after the fix."),
+        open_questions: z.array(z.string().max(500)).max(6).optional().describe("Optional questions the user should answer before implementation."),
+        visual_preview_url: z.string().url().optional().describe("Optional mockup or edited screenshot URL.")
+      }
+    },
+    async (input) => {
+      try {
+        const proposal = {
+          title: input.title,
+          summary: input.summary,
+          changes: input.changes,
+          expected_behavior: input.expected_behavior,
+          open_questions: input.open_questions,
+          visual_preview_url: input.visual_preview_url,
+          status: "draft"
+        };
+        const response = await apiClient.submitManualPreviewProposal(input.session_id, proposal);
+        const preview = response.preview_proposal || {};
+        return makeToolResult(
+          buildText([
+            `Preview proposal saved for ${input.session_id}.`,
+            preview.title ? `Title: ${preview.title}` : "",
+            "The BeforeUsersDo widget will show it in the Proposed fix panel.",
+            "Wait for the user to approve it or ask for changes before editing code."
+          ]),
+          {
+            ...response,
+            required_next_step: "wait_for_user_preview_response"
+          }
+        );
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_submit_post_fix_review",
+    {
+      title: "Submit Post-Fix Review",
+      description:
+        "Use after implementation and deployment/refresh. Records the fresh contextless reviewer verdict. Returns may_mark_done=false when the reviewer found missed or unclear feedback, so the implementing agent must continue work.",
+      inputSchema: {
+        session_id: z.string().max(128).optional().describe("Manual QA session id. Required to persist the verdict on a manual QA session."),
+        run_id: z.string().max(128).optional().describe("Automated QA run id when this review is for qa_check_work or qa_run_feature_check."),
+        feedback_id: z.string().max(128).optional(),
+        reviewer: z.string().max(160).optional().describe("Name/id of the fresh contextless reviewer."),
+        verdict: z.enum(["fixed", "missed", "still_unclear"]).describe("Reviewer verdict after comparing original feedback to the fixed result."),
+        fixed_url: z.string().url().optional().describe("Fixed preview or production URL reviewed."),
+        changed_files: z.array(z.string().max(500)).max(80).optional(),
+        commit_sha: z.string().max(120).optional(),
+        packet_ids: z.array(z.string().max(128)).max(24).optional(),
+        fixed_items: z.array(z.string().max(900)).max(24).optional(),
+        missed_items: z.array(z.string().max(900)).max(24).optional(),
+        unclear_items: z.array(z.string().max(900)).max(24).optional(),
+        summary: z.string().max(4000).optional(),
+        evidence_urls: z.array(z.string().url()).max(24).optional(),
+        test_results: z.array(z.string().max(500)).max(24).optional()
+      }
+    },
+    async (input) => {
+      try {
+        const review = buildPostFixReviewRecord(input);
+        if (!review.session_id && !review.run_id) {
+          return makeToolResult(
+            "Post-fix review needs either session_id or run_id.",
+            {
+              ok: false,
+              needs_input: true,
+              missing_fields: ["session_id_or_run_id"],
+              post_fix_review: review,
+              may_mark_done: false
+            }
+          );
+        }
+
+        if (review.session_id) {
+          const response = await apiClient.submitManualPostFixReview(review.session_id, review);
+          return makeToolResult(
+            buildText([
+              `Post-fix review saved for ${review.session_id}.`,
+              `Verdict: ${response.post_fix_review?.verdict || review.verdict}.`,
+              `May mark done: ${response.may_mark_done === true ? "yes" : "no"}.`,
+              response.may_mark_done === true
+                ? "Reviewer passed the fixed result. Share the reviewer verdict and fresh QA link."
+                : "Reviewer found missed or unclear feedback. Continue work before marking done."
+            ]),
+            response
+          );
+        }
+
+        return makeToolResult(
+          buildText([
+            `Post-fix review recorded for run ${review.run_id}.`,
+            `Verdict: ${review.verdict}.`,
+            `May mark done: ${review.may_mark_done ? "yes" : "no"}.`,
+            review.may_mark_done
+              ? "Reviewer passed the fixed result. Share the reviewer verdict and fresh QA link."
+              : "Reviewer found missed or unclear feedback. Continue work before marking done."
+          ]),
+          {
+            ok: true,
+            run_id: review.run_id,
+            post_fix_review: review,
+            may_mark_done: review.may_mark_done
+          }
+        );
       } catch (error) {
         return makeToolError(error);
       }
@@ -433,6 +1521,11 @@ function createQaMcpServer(options = {}) {
 
         const report = waitResult.status?.report_ready ? await apiClient.getRunReport(queued.run_id, { signal: extra.signal }) : null;
         const shared = input.share_after ? await apiClient.shareRunReport(queued.run_id, { signal: extra.signal }) : null;
+        const outcome = summarizeCodingAgentQaOutcome({
+          reportPayload: report,
+          waitResult,
+          share: shared
+        });
         await maybeSendProgress(extra, 999, 999, `QA run ${queued.run_id} finished`);
 
         const result = {
@@ -440,18 +1533,28 @@ function createQaMcpServer(options = {}) {
           queued,
           wait: waitResult,
           report,
-          share: shared
+          share: shared,
+          verdict: outcome.verdict,
+          pass: outcome.pass,
+          reason: outcome.reason
         };
+        if (shouldReturnQaAction(outcome, input)) {
+          result.required_agent_action = buildAutomatedQaRequiredAction(queued.run_id, outcome, input);
+        }
 
         const text = report
           ? buildText([
               `QA run ${queued.run_id} finished.`,
               buildReportText(report),
+              result.required_agent_action ? "" : "",
+              result.required_agent_action ? buildAgentActionText(result.required_agent_action) : "",
               shared?.share_url ? `Share URL: ${shared.share_url}` : ""
             ])
           : buildText([
               `QA run ${queued.run_id} did not finish before the timeout.`,
-              buildStatusText(waitResult.status || {})
+              buildStatusText(waitResult.status || {}),
+              result.required_agent_action ? "" : "",
+              result.required_agent_action ? buildAgentActionText(result.required_agent_action) : ""
             ]);
 
         return makeToolResult(text, result);
@@ -527,12 +1630,18 @@ function createQaMcpServer(options = {}) {
             markdown_resource: markdownResource
           }
         };
+        const qaCheckActionInput = { ...input, feedback_action: input.feedback_action || "share_feedback_and_start_work" };
+        if (shouldReturnQaAction(outcome, qaCheckActionInput)) {
+          result.required_agent_action = buildAutomatedQaRequiredAction(queued.run_id, outcome, qaCheckActionInput);
+        }
 
         const text = buildText([
           `QA verdict for ${queued.run_id}: ${outcome.verdict}.`,
           outcome.reason,
           outcome.summary_note ? `Summary: ${outcome.summary_note}` : "",
           outcome.top_finding?.title ? `Top finding: ${outcome.top_finding.title}` : "",
+          result.required_agent_action ? "" : "",
+          result.required_agent_action ? buildAgentActionText(result.required_agent_action) : "",
           result.evidence.ui_report_url ? `Open report: ${result.evidence.ui_report_url}` : "",
           result.evidence.share_url ? `Share URL: ${result.evidence.share_url}` : "",
           `Report resource: ${markdownResource}`
@@ -570,13 +1679,29 @@ function printHelp() {
     "- qa_wait_for_run",
     "- qa_get_run_report",
     "- qa_share_run_report",
+    "- qa_create_manual_session",
+    "- qa_start_manual_review",
+    "- qa_manual_review_guide",
+    "- qa_get_manual_session",
+    "- qa_get_manual_report",
+    "- qa_get_manual_work_packets",
+    "- qa_wait_for_manual_evidence",
+    "- qa_wait_for_manual_feedback",
+    "- qa_submit_manual_preview",
+    "- qa_submit_post_fix_review",
     "- qa_run_feature_check",
     "- qa_check_work",
+    "",
+    "Prompts:",
+    "- manual_review_workflow",
     "",
     "Resources:",
     `- ${MCP_QA_RESOURCE_TEMPLATES.run_status}`,
     `- ${MCP_QA_RESOURCE_TEMPLATES.run_report}`,
-    `- ${MCP_QA_RESOURCE_TEMPLATES.run_report_markdown}`
+    `- ${MCP_QA_RESOURCE_TEMPLATES.run_report_markdown}`,
+    `- ${MCP_QA_RESOURCE_TEMPLATES.manual_review_workflow}`,
+    `- ${MCP_QA_RESOURCE_TEMPLATES.manual_qa_live_evidence}`,
+    `- ${MCP_QA_RESOURCE_TEMPLATES.manual_qa_report_markdown}`
   ]);
   process.stdout.write(`${message}\n`);
 }
@@ -601,7 +1726,19 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildAutomatedQaActionText,
+  attachPostFixReviewGateToManualPackets,
+  buildAutomatedQaRequiredAction,
+  buildAgentActionContract,
+  buildAgentActionText,
+  buildPostFixReviewRecord,
+  buildManualFeedbackActionText,
+  buildManualFeedbackRequiredAction,
+  buildManualReviewNeedsInputResult,
+  buildManualReviewWorkflowText,
   createQaMcpServer,
+  registerQaPrompts,
   registerQaResources,
+  shouldReturnQaAction,
   main
 };

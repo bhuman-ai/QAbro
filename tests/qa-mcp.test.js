@@ -10,9 +10,22 @@ const {
   buildQaRunRequest,
   createQaApiClient,
   createQaResourceReaders,
+  selectManualFeedbackPackage,
+  summarizeManualDraftEvidence,
   summarizeCodingAgentQaOutcome
 } = require("../lib/qa-mcp");
 const { readQaMcpStoredAuth, writeQaMcpStoredAuth } = require("../lib/qa-mcp-auth");
+const {
+  attachPostFixReviewGateToManualPackets,
+  buildAutomatedQaActionText,
+  buildAutomatedQaRequiredAction,
+  buildPostFixReviewRecord,
+  buildManualFeedbackActionText,
+  buildManualFeedbackRequiredAction,
+  buildManualReviewNeedsInputResult,
+  buildManualReviewWorkflowText,
+  shouldReturnQaAction
+} = require("../scripts/qa-mcp-server");
 
 function createJsonResponse(payload, status = 200) {
   return {
@@ -208,6 +221,235 @@ test("qa MCP client waitForRun polls until the report is ready and emits onPoll"
   ]);
 });
 
+test("qa MCP client waitForManualFeedback returns feedback package after Send All", async () => {
+  const states = [
+    {
+      ok: true,
+      session: {
+        session_id: "manual_wait",
+        agent_feedback: { ready: false, latest: null, packages: [] }
+      }
+    },
+    {
+      ok: true,
+      session: {
+        session_id: "manual_wait",
+        agent_feedback: {
+          ready: true,
+          latest: {
+            feedback_id: "feedback_1",
+            scope: "all",
+            markdown: "# BeforeUsersDo Manual QA Feedback\n\nLooks good.",
+            generated_at: "2026-07-02T00:00:00.000Z"
+          },
+          packages: [
+            {
+              feedback_id: "feedback_1",
+              scope: "all",
+              markdown: "# BeforeUsersDo Manual QA Feedback\n\nLooks good.",
+              generated_at: "2026-07-02T00:00:00.000Z"
+            }
+          ]
+        }
+      }
+    }
+  ];
+
+  let index = 0;
+  const observed = [];
+  const client = createQaApiClient({
+    baseUrl: "https://swarmtester.com",
+    serviceToken: "svc_123",
+    ownerUserId: "user_123",
+    ownerEmail: "owner@example.com",
+    fetchImpl: async () => createJsonResponse(states[Math.min(index++, states.length - 1)])
+  });
+
+  const result = await client.waitForManualFeedback("manual_wait", {
+    wait_forever: true,
+    timeout_seconds: 5,
+    poll_interval_seconds: 0.001,
+    onPoll(_status, meta) {
+      observed.push({ poll_count: meta.poll_count, feedback_ready: meta.feedback_ready });
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.feedback_ready, true);
+  assert.equal(result.timed_out, false);
+  assert.equal(result.feedback.feedback_id, "feedback_1");
+  assert.match(result.feedback.markdown, /Looks good/);
+  assert.deepEqual(observed, [
+    { poll_count: 1, feedback_ready: false },
+    { poll_count: 2, feedback_ready: true }
+  ]);
+});
+
+test("summarizeManualDraftEvidence returns compact live evidence links", () => {
+  const summary = summarizeManualDraftEvidence({
+    session_id: "manual_live",
+    review_mode: "freestyle",
+    checklist: [
+      {
+        id: "freestyle",
+        title: "Freestyle capture",
+        evidence_urls: [
+          "https://beforeusersdo.com/api/manual-qa/evidence?session_id=manual_live&item_id=freestyle&index=0"
+        ],
+        evidence_media: [
+          {
+            kind: "video",
+            label: "Video recording segment 1",
+            content_type: "video/webm",
+            byte_length: 123,
+            url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=manual_live&item_id=freestyle&index=0",
+            created_at: "2026-07-04T18:00:00.000Z"
+          },
+          {
+            kind: "screenshot",
+            label: "Drawing annotation",
+            content_type: "image/png",
+            byte_length: 456,
+            url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=manual_live&item_id=freestyle&index=1",
+            created_at: "2026-07-04T18:00:10.000Z"
+          }
+        ]
+      }
+    ]
+  });
+
+  assert.equal(summary.ready, true);
+  assert.equal(summary.total_count, 2);
+  assert.equal(summary.video_count, 1);
+  assert.equal(summary.video_segment_count, 1);
+  assert.equal(summary.drawing_count, 1);
+  assert.equal(summary.link_count, 0);
+  assert.equal(summary.latest_evidence[0].label, "Drawing annotation");
+  assert.equal(summary.latest_evidence[1].label, "Video recording segment 1");
+});
+
+test("qa MCP client waitForManualEvidence returns draft evidence before Send All", async () => {
+  const states = [
+    {
+      ok: true,
+      session: {
+        session_id: "manual_live",
+        checklist: [{ id: "freestyle", title: "Freestyle", evidence_media: [] }],
+        agent_feedback: { ready: false, latest: null, packages: [] }
+      }
+    },
+    {
+      ok: true,
+      session: {
+        session_id: "manual_live",
+        checklist: [
+          {
+            id: "freestyle",
+            title: "Freestyle",
+            evidence_media: [
+              {
+                kind: "video",
+                label: "Video recording segment 1",
+                content_type: "video/webm",
+                byte_length: 100,
+                url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=manual_live&item_id=freestyle&index=0",
+                created_at: "2026-07-04T18:00:00.000Z"
+              }
+            ]
+          }
+        ],
+        agent_feedback: { ready: false, latest: null, packages: [] }
+      }
+    }
+  ];
+
+  let index = 0;
+  const observed = [];
+  const client = createQaApiClient({
+    baseUrl: "https://swarmtester.com",
+    serviceToken: "svc_123",
+    ownerUserId: "user_123",
+    ownerEmail: "owner@example.com",
+    fetchImpl: async () => createJsonResponse(states[Math.min(index++, states.length - 1)])
+  });
+
+  const result = await client.waitForManualEvidence("manual_live", {
+    timeout_seconds: 5,
+    poll_interval_seconds: 0.001,
+    onPoll(_status, meta) {
+      observed.push({
+        poll_count: meta.poll_count,
+        evidence_ready: meta.evidence_ready,
+        evidence_count: meta.evidence_count,
+        video_segment_count: meta.video_segment_count
+      });
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.evidence_ready, true);
+  assert.equal(result.timed_out, false);
+  assert.equal(result.draft_evidence.total_count, 1);
+  assert.equal(result.draft_evidence.video_segment_count, 1);
+  assert.equal(result.draft_evidence.latest_evidence[0].label, "Video recording segment 1");
+  assert.deepEqual(observed, [
+    { poll_count: 1, evidence_ready: false, evidence_count: 0, video_segment_count: 0 },
+    { poll_count: 2, evidence_ready: true, evidence_count: 1, video_segment_count: 1 }
+  ]);
+});
+
+test("qa MCP client returns manual work packets from the session", async () => {
+  const calls = [];
+  const client = createQaApiClient({
+    baseUrl: "https://swarmtester.com",
+    serviceToken: "svc_123",
+    ownerUserId: "user_123",
+    ownerEmail: "owner@example.com",
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return createJsonResponse({
+        ok: true,
+        session: {
+          session_id: "manual_packets",
+          work_packets: [
+            {
+              packet_id: "packet_1",
+              title: "Hero feels wrong",
+              suggested_owner: "frontend_or_product",
+              page_anchor: { url: "https://preview.example.com/" },
+              agent_task: "Fix the hero copy."
+            }
+          ]
+        }
+      });
+    }
+  });
+
+  const result = await client.getManualQaWorkPackets("manual_packets");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.session_id, "manual_packets");
+  assert.equal(result.work_packets.length, 1);
+  assert.equal(result.work_packets[0].packet_id, "packet_1");
+  assert.equal(new URL(calls[0].url).pathname, "/api/manual-qa/sessions");
+});
+
+test("selectManualFeedbackPackage can filter all, item, and any scopes", () => {
+  const session = {
+    agent_feedback: {
+      packages: [
+        { feedback_id: "item_1", scope: "item", item_id: "hero", markdown: "Hero note" },
+        { feedback_id: "all_1", scope: "all", markdown: "All feedback" }
+      ]
+    }
+  };
+
+  assert.equal(selectManualFeedbackPackage(session, { scope: "all" }).feedback_id, "all_1");
+  assert.equal(selectManualFeedbackPackage(session, { scope: "item", item_id: "hero" }).feedback_id, "item_1");
+  assert.equal(selectManualFeedbackPackage(session, { scope: "any" }).feedback_id, "all_1");
+  assert.equal(selectManualFeedbackPackage(session, { scope: "item", item_id: "missing" }), null);
+});
+
 test("qa MCP resource readers expose status, report, and markdown resources", async () => {
   const readers = createQaResourceReaders({
     async getRunStatus(runId) {
@@ -230,12 +472,37 @@ test("qa MCP resource readers expose status, report, and markdown resources", as
         findings: [{ title: "No blocker", observed_behavior: "The feature worked." }],
         markdown: "# Report\n\nEverything worked."
       };
+    },
+    async getManualQaSession(sessionId) {
+      assert.equal(sessionId, "manual_123");
+      return {
+        ok: true,
+        session: {
+          session_id: sessionId,
+          checklist: [
+            {
+              id: "freestyle",
+              title: "Freestyle",
+              evidence_media: [
+                {
+                  kind: "video",
+                  label: "Video recording segment 1",
+                  content_type: "video/webm",
+                  url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=manual_123&item_id=freestyle&index=0",
+                  created_at: "2026-07-04T18:00:00.000Z"
+                }
+              ]
+            }
+          ]
+        }
+      };
     }
   });
 
   const statusResource = await readers.readRunStatus("run_456");
   const reportResource = await readers.readRunReport("run_456");
   const markdownResource = await readers.readRunReportMarkdown("run_456");
+  const liveEvidenceResource = await readers.readManualQaLiveEvidence("manual_123");
 
   assert.equal(statusResource.uri, "qa://runs/run_456/status");
   assert.equal(statusResource.mimeType, "application/json");
@@ -248,12 +515,238 @@ test("qa MCP resource readers expose status, report, and markdown resources", as
   assert.equal(markdownResource.uri, "qa://runs/run_456/report.md");
   assert.equal(markdownResource.mimeType, "text/markdown");
   assert.match(markdownResource.text, /^# Report/m);
+
+  assert.equal(liveEvidenceResource.uri, "qa://manual/manual_123/evidence.json");
+  assert.equal(liveEvidenceResource.mimeType, "application/json");
+  assert.match(liveEvidenceResource.text, /Video recording segment 1/);
 });
 
 test("buildQaResourceUri encodes dynamic run ids", () => {
   assert.equal(buildQaResourceUri("run_status", "run id/with spaces"), "qa://runs/run%20id%2Fwith%20spaces/status");
   assert.equal(buildQaResourceUri("run_report", "run id/with spaces"), "qa://runs/run%20id%2Fwith%20spaces/report");
   assert.equal(buildQaResourceUri("run_report_markdown", "run id/with spaces"), "qa://runs/run%20id%2Fwith%20spaces/report.md");
+  assert.equal(buildQaResourceUri("manual_review_workflow", "ignored"), "qa://workflows/manual-review");
+  assert.equal(buildQaResourceUri("manual_qa_live_evidence", "manual id"), "qa://manual/manual%20id/evidence.json");
+  assert.equal(buildQaResourceUri("manual_qa_report_markdown", "manual id"), "qa://manual/manual%20id/report.md");
+});
+
+test("manual review workflow tells agents what context to gather", () => {
+  const text = buildManualReviewWorkflowText({
+    target_url: "https://preview.example.com",
+    work_summary: "Changed onboarding cards."
+  });
+
+  assert.match(text, /manual review/i);
+  assert.match(text, /qa_start_manual_review/);
+  assert.match(text, /changed files/i);
+  assert.match(text, /acceptance criteria/i);
+  assert.match(text, /review_mode: "freestyle"/);
+  assert.match(text, /widget_install\.script_tag/i);
+  assert.match(text, /required, not optional/i);
+  assert.match(text, /Do not tell the user to open the target page until the widget is verified/i);
+  assert.match(text, /widget_install\.review_url/i);
+  assert.match(text, /Do not send the BeforeUsersDo dashboard as the place to start testing/i);
+  assert.match(text, /qa_wait_for_manual_evidence/);
+  assert.match(text, /evidence\.json/);
+  assert.match(text, /qa_wait_for_manual_feedback/);
+  assert.match(text, /wait_forever: true/);
+  assert.match(text, /qa_get_manual_work_packets/);
+  assert.match(text, /without copy\/paste/i);
+  assert.match(text, /keep the agent turn open/i);
+  assert.match(text, /do not stop after giving the link/i);
+  assert.match(text, /Obey the session's `feedback_action`/i);
+  assert.match(text, /`share_feedback_and_start_work`: share feedback with the agent/i);
+  assert.match(text, /fresh contextless reviewer/i);
+  assert.match(text, /continue work/i);
+  assert.match(text, /`preview_fix_first`: share feedback with the agent/i);
+  assert.match(text, /`share_feedback`: share feedback with the agent for summary\/reporting/i);
+  assert.match(text, /https:\/\/preview\.example\.com/);
+});
+
+test("manual feedback action contract defaults to fix-deploy-new-QA loop", () => {
+  const action = buildManualFeedbackRequiredAction("manual_123", {
+    feedback_id: "feedback_123",
+    scope: "item",
+    item_id: "hero-copy"
+  });
+  const text = buildManualFeedbackActionText("manual_123", {
+    feedback_id: "feedback_123",
+    scope: "item",
+    item_id: "hero-copy"
+  });
+
+  assert.equal(action.required, true);
+  assert.equal(action.status, "fix_or_explain_before_done");
+  assert.equal(action.agent_action_mode, "fix_and_retest");
+  assert.equal(action.feedback_action, "share_feedback_and_start_work");
+  assert.equal(action.auto_start_work, true);
+  assert.equal(action.next_tool_after_fix, "qa_start_manual_review");
+  assert.equal(action.post_fix_review_gate.required, true);
+  assert.equal(action.post_fix_review_gate.reviewer, "fresh_contextless_agent");
+  assert.equal(action.post_fix_review_gate.implementer_may_self_close, false);
+  assert.match(action.post_fix_review_gate.fail_action, /Continue implementation/);
+  assert.match(action.completion_rule, /fresh BeforeUsersDo QA link/);
+  assert.match(action.completion_rule, /fresh contextless reviewer/);
+  assert.match(action.steps.join(" "), /Update the target code\/product instead of only summarizing/);
+  assert.match(action.steps.join(" "), /qa_get_manual_work_packets/);
+  assert.match(action.steps.join(" "), /Deploy or refresh/);
+  assert.match(action.steps.join(" "), /fresh contextless reviewer agent/);
+  assert.match(action.steps.join(" "), /continue implementation instead of marking done/);
+  assert.match(text, /REQUIRED NEXT STEPS FOR THE CODING AGENT/);
+  assert.match(text, /Mode: share feedback and auto-start work/);
+  assert.match(text, /create a fresh BeforeUsersDo QA link or rerun the relevant QA tool/i);
+});
+
+test("manual feedback action contract can be report-only", () => {
+  const action = buildManualFeedbackRequiredAction(
+    "manual_123",
+    { feedback_id: "feedback_123", scope: "all" },
+    { feedback_action: "share_feedback" }
+  );
+  const text = buildManualFeedbackActionText(
+    "manual_123",
+    { feedback_id: "feedback_123", scope: "all" },
+    { feedback_action: "share_feedback" }
+  );
+
+  assert.equal(action.status, "report_only");
+  assert.equal(action.agent_action_mode, "report_only");
+  assert.equal(action.feedback_action, "share_feedback");
+  assert.equal(action.auto_start_work, false);
+  assert.equal(action.post_fix_review_gate.required, false);
+  assert.match(action.completion_rule, /Do not start code changes/);
+  assert.match(text, /Mode: share feedback only/);
+  assert.match(text, /Do not edit code/);
+});
+
+test("manual feedback action contract can require preview before work", () => {
+  const action = buildManualFeedbackRequiredAction(
+    "manual_123",
+    { feedback_id: "feedback_123", scope: "all" },
+    { feedback_action: "preview_fix_first" }
+  );
+  const text = buildManualFeedbackActionText(
+    "manual_123",
+    { feedback_id: "feedback_123", scope: "all" },
+    { feedback_action: "preview_fix_first" }
+  );
+
+  assert.equal(action.status, "preview_required_before_work");
+  assert.equal(action.agent_action_mode, "preview_then_fix");
+  assert.equal(action.feedback_action, "preview_fix_first");
+  assert.equal(action.auto_start_work, false);
+  assert.equal(action.post_fix_review_gate.required, true);
+  assert.equal(action.post_fix_review_gate.reviewer, "fresh_contextless_agent");
+  assert.equal(action.post_fix_review_gate.compare_against.includes("approved_preview_or_checklist"), true);
+  assert.match(action.completion_rule, /simulated future-state preview/);
+  assert.match(action.completion_rule, /fresh contextless reviewer/);
+  assert.match(action.steps.join(" "), /Ask the user to confirm or correct/);
+  assert.match(action.steps.join(" "), /qa_get_manual_work_packets/);
+  assert.match(action.steps.join(" "), /Before marking done, start a fresh contextless reviewer/);
+  assert.match(text, /Mode: preview fix first/);
+  assert.match(text, /Simulate the intended result before code changes/);
+});
+
+test("manual work packets carry structured post-fix review gates", () => {
+  const response = attachPostFixReviewGateToManualPackets({
+    session_id: "manual_123",
+    session: {
+      session_id: "manual_123",
+      context: { feedback_action: "share_feedback_and_start_work" },
+      agent_feedback: {
+        latest: { feedback_id: "feedback_123" }
+      }
+    },
+    work_packets: [
+      {
+        packet_id: "packet_hero",
+        title: "Hero copy"
+      }
+    ]
+  });
+
+  assert.equal(response.post_fix_review_gate.required, true);
+  assert.equal(response.work_packets[0].post_fix_review_gate.required, true);
+  assert.equal(response.work_packets[0].post_fix_review_gate.packet_id, "packet_hero");
+  assert.equal(response.work_packets[0].post_fix_review_gate.feedback_id, "feedback_123");
+  assert.equal(response.work_packets[0].post_fix_review_gate.implementer_may_self_close, false);
+});
+
+test("post-fix review record decides whether work may be marked done", () => {
+  const passed = buildPostFixReviewRecord({
+    run_id: "run_123",
+    verdict: "fixed",
+    fixed_url: "https://preview.example.com",
+    changed_files: ["src/App.tsx"],
+    test_results: ["lint passed"]
+  });
+  const missed = buildPostFixReviewRecord({
+    run_id: "run_123",
+    verdict: "fixed",
+    missed_items: ["Hero still uses old copy."]
+  });
+
+  assert.equal(passed.may_mark_done, true);
+  assert.equal(missed.may_mark_done, false);
+  assert.equal(missed.verdict, "fixed");
+  assert.deepEqual(missed.missed_items, ["Hero still uses old copy."]);
+});
+
+test("automated QA action contract defaults to report-only and can opt into fix-and-retest", () => {
+  const reportOnly = buildAutomatedQaRequiredAction("run_123", {
+    verdict: "needs_fix"
+  });
+  const previewFirst = buildAutomatedQaRequiredAction(
+    "run_123",
+    { verdict: "needs_fix" },
+    { feedback_action: "preview_fix_first" }
+  );
+  const fixAndRetest = buildAutomatedQaRequiredAction(
+    "run_123",
+    { verdict: "needs_fix" },
+    { feedback_action: "share_feedback_and_start_work" }
+  );
+  const text = buildAutomatedQaActionText("run_123", { verdict: "needs_fix" });
+
+  assert.equal(reportOnly.source, "automated_qa");
+  assert.equal(reportOnly.status, "report_only");
+  assert.equal(reportOnly.agent_action_mode, "report_only");
+  assert.equal(reportOnly.feedback_action, "share_feedback");
+  assert.equal(reportOnly.auto_start_work, false);
+  assert.match(reportOnly.completion_rule, /unless the user explicitly asks/);
+  assert.equal(previewFirst.status, "preview_required_before_work");
+  assert.equal(previewFirst.agent_action_mode, "preview_then_fix");
+  assert.equal(previewFirst.feedback_action, "preview_fix_first");
+  assert.equal(previewFirst.auto_start_work, false);
+  assert.equal(fixAndRetest.status, "fix_or_explain_before_done");
+  assert.equal(fixAndRetest.feedback_action, "share_feedback_and_start_work");
+  assert.equal(fixAndRetest.auto_start_work, true);
+  assert.equal(fixAndRetest.post_fix_review_gate.required, true);
+  assert.equal(fixAndRetest.post_fix_review_gate.implementer_may_self_close, false);
+  assert.match(fixAndRetest.completion_rule, /fix the target work/);
+  assert.match(fixAndRetest.completion_rule, /fresh contextless reviewer/);
+  assert.match(text, /Mode: share feedback only/);
+});
+
+test("automated pass still returns a gate when caller requested fix-and-retest", () => {
+  const passOutcome = {
+    verdict: "passed",
+    pass: true,
+    reason: "QA passed."
+  };
+
+  assert.equal(shouldReturnQaAction(passOutcome), false);
+  assert.equal(shouldReturnQaAction(passOutcome, { feedback_action: "share_feedback_and_start_work" }), true);
+  assert.equal(shouldReturnQaAction(passOutcome, { agent_action_mode: "fix_and_retest" }), true);
+});
+
+test("manual review missing-input result asks only for target_url", () => {
+  const result = buildManualReviewNeedsInputResult({});
+
+  assert.equal(result.structuredContent.needs_input, true);
+  assert.deepEqual(result.structuredContent.missing_fields, ["target_url"]);
+  assert.equal(result.structuredContent.recommended_tool, "qa_start_manual_review");
+  assert.match(result.content[0].text, /target URL/i);
 });
 
 test("qa MCP client loads stored dashboard auth and sends dashboard token headers", async () => {
@@ -295,4 +788,94 @@ test("qa MCP client loads stored dashboard auth and sends dashboard token header
   assert.equal(calls[0].options.headers["x-dashboard-refresh-token"], "refresh_saved_123");
   assert.equal(stored.ok, true);
   assert.equal(stored.auth.owner_email, "saved@example.com");
+});
+
+test("qa MCP client can submit a manual preview proposal", async () => {
+  const calls = [];
+  const client = createQaApiClient({
+    baseUrl: "https://beforeusersdo.com",
+    serviceToken: "service_123",
+    ownerUserId: "user_123",
+    ownerEmail: "owner@example.com",
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return createJsonResponse({
+        ok: true,
+        session_id: "manual_123",
+        preview_proposal: {
+          proposal_id: "preview_123",
+          status: "draft",
+          title: "Cleaner hero"
+        }
+      });
+    }
+  });
+
+  const response = await client.submitManualPreviewProposal("manual_123", {
+    title: "Cleaner hero",
+    summary: "Make the install path obvious.",
+    changes: ["Make MCP primary.", "Keep proof visible."]
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.preview_proposal.title, "Cleaner hero");
+  assert.equal(calls.length, 1);
+  assert.equal(new URL(calls[0].url).pathname, "/api/manual-qa/preview-proposal");
+  assert.equal(calls[0].options.method, "POST");
+  assert.equal(calls[0].options.headers["x-qa-service-token"], "service_123");
+  assert.equal(calls[0].options.headers["x-owner-user-id"], "user_123");
+  assert.equal(calls[0].options.headers["x-owner-email"], "owner@example.com");
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    session_id: "manual_123",
+    proposal: {
+      title: "Cleaner hero",
+      summary: "Make the install path obvious.",
+      changes: ["Make MCP primary.", "Keep proof visible."]
+    }
+  });
+});
+
+test("qa MCP client can submit a manual post-fix review", async () => {
+  const calls = [];
+  const client = createQaApiClient({
+    baseUrl: "https://beforeusersdo.com",
+    serviceToken: "service_123",
+    ownerUserId: "user_123",
+    ownerEmail: "owner@example.com",
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return createJsonResponse({
+        ok: true,
+        session_id: "manual_123",
+        may_mark_done: false,
+        post_fix_review: {
+          review_id: "postfix_123",
+          verdict: "missed",
+          may_mark_done: false
+        }
+      });
+    }
+  });
+
+  const response = await client.submitManualPostFixReview("manual_123", {
+    verdict: "missed",
+    fixed_url: "https://preview.example.com",
+    missed_items: ["Hero still has old copy."]
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.may_mark_done, false);
+  assert.equal(response.post_fix_review.verdict, "missed");
+  assert.equal(calls.length, 1);
+  assert.equal(new URL(calls[0].url).pathname, "/api/manual-qa/post-fix-review");
+  assert.equal(calls[0].options.method, "POST");
+  assert.equal(calls[0].options.headers["x-qa-service-token"], "service_123");
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    session_id: "manual_123",
+    review: {
+      verdict: "missed",
+      fixed_url: "https://preview.example.com",
+      missed_items: ["Hero still has old copy."]
+    }
+  });
 });

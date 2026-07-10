@@ -13,6 +13,8 @@ import {
   Clock3,
   Code,
   Copy,
+  Download,
+  Eraser,
   ExternalLink,
   Eye,
   FileText,
@@ -26,7 +28,11 @@ import {
   LogOut,
   Mail,
   MessageCircle,
+  Mic,
+  MonitorUp,
   MousePointer2,
+  PanelRight,
+  PenLine,
   Play,
   Plus,
   Search,
@@ -34,6 +40,7 @@ import {
   Settings2,
   Shield,
   Sparkles,
+  Square,
   Star,
   Quote,
   TrendingUp,
@@ -85,6 +92,8 @@ import type {
   AlertItem,
   AuthUser,
   LaunchDraft,
+  ManualQaItem,
+  ManualQaSession,
   McpTokenSummary,
   ProjectSummary,
   QaReport,
@@ -102,6 +111,10 @@ import type {
   WorkerInfo,
   WorkerSummary
 } from "@/types";
+import alexTesterPhoto from "./assets/testers/alex.jpg";
+import jordanTesterPhoto from "./assets/testers/jordan.jpg";
+import mayaTesterPhoto from "./assets/testers/maya.jpg";
+import ninaTesterPhoto from "./assets/testers/nina.jpg";
 
 const PERSONA_PRESETS = [
   {
@@ -187,6 +200,13 @@ const PUBLIC_BRAND_NAME = "Before Users Do";
 const PUBLIC_BASE_URL = "https://beforeusersdo.com";
 const MCP_CLIENT_SERVER_NAME = "beforeusersdo-qa";
 const HOSTED_MCP_URL = "https://mcp.beforeusersdo.com/mcp";
+const HOME_HERO_WORDS = ["bugs", "frustrations", "confusion", "bad patterns", "blank screens", "dead ends"];
+const HUMAN_QA_TESTERS = [
+  { name: "Maya", avatar: mayaTesterPhoto },
+  { name: "Jordan", avatar: jordanTesterPhoto },
+  { name: "Nina", avatar: ninaTesterPhoto },
+  { name: "Alex", avatar: alexTesterPhoto }
+];
 
 type AdvancedBrowserRuntimeState = {
   status: "ready" | "blocked" | "checking";
@@ -1340,18 +1360,20 @@ function BrandMark() {
 
 function HomePage({
   authorized,
-  onOpenWorkspace,
   onOpenMcpSettings
 }: {
   authorized: boolean;
-  onOpenWorkspace: () => void;
   onOpenMcpSettings: () => void;
 }) {
   const [site, setSite] = useState("");
   const [email, setEmail] = useState("");
+  const [expectedBehavior, setExpectedBehavior] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [queued, setQueued] = useState<any | null>(null);
+  const [heroWordIndex, setHeroWordIndex] = useState(0);
+  const [heroTypedWord, setHeroTypedWord] = useState(HOME_HERO_WORDS[0]);
+  const [heroDeleting, setHeroDeleting] = useState(false);
   const mcpInstallConfig = `{
   "mcpServers": {
     "${MCP_CLIENT_SERVER_NAME}": {
@@ -1363,6 +1385,40 @@ function HomePage({
   }
 }`;
 
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+
+    const fullWord = HOME_HERO_WORDS[heroWordIndex];
+    const isComplete = heroTypedWord === fullWord;
+    const shouldAdvanceWord = heroDeleting && heroTypedWord.length <= 1;
+    const delay = isComplete && !heroDeleting ? 1400 : shouldAdvanceWord ? 220 : heroDeleting ? 42 : 82;
+
+    const timeout = window.setTimeout(() => {
+      if (!heroDeleting && isComplete) {
+        setHeroDeleting(true);
+        return;
+      }
+
+      if (shouldAdvanceWord) {
+        const nextIndex = (heroWordIndex + 1) % HOME_HERO_WORDS.length;
+        setHeroWordIndex(nextIndex);
+        setHeroDeleting(false);
+        setHeroTypedWord(HOME_HERO_WORDS[nextIndex].slice(0, 1));
+        return;
+      }
+
+      setHeroTypedWord((current) => (
+        heroDeleting
+          ? fullWord.slice(0, Math.max(0, current.length - 1))
+          : fullWord.slice(0, Math.min(fullWord.length, current.length + 1))
+      ));
+    }, delay);
+
+    return () => window.clearTimeout(timeout);
+  }, [heroDeleting, heroTypedWord, heroWordIndex]);
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
@@ -1372,7 +1428,8 @@ function HomePage({
         method: "POST",
         body: {
           url: site,
-          email
+          email,
+          expected_behavior: expectedBehavior
         }
       });
       setQueued(response);
@@ -1390,15 +1447,16 @@ function HomePage({
         <div className="cursor-pointer">
           <Logo />
         </div>
-        <nav className="hidden md:flex items-center gap-8 font-bold text-sm uppercase tracking-widest">
-          <a href="#install" className="hover:text-brand-accent transition-colors">Install MCP</a>
-          <a href="#proof" className="hover:text-brand-accent transition-colors">Proof</a>
-          <button className="hover:text-brand-accent transition-colors" onClick={onOpenWorkspace}>Help Center</button>
+        <nav className="hidden lg:flex items-center gap-8 font-bold text-sm uppercase tracking-widest">
+          <a href="#how-it-works" className="hover:text-brand-accent transition-colors">How it works</a>
+          <a href="#testing-modes" className="hover:text-brand-accent transition-colors">Testing modes</a>
+          <a href="#install" className="hover:text-brand-accent transition-colors">Set up</a>
+          <a href="#proof" className="hover:text-brand-accent transition-colors">Reports</a>
           <button
             onClick={onOpenMcpSettings}
             className="bg-brand-ink text-white px-6 py-2 rounded-full hover:bg-brand-accent transition-all"
           >
-            {authorized ? "Create MCP key" : "Login"}
+            {authorized ? "Connect MCP" : "Sign in"}
           </button>
         </nav>
       </header>
@@ -1413,15 +1471,23 @@ function HomePage({
           >
             <div>
               <div className="organic-pill inline-flex items-center gap-2 mb-6 bg-brand-secondary/10 text-brand-ink border-brand-ink">
-                <Code className="h-3.5 w-3.5" />
-                Hosted QA MCP for coding agents
+                <Shield className="h-3.5 w-3.5" />
+                MCP for AI-coded apps
               </div>
 
-              <h1 className="text-[clamp(2.5rem,7vw,6.5rem)] font-black mb-8 leading-[0.88] max-w-5xl tracking-tighter text-brand-ink">
-                Let your coding agent QA its own work.
+              <h1
+                className="text-[clamp(2.75rem,5.6vw,5.25rem)] font-black mb-7 leading-[0.95] max-w-4xl tracking-normal text-brand-ink"
+                aria-label={`Catch ${HOME_HERO_WORDS[heroWordIndex]} before users do.`}
+              >
+                Catch{" "}
+                <span className="inline-flex min-w-[12ch] items-baseline text-brand-accent" aria-hidden="true">
+                  {heroTypedWord}
+                  <span className="ml-1 inline-block h-[0.78em] w-[0.08em] translate-y-[0.08em] animate-pulse rounded-full bg-brand-accent" />
+                </span>{" "}
+                before users do.
               </h1>
-              <p className="text-xl md:text-2xl text-slate-600 max-w-2xl mb-10 font-medium leading-relaxed">
-                Install the {PUBLIC_BRAND_NAME} MCP once. Codex, Cursor, Claude Desktop, or any Streamable HTTP MCP client can launch a real browser QA run, wait for the result, and return screenshots, console errors, network proof, and a dev-ready report.
+              <p className="text-lg md:text-xl text-slate-600 max-w-xl mb-9 font-bold leading-relaxed">
+                Your AI coder can build it. We help you catch bugs, frustration points, and confusing UI before users do.
               </p>
 
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -1430,329 +1496,394 @@ function HomePage({
                   onClick={onOpenMcpSettings}
                   className="bg-brand-accent text-white px-8 py-5 rounded-2xl font-black text-lg hover:bg-brand-ink transition-all flex items-center justify-center gap-2 shadow-[6px_6px_0px_0px_rgba(15,23,42,1)]"
                 >
-                  {authorized ? "Create MCP key" : "Sign in to create key"}
+                  {authorized ? "Connect MCP" : "Connect MCP"}
                   <ArrowRight className="w-5 h-5" />
                 </button>
                 <a
-                  href="#install"
+                  href="#testing-modes"
                   className="handcrafted-card px-8 py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-2"
                 >
-                  See install steps
+                  Earn money by testing
                   <ChevronRight className="w-5 h-5" />
                 </a>
               </div>
-
-              <div className="mt-7 flex flex-wrap gap-3 text-xs font-black uppercase tracking-widest text-slate-500">
-                <span className="inline-flex items-center gap-1 rounded-full border border-brand-line bg-white px-3 py-2"><Shield className="w-3 h-3" /> Revocable keys</span>
-                <span className="inline-flex items-center gap-1 rounded-full border border-brand-line bg-white px-3 py-2"><Clock className="w-3 h-3" /> Hosted endpoint</span>
-                <span className="inline-flex items-center gap-1 rounded-full border border-brand-line bg-white px-3 py-2"><FileText className="w-3 h-3" /> Evidence bundle</span>
-              </div>
             </div>
 
-            <div className="relative">
-              <div className="handcrafted-card !bg-brand-ink p-5 sm:p-7 rounded-[2rem] text-white">
-                <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-brand-danger"></div>
-                    <div className="w-3 h-3 rounded-full bg-brand-warning"></div>
-                    <div className="w-3 h-3 rounded-full bg-brand-success"></div>
+            <div className="relative min-h-[500px] text-brand-ink">
+              <div className="relative grid min-h-[450px] gap-5 lg:grid-cols-[1fr_auto_1fr_auto_1fr] lg:items-center">
+                <motion.div
+                  animate={{ y: [0, -10, 0] }}
+                  transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+                  className="relative z-10 flex flex-col items-center justify-center rounded-[1.5rem] bg-white px-5 py-6 text-center shadow-[0_24px_65px_-38px_rgba(15,23,42,0.45)]"
+                >
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 text-slate-400">
+                    <Code className="h-7 w-7" strokeWidth={1.8} />
                   </div>
-                  <span className="truncate text-xs font-black uppercase tracking-widest text-white/45">mcp client config</span>
+                  <div className="text-xl font-black leading-tight text-brand-ink">Your vibecoded app</div>
+                </motion.div>
+
+                <div className="relative z-10 flex items-center justify-center text-slate-300">
+                  <ArrowRight className="hidden h-9 w-9 lg:block" strokeWidth={1.6} />
+                  <ChevronDown className="h-7 w-7 lg:hidden" strokeWidth={1.8} />
                 </div>
-                <pre className="mt-5 overflow-x-auto whitespace-pre-wrap break-words text-left font-mono text-[11px] leading-relaxed text-brand-secondary sm:text-xs">
-                  {mcpInstallConfig}
-                </pre>
-                <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <div className="flex items-center gap-3 text-sm font-black text-white">
-                    <Check className="h-5 w-5 text-brand-success" />
-                    qa_check_work returned needs_fix
+
+                <motion.div
+                  animate={{ y: [0, 12, 0] }}
+                  transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut", delay: 0.35 }}
+                  className="relative z-10 order-3 flex flex-col items-center justify-center rounded-[1.5rem] bg-white px-6 py-7 text-center shadow-[0_28px_75px_-42px_rgba(139,92,246,0.7)] lg:order-none lg:-translate-y-16"
+                >
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-accent/10 text-brand-accent">
+                    <Zap className="h-8 w-8 fill-current" />
                   </div>
-                  <p className="mt-2 text-sm font-semibold leading-relaxed text-white/60">
-                    Blank white screen after successful OTP verification. Includes final screenshot, page errors, DOM snapshot, network timeline, viewport, browser version, and post-auth state flags.
-                  </p>
+                  <div className="text-4xl font-black leading-none text-brand-accent">BUD</div>
+                </motion.div>
+
+                <div className="relative z-10 order-4 flex items-center justify-center text-slate-300 lg:order-none">
+                  <ArrowRight className="hidden h-9 w-9 lg:block" strokeWidth={1.6} />
+                  <ChevronDown className="h-7 w-7 lg:hidden" strokeWidth={1.8} />
                 </div>
+
+                <motion.div
+                  animate={{ y: [0, -8, 0] }}
+                  transition={{ duration: 4.8, repeat: Infinity, ease: "easeInOut", delay: 0.7 }}
+                  className="relative z-10 order-5 flex flex-col items-center justify-center rounded-[1.5rem] bg-white px-5 py-6 text-center shadow-[0_24px_65px_-38px_rgba(16,185,129,0.55)] lg:order-none"
+                >
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-success/10 text-brand-success">
+                    <Users className="h-7 w-7" strokeWidth={1.8} />
+                  </div>
+                  <div className="text-xl font-black leading-tight text-brand-ink">Happy customers</div>
+                </motion.div>
               </div>
-              <motion.div
-                animate={{ y: [0, -8, 0] }}
-                transition={{ duration: 4, repeat: Infinity }}
-                className="absolute -bottom-7 -left-4 hidden rounded-3xl border-4 border-brand-ink bg-white p-3 shadow-2xl sm:flex sm:items-center sm:gap-3"
-              >
-                <div className={`w-12 h-12 rounded-2xl ${STARTER_PERSONAS[1].color} overflow-hidden border-2 border-brand-ink`}>
-                  <img src={STARTER_PERSONAS[1].avatar} alt={STARTER_PERSONAS[1].name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                </div>
-                <div>
-                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Persona run</div>
-                  <div className="text-sm font-black text-brand-ink">First-time user QA</div>
-                </div>
-              </motion.div>
             </div>
           </motion.div>
         </section>
 
-        <section id="install" className="py-20 px-4 bg-white border-y-2 border-brand-ink">
-          <div className="max-w-7xl mx-auto">
-            <div className="max-w-3xl">
-              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Install once</span>
-              <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
-                Give every coding agent a real QA tool.
+        <section id="how-it-works" className="bg-brand-ink px-4 py-20 text-white">
+          <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
+            <div>
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border-2 border-white/30 bg-white/10 px-4 py-1 text-xs font-black uppercase tracking-widest text-white">
+                <Zap className="h-4 w-4 text-brand-accent" />
+                QA layer for AI coding
+              </div>
+              <h2 className="text-4xl font-black leading-tight md:text-6xl">
+                One MCP. Four ways to test.
               </h2>
-              <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
-                The hosted MCP endpoint is already live. Create a key in your dashboard, paste the config into your coding agent, then ask it to test a preview URL before it calls the work done.
+              <p className="mt-5 max-w-xl text-lg font-bold leading-relaxed text-white/70">
+                BUD adds a QA layer to your AI coding workflow. Once connected, your AI coder can prepare every feature for AI testing, self review, team QA, or QA on call.
               </p>
-            </div>
-
-            <div className="mt-12 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-              <div className="grid gap-4">
-                {[
-                  ["1", "Create a key", "Open Settings, choose Coding agents, then create a revocable MCP key."],
-                  ["2", "Paste the config", "Use the hosted Streamable HTTP URL and Authorization header in your MCP client."],
-                  ["3", "Ask for QA", "Tell the agent what changed, the preview URL, and the task a user should try."]
-                ].map(([step, title, body]) => (
-                  <div key={step} className="handcrafted-card rounded-3xl p-6">
-                    <div className="flex items-start gap-4">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-ink font-black text-white">
-                        {step}
-                      </div>
-                      <div>
-                        <h3 className="text-xl font-black text-brand-ink">{title}</h3>
-                        <p className="mt-2 text-sm font-bold leading-relaxed text-slate-600">{body}</p>
-                      </div>
+              <div className="mt-7 inline-flex max-w-xl flex-col gap-3 rounded-3xl border-2 border-white/20 bg-white/10 p-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex -space-x-3" aria-label="Internal QA testers">
+                    {HUMAN_QA_TESTERS.map((tester) => (
+                      <img
+                        key={tester.name}
+                        src={tester.avatar}
+                        alt={`${tester.name}, internal QA tester`}
+                        className="h-14 w-14 rounded-full border-4 border-brand-ink bg-white object-cover"
+                      />
+                    ))}
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full border-4 border-brand-ink bg-white text-sm font-black text-brand-ink">
+                      +10
                     </div>
                   </div>
+                  <div className="rounded-2xl bg-white px-4 py-3 text-brand-ink">
+                    <div className="flex items-center gap-2 text-sm font-black">
+                      <span className="relative flex h-3 w-3" aria-hidden="true">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-success opacity-60" />
+                        <span className="relative inline-flex h-3 w-3 rounded-full bg-brand-success" />
+                      </span>
+                      14 online now
+                    </div>
+                    <div className="mt-1 text-xs font-bold text-slate-500">Human QA testers ready today</div>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onOpenMcpSettings}
+                className="mt-8 inline-flex items-center gap-3 rounded-2xl bg-white px-7 py-5 text-lg font-black text-brand-ink transition-all hover:bg-brand-accent hover:text-white"
+              >
+                Connect MCP
+                <ArrowRight className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="text-brand-ink">
+              <div className="grid gap-4 md:grid-cols-2">
+                {[
+                  { step: "1", title: "AI testing", body: "Let an AI agent check the preview against the expected behavior.", icon: WandSparkles },
+                  { step: "2", title: "You testing", body: "Open the preview and follow the generated test path yourself.", icon: MousePointer2 },
+                  { step: "3", title: "Team testing", body: "Send a clean handoff to someone on your team.", icon: MessageCircle },
+                  { step: "4", title: "QA on call", body: "Get a dedicated tester or QA agent to try the feature and report what broke.", icon: Users }
+                ].map(({ step, title, body, icon: Icon }) => (
+                  <div key={title} className="rounded-3xl border-2 border-brand-line bg-brand-bg p-5">
+                    <div className="mb-5 flex items-center justify-between gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-accent text-lg font-black text-white">
+                        {step}
+                      </div>
+                      <Icon className="h-6 w-6 text-brand-accent" />
+                    </div>
+                    <h3 className="text-xl font-black leading-tight text-brand-ink">{title}</h3>
+                    <p className="mt-3 text-sm font-bold leading-6 text-slate-600">{body}</p>
+                  </div>
                 ))}
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        <section id="install" className="py-20 px-4 bg-white border-y-2 border-brand-ink">
+          <div className="max-w-7xl mx-auto">
+            <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-end">
+              <div className="lg:col-span-2">
+                <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Set up once</span>
+                <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
+                  Your AI coder should not say &quot;done&quot; without a proper test. We take that off your hands.
+                </h2>
+              </div>
+              <div>
+                <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
+                  BUD gives your AI coder a simple testing workflow. Before a feature is finished, it opens the preview and shares it with your team, AI reviewers, and real human QA testers so the work actually gets checked.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
                 <button
                   type="button"
                   onClick={onOpenMcpSettings}
                   className="bg-brand-ink text-white px-7 py-5 rounded-2xl font-black text-lg hover:bg-brand-accent transition-all flex items-center justify-center gap-2"
                 >
-                  Open MCP settings
+                  Connect MCP
                   <ExternalLink className="h-5 w-5" />
                 </button>
-              </div>
-
-              <div className="handcrafted-card rounded-3xl !bg-brand-ink p-6 text-white">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-white/40">Hosted MCP URL</div>
-                    <div className="mt-1 max-w-full break-all font-mono text-xs font-bold text-brand-secondary">{HOSTED_MCP_URL}</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => copyText(mcpInstallConfig)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs font-black uppercase tracking-widest text-brand-ink"
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                    Copy
-                  </button>
-                </div>
-                <pre className="mt-6 overflow-x-auto whitespace-pre-wrap break-words rounded-2xl border border-white/10 bg-white/5 p-4 text-left font-mono text-[11px] leading-relaxed text-brand-secondary sm:text-xs">
-                  {mcpInstallConfig}
-                </pre>
-                <div className="mt-6 rounded-2xl bg-white p-5 text-brand-ink">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Try this prompt</div>
-                  <p className="mt-2 text-sm font-black leading-relaxed">
-                    Test my preview URL with {PUBLIC_BRAND_NAME} QA. Use qa_check_work, try the signup flow, wait for the verdict, and fix anything marked needs_fix before you finish.
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => copyText(mcpInstallConfig)}
+                  className="handcrafted-card px-7 py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-2"
+                >
+                  <Copy className="h-5 w-5" />
+                  Copy setup command
+                </button>
               </div>
             </div>
           </div>
         </section>
 
         <section id="proof" className="py-24 px-4 max-w-7xl mx-auto">
-          <div className="grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
+          <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
             <div>
-              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Dev handoff</span>
+              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Clear handoff</span>
               <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
-                Not just screenshots. A report a developer can act on.
+                When something breaks, your AI coder gets the full context.
               </h2>
               <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
-                Every MCP run returns a plain verdict plus the proof needed to reproduce, diagnose, and prioritize the issue without leaking private tokens.
+                Bugs should not come back as vague comments. BUD captures the broken screen, tester notes, console errors, network requests, page state, and steps to reproduce.
               </p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {[
-                ["Final screenshot", "The terminal state is promoted first so a blank screen or blocked flow is obvious."],
-                ["Page errors", "Uncaught exceptions and console errors are captured beside the user-facing failure."],
-                ["Network timeline", "Requests are ordered by time with misleading transient failures filtered from the diagnosis."],
-                ["DOM snapshot", "The accessibility tree and visible DOM state show what the browser could actually interact with."],
-                ["Environment", "Browser version, viewport, URL, asset hash, and run timing travel with the report."],
-                ["Auth state flags", "Post-auth booleans like need_profile, token_present, and serialized_step are included without secrets."]
-              ].map(([title, body]) => (
-                <div key={title} className="handcrafted-card rounded-3xl p-6">
-                  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-secondary/10 text-brand-secondary">
-                    <Check className="h-5 w-5" />
-                  </div>
-                  <h3 className="text-lg font-black text-brand-ink">{title}</h3>
-                  <p className="mt-2 text-sm font-bold leading-relaxed text-slate-600">{body}</p>
+
+            <div className="handcrafted-card overflow-hidden rounded-[2rem] !bg-white text-brand-ink">
+              <div className="flex items-center justify-between gap-3 border-b-2 border-brand-ink px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-brand-danger"></div>
+                  <div className="h-3 w-3 rounded-full bg-brand-warning"></div>
+                  <div className="h-3 w-3 rounded-full bg-brand-success"></div>
                 </div>
-              ))}
+                <div className="rounded-full bg-brand-warning/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-brand-ink">
+                  Needs fix
+                </div>
+              </div>
+
+              <div className="grid gap-4 p-5 lg:grid-cols-[1.15fr_0.85fr]">
+                <div className="rounded-3xl border-2 border-brand-ink bg-brand-bg p-5">
+                  <div className="mb-4 flex items-center gap-2 text-sm font-black text-brand-ink">
+                    <MonitorUp className="h-5 w-5 text-brand-accent" />
+                    Broken screen
+                  </div>
+                  <div className="relative flex min-h-[265px] items-center justify-center rounded-3xl border-2 border-dashed border-brand-danger bg-white">
+                    <div className="absolute left-5 top-5 h-20 w-32 rounded-2xl border border-brand-line bg-brand-bg"></div>
+                    <div className="absolute bottom-5 left-5 h-9 w-40 rounded-2xl bg-slate-200"></div>
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-brand-danger text-white shadow-[5px_5px_0px_0px_rgba(15,23,42,0.16)]">
+                        <TriangleAlert className="h-10 w-10" />
+                      </div>
+                      <div className="rounded-full bg-brand-danger px-4 py-2 text-sm font-black text-white">
+                        Checkout button disabled
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid content-start gap-3">
+                  {[
+                    ["What happened", MonitorUp, "button stayed disabled"],
+                    ["Expected", Check, "button activates"],
+                    ["Repro", MousePointer2, "plan → email"],
+                    ["Console error", Code, "TypeError"],
+                    ["Network request", Activity, "POST 500"],
+                    ["Suggested fix prompt", WandSparkles, "ready"]
+                  ].map(([label, Icon, value]) => (
+                    <div key={label as string} className="rounded-2xl border-2 border-brand-line bg-white p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-sm font-black text-brand-ink">
+                          <Icon className="h-4 w-4 text-brand-accent" />
+                          {label as string}
+                        </div>
+                        <span className="rounded-full bg-brand-bg px-2 py-1 text-[10px] font-black text-slate-500">
+                          {value as string}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
-        <section id="personas" className="py-24 px-4 bg-brand-ink text-white overflow-hidden">
+        <section id="testing-modes" className="py-24 px-4 bg-brand-ink text-white overflow-hidden">
           <div className="max-w-7xl mx-auto">
-            <div className="mb-16">
-              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">The Test Fleet</span>
-              <h2 className="text-4xl md:text-6xl font-black mt-4 mb-6 leading-tight">
-                AI agents that feel <br />
-                <span className="text-brand-secondary italic">actually human.</span>
+            <div className="mb-12 max-w-3xl">
+              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Testing modes</span>
+              <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight">
+                Test the same feature from different angles.
               </h2>
-              <p className="text-slate-400 text-xl max-w-2xl font-medium">
-                We don&apos;t just run scripts. We deploy personalities. Our agents have goals, frustrations, and varying levels of tech-savviness.
+              <p className="mt-5 text-lg font-bold leading-relaxed text-slate-400">
+                Cover every layer of the experience: technical testing, UI/UX patterns, product psychology, and real human QA.
               </p>
             </div>
 
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-              {STARTER_PERSONAS.map((persona, index) => (
-                <motion.div
-                  key={persona.id}
-                  whileHover={{ y: -10, rotate: index % 2 === 0 ? 1 : -1 }}
-                  className="bg-white text-brand-ink p-8 rounded-[2.5rem] border-4 border-brand-accent relative group"
-                >
-                  <div className={`w-24 h-24 rounded-3xl ${persona.color} mb-6 overflow-hidden border-2 border-brand-ink`}>
-                    <img
-                      src={persona.avatar}
-                      alt={persona.name}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
+            <div className="handcrafted-card overflow-hidden rounded-[2rem] !bg-white text-brand-ink">
+              <div className="grid gap-0 lg:grid-cols-[1fr_1.15fr]">
+                <div className="border-b-2 border-brand-ink bg-brand-bg p-5 lg:border-b-0 lg:border-r-2">
+                  <div className="rounded-3xl border-2 border-brand-ink bg-white p-5">
+                    <div className="mb-4 flex items-center gap-2">
+                      <div className="h-3 w-3 rounded-full bg-brand-danger"></div>
+                      <div className="h-3 w-3 rounded-full bg-brand-warning"></div>
+                      <div className="h-3 w-3 rounded-full bg-brand-success"></div>
+                      <span className="ml-2 text-xs font-black text-slate-400">feature preview</span>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between rounded-2xl border border-brand-line bg-brand-bg px-4 py-3 text-xs font-black text-slate-500">
+                        <span>Console</span>
+                        <span className="text-brand-success">clean</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-2xl border border-brand-line bg-brand-bg px-4 py-3 text-xs font-black text-slate-500">
+                        <span>Mobile layout</span>
+                        <span className="text-brand-warning">review</span>
+                      </div>
+                      <div className="rounded-3xl border-2 border-dashed border-brand-accent bg-brand-accent/5 px-4 py-5">
+                        <div className="text-xs font-black uppercase tracking-widest text-brand-accent">User psychology</div>
+                        <div className="mt-2 text-sm font-black text-brand-ink">Trust, motivation, confusion</div>
+                      </div>
+                    </div>
                   </div>
-                  <h3 className="text-2xl font-black mb-1">{persona.name}</h3>
-                  <div className="text-xs font-black uppercase tracking-widest text-brand-accent mb-4">{persona.role}</div>
-                  <div className="bg-brand-muted/30 p-4 rounded-2xl mb-6 relative">
-                    <Quote className="absolute -top-2 -left-2 w-6 h-6 text-brand-accent opacity-20" />
-                    <p className="text-sm font-bold leading-relaxed italic">&quot;{persona.quote}&quot;</p>
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    {["Technical", "UI / UX", "Psychology", "Human QA"].map((item) => (
+                      <div key={item} className="rounded-2xl border-2 border-brand-line bg-white px-4 py-3 text-center text-sm font-black">
+                        {item}
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-tighter">
-                    <Zap className="w-3 h-3 text-brand-secondary" />
-                    Trait: {persona.trait}
-                  </div>
-                </motion.div>
-              ))}
+                </div>
+
+                <div className="grid gap-4 p-5 sm:grid-cols-2">
+                  {[
+                    { title: "Technical testing", label: "Automated checks", body: "Runs the flow and captures console errors, network failures, and broken states.", status: "No crash found", icon: Code },
+                    { title: "UI/UX patterns", label: "Interface review", body: "Checks layout, hierarchy, mobile behavior, copy, and confusing patterns.", status: "Pattern flagged", icon: LayoutDashboard },
+                    { title: "Psychology", label: "User friction", body: "Looks for hesitation, weak trust cues, unclear value, and motivation gaps.", status: "Trust issue", icon: Eye },
+                    { title: "Human QA", label: "Tester on call", body: "A real person tries the feature and reports where they got confused or stuck.", status: "Stuck at step 3", icon: Users }
+                  ].map(({ title, label, body, status, icon: Icon }) => (
+                    <motion.div
+                      key={title}
+                      whileHover={{ y: -6 }}
+                      className="rounded-3xl border-2 border-brand-line bg-white p-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="h-14 w-14 overflow-hidden rounded-2xl border-2 border-brand-ink bg-brand-bg">
+                          <div className="flex h-full w-full items-center justify-center text-brand-accent">
+                            <Icon className="h-7 w-7" />
+                          </div>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-black text-brand-ink">{title}</div>
+                          <div className="text-[10px] font-black uppercase tracking-widest text-brand-accent">
+                            {label}
+                          </div>
+                        </div>
+                      </div>
+                      <p className="mt-4 min-h-[48px] text-sm font-bold leading-6 text-slate-600">{body}</p>
+                      <div className="mt-4 flex items-center justify-between rounded-2xl bg-brand-bg px-4 py-3 text-xs font-black text-slate-500">
+                        <span>{status}</span>
+                        <Check className="h-4 w-4 text-brand-success" />
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
         <section id="how" className="py-24 px-4 max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2 handcrafted-card p-10 rounded-[3rem] bg-brand-secondary/5">
-              <div className="w-14 h-14 bg-brand-secondary rounded-2xl flex items-center justify-center mb-8 rotate-[-5deg]">
-                <Zap className="text-white w-8 h-8" />
-              </div>
-              <h3 className="text-3xl font-black mb-4">Zero-Setup Testing</h3>
-              <p className="text-lg font-bold text-slate-600 leading-relaxed max-w-md">
-                Just drop your URL. Our agents automatically map your site, identify user flows, and start testing. No SDKs, no code, no headaches.
-              </p>
-            </div>
-            <div className="handcrafted-card p-10 rounded-[3rem] bg-brand-accent/5">
-              <div className="w-14 h-14 bg-brand-accent rounded-2xl flex items-center justify-center mb-8 rotate-[5deg]">
-                <MessageCircle className="text-white w-8 h-8" />
-              </div>
-              <h3 className="text-3xl font-black mb-4">Real Chat Logs</h3>
-              <p className="text-lg font-bold text-slate-600 leading-relaxed">
-                Read exactly what the agents were thinking as they navigated your product.
-              </p>
-            </div>
-            <div className="handcrafted-card p-10 rounded-[3rem] !bg-brand-ink text-white">
-              <h3 className="text-3xl font-black mb-4">15 Min Reports</h3>
-              <p className="text-lg font-bold text-slate-400 mb-8">
-                Why wait weeks for a user study? Get a comprehensive QA report before your coffee gets cold.
-              </p>
-              <div className="flex items-center gap-4">
-                <div className="flex -space-x-3">
-                  {STARTER_PERSONAS.slice(0, 3).map((persona) => (
-                    <div key={persona.id} className={`w-10 h-10 rounded-full border-2 border-brand-ink ${persona.color} overflow-hidden`}>
-                      <img src={persona.avatar} alt={persona.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    </div>
-                  ))}
-                </div>
-                <span className="text-xs font-black uppercase tracking-widest text-brand-accent">Active Agents</span>
-              </div>
-            </div>
-            <div className="md:col-span-2 handcrafted-card p-10 rounded-[3rem] flex flex-col md:flex-row items-center gap-10">
-              <div className="flex-1">
-                <h3 className="text-3xl font-black mb-4">Visual Friction Maps</h3>
-                <p className="text-lg font-bold text-slate-600 leading-relaxed">
-                  See exactly where Sarah got confused or where Marcus felt the UI was too slow. Heatmaps, but with actual human reasoning.
-                </p>
-              </div>
-              <div className="w-full md:w-64 h-48 bg-brand-muted rounded-2xl border-2 border-brand-ink overflow-hidden relative">
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-brand-accent rounded-full animate-ping opacity-20"></div>
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-brand-accent rounded-full"></div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="py-24 px-4 bg-brand-muted/30">
-          <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-16">
-            <div className="flex-1">
-              <div className="organic-pill inline-block mb-6 bg-brand-ink text-white border-brand-ink">
-                Built for agentic workflows
-              </div>
-              <h2 className="text-4xl md:text-6xl font-black mb-8 leading-tight text-brand-ink">
-                Your AI writes the code. <br />
-                Stop being the <br />
-                <span className="text-brand-accent italic">manual QA</span> <br />
-                for its mistakes.
+          <div className="grid gap-10 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">
+            <div>
+              <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-sm">Feature feedback</span>
+              <h2 className="mt-4 text-4xl md:text-6xl font-black leading-tight text-brand-ink">
+                Feedback stays attached to the feature.
               </h2>
-              <p className="text-xl font-bold text-slate-600 mb-8 leading-relaxed">
-                You build at the speed of light with Cursor and Claude. Stop slowing down to manually click through every PR. Our agents close the loop by testing AI-generated code against real human behavior.
+              <p className="mt-5 text-lg font-bold leading-relaxed text-slate-600">
+                Testers can leave notes, voice comments, drawings, screenshots, and recordings. BUD keeps everything together so the next AI fix has the right context.
               </p>
+            </div>
 
-              <div className="space-y-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 bg-brand-secondary rounded-xl flex items-center justify-center shrink-0">
-                    <Zap className="text-white w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-black text-lg">MCP Integration</h4>
-                    <p className="text-slate-500 font-medium">Connect hosted Streamable HTTP MCP to Codex, Cursor, Claude Desktop, or any compatible client. Ask the agent to test the preview before it reports done.</p>
-                  </div>
+            <div className="handcrafted-card relative min-h-[500px] overflow-hidden rounded-[2rem] !bg-brand-bg p-5">
+              <div className="rounded-[2rem] border-2 border-brand-ink bg-white p-5">
+                <div className="mb-4 flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-brand-danger"></div>
+                  <div className="h-3 w-3 rounded-full bg-brand-warning"></div>
+                  <div className="h-3 w-3 rounded-full bg-brand-success"></div>
+                  <span className="ml-2 text-xs font-black text-slate-400">product page</span>
                 </div>
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 bg-brand-accent rounded-xl flex items-center justify-center shrink-0">
-                    <Shield className="text-white w-5 h-5" />
+                <div className="grid gap-4 md:grid-cols-[0.85fr_1.15fr]">
+                  <div className="space-y-3">
+                    <div className="h-10 rounded-2xl bg-brand-bg"></div>
+                    <div className="h-10 rounded-2xl bg-brand-bg"></div>
+                    <div className="h-28 rounded-3xl bg-brand-secondary/10"></div>
                   </div>
-                  <div>
-                    <h4 className="font-black text-lg">Confidence, Not Hope</h4>
-                    <p className="text-slate-500 font-medium">Don&apos;t just hope the LLM got the UI right. Our agents navigate the actual DOM, finding the edge cases your AI missed.</p>
+                  <div className="relative min-h-[230px] rounded-3xl bg-brand-muted/40">
+                    <div className="absolute left-8 top-8 h-28 w-40 rounded-[2rem] border-4 border-brand-accent"></div>
+                    <div className="absolute bottom-8 right-8 rounded-2xl border-2 border-brand-ink bg-white px-4 py-3 text-sm font-black">
+                      Comment pinned
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="flex-1 w-full">
-              <div className="handcrafted-card bg-white p-8 rounded-[3rem] relative">
-                <div className="bg-brand-ink rounded-2xl p-6 font-mono text-sm text-brand-secondary overflow-hidden">
-                  <div className="flex items-center gap-2 mb-4 border-b border-white/10 pb-2">
-                    <div className="w-3 h-3 rounded-full bg-brand-danger"></div>
-                    <div className="w-3 h-3 rounded-full bg-brand-warning"></div>
-                    <div className="w-3 h-3 rounded-full bg-brand-success"></div>
-                    <span className="text-white/40 ml-2">cursor-terminal</span>
+              <div className="absolute left-5 top-1/2 flex -translate-y-1/2 flex-col gap-2 rounded-3xl border-2 border-white/20 bg-brand-ink/85 p-2 text-white shadow-2xl backdrop-blur-xl">
+                {[MonitorUp, PenLine, MessageCircle, ArrowRight].map((Icon, index) => (
+                  <div
+                    key={index}
+                    className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 ${
+                      index === 1 ? "bg-brand-accent" : "bg-white/10"
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" />
                   </div>
-                  <div className="space-y-2">
-                    <p><span className="text-white/40">$</span> qa_check_work target_url=https://preview.example.com</p>
-                    <p className="text-white">Starting persona browser run for the signup flow...</p>
-                    <p className="text-white">Capturing screenshots, console errors, DOM, and network timeline...</p>
-                    <p className="text-brand-accent">needs_fix: Blank white screen after OTP verification.</p>
-                    <p className="text-brand-secondary">share_url: {PUBLIC_BASE_URL}/share/...</p>
+                ))}
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-4">
+                {[
+                  ["Record", MonitorUp],
+                  ["Draw", PenLine],
+                  ["Comment", MessageCircle],
+                  ["Send to AI coder", ArrowRight]
+                ].map(([label, Icon]) => (
+                  <div key={label as string} className="rounded-2xl border-2 border-brand-line bg-white px-4 py-4 text-center">
+                    <Icon className="mx-auto mb-2 h-5 w-5 text-brand-accent" />
+                    <div className="text-xs font-black text-brand-ink">{label as string}</div>
                   </div>
-                </div>
-                <motion.div
-                  animate={{ y: [0, -10, 0] }}
-                  transition={{ duration: 4, repeat: Infinity }}
-                  className="absolute -top-6 -right-6 w-24 h-24 bg-white rounded-3xl border-4 border-brand-ink p-2 shadow-2xl overflow-hidden"
-                >
-                  <img
-                    src={STARTER_PERSONAS[0].avatar}
-                    alt="Sarah"
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                </motion.div>
+                ))}
               </div>
             </div>
           </div>
@@ -1760,60 +1891,52 @@ function HomePage({
 
         <section className="py-24 px-4">
           <div className="max-w-7xl mx-auto grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-            <div className="handcrafted-card !bg-brand-accent p-10 md:p-14 rounded-[3rem] relative overflow-hidden">
+            <div className="handcrafted-card !bg-brand-accent p-8 md:p-12 rounded-[3rem] relative overflow-hidden">
               <div className="relative z-10">
                 <div className="organic-pill inline-flex items-center gap-2 mb-6 bg-white text-brand-ink border-brand-ink shadow-[2px_2px_0px_0px_rgba(18,18,18,1)]">
                   <Code className="h-3.5 w-3.5" />
-                  Ready to connect an agent?
+                  QA workflow
                 </div>
                 <h2 className="text-4xl md:text-6xl font-black mb-8 leading-none text-white">
-                  Install the QA MCP, then ship with proof.
+                  Let BUD make the work testable.
                 </h2>
-                <p className="text-lg md:text-xl font-bold text-white mb-10 max-w-xl leading-relaxed">
-                  The primary path is hosted MCP: create a key, paste the config, and make QA a required step before your agent finishes work.
+                <p className="mb-8 max-w-xl text-lg font-bold leading-relaxed text-white/75">
+                  Connect one MCP and give your AI coder a QA workflow for every feature it builds.
                 </p>
                 <button
                   type="button"
                   onClick={onOpenMcpSettings}
                   className="bg-brand-ink text-white px-9 py-5 rounded-3xl font-black text-xl hover:scale-[1.02] transition-all shadow-[8px_8px_0px_0px_rgba(255,255,255,0.3)] flex items-center gap-3"
                 >
-                  Create MCP key
+                  Connect MCP
                   <ArrowRight className="w-6 h-6" />
                 </button>
 
-                <div className="mt-10 flex items-center gap-4">
-                  <div className="flex -space-x-3">
-                    {STARTER_PERSONAS.map((persona) => (
-                      <img
-                        key={persona.id}
-                        src={persona.avatar}
-                        className="w-12 h-12 rounded-full border-2 border-brand-ink bg-white shadow-sm"
-                        alt="Agent"
-                        referrerPolicy="no-referrer"
-                      />
-                    ))}
-                  </div>
-                  <span className="text-sm font-black uppercase tracking-widest text-brand-ink">Personas ready</span>
+                <div className="mt-10 grid max-w-xl grid-cols-3 gap-3">
+                  {["MCP", "Handoff", "Fix-ready"].map((item) => (
+                    <div key={item} className="rounded-2xl border-2 border-white/40 bg-white/15 px-4 py-4 text-center text-sm font-black text-white">
+                      {item}
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
 
-            <div className="handcrafted-card rounded-[3rem] bg-white p-8 md:p-10">
-              <div className="flex items-start justify-between gap-6">
+            <div className="handcrafted-card rounded-[3rem] bg-white p-6 md:p-8">
+              <div className="mb-6 flex items-center justify-between gap-6">
                 <div>
-                  <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-xs">Secondary path</span>
-                  <h3 className="mt-3 text-3xl font-black text-brand-ink">Need one quick site report?</h3>
-                  <p className="mt-3 text-sm font-bold leading-relaxed text-slate-600">
-                    Use this when you are not installing MCP yet. Agents still run a real browser test and email a shareable report.
-                  </p>
+                  <span className="text-brand-accent font-black uppercase tracking-[0.2em] text-xs">Quick path</span>
+                  <h3 className="mt-2 text-3xl font-black text-brand-ink">Try a QA handoff on one page</h3>
                 </div>
-                <Globe className="hidden h-10 w-10 shrink-0 text-brand-secondary sm:block" />
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brand-secondary/10 text-brand-secondary">
+                  <Globe className="h-7 w-7" />
+                </div>
               </div>
 
               {!queued ? (
-                <form onSubmit={handleSubmit} className="mt-8 grid gap-3">
+                <form onSubmit={handleSubmit} className="grid gap-3">
                   <label className="grid gap-2">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Website</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Preview URL</span>
                     <div className="flex items-center gap-3 rounded-2xl border-2 border-brand-ink bg-white px-4 py-4">
                       <Globe className="text-slate-400 w-5 h-5" />
                       <span className="text-slate-300 font-bold">https://</span>
@@ -1826,6 +1949,16 @@ function HomePage({
                         onChange={(event) => setSite(event.target.value.replace(/^https?:\/\//, ""))}
                       />
                     </div>
+                  </label>
+                  <label className="grid gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">What should happen?</span>
+                    <textarea
+                      placeholder="Example: Checkout button should activate after plan and email are selected."
+                      required
+                      className="min-h-28 w-full rounded-2xl border-2 border-brand-ink bg-white px-4 py-4 font-bold outline-none placeholder:text-slate-300"
+                      value={expectedBehavior}
+                      onChange={(event) => setExpectedBehavior(event.target.value)}
+                    />
                   </label>
                   <label className="grid gap-2">
                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Email</span>
@@ -1845,7 +1978,7 @@ function HomePage({
                     disabled={loading}
                     className="mt-2 bg-brand-ink text-white px-8 py-5 rounded-2xl font-black text-lg hover:bg-brand-accent transition-all flex items-center justify-center gap-2"
                   >
-                    {loading ? "Starting report..." : "Start one-off report"}
+                    {loading ? "Generating handoff..." : "Generate QA handoff"}
                     <ArrowRight className="w-5 h-5" />
                   </button>
                 </form>
@@ -1853,14 +1986,14 @@ function HomePage({
                 <motion.div
                   initial={{ scale: 0.96, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  className="mt-8 rounded-3xl border-2 border-brand-secondary bg-brand-secondary/10 p-6"
+                  className="rounded-3xl border-2 border-brand-secondary bg-brand-secondary/10 p-6"
                 >
                   <div className="w-14 h-14 bg-brand-secondary rounded-2xl flex items-center justify-center mb-4">
                     <Clock className="text-white w-7 h-7" />
                   </div>
-                  <h3 className="text-2xl font-black mb-2">Report started</h3>
+                  <h3 className="text-2xl font-black mb-2">QA handoff started</h3>
                   <p className="font-bold text-slate-600">
-                    {queued.message || `Our agents are checking ${site} now. Watch your inbox for the report.`}
+                    {queued.message || `BUD is preparing a QA handoff for ${site}. Watch your inbox for the report.`}
                   </p>
                   {queued.share_url ? (
                     <div className="mt-6 flex flex-wrap gap-3">
@@ -2086,6 +2219,27 @@ function LoadingShell({ label }: { label: string }) {
   );
 }
 
+function installBudWidgetFromUrl(search: string) {
+  if (typeof document === "undefined") {
+    return;
+  }
+  const params = new URLSearchParams(search);
+  const sessionId = String(params.get("bud_session_id") || params.get("budSessionId") || "").trim();
+  const token = String(params.get("bud_token") || params.get("budToken") || "").trim();
+  if (!sessionId || !token || document.querySelector("#beforeusersdo-widget-root, script[data-bud-widget-loader='1']")) {
+    return;
+  }
+  const scriptParams = new URLSearchParams({
+    session_id: sessionId,
+    token
+  });
+  const script = document.createElement("script");
+  script.async = true;
+  script.dataset.budWidgetLoader = "1";
+  script.src = `/api/manual-qa/widget.js?${scriptParams.toString()}`;
+  document.head.appendChild(script);
+}
+
 function App() {
   const { route, navigate } = useBrowserRoute();
   const [authState, setAuthState] = useState<AuthState>({
@@ -2098,6 +2252,10 @@ function App() {
 
   const pathname = route.pathname;
   const isWorkspaceRoute = pathname === "/dashboard" || pathname === "/reports";
+
+  useEffect(() => {
+    installBudWidgetFromUrl(route.search);
+  }, [route.search]);
 
   async function refreshSession() {
     try {
@@ -2225,7 +2383,6 @@ function App() {
     return (
       <HomePage
         authorized={authState.authorized}
-        onOpenWorkspace={() => navigate("/dashboard")}
         onOpenMcpSettings={() => {
           const next = new URLSearchParams();
           next.set("panel", "settings");
@@ -2270,8 +2427,9 @@ function WorkspacePage({
   const composeOpen = params.get("compose") === "1";
   const composeMode = params.get("compose_mode") === "advanced" ? "advanced" : "simple";
   const requestedRunId = String(params.get("run_id") || "").trim();
+  const requestedManualSessionId = String(params.get("session_id") || params.get("manual_session_id") || "").trim();
   const selectedBrandFilter = normalizeBrandKey(params.get("brand") || "");
-  const currentPanel = String(params.get("panel") || (requestedRunId ? "report" : "overview")).toLowerCase();
+  const currentPanel = String(params.get("panel") || (requestedManualSessionId ? "manual_qa" : requestedRunId ? "report" : "overview")).toLowerCase();
   const githubAppStatus = String(params.get("github_app_status") || "").trim().toLowerCase();
   const githubAppError = String(params.get("github_app_error") || "").trim().toLowerCase();
   const githubAppBrand = normalizeBrandKey(params.get("github_app_brand") || params.get("brand") || "");
@@ -2290,6 +2448,11 @@ function WorkspacePage({
   const [selectedStatus, setSelectedStatus] = useState<StatusResponse | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const [manualQaSession, setManualQaSession] = useState<ManualQaSession | null>(null);
+  const [manualQaLoading, setManualQaLoading] = useState(false);
+  const [manualQaError, setManualQaError] = useState("");
+  const [manualQaBusyItemId, setManualQaBusyItemId] = useState("");
+  const [manualQaCopyFeedback, setManualQaCopyFeedback] = useState("");
   const [shareState, setShareState] = useState<ShareResponse | null>(null);
   const [copyFeedback, setCopyFeedback] = useState("");
   const [selectedFindingId, setSelectedFindingId] = useState("");
@@ -2391,6 +2554,7 @@ function WorkspacePage({
     normalizeBrandKey(
       selectedReport?.metadata?.brand_key as string ||
         selectedReport?.metadata?.brandKey as string ||
+        manualQaSession?.brand_key ||
         reports.find((item) => item.run_id === requestedRunId)?.brand_key ||
         launchDraft.brandKey
     );
@@ -2811,6 +2975,62 @@ function WorkspacePage({
       cancelled = true;
     };
   }, [isSharedView, requestedRunId, shareKey]);
+
+  useEffect(() => {
+    if (isSharedView || currentPanel !== "manual_qa" || !requestedManualSessionId) {
+      if (currentPanel !== "manual_qa") {
+        setManualQaError("");
+      }
+      return;
+    }
+
+    let cancelled = false;
+
+    let pollId: number | null = null;
+
+    async function loadManualQaSession(silent = false) {
+      if (!silent) {
+        setManualQaLoading(true);
+        setManualQaError("");
+      }
+      try {
+        const response = await apiFetch<{ session: ManualQaSession }>("/api/manual-qa/sessions", {
+          params: { session_id: requestedManualSessionId }
+        });
+        if (!cancelled) {
+          setManualQaSession(response.session || null);
+          if (response.session?.widget?.installed && pollId) {
+            window.clearInterval(pollId);
+            pollId = null;
+          }
+        }
+      } catch (caught) {
+        if (!cancelled) {
+          if (!silent) {
+            setManualQaSession(null);
+          }
+          if (!silent) {
+            setManualQaError(caught instanceof Error ? caught.message : "Could not load manual QA session.");
+          }
+        }
+      } finally {
+        if (!cancelled && !silent) {
+          setManualQaLoading(false);
+        }
+      }
+    }
+
+    loadManualQaSession();
+    pollId = window.setInterval(() => {
+      loadManualQaSession(true);
+    }, 5000);
+    return () => {
+      cancelled = true;
+      if (pollId) {
+        window.clearInterval(pollId);
+      }
+    };
+  }, [currentPanel, isSharedView, requestedManualSessionId]);
 
   useEffect(() => {
     if (!requestedRunId || !selectedStatus) {
@@ -3437,6 +3657,55 @@ function WorkspacePage({
     }
   }
 
+  async function handleManualQaItemUpdate(item: ManualQaItem, status: ManualQaItem["status"], note: string, evidenceText: string) {
+    if (!requestedManualSessionId) {
+      setManualQaError("Manual QA session is missing.");
+      return;
+    }
+    setManualQaBusyItemId(item.id);
+    setManualQaError("");
+    try {
+      const evidenceUrls = evidenceText
+        .split(/\r?\n/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+      const response = await apiFetch<{ session: ManualQaSession }>("/api/manual-qa/items", {
+        method: "PATCH",
+        body: {
+          session_id: requestedManualSessionId,
+          item_id: item.id,
+          status,
+          note,
+          evidence_urls: evidenceUrls
+        }
+      });
+      setManualQaSession(response.session || null);
+    } catch (caught) {
+      setManualQaError(caught instanceof Error ? caught.message : "Could not save checklist item.");
+    } finally {
+      setManualQaBusyItemId("");
+    }
+  }
+
+  async function handleManualQaExport() {
+    if (!requestedManualSessionId) {
+      setManualQaCopyFeedback("Missing session");
+      window.setTimeout(() => setManualQaCopyFeedback(""), 1600);
+      return;
+    }
+    try {
+      const response = await apiFetch<{ markdown: string }>("/api/manual-qa/export", {
+        params: { session_id: requestedManualSessionId }
+      });
+      await copyText(response.markdown || "");
+      setManualQaCopyFeedback("Copied report");
+      window.setTimeout(() => setManualQaCopyFeedback(""), 1600);
+    } catch (caught) {
+      setManualQaCopyFeedback(caught instanceof Error ? caught.message : "Could not export");
+      window.setTimeout(() => setManualQaCopyFeedback(""), 2200);
+    }
+  }
+
   async function handleSaveSchedule(override?: {
     name?: string;
     frequency_hours: number;
@@ -3964,7 +4233,7 @@ function WorkspacePage({
     return <LoadingShell label="Loading your dashboard..." />;
   }
 
-  function openPanel(panel: string, options: { brand?: string | null; runId?: string | null; keepRun?: boolean } = {}) {
+  function openPanel(panel: string, options: { brand?: string | null; runId?: string | null; sessionId?: string | null; keepRun?: boolean } = {}) {
     const next = new URLSearchParams(route.search);
     next.set("panel", panel);
     next.delete("compose");
@@ -3981,9 +4250,18 @@ function WorkspacePage({
         next.set("run_id", fallbackRunId);
       }
       next.set("view", currentView || "report");
+      next.delete("session_id");
+    } else if (panel === "manual_qa") {
+      const fallbackSessionId = options.sessionId || requestedManualSessionId || "";
+      if (fallbackSessionId) {
+        next.set("session_id", fallbackSessionId);
+      }
+      next.delete("run_id");
+      next.delete("view");
     } else if (!options.keepRun) {
       next.delete("run_id");
       next.delete("view");
+      next.delete("session_id");
     }
 
     startTransition(() => navigate("/dashboard", next));
@@ -4024,7 +4302,8 @@ function WorkspacePage({
     navigate("/dashboard", next);
   }
 
-  const resolvedPanel = !onboardingSeen && emptyWorkspace && currentPanel !== "help" ? "onboarding" : currentPanel;
+  const resolvedPanel =
+    !onboardingSeen && emptyWorkspace && !["help", "manual_qa"].includes(currentPanel) ? "onboarding" : currentPanel;
   const canShowReportPanel = Boolean(requestedRunId || selectedRun || selectedReport);
   const previousRun = requestedRunId ? sameBrandRuns.find((run, index) => sameBrandRuns[index + 1]?.run_id === requestedRunId) || null : null;
   const currentRunIndex = sameBrandRuns.findIndex((run) => run.run_id === requestedRunId);
@@ -4104,6 +4383,19 @@ function WorkspacePage({
     );
   } else if (resolvedPanel === "help") {
     workspaceContent = <StarterHelpCenter onBack={() => openPanel(activeStarterBrand ? "overview" : "onboarding", { brand: currentBrandKey || "" })} />;
+  } else if (resolvedPanel === "manual_qa") {
+    workspaceContent = (
+      <ManualQaPage
+        session={manualQaSession}
+        loading={manualQaLoading}
+        error={manualQaError}
+        busyItemId={manualQaBusyItemId}
+        copyFeedback={manualQaCopyFeedback}
+        onBack={() => openPanel("overview", { brand: currentBrandKey || "" })}
+        onUpdateItem={handleManualQaItemUpdate}
+        onExport={handleManualQaExport}
+      />
+    );
   } else if (resolvedPanel === "report" && canShowReportPanel) {
     workspaceContent = (
       <StarterReportPage
@@ -5946,6 +6238,751 @@ function LiveSessionEmbed({
         />
       </div>
     </div>
+  );
+}
+
+function getManualQaItemTone(status: ManualQaItem["status"] | string) {
+  if (status === "pass") return "success";
+  if (status === "fail" || status === "blocked") return "danger";
+  if (status === "confusing") return "warning";
+  return "neutral";
+}
+
+function getManualQaItemLabel(status: ManualQaItem["status"] | string) {
+  if (status === "pass") return "Pass";
+  if (status === "fail") return "Fail";
+  if (status === "confusing") return "Confusing";
+  if (status === "blocked") return "Blocked";
+  if (status === "skip") return "Skipped";
+  return "Pending";
+}
+
+function getSupportedRecordingMimeType() {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
+    return "";
+  }
+  const candidates = [
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+    "video/mp4"
+  ];
+  return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) || "";
+}
+
+function downloadUrl(url: string, filename: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function ManualQaWidgetLaunch({
+  targetUrl,
+  widgetStatus,
+  widgetInstalled
+}: {
+  targetUrl: string;
+  widgetStatus?: string | null;
+  widgetInstalled: boolean;
+}) {
+  const statusLabel = widgetInstalled ? "Widget verified" : "Waiting for widget";
+  return (
+    <div className="rounded-xl border border-brand-line bg-brand-shell p-4 shadow-shell">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-brand-ink">Page widget</div>
+          <div className="mt-1 text-sm text-brand-muted">
+            {widgetInstalled
+              ? "Open the current checklist item and use the floating Review button."
+              : "Ask the agent to inject the widget before opening the preview."}
+          </div>
+          <div className="mt-2 text-xs font-semibold text-brand-muted">
+            {statusLabel}
+            {widgetStatus ? `: ${widgetStatus}` : ""}
+          </div>
+        </div>
+        {targetUrl && widgetInstalled ? (
+          <a
+            href={targetUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-brand-primary bg-brand-primary px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-primary-strong"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Open item
+          </a>
+        ) : (
+          <Button tone="primary" disabled>
+            <Lock className="h-4 w-4" />
+            Install widget first
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ManualQaReviewRecorder({
+  targetUrl,
+  sessionId,
+  isSidecar,
+  canOpenTarget
+}: {
+  targetUrl: string;
+  sessionId: string;
+  isSidecar: boolean;
+  canOpenTarget: boolean;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const activeStreamsRef = useRef<MediaStream[]>([]);
+  const chunksRef = useRef<Blob[]>([]);
+  const drawingRef = useRef(false);
+  const recordingUrlRef = useRef("");
+  const [captureStream, setCaptureStream] = useState<MediaStream | null>(null);
+  const [recordingState, setRecordingState] = useState<"idle" | "recording" | "ready">("idle");
+  const [recordingUrl, setRecordingUrl] = useState("");
+  const [recorderMessage, setRecorderMessage] = useState("");
+  const [hasDrawing, setHasDrawing] = useState(false);
+  const safeSessionId = String(sessionId || "manual-qa").replace(/[^a-z0-9_-]+/gi, "-").slice(0, 80);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+    if (captureStream) {
+      video.srcObject = captureStream;
+      video.play().catch(() => null);
+    } else {
+      video.srcObject = null;
+    }
+  }, [captureStream]);
+
+  useEffect(() => {
+    recordingUrlRef.current = recordingUrl;
+  }, [recordingUrl]);
+
+  useEffect(() => {
+    return () => {
+      stopReviewCapture();
+      if (recordingUrlRef.current) {
+        URL.revokeObjectURL(recordingUrlRef.current);
+        recordingUrlRef.current = "";
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function stopActiveStreams() {
+    activeStreamsRef.current.forEach((stream) => {
+      stream.getTracks().forEach((track) => track.stop());
+    });
+    activeStreamsRef.current = [];
+    setCaptureStream(null);
+  }
+
+  function openTargetWindow() {
+    if (!canOpenTarget) {
+      setRecorderMessage("Install the page widget before opening the target.");
+      return null;
+    }
+    if (!targetUrl) {
+      setRecorderMessage("No target URL was provided.");
+      return null;
+    }
+    return window.open(
+      targetUrl,
+      "beforeusersdo-test-target",
+      "popup=yes,width=1280,height=900,left=460,top=40"
+    );
+  }
+
+  function openSidecarWindow() {
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set("sidecar", "1");
+    const sidecar = window.open(
+      currentUrl.toString(),
+      "beforeusersdo-review-sidecar",
+      "popup=yes,width=440,height=900,left=20,top=40"
+    );
+    sidecar?.focus();
+  }
+
+  async function startReviewCapture() {
+    setRecorderMessage("");
+    if (targetUrl) {
+      openTargetWindow();
+    }
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setRecorderMessage("Screen recording is not available in this browser.");
+      return;
+    }
+    if (typeof MediaRecorder === "undefined") {
+      setRecorderMessage("Recording is not available in this browser.");
+      return;
+    }
+
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true
+      });
+      let micStream: MediaStream | null = null;
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        micStream = null;
+      }
+
+      const combinedTracks = [
+        ...displayStream.getVideoTracks(),
+        ...displayStream.getAudioTracks(),
+        ...(micStream ? micStream.getAudioTracks() : [])
+      ];
+      const combinedStream = new MediaStream(combinedTracks);
+      activeStreamsRef.current = micStream ? [displayStream, micStream, combinedStream] : [displayStream, combinedStream];
+
+      if (recordingUrlRef.current) {
+        URL.revokeObjectURL(recordingUrlRef.current);
+        recordingUrlRef.current = "";
+        setRecordingUrl("");
+      }
+      chunksRef.current = [];
+      const mimeType = getSupportedRecordingMimeType();
+      const recorder = new MediaRecorder(combinedStream, mimeType ? { mimeType } : undefined);
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+      recorder.onstop = () => {
+        const blobType = recorder.mimeType || mimeType || "video/webm";
+        const blob = new Blob(chunksRef.current, { type: blobType });
+        const nextUrl = URL.createObjectURL(blob);
+        recordingUrlRef.current = nextUrl;
+        setRecordingUrl(nextUrl);
+        setRecordingState("ready");
+        setRecorderMessage("Recording ready. Download it before closing this page.");
+        stopActiveStreams();
+      };
+      displayStream.getVideoTracks()[0]?.addEventListener("ended", () => {
+        stopReviewCapture();
+      });
+      setCaptureStream(combinedStream);
+      setRecordingState("recording");
+      setRecorderMessage("Recording. Choose the target window if Chrome asks what to share.");
+      recorder.start(1000);
+      window.setTimeout(resizeDrawingCanvas, 250);
+    } catch (caught) {
+      setRecorderMessage(caught instanceof Error ? caught.message : "Could not start recording.");
+      stopActiveStreams();
+      setRecordingState("idle");
+    }
+  }
+
+  function stopReviewCapture() {
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+      return;
+    }
+    stopActiveStreams();
+    if (recordingState === "recording") {
+      setRecordingState("idle");
+    }
+  }
+
+  function resizeDrawingCanvas() {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
+      return;
+    }
+    const ratio = window.devicePixelRatio || 1;
+    const nextWidth = Math.max(1, Math.floor(rect.width * ratio));
+    const nextHeight = Math.max(1, Math.floor(rect.height * ratio));
+    if (canvas.width === nextWidth && canvas.height === nextHeight) {
+      return;
+    }
+    canvas.width = nextWidth;
+    canvas.height = nextHeight;
+  }
+
+  function getCanvasPoint(event: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return { x: 0, y: 0 };
+    }
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / Math.max(1, rect.width)) * canvas.width,
+      y: ((event.clientY - rect.top) / Math.max(1, rect.height)) * canvas.height
+    };
+  }
+
+  function handleDrawStart(event: React.PointerEvent<HTMLCanvasElement>) {
+    resizeDrawingCanvas();
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) {
+      return;
+    }
+    const point = getCanvasPoint(event);
+    drawingRef.current = true;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.lineWidth = Math.max(4, canvas.width / 180);
+    context.strokeStyle = "#ef4444";
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+  }
+
+  function handleDrawMove(event: React.PointerEvent<HTMLCanvasElement>) {
+    if (!drawingRef.current) {
+      return;
+    }
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!context) {
+      return;
+    }
+    const point = getCanvasPoint(event);
+    context.lineTo(point.x, point.y);
+    context.stroke();
+    setHasDrawing(true);
+  }
+
+  function handleDrawEnd(event: React.PointerEvent<HTMLCanvasElement>) {
+    drawingRef.current = false;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // Pointer may already be released by the browser.
+    }
+  }
+
+  function clearDrawing() {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) {
+      return;
+    }
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    setHasDrawing(false);
+  }
+
+  function downloadAnnotation() {
+    const video = videoRef.current;
+    const annotation = canvasRef.current;
+    if (!video || !annotation || !captureStream) {
+      setRecorderMessage("Start screen sharing before saving an annotated screenshot.");
+      return;
+    }
+    const rect = annotation.getBoundingClientRect();
+    const width = annotation.width || Math.floor(rect.width || 1280);
+    const height = annotation.height || Math.floor(rect.height || 720);
+    const output = document.createElement("canvas");
+    output.width = width;
+    output.height = height;
+    const context = output.getContext("2d");
+    if (!context) {
+      return;
+    }
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    try {
+      context.drawImage(video, 0, 0, width, height);
+    } catch {
+      // Some browsers briefly block drawing the stream before the first frame is ready.
+    }
+    context.drawImage(annotation, 0, 0, width, height);
+    downloadUrl(output.toDataURL("image/png"), `${safeSessionId}-annotation.png`);
+  }
+
+  return (
+    <div className="rounded-xl border border-brand-line bg-brand-shell p-4 shadow-shell">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-brand-ink">Fallback recorder</div>
+          <div className="mt-1 text-sm text-brand-muted">Use this only after the page widget is verified.</div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {!isSidecar ? (
+            <Button tone="secondary" onClick={openSidecarWindow}>
+              <PanelRight className="h-4 w-4" />
+              Sidecar
+            </Button>
+          ) : null}
+          {recordingState === "recording" ? (
+            <Button tone="danger" onClick={stopReviewCapture}>
+              <Square className="h-4 w-4" />
+              Stop
+            </Button>
+          ) : (
+            <Button tone="primary" onClick={startReviewCapture} disabled={!targetUrl || !canOpenTarget}>
+              <MonitorUp className="h-4 w-4" />
+              Start review
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-4 overflow-hidden rounded-xl border border-brand-line bg-brand-ink">
+        <div className="relative aspect-video min-h-[220px]">
+          {captureStream ? (
+            <>
+              <video ref={videoRef} muted playsInline className="absolute inset-0 h-full w-full object-contain" />
+              <canvas
+                ref={canvasRef}
+                className="absolute inset-0 h-full w-full cursor-crosshair touch-none"
+                onPointerDown={handleDrawStart}
+                onPointerMove={handleDrawMove}
+                onPointerUp={handleDrawEnd}
+                onPointerCancel={handleDrawEnd}
+                aria-label="Draw on the recorded screen preview"
+              />
+            </>
+          ) : (
+            <div className="flex h-full min-h-[220px] items-center justify-center px-6 text-center text-sm text-white/70">
+              Press Start review, then choose the target window when Chrome asks what to share.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button tone="secondary" onClick={downloadAnnotation} disabled={!captureStream}>
+            <PenLine className="h-4 w-4" />
+            Save drawing
+          </Button>
+          <Button tone="ghost" onClick={clearDrawing} disabled={!hasDrawing}>
+            <Eraser className="h-4 w-4" />
+            Clear
+          </Button>
+        </div>
+        {recordingUrl ? (
+          <Button tone="secondary" onClick={() => downloadUrl(recordingUrl, `${safeSessionId}-review.webm`)}>
+            <Download className="h-4 w-4" />
+            Download recording
+          </Button>
+        ) : null}
+      </div>
+
+      {recorderMessage ? (
+        <div className="mt-3 rounded-lg border border-brand-line bg-brand-panel px-3 py-2 text-sm text-brand-muted">
+          <Mic className="mr-2 inline h-4 w-4 text-brand-accent" />
+          {recorderMessage}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ManualQaPage({
+  session,
+  loading,
+  error,
+  busyItemId,
+  copyFeedback,
+  onBack,
+  onUpdateItem,
+  onExport
+}: {
+  session: ManualQaSession | null;
+  loading: boolean;
+  error: string;
+  busyItemId: string;
+  copyFeedback: string;
+  onBack: () => void;
+  onUpdateItem: (item: ManualQaItem, status: ManualQaItem["status"], note: string, evidenceText: string) => Promise<void>;
+  onExport: () => Promise<void>;
+}) {
+  const checklist = session?.checklist || [];
+  const firstPending = checklist.find((item) => item.status === "pending") || checklist[0] || null;
+  const [selectedItemId, setSelectedItemId] = useState(firstPending?.id || "");
+  const selectedItem = checklist.find((item) => item.id === selectedItemId) || firstPending;
+  const [noteDraft, setNoteDraft] = useState("");
+  const [evidenceDraft, setEvidenceDraft] = useState("");
+  const counts = session?.counts || {};
+  const browserEmbedUrl = String(session?.browser?.embed_url || session?.browser?.viewer_url || "").trim();
+  const browserViewerUrl = String(session?.browser?.viewer_url || session?.browser?.embed_url || "").trim();
+  const sessionTargetUrl = String(session?.target_url || session?.browser?.target_url || "").trim();
+  const targetUrl = String(selectedItem?.start_url || sessionTargetUrl).trim();
+  const widgetInstalled = session?.widget?.installed === true || session?.widget?.status === "installed";
+  const isSidecar =
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("sidecar") === "1";
+
+  useEffect(() => {
+    if (!selectedItemId && firstPending?.id) {
+      setSelectedItemId(firstPending.id);
+    }
+  }, [firstPending?.id, selectedItemId]);
+
+  useEffect(() => {
+    setNoteDraft(selectedItem?.note || "");
+    setEvidenceDraft((selectedItem?.evidence_urls || []).join("\n"));
+  }, [selectedItem?.id, selectedItem?.note, selectedItem?.evidence_urls]);
+
+  async function saveSelected(status: ManualQaItem["status"]) {
+    if (!selectedItem) {
+      return;
+    }
+    await onUpdateItem(selectedItem, status, noteDraft, evidenceDraft);
+  }
+
+  return (
+    <section className="min-h-screen bg-brand-bg text-brand-ink">
+      <div className="border-b border-brand-line bg-brand-shell px-4 py-4 sm:px-6">
+        <div className="mx-auto flex max-w-[1500px] flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <button
+              type="button"
+              onClick={onBack}
+              className="mb-3 inline-flex items-center gap-2 text-sm font-semibold text-brand-muted hover:text-brand-ink"
+            >
+              <ChevronRight className="h-4 w-4 rotate-180" />
+              Dashboard
+            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill label={formatStatusLabel(session?.status || "manual_ready")} tone={getStatusTone(session?.status || "manual_ready")} />
+              <span className="text-sm text-brand-muted">{session?.brand_name || session?.brand_key || "Manual QA"}</span>
+            </div>
+            <h1 className="mt-3 text-2xl font-semibold tracking-tight text-brand-ink sm:text-3xl">
+              {session?.title || "Manual QA session"}
+            </h1>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-brand-muted">
+              {sessionTargetUrl ? <span className="break-all">{sessionTargetUrl}</span> : null}
+              {session?.updated_at ? <span>{formatDateTime(session.updated_at)}</span> : null}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {targetUrl && widgetInstalled ? (
+              <a
+                href={targetUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-brand-line bg-brand-shell px-3.5 py-2 text-sm font-semibold text-brand-ink transition-colors hover:bg-brand-bg"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Open item
+              </a>
+            ) : null}
+            <Button tone="secondary" onClick={onExport} disabled={!session}>
+              <Copy className="h-4 w-4" />
+              {copyFeedback || "Copy report"}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto grid max-w-[1500px] gap-5 px-4 py-5 lg:grid-cols-[390px_1fr] sm:px-6">
+        <aside className="space-y-4">
+          <div className="rounded-xl border border-brand-line bg-brand-shell p-4 shadow-shell">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold text-brand-ink">Checklist</div>
+              <div className="text-xs font-semibold text-brand-muted">
+                {(counts.pass || 0) + (counts.fail || 0) + (counts.confusing || 0) + (counts.blocked || 0) + (counts.skip || 0)}/{checklist.length || 0}
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="rounded-lg border border-brand-line bg-brand-panel px-2 py-2">
+                <div className="font-semibold text-brand-success">{counts.pass || 0}</div>
+                <div className="text-brand-muted">Pass</div>
+              </div>
+              <div className="rounded-lg border border-brand-line bg-brand-panel px-2 py-2">
+                <div className="font-semibold text-brand-danger">{counts.fail || 0}</div>
+                <div className="text-brand-muted">Fail</div>
+              </div>
+              <div className="rounded-lg border border-brand-line bg-brand-panel px-2 py-2">
+                <div className="font-semibold text-brand-warning">{(counts.confusing || 0) + (counts.blocked || 0)}</div>
+                <div className="text-brand-muted">Needs note</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-brand-line bg-brand-shell shadow-shell">
+            {loading ? (
+              <div className="px-4 py-6 text-sm text-brand-muted">
+                <LoaderCircle className="mr-2 inline h-4 w-4 animate-spin" />
+                Loading manual QA
+              </div>
+            ) : error ? (
+              <div className="px-4 py-6 text-sm text-brand-danger">{error}</div>
+            ) : !checklist.length ? (
+              <div className="px-4 py-6 text-sm text-brand-muted">No checklist was found for this session.</div>
+            ) : (
+              <div className="divide-y divide-brand-line">
+                {checklist.map((item, index) => {
+                  const active = selectedItem?.id === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setSelectedItemId(item.id)}
+                      className={`w-full px-4 py-3 text-left transition-colors ${
+                        active ? "bg-brand-bg" : "hover:bg-brand-bg/70"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-brand-muted">Item {index + 1}</div>
+                          <div className="mt-1 line-clamp-2 text-sm font-semibold text-brand-ink">{item.title}</div>
+                        </div>
+                        <StatusPill label={getManualQaItemLabel(item.status)} tone={getManualQaItemTone(item.status)} />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <main className="space-y-5">
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="space-y-4">
+              <ManualQaWidgetLaunch
+                targetUrl={targetUrl}
+                widgetStatus={session?.widget?.status}
+                widgetInstalled={widgetInstalled}
+              />
+
+              <details className="px-1">
+                <summary className="cursor-pointer list-none text-sm font-semibold text-brand-muted hover:text-brand-ink">
+                  Fallback sidecar recorder
+                </summary>
+                <div className="mt-4">
+                  <ManualQaReviewRecorder
+                    targetUrl={targetUrl}
+                    sessionId={session?.session_id || "manual-qa"}
+                    isSidecar={isSidecar}
+                    canOpenTarget={widgetInstalled}
+                  />
+                </div>
+              </details>
+
+              {session?.context?.work_summary || session?.context?.developer_notes ? (
+                <div className="rounded-xl border border-brand-line bg-brand-shell p-4 shadow-shell">
+                  <div className="text-sm font-semibold text-brand-ink">Agent context</div>
+                  {session.context.work_summary ? (
+                    <p className="mt-3 text-sm leading-6 text-brand-muted">{session.context.work_summary}</p>
+                  ) : null}
+                  {session.context.developer_notes ? (
+                    <p className="mt-3 text-sm leading-6 text-brand-muted">{session.context.developer_notes}</p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {browserEmbedUrl && widgetInstalled ? (
+                <details className="px-1">
+                  <summary className="cursor-pointer list-none text-sm font-semibold text-brand-muted hover:text-brand-ink">
+                    Advanced remote browser fallback
+                  </summary>
+                  <div className="mt-4">
+                    <LiveSessionEmbed
+                      embedUrl={browserEmbedUrl}
+                      viewerUrl={browserViewerUrl}
+                      title="Remote browser fallback"
+                      className="bg-brand-shell"
+                      frameClassName="h-[420px] min-h-[320px]"
+                    />
+                  </div>
+                </details>
+              ) : null}
+            </div>
+
+            <div className="rounded-xl border border-brand-line bg-brand-shell p-4 shadow-shell">
+              {selectedItem ? (
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between gap-3">
+                      <StatusPill label={getManualQaItemLabel(selectedItem.status)} tone={getManualQaItemTone(selectedItem.status)} />
+                      {selectedItem.start_url && widgetInstalled ? (
+                        <a
+                          href={selectedItem.start_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-brand-accent"
+                        >
+                          Start here
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      ) : null}
+                    </div>
+                    <h2 className="mt-3 text-lg font-semibold text-brand-ink">{selectedItem.title}</h2>
+                    {selectedItem.instructions ? (
+                      <p className="mt-2 text-sm leading-6 text-brand-muted">{selectedItem.instructions}</p>
+                    ) : null}
+                    {selectedItem.expected ? (
+                      <div className="mt-3 rounded-lg border border-brand-line bg-brand-panel px-3 py-2 text-sm leading-6 text-brand-muted">
+                        <span className="font-semibold text-brand-ink">Expected: </span>
+                        {selectedItem.expected}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    <FieldLabel>Tester note</FieldLabel>
+                    <TextArea
+                      value={noteDraft}
+                      onChange={(event) => setNoteDraft(event.target.value)}
+                      placeholder="What happened? What should the developer see?"
+                      className="min-h-[130px]"
+                    />
+                  </div>
+
+                  <div>
+                    <FieldLabel>Evidence links</FieldLabel>
+                    <TextArea
+                      value={evidenceDraft}
+                      onChange={(event) => setEvidenceDraft(event.target.value)}
+                      placeholder="One screenshot, recording, or issue URL per line"
+                      className="min-h-[86px]"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button tone="primary" onClick={() => saveSelected("pass")} disabled={busyItemId === selectedItem.id}>
+                      <Check className="h-4 w-4" />
+                      Pass
+                    </Button>
+                    <Button tone="danger" onClick={() => saveSelected("fail")} disabled={busyItemId === selectedItem.id}>
+                      <TriangleAlert className="h-4 w-4" />
+                      Fail
+                    </Button>
+                    <Button tone="secondary" onClick={() => saveSelected("confusing")} disabled={busyItemId === selectedItem.id}>
+                      <CircleAlert className="h-4 w-4" />
+                      Confusing
+                    </Button>
+                    <Button tone="secondary" onClick={() => saveSelected("blocked")} disabled={busyItemId === selectedItem.id}>
+                      <Lock className="h-4 w-4" />
+                      Blocked
+                    </Button>
+                  </div>
+
+                  <Button tone="ghost" className="w-full" onClick={() => saveSelected("skip")} disabled={busyItemId === selectedItem.id}>
+                    Skip item
+                  </Button>
+                </div>
+              ) : (
+                <div className="text-sm text-brand-muted">Pick a checklist item to record feedback.</div>
+              )}
+            </div>
+          </div>
+        </main>
+      </div>
+    </section>
   );
 }
 

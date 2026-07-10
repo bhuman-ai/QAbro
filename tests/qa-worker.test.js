@@ -68,7 +68,7 @@ test("buildExecutionPlan rewrites explicit local_playwright requests onto local 
   assert.equal(plan.attempts[0].reason, "requested");
 });
 
-test("buildExecutionPlan keeps explicit browserbase requests on the browserbase runner", () => {
+test("buildExecutionPlan rewrites legacy browserbase requests onto the local vision runner", () => {
   const plan = __private.buildExecutionPlan(
     {
       metadata: {
@@ -82,10 +82,10 @@ test("buildExecutionPlan keeps explicit browserbase requests on the browserbase 
     }
   );
 
-  assert.equal(plan.requestedEngine, "browserbase");
+  assert.equal(plan.requestedEngine, "local_vision_agent");
   assert.deepEqual(
     plan.attempts.map((attempt) => attempt.engine),
-    ["browserbase"]
+    ["local_vision_agent"]
   );
   assert.equal(plan.attempts[0].reason, "requested");
 });

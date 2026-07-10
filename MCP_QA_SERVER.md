@@ -99,8 +99,25 @@ Optional:
   - Fetch the normalized report JSON and markdown.
 - `qa_share_run_report`
   - Create a team share link for a report.
+- `qa_start_manual_review`
+  - Default manual QA tool. Use when the user says “manual review with BeforeUsersDo”, “manual QA”, “human review”, or asks for a checklist for recent code changes. It returns a required widget snippet the coding agent must inject into the preview before the human opens the target page. If `target_url` is missing, it returns the exact missing field to ask for.
+- `qa_create_manual_session`
+  - Strict manual QA session creation tool. Use when the agent already has the target URL and context.
+- `qa_manual_review_guide`
+  - Returns the manual-review workflow and the context an agent should gather before creating a session.
+- `qa_get_manual_session`
+  - Read checklist status for a manual QA session.
+- `qa_get_manual_report`
+  - Export the completed human checklist as redacted Markdown and JSON.
+- `qa_get_manual_work_packets`
+  - Split manual QA notes, transcript, drawings, videos, page anchors, console errors, and network signals into focused agent work packets. Use this after `qa_wait_for_manual_feedback` or `qa_wait_for_manual_evidence` before summarizing, previewing, coding, or spawning sub-agents.
 - `qa_run_feature_check`
   - High-level one-shot tool: queue, wait, and return the final report. This is the best default for preview URLs and PR deploys.
+
+## Prompts
+
+- `manual_review_workflow`
+  - Agent-facing workflow for “manual review with BeforeUsersDo”. It tells the agent to gather the preview URL, work summary, changed files, acceptance criteria, scenarios, PR/branch/commit metadata, and then call `qa_start_manual_review`.
 
 ## Resources
 
@@ -110,6 +127,10 @@ Optional:
   - JSON normalized report for the run.
 - `qa://runs/{run_id}/report.md`
   - Markdown report body for the run.
+- `qa://workflows/manual-review`
+  - Markdown instructions for agents that need to understand manual review setup.
+- `qa://manual/{session_id}/report.md`
+  - Markdown export of a human manual QA session.
 
 ## Suggested use
 
@@ -176,6 +197,35 @@ For a feature branch or preview:
 - `auth_strategy`: usually `signup_if_needed`
 
 The MCP layer converts that into a `feature_targeted` QA run and attaches brand/auth metadata automatically.
+
+### Manual human review
+
+If the user asks for manual QA or says “I want to do a manual review with BeforeUsersDo,” the agent should:
+
+1. Use the `manual_review_workflow` prompt or read `qa://workflows/manual-review` if supported.
+2. Gather or infer the preview URL. If no reachable URL exists, ask the user for it.
+3. Gather context from its own work: summary, changed files, branch, commit SHA, PR URL, acceptance criteria, and any explicit user instructions.
+4. Call `qa_start_manual_review`.
+5. Inject `widget_install.script_tag` into the preview/dev build. This is required, not optional.
+6. Deploy or refresh the preview, open the target once yourself, and verify `window.__beforeUsersDoWidgetLoaded === true` or `document.querySelector("#beforeusersdo-widget-root")`.
+7. Return `widget_install.review_url` as the primary test link. This opens the preview page itself with the in-page checklist widget.
+8. Keep `manual_session_url` secondary as the report/dashboard link only. Do not send the human to the BeforeUsersDo dashboard as the place to start testing.
+9. Do not send the human to the target page until the widget is verified.
+10. Tell the human to click the floating `Review` button, draw/talk/record there, and mark checklist items.
+11. If widget injection is impossible, stop and explain why. Do not silently fall back.
+12. After the human clicks Send All, call `qa_wait_for_manual_feedback`, then call `qa_get_manual_work_packets`.
+13. Use one work packet per focused task or sub-agent. Keep `packet_id` in your updates so the user can trace each fix back to the evidence.
+14. Use `qa_get_manual_report` as the fallback historical export, not the first choice for active feedback.
+
+Minimal call:
+
+```json
+{
+  "target_url": "https://preview.example.com",
+  "work_summary": "Updated onboarding recommendations and paywall layout",
+  "changed_files": ["src/onboarding/Recommendations.tsx", "src/paywall/PlanModal.tsx"]
+}
+```
 
 ## Agent install examples
 
