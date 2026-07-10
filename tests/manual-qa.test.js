@@ -383,7 +383,11 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /key === "c"/);
   assert.match(script, /key === "e"/);
   assert.match(script, /key === "r"/);
-  assert.match(script, /isTypingTarget\(event\.target\)/);
+  assert.match(script, /Alt\/Option \+ Shift \+ R/);
+  assert.match(script, /event\.composedPath\(\)/);
+  assert.match(script, /isTypingTarget\(root\.activeElement\)/);
+  assert.match(script, /event\?\.altKey && event\?\.shiftKey/);
+  assert.match(script, /!hasToolShortcutModifier\(event\)/);
   assert.match(script, /indexedDB\.open\(EVIDENCE_DB_NAME, 1\)/);
   assert.match(script, /EVIDENCE_STORE_NAME = "pending-uploads"/);
   assert.match(script, /widget-evidence-chunks/);
