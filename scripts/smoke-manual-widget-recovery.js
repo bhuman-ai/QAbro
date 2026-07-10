@@ -115,6 +115,29 @@ async function main() {
     await page.evaluate(() => {
       const root = document.querySelector("#beforeusersdo-widget-root").shadowRoot;
       root.querySelector(".bud-pill").click();
+      root.querySelector('[data-action="comment"]').click();
+      root.querySelector('[data-role="comment-surface"]').dispatchEvent(new MouseEvent("click", {
+        bubbles: true,
+        composed: true,
+        clientX: 420,
+        clientY: 240
+      }));
+      root.querySelector('[data-role="comment-input"]').focus();
+    });
+    await page.keyboard.type("record clear draw comment");
+    const typedComment = await page.evaluate(() => {
+      const root = document.querySelector("#beforeusersdo-widget-root").shadowRoot;
+      return root.querySelector('[data-role="comment-input"]').value;
+    });
+    if (typedComment !== "record clear draw comment") {
+      throw new Error(`Tool shortcuts interrupted comment typing: ${JSON.stringify(typedComment)}`);
+    }
+    await page.evaluate(() => {
+      const root = document.querySelector("#beforeusersdo-widget-root").shadowRoot;
+      root.querySelector('[data-action="comment-cancel"]').click();
+    });
+    await page.evaluate(() => {
+      const root = document.querySelector("#beforeusersdo-widget-root").shadowRoot;
       root.querySelector('[data-action="draw"]').click();
       const canvas = root.querySelector("canvas");
       const points = [
@@ -175,7 +198,7 @@ async function main() {
       throw new Error(`Evidence retry did not reuse one stable id: ${JSON.stringify(evidenceAttempts)}`);
     }
     process.stdout.write(
-      `${JSON.stringify({ ok: true, queued_before_reload: queuedBeforeReload, queued_after_reload: queuedAfterReload, evidence_attempts: evidenceAttempts.length })}\n`
+      `${JSON.stringify({ ok: true, typed_comment: typedComment, queued_before_reload: queuedBeforeReload, queued_after_reload: queuedAfterReload, evidence_attempts: evidenceAttempts.length })}\n`
     );
   } finally {
     await browser.close();
