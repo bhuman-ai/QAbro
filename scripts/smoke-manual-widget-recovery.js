@@ -69,7 +69,7 @@ async function main() {
     if (url.pathname === "/") {
       const script = buildManualQaWidgetScript({ sessionId, token, apiBaseUrl: baseUrl });
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(`<!doctype html><html><body><main><h1>Widget recovery smoke</h1><p>Draw here.</p></main><script>${script.replaceAll("</script", "<\\/script")}</script></body></html>`);
+      res.end(`<!doctype html><html><body><main><h1>Widget recovery smoke</h1><p>Draw here.</p><button id="toggle-anchor" type="button">Toggle section</button><section id="anchor-shell" style="margin-top:24px"><div id="anchor-target" style="width:360px;padding:24px;border:1px solid #999">Anchor this comment</div></section></main><script>document.querySelector('#toggle-anchor').addEventListener('click',()=>{const shell=document.querySelector('#anchor-shell');shell.hidden=!shell.hidden;});</script><script>${script.replaceAll("</script", "<\\/script")}</script></body></html>`);
       return;
     }
     if (url.pathname === "/api/manual-qa/widget-session" && req.method === "GET") {
@@ -138,6 +138,57 @@ async function main() {
     });
     await page.evaluate(() => {
       const root = document.querySelector("#beforeusersdo-widget-root").shadowRoot;
+      root.querySelector('[data-action="comment"]').click();
+      const targetRect = document.querySelector("#anchor-target").getBoundingClientRect();
+      root.querySelector('[data-role="comment-surface"]').dispatchEvent(new MouseEvent("click", {
+        bubbles: true,
+        composed: true,
+        clientX: targetRect.left + targetRect.width / 2,
+        clientY: targetRect.top + targetRect.height / 2
+      }));
+      root.querySelector('[data-role="comment-input"]').focus();
+    });
+    await page.keyboard.type("Anchored comment");
+    await page.evaluate(() => {
+      const root = document.querySelector("#beforeusersdo-widget-root").shadowRoot;
+      root.querySelector('[data-action="comment-save"]').click();
+    });
+    await page.waitForFunction(() => {
+      const root = document.querySelector("#beforeusersdo-widget-root")?.shadowRoot;
+      const pin = root?.querySelector(".bud-comment-pin");
+      return Boolean(pin && !pin.classList.contains("is-hidden"));
+    });
+    const initialPinTop = await page.evaluate(() => {
+      const root = document.querySelector("#beforeusersdo-widget-root").shadowRoot;
+      return Number.parseFloat(root.querySelector(".bud-comment-pin").style.top);
+    });
+    await page.evaluate(() => document.querySelector("#toggle-anchor").click());
+    await page.waitForFunction(() => {
+      const root = document.querySelector("#beforeusersdo-widget-root")?.shadowRoot;
+      return root?.querySelector(".bud-comment-pin")?.classList.contains("is-hidden");
+    });
+    await page.evaluate(() => {
+      document.querySelector("#toggle-anchor").click();
+      document.querySelector("#anchor-shell").style.marginTop = "180px";
+    });
+    await page.waitForFunction((previousTop) => {
+      const root = document.querySelector("#beforeusersdo-widget-root")?.shadowRoot;
+      const pin = root?.querySelector(".bud-comment-pin");
+      return Boolean(pin && !pin.classList.contains("is-hidden") && Number.parseFloat(pin.style.top) > previousTop + 100);
+    }, initialPinTop);
+    await page.evaluate(() => window.history.pushState({}, "", "/?step=other"));
+    await page.waitForFunction(() => {
+      const root = document.querySelector("#beforeusersdo-widget-root")?.shadowRoot;
+      return root?.querySelector(".bud-comment-pin")?.classList.contains("is-hidden");
+    });
+    await page.evaluate(() => window.history.pushState({}, "", "/"));
+    await page.waitForFunction(() => {
+      const root = document.querySelector("#beforeusersdo-widget-root")?.shadowRoot;
+      const pin = root?.querySelector(".bud-comment-pin");
+      return Boolean(pin && !pin.classList.contains("is-hidden"));
+    });
+    await page.evaluate(() => {
+      const root = document.querySelector("#beforeusersdo-widget-root").shadowRoot;
       root.querySelector('[data-action="draw"]').click();
       const canvas = root.querySelector("canvas");
       const points = [
@@ -198,7 +249,7 @@ async function main() {
       throw new Error(`Evidence retry did not reuse one stable id: ${JSON.stringify(evidenceAttempts)}`);
     }
     process.stdout.write(
-      `${JSON.stringify({ ok: true, typed_comment: typedComment, queued_before_reload: queuedBeforeReload, queued_after_reload: queuedAfterReload, evidence_attempts: evidenceAttempts.length })}\n`
+      `${JSON.stringify({ ok: true, typed_comment: typedComment, anchored_comment: true, route_scoped_comment: true, queued_before_reload: queuedBeforeReload, queued_after_reload: queuedAfterReload, evidence_attempts: evidenceAttempts.length })}\n`
     );
   } finally {
     await browser.close();

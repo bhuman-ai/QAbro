@@ -15,7 +15,8 @@ const {
   recordManualQaPostFixReview,
   recordManualQaPreviewProposal,
   updateManualQaWidgetItem,
-  updateManualQaItem
+  updateManualQaItem,
+  __private: manualQaPrivate
 } = require("../lib/manual-qa");
 const widgetEvidenceChunksHandler = require("../api/manual-qa/widget-evidence-chunks");
 const widgetEvidenceHandler = require("../api/manual-qa/widget-evidence");
@@ -403,6 +404,12 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.match(script, /openExistingComment/);
   assert.match(script, /Comment updated/);
   assert.match(script, /saveOpenCommentIfNeeded/);
+  assert.match(script, /targetPathForElement/);
+  assert.match(script, /target_path: draft\.target_path/);
+  assert.match(script, /sameCommentPage/);
+  assert.match(script, /positionCommentPin/);
+  assert.match(script, /new MutationObserver\(scheduleCommentPinRefresh\)/);
+  assert.match(script, /window\.addEventListener\("scroll", scheduleCommentPinRefresh, true\)/);
   assert.match(script, /data-action="send-all"/);
   assert.match(script, /className = "bud-item-send"/);
   assert.match(script, /class="bud-send-menu"/);
@@ -506,6 +513,32 @@ test("manual QA widget uses a movable compact capture tray", () => {
   assert.doesNotMatch(script, /location\.assign/);
   assert.doesNotMatch(script, /options\.navigate/);
   assert.doesNotMatch(script, /navigate: true/);
+});
+
+test("manual QA comment anchors survive widget context normalization", () => {
+  const context = manualQaPrivate.normalizeWidgetContext({
+    evidence_events: [
+      {
+        event_id: "comment_anchor_1",
+        type: "comment_saved",
+        comment_text: "Keep this note on the script section.",
+        page_url: "https://example.com/editor",
+        page_x: 420,
+        page_y: 315,
+        target_selector: 'section#script "Script"',
+        target_path: '[id="script"] > textarea:nth-of-type(1)',
+        target_anchor_x: 0.35,
+        target_anchor_y: 0.72,
+        target_bounds: { x: 300, y: 200, width: 600, height: 240 }
+      }
+    ]
+  });
+
+  assert.equal(context.evidence_events.length, 1);
+  assert.equal(context.evidence_events[0].target_path, '[id="script"] > textarea:nth-of-type(1)');
+  assert.equal(context.evidence_events[0].target_anchor_x, 0.35);
+  assert.equal(context.evidence_events[0].target_anchor_y, 0.72);
+  assert.deepEqual(context.evidence_events[0].target_bounds, { x: 300, y: 200, width: 600, height: 240 });
 });
 
 test("buildManualQaChecklist uses explicit agent test plan start URLs", () => {
