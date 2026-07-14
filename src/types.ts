@@ -379,6 +379,77 @@ export interface ManualQaSession {
   requested_by?: Record<string, unknown> | null;
 }
 
+export interface QaTrialEvidence {
+  evidence_id?: string | null;
+  kind?: string | null;
+  label?: string | null;
+  content_type?: string | null;
+  byte_length?: number;
+  url?: string | null;
+  created_at?: string | null;
+}
+
+export interface QaTrialView {
+  session_id: string;
+  role: "lead" | "tester" | "admin";
+  status: "awaiting_consent" | "ready" | "in_progress" | "submitted" | "verified" | "completed";
+  product_name: string;
+  target_url: string;
+  test_focus: string;
+  duration_minutes: number;
+  consent: {
+    accepted: boolean;
+    lead_accepted: boolean;
+    tester_accepted: boolean;
+  };
+  tester: {
+    name?: string | null;
+    email?: string | null;
+    accepted_at?: string | null;
+  };
+  lead: {
+    name?: string | null;
+    email?: string | null;
+    accepted_at?: string | null;
+  };
+  submission: {
+    submitted_at?: string | null;
+    note?: string | null;
+    evidence_media: QaTrialEvidence[];
+  };
+  benchmark?: {
+    issues: Array<{ id: string; title: string; description?: string | null }>;
+    issue_count: number;
+  };
+  qualification: {
+    label: string;
+    status: "pending" | "pending_review" | "verified";
+    score?: number | null;
+    reviewer_note?: string | null;
+    scored_at?: string | null;
+    caught_issue_ids?: string[];
+    coverage_score?: number | null;
+    evidence_score?: number | null;
+    clarity_score?: number | null;
+  };
+  lead_rating: {
+    score?: number | null;
+    note?: string | null;
+    rated_at?: string | null;
+  };
+}
+
+export interface QaTrialSummary {
+  session_id: string;
+  product_name: string;
+  status: QaTrialView["status"];
+  tester_name?: string | null;
+  lead_name?: string | null;
+  score?: number | null;
+  customer_rating?: number | null;
+  created_at?: string | null;
+}
+
 export interface WorkerSummary {
   total?: number;
   healthy?: number;

@@ -198,3 +198,18 @@ Use the issue-detail pattern.
 - What to fix
 - Proof
 - Extra details only on demand
+
+### Tester Qualification Trial
+
+Use the guided handoff pattern, not a marketplace dashboard.
+
+- The BUD operator pairs one customer, one new tester, one product link, and one requested flow.
+- BUD emails both people separate private links, with copy-link fallback for the operator.
+- Both people accept the arrangement before testing begins.
+- The tester sees one primary action: `Start test`.
+- Screen and voice evidence save in short segments throughout the test.
+- The customer sees the submitted report and one primary action: `Rate this test`.
+- Private benchmark issues are visible only to the BUD operator.
+- A tester receives the `BUD Verified Trial` label only after an operator scores the submitted evidence.
+- Keep the BUD score and the customer rating separate.
+- Never describe an unknown customer issue as a known benchmark issue.

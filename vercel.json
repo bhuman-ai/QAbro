@@ -192,6 +192,14 @@
     {
       "source": "/reports",
       "destination": "/index.html"
+    },
+    {
+      "source": "/trial",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/trials",
+      "destination": "/index.html"
     }
   ]
 }

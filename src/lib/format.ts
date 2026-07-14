@@ -83,7 +83,7 @@ export function normalizePathname(pathname: string) {
   if (value === "/reports.html") {
     return "/reports";
   }
-  if (value === "/dashboard" || value === "/reports") {
+  if (["/dashboard", "/reports", "/trial", "/trials"].includes(value)) {
     return value;
   }
   return "/";

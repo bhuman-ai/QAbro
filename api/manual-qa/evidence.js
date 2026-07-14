@@ -5,6 +5,7 @@ const {
   getManualQaSession,
   verifyManualQaWidgetToken
 } = require("../../lib/manual-qa");
+const { verifyQaTrialAccess } = require("../../lib/qa-trials");
 const { sendMediaBuffer } = require("../qa/evidence").__private;
 
 function readWidgetToken(req) {
@@ -27,7 +28,10 @@ module.exports = async (req, res) => {
 
   let loaded;
   const widgetToken = readWidgetToken(req);
-  if (widgetToken) {
+  const trialToken = sanitizeString(req.query?.trial_token || req.query?.trialToken, 512);
+  if (trialToken) {
+    loaded = await verifyQaTrialAccess(sessionId, trialToken, { request: req });
+  } else if (widgetToken) {
     loaded = await verifyManualQaWidgetToken(sessionId, widgetToken, { request: req });
   } else {
     const auth = await requireDashboardOrServiceAuth(req, res, { rejectInvalidServiceToken: false });

@@ -115,6 +115,8 @@ import alexTesterPhoto from "./assets/testers/alex.jpg";
 import jordanTesterPhoto from "./assets/testers/jordan.jpg";
 import mayaTesterPhoto from "./assets/testers/maya.jpg";
 import ninaTesterPhoto from "./assets/testers/nina.jpg";
+import QaTrialAdmin from "./QaTrialAdmin";
+import QaTrialPortal from "./QaTrialPortal";
 
 const PERSONA_PRESETS = [
   {
@@ -2252,6 +2254,9 @@ function App() {
 
   const pathname = route.pathname;
   const isWorkspaceRoute = pathname === "/dashboard" || pathname === "/reports";
+  const isTrialRoute = pathname === "/trial";
+  const isTrialAdminRoute = pathname === "/trials";
+  const isProtectedRoute = isWorkspaceRoute || isTrialAdminRoute;
 
   useEffect(() => {
     installBudWidgetFromUrl(route.search);
@@ -2375,8 +2380,25 @@ function App() {
     navigate("/dashboard", new URLSearchParams(), true);
   }
 
-  if (!authState.ready && isWorkspaceRoute) {
+  if (!authState.ready && isProtectedRoute) {
     return <LoadingShell label="Opening your tests..." />;
+  }
+
+  if (isTrialRoute) {
+    return <QaTrialPortal search={route.search} />;
+  }
+
+  if (isTrialAdminRoute) {
+    if (!authState.authorized) {
+      return (
+        <AuthGate
+          message={authState.message}
+          tone={authState.tone}
+          onSubmit={handleRequestMagicLink}
+        />
+      );
+    }
+    return <QaTrialAdmin search={route.search} />;
   }
 
   if (!isWorkspaceRoute) {
