@@ -136,6 +136,14 @@ Avoid:
 - Existing auth-card and form field patterns
 - Existing report-detail and modal shells, simplified instead of replaced
 
+## Authentication Pattern
+
+- Keep `Continue with Google` and `Continue with GitHub` as the fastest account paths.
+- Keep magic-link email sign-in visible as the fallback, not a separate screen.
+- Return users to the page where they started after authentication.
+- Show provider problems only after an attempted sign-in; do not show permanent setup warnings in the form.
+- Reuse the existing auth card, inputs, semantic colors, spacing, and button hierarchy.
+
 ## Naming Rules
 
 Prefer plain words:
