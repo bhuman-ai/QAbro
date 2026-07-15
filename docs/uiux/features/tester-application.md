@@ -24,6 +24,7 @@ Before sign-in, `Continue with Google` is the primary version of that same actio
 - One benefit: paid testing work.
 - One form: information needed for matching.
 - One next step: wait for the qualification email.
+- One clear disclosure: the first qualification test is unpaid; approved customer tests are paid.
 
 Do not show scores, customer matching, trial administration, or tester marketplace controls on this page.
 

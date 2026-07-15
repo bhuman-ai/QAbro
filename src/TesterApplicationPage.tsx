@@ -331,6 +331,9 @@ export default function TesterApplicationPage({
             </div>
 
             <p className="mt-5 text-sm font-bold text-slate-500">About 2 minutes. No CV needed.</p>
+            <p className="mt-2 text-sm font-semibold text-slate-500">
+              The first qualification test is unpaid. Approved customer tests are paid.
+            </p>
             {resolvedError ? (
               <p className="mx-auto mt-5 max-w-md rounded-lg bg-red-50 px-4 py-3 text-sm font-bold text-brand-danger" role="alert">
                 {resolvedError}
@@ -346,6 +349,9 @@ export default function TesterApplicationPage({
               </div>
               <h1 className="text-4xl font-black leading-tight sm:text-5xl">A little about you</h1>
               <p className="mt-3 text-lg font-semibold text-slate-600">We use this to match you with the right tests.</p>
+              <p className="mt-2 text-sm font-semibold text-slate-500">
+                The first qualification test is unpaid and creates your starter rating.
+              </p>
             </div>
 
             <form onSubmit={submitApplication} className="space-y-8" noValidate>
