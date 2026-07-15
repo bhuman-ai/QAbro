@@ -200,6 +200,10 @@
     {
       "source": "/trials",
       "destination": "/index.html"
+    },
+    {
+      "source": "/testers/apply",
+      "destination": "/index.html"
     }
   ]
 }

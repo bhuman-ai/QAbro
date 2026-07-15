@@ -12,7 +12,7 @@ GitHub is the developer-focused alternative. Magic-link email remains visible as
 
 ## Flow
 
-1. The user starts on `/trials`, `/dashboard`, or `/reports`.
+1. The user starts on `/trials`, `/dashboard`, `/reports`, or `/testers/apply`.
 2. The app sends the selected provider and a same-origin return URL to `/api/auth/oauth`.
 3. The server confirms that only Google or GitHub was requested and that the provider is enabled in Supabase.
 4. Supabase completes provider authentication and returns access and refresh tokens to the original page.

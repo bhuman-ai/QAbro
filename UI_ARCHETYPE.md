@@ -116,7 +116,8 @@ Avoid:
 
 ### Tokens
 
-- `Space Grotesk` as the main UI font
+- `Bricolage Grotesque` for display headings
+- `Plus Jakarta Sans` for interface and body copy
 - `JetBrains Mono` only for logs or machine output
 - Existing semantic colors in [`styles.css`](/Users/don/BHuman/QAbro/styles.css) and [`dashboard.css`](/Users/don/BHuman/QAbro/dashboard.css):
   - `--background`
@@ -221,3 +222,15 @@ Use the guided handoff pattern, not a marketplace dashboard.
 - A tester receives the `BUD Verified Trial` label only after an operator scores the submitted evidence.
 - Keep the BUD score and the customer rating separate.
 - Never describe an unknown customer issue as a known benchmark issue.
+
+### Tester Application
+
+Use the guided form pattern, not a tester dashboard.
+
+- Send outreach and homepage interest to `/testers/apply`.
+- Lead with one outcome: get paid to test new apps.
+- Keep Google primary and GitHub secondary.
+- Ask only for matching information: name, location, devices, experience, and availability.
+- Confirm screen recording and spoken-English comfort before submission.
+- End with one next step: watch email for the qualification test.
+- Hide scores, customer matching, and trial administration until later.
