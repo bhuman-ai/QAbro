@@ -28,6 +28,7 @@ const EMPTY_FORM = {
   productName: "",
   targetUrl: "",
   leadEmail: "",
+  testerName: "",
   testerEmail: "",
   testFocus: "",
   knownIssues: ""
@@ -50,8 +51,12 @@ function trialStatusTone(status?: string) {
 }
 
 export default function QaTrialAdmin({ search }: { search: string }) {
-  const initialSessionId = String(new URLSearchParams(search).get("session_id") || "").trim();
-  const [form, setForm] = useState(EMPTY_FORM);
+  const initialParams = new URLSearchParams(search);
+  const initialSessionId = String(initialParams.get("session_id") || "").trim();
+  const testerApplicationId = String(initialParams.get("tester_application_id") || "").trim();
+  const testerName = String(initialParams.get("tester_name") || "").trim();
+  const testerEmail = String(initialParams.get("tester_email") || "").trim();
+  const [form, setForm] = useState({ ...EMPTY_FORM, testerName, testerEmail });
   const [items, setItems] = useState<QaTrialSummary[]>([]);
   const [selectedId, setSelectedId] = useState(initialSessionId);
   const [selected, setSelected] = useState<QaTrialView | null>(null);
@@ -112,6 +117,7 @@ export default function QaTrialAdmin({ search }: { search: string }) {
           product_name: form.productName,
           target_url: form.targetUrl,
           lead_email: form.leadEmail,
+          tester_name: form.testerName,
           tester_email: form.testerEmail,
           test_focus: form.testFocus,
           known_issues: form.knownIssues
@@ -122,6 +128,20 @@ export default function QaTrialAdmin({ search }: { search: string }) {
       setSelected(response.trial);
       setForm(EMPTY_FORM);
       await loadItems();
+      if (testerApplicationId) {
+        try {
+          await apiFetch("/api/tester-applications", {
+            method: "PATCH",
+            body: {
+              id: testerApplicationId,
+              status: "invited",
+              qualification_session_id: response.session_id
+            }
+          });
+        } catch {
+          setError("The trial was created, but the applicant queue did not update. Open the applicant and mark the qualification as sent.");
+        }
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not pair this trial.");
     } finally {
@@ -188,7 +208,7 @@ export default function QaTrialAdmin({ search }: { search: string }) {
             <ArrowLeft className="h-4 w-4" />
             Dashboard
           </a>
-          <div className="font-display text-xl font-black">Qualification trials</div>
+          <a href="/testers/admin" className="text-sm font-black text-brand-accent hover:text-brand-ink">Tester applicants</a>
         </div>
       </header>
 
@@ -199,7 +219,7 @@ export default function QaTrialAdmin({ search }: { search: string }) {
               <UserRoundCheck className="h-6 w-6" />
             </div>
             <div>
-              <h1 className="text-3xl font-black">Pair a free test</h1>
+              <h1 className="text-3xl font-black">{testerName ? `Set up ${testerName}'s qualification` : "Pair a free test"}</h1>
               <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted">
                 The customer gets a free report. The new tester earns their first verified score.
               </p>

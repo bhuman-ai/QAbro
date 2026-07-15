@@ -11,6 +11,10 @@ const {
   submitQaTrial,
   verifyQaTrialAccess
 } = require("../lib/qa-trials");
+const {
+  isTesterOperatorEmail,
+  markTesterApplicationQualifiedBySession
+} = require("../lib/tester-applications");
 
 function resolveOwner(auth, req) {
   return {
@@ -122,7 +126,14 @@ module.exports = async (req, res) => {
     if (!bodySessionId) return res.status(400).json({ ok: false, error: "session_id is required" });
     const scored = await scoreQaTrial(bodySessionId, body || {}, options);
     if (!scored.ok) return res.status(scored.status || 500).json({ ok: false, error: scored.error });
-    return res.status(200).json({ ok: true, trial: scored.trial });
+    let application = null;
+    if (owner.is_service_token || isTesterOperatorEmail(owner.ownerEmail)) {
+      const synced = await markTesterApplicationQualifiedBySession(bodySessionId);
+      if (synced.ok) {
+        application = synced.application;
+      }
+    }
+    return res.status(200).json({ ok: true, trial: scored.trial, application });
   }
 
   return res.status(400).json({ ok: false, error: "Unknown action" });

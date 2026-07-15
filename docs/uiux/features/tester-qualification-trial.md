@@ -15,6 +15,8 @@ Bootstrap both sides of human QA: a customer receives one useful test for free w
 7. BUD publishes a `BUD Verified Trial` score.
 8. The customer separately rates how useful the test was.
 
+When a qualification starts from the tester applicant queue, the application is linked to the new session and moves to `Qualification sent`. Publishing the BUD score moves that same application to `Passed qualification` for final operator approval.
+
 ## Information Budget
 
 ### Tester

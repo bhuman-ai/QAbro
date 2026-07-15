@@ -234,3 +234,14 @@ Use the guided form pattern, not a tester dashboard.
 - Confirm screen recording and spoken-English comfort before submission.
 - End with one next step: watch email for the qualification test.
 - Hide scores, customer matching, and trial administration until later.
+
+### Tester Operations
+
+Use the guided triage inbox pattern, not a marketplace dashboard.
+
+- Show one plain list of applicants and one selected applicant at a time.
+- Give a new applicant one primary action: `Set up qualification`.
+- Reuse the existing qualification-trial screen with the tester already filled in.
+- Move a linked application to `Passed qualification` when its trial is scored.
+- Keep decline, manual status repair, source, and dates behind secondary disclosure.
+- Limit the global applicant list and status changes to configured BUD operator emails or service-token automation.

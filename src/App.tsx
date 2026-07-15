@@ -119,6 +119,7 @@ import BrandLogo from "./BrandLogo";
 import QaTrialAdmin from "./QaTrialAdmin";
 import QaTrialPortal from "./QaTrialPortal";
 import TesterApplicationPage from "./TesterApplicationPage";
+import TesterApplicationsAdmin from "./TesterApplicationsAdmin";
 
 const PERSONA_PRESETS = [
   {
@@ -2268,7 +2269,8 @@ function App() {
   const isTrialRoute = pathname === "/trial";
   const isTrialAdminRoute = pathname === "/trials";
   const isTesterApplyRoute = pathname === "/testers/apply";
-  const isProtectedRoute = isWorkspaceRoute || isTrialAdminRoute;
+  const isTesterAdminRoute = pathname === "/testers/admin";
+  const isProtectedRoute = isWorkspaceRoute || isTrialAdminRoute || isTesterAdminRoute;
 
   useEffect(() => {
     installBudWidgetFromUrl(route.search);
@@ -2424,6 +2426,20 @@ function App() {
       );
     }
     return <QaTrialAdmin search={route.search} />;
+  }
+
+  if (isTesterAdminRoute) {
+    if (!authState.authorized) {
+      return (
+        <AuthGate
+          message={authState.message}
+          tone={authState.tone}
+          onSubmit={handleRequestMagicLink}
+          onSocialSignIn={handleSocialSignIn}
+        />
+      );
+    }
+    return <TesterApplicationsAdmin search={route.search} />;
   }
 
   if (isTesterApplyRoute) {

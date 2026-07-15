@@ -5,7 +5,11 @@ const path = require("node:path");
 
 const {
   getTesterApplication,
+  isTesterOperatorEmail,
+  listTesterApplications,
+  markTesterApplicationQualifiedBySession,
   normalizeTesterApplicationPayload,
+  updateTesterApplication,
   upsertTesterApplication
 } = require("../lib/tester-applications");
 
@@ -43,7 +47,15 @@ test("tester application direct URL is preserved by the SPA router", () => {
   const appSource = fs.readFileSync(path.resolve(__dirname, "../src/App.tsx"), "utf8");
 
   assert.match(formatSource, /"\/testers\/apply"/);
+  assert.match(formatSource, /"\/testers\/admin"/);
   assert.match(appSource, /pathname === "\/testers\/apply"/);
+  assert.match(appSource, /pathname === "\/testers\/admin"/);
+});
+
+test("tester operator access uses an explicit email allowlist", () => {
+  assert.equal(isTesterOperatorEmail("Don@BHuman.ai", { operatorEmails: "don@bhuman.ai, qa@example.com" }), true);
+  assert.equal(isTesterOperatorEmail("other@example.com", { operatorEmails: ["don@bhuman.ai"] }), false);
+  assert.equal(isTesterOperatorEmail("don@bhuman.ai", { operatorEmails: "" }), false);
 });
 
 test("tester application payload keeps only supported choices", () => {
@@ -125,6 +137,131 @@ test("tester application lookup is scoped to the signed-in user", async () => {
   assert.equal(requestUrl.pathname, "/rest/v1/swarmtest_tester_applications");
   assert.equal(requestUrl.searchParams.get("owner_user_id"), "eq.user-123");
   assert.equal(requestUrl.searchParams.get("limit"), "1");
+});
+
+test("tester operator list returns newest applications first", async () => {
+  let capturedUrl = "";
+  const result = await listTesterApplications(
+    { status: "applied", limit: 500 },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async (url) => {
+        capturedUrl = String(url);
+        return jsonResponse([
+          {
+            id: "application-1",
+            owner_email: "tester@example.com",
+            name: "Maya Tester",
+            country: "Canada",
+            experience_level: "some",
+            devices: ["computer"],
+            availability: "flexible",
+            can_record: true,
+            status: "applied",
+            source: "freelancer_outreach"
+          }
+        ]);
+      }
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.items[0].owner_email, "tester@example.com");
+  const requestUrl = new URL(capturedUrl);
+  assert.equal(requestUrl.searchParams.get("order"), "created_at.desc");
+  assert.equal(requestUrl.searchParams.get("status"), "eq.applied");
+  assert.equal(requestUrl.searchParams.get("limit"), "200");
+});
+
+test("tester operator links an application to one qualification session", async () => {
+  let capturedInit = null;
+  const result = await updateTesterApplication(
+    {
+      id: "application-1",
+      status: "invited",
+      qualification_session_id: "trial-1"
+    },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async (_url, init) => {
+        capturedInit = init;
+        return jsonResponse([
+          {
+            id: "application-1",
+            owner_email: "tester@example.com",
+            name: "Maya Tester",
+            country: "Canada",
+            experience_level: "some",
+            devices: ["computer"],
+            availability: "flexible",
+            can_record: true,
+            status: "invited",
+            qualification_session_id: "trial-1"
+          }
+        ]);
+      }
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(capturedInit.method, "PATCH");
+  assert.deepEqual(JSON.parse(capturedInit.body), {
+    status: "invited",
+    qualification_session_id: "trial-1"
+  });
+
+  const missingSession = await updateTesterApplication(
+    { id: "application-1", status: "invited" },
+    { supabaseUrl: "https://supabase.example", serviceKey: "service-key", fetchImpl: async () => jsonResponse([]) }
+  );
+  assert.equal(missingSession.ok, false);
+  assert.match(missingSession.error, /Qualification session id/);
+});
+
+test("scoring advances only the application linked to that qualification", async () => {
+  let capturedUrl = "";
+  let capturedInit = null;
+  const result = await markTesterApplicationQualifiedBySession("trial-1", {
+    supabaseUrl: "https://supabase.example",
+    serviceKey: "service-key",
+    fetchImpl: async (url, init) => {
+      capturedUrl = String(url);
+      capturedInit = init;
+      return jsonResponse([]);
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.application, null);
+  const requestUrl = new URL(capturedUrl);
+  assert.equal(requestUrl.searchParams.get("qualification_session_id"), "eq.trial-1");
+  assert.equal(requestUrl.searchParams.get("status"), "eq.invited");
+  assert.deepEqual(JSON.parse(capturedInit.body), { status: "qualified" });
+});
+
+test("tester admin endpoint rejects signed-in users outside the operator allowlist", async (t) => {
+  const auth = require("../lib/auth");
+  const applications = require("../lib/tester-applications");
+
+  t.mock.method(auth, "requireDashboardOrServiceAuth", async () => ({
+    ok: true,
+    is_service_token: false,
+    user: { id: "user-1", email: "other@example.com" }
+  }));
+  t.mock.method(applications, "isTesterOperatorEmail", () => false);
+
+  const handlerPath = require.resolve("../api/tester-applications");
+  delete require.cache[handlerPath];
+  const handler = require(handlerPath);
+  const req = { method: "GET", query: { scope: "admin" }, headers: {} };
+  const res = createRes();
+
+  await handler(req, res);
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.body.error, "Tester operator access required");
 });
 
 test("tester application upsert preserves server-managed status", async () => {
