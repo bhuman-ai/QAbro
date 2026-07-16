@@ -48,3 +48,7 @@ When a tester claims a qualification, the application is linked to the new sessi
 - Customer rating: separate 1-5 score, never folded into the BUD score
 
 Private benchmark issues, access-token hashes, and encrypted credential envelopes must never appear in public trial responses. Plaintext test credentials are available only to the tester role through its private link.
+
+## Reuse Boundary
+
+Paid assignments reuse the same consent, recording, evidence, submission, and customer-rating machinery. They do not create a qualification score, change an approved tester back to `Qualification sent`, or describe the work as unpaid. Their displayed pay is copied into the private trial when claimed and cannot change for that claimed assignment.

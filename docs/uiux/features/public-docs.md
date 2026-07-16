@@ -43,5 +43,6 @@ Create an MCP key and connect the hosted Before Users Do MCP endpoint.
 - Do not require customers to know MCP tool names.
 - State that a reachable URL is normally the only missing input after an agent finishes work.
 - State that human-test requests are created through MCP without another form.
+- Explain that new testers complete one unpaid qualification and approved testers see exact pay before claiming paid work.
 - Keep brand setup, repository setup, and dashboard exploration outside the first MCP connection path.
 - Never describe an inconclusive result as a pass.

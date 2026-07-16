@@ -238,7 +238,8 @@ If the user says “have a real person test this,” “send this to a QA profes
 4. Never infer permission for a real purchase or irreversible action.
 5. Call `qa_request_human_test`. Do not send the user to an intake form.
 6. Ask the user only if the target URL, an explicitly requested flow, or selected test-account login is missing.
-7. Return the request id and use `qa_get_human_test_status` later for assignment and report state.
+7. BUD prepares the private review points and publishes the request either as a new-tester qualification or as a paid assignment for approved testers. Paid work shows the exact tester pay before it can be claimed.
+8. Return the request id and use `qa_get_human_test_status` later for assignment, report, and paid-assignment payout state.
 
 ```json
 {

@@ -598,16 +598,21 @@ function buildHumanTestRequestText(payload = {}) {
     `Scope: ${reviewLabel}.`,
     request.test_focus ? `Tester brief: ${request.test_focus}` : "",
     request.access_mode ? `Access: ${request.access_mode}.` : "",
-    "No customer form is required. Before Users Do will match a real tester and email the private tracking link.",
+    "No customer form is required. Before Users Do will prepare the request, match an eligible tester, and email the private tracking link.",
     request.id ? `Check later with qa_get_human_test_status using request_id ${request.id}.` : ""
   ]);
 }
 
 function buildHumanTestStatusText(payload = {}) {
   const request = payload.request && typeof payload.request === "object" ? payload.request : {};
+  const payCents = Math.max(0, Math.round(Number(request.tester_pay_cents) || 0));
+  const payCurrency = safeText(request.tester_pay_currency, 3).toUpperCase() || "USD";
+  const payAmount = (payCents / 100).toFixed(2).replace(/\.00$/, "");
+  const payLabel = payCurrency === "USD" ? `$${payAmount}` : `${payCurrency} ${payAmount}`;
   return buildText([
     `Human test request ${request.id || "unknown"}: ${request.status || "unknown"}.`,
     request.assigned_tester_name ? `Tester: ${request.assigned_tester_name}.` : "",
+    request.assignment_type === "paid" ? `Paid assignment: ${payLabel}. Payout: ${request.payout_status || "pending"}.` : "",
     request.status === "queued" ? "Before Users Do is still matching a tester." : "",
     request.status === "available" ? "The test is available for an eligible tester to claim." : "",
     request.status === "assigned" ? "A tester has been assigned and received the private test link." : "",

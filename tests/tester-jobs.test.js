@@ -54,3 +54,30 @@ test("only an applied desktop tester without an active test sees qualifications"
   assert.equal(busy.available.length, 0);
   assert.equal(busy.current.length, 1);
 });
+
+test("approved testers see paid work while applicants see only qualifications", () => {
+  const qualification = request({ id: "qualification", assignment_type: "qualification" });
+  const paid = request({
+    id: "paid",
+    assignment_type: "paid",
+    tester_pay_cents: 3000,
+    tester_pay_currency: "USD",
+    payout_status: "pending"
+  });
+  const applicant = __private.splitTesterJobs(
+    { status: "applied", devices: ["computer"] },
+    [qualification, paid],
+    []
+  );
+  const approved = __private.splitTesterJobs(
+    { status: "approved", devices: ["computer"] },
+    [qualification, paid],
+    []
+  );
+
+  assert.deepEqual(applicant.available.map((item) => item.id), ["qualification"]);
+  assert.deepEqual(approved.available.map((item) => item.id), ["paid"]);
+  assert.equal(approved.available[0].tester_pay_cents, 3000);
+  assert.equal(approved.can_claim_paid, true);
+  assert.equal(approved.can_claim_qualification, false);
+});

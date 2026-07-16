@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ArrowRight,
+  Banknote,
   Check,
   Clock3,
   LoaderCircle,
@@ -30,6 +31,10 @@ type TesterJob = {
   test_focus: string;
   expected_success?: string | null;
   duration_minutes: number;
+  assignment_type: "qualification" | "paid";
+  tester_pay_cents: number;
+  tester_pay_currency: string;
+  payout_status: "not_applicable" | "pending" | "approved" | "paid";
   access_mode: "public_only" | "signup_allowed" | "test_account";
   status: "available" | "assigned" | "in_progress" | "submitted" | "completed";
   can_open: boolean;
@@ -45,8 +50,23 @@ type JobsResponse = {
   current: TesterJob[];
   history: TesterJob[];
   can_claim_qualification: boolean;
+  can_claim_paid: boolean;
   desktop_ready: boolean;
 };
+
+function formatPay(job: TesterJob) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: job.tester_pay_currency || "USD",
+    minimumFractionDigits: job.tester_pay_cents % 100 ? 2 : 0
+  }).format(job.tester_pay_cents / 100);
+}
+
+function payoutLabel(status: TesterJob["payout_status"]) {
+  if (status === "paid") return "Paid";
+  if (status === "approved") return "Payment approved";
+  return "Payment after review";
+}
 
 function accessLabel(mode: TesterJob["access_mode"]) {
   if (mode === "signup_allowed") return "You may create a free account";
@@ -155,7 +175,13 @@ export default function TesterJobsPage({
               <div>
                 <p className="text-sm font-black text-brand-accent">Hi {application.name}</p>
                 <h1 className="mt-2 text-4xl font-black sm:text-5xl">
-                  {currentJob ? "Your test" : "Choose a test"}
+                  {currentJob
+                    ? currentJob.assignment_type === "paid"
+                      ? "Your paid test"
+                      : "Your qualification"
+                    : application.status === "approved"
+                      ? "Paid tests"
+                      : "Choose a test"}
                 </h1>
               </div>
               <p className="text-sm font-semibold text-brand-muted">{user?.email}</p>
@@ -174,6 +200,12 @@ export default function TesterJobsPage({
                     <MonitorUp className="h-5 w-5" />
                     {currentJob.status === "submitted" ? "Sent for review" : "Taken by you"}
                   </div>
+                  {currentJob.assignment_type === "paid" ? (
+                    <div className="mt-5 flex items-center gap-2 text-2xl font-black text-brand-ink">
+                      <Banknote className="h-6 w-6 text-brand-success" />
+                      {formatPay(currentJob)}
+                    </div>
+                  ) : null}
                   <h2 className="mt-4 text-3xl font-black">{currentJob.product_name}</h2>
                   <p className="mt-4 font-semibold leading-7 text-brand-muted">{currentJob.test_focus}</p>
                   <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm font-bold text-brand-muted">
@@ -202,13 +234,18 @@ export default function TesterJobsPage({
                   The current recorder works in Chrome on a computer. Mobile testing will be added separately.
                 </p>
               </section>
-            ) : application.status === "applied" && data?.available.length ? (
+            ) : data?.available.length ? (
               <section className="divide-y divide-brand-line border-b border-brand-line">
                 {data.available.map((job) => (
                   <article key={job.id} className="py-8">
                     <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
-                        <div className="text-sm font-black text-brand-accent">Unpaid qualification</div>
+                        <div className="flex flex-wrap items-center gap-3 text-sm font-black">
+                          <span className={job.assignment_type === "paid" ? "text-brand-success" : "text-brand-accent"}>
+                            {job.assignment_type === "paid" ? formatPay(job) : "Unpaid qualification"}
+                          </span>
+                          {job.assignment_type === "paid" ? <span className="text-brand-muted">Paid after review</span> : null}
+                        </div>
                         <h2 className="mt-2 text-2xl font-black">{job.product_name}</h2>
                         <p className="mt-3 font-semibold leading-7 text-brand-muted">{job.test_focus}</p>
                         <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm font-bold text-brand-muted">
@@ -225,7 +262,11 @@ export default function TesterJobsPage({
                         className="inline-flex min-h-14 shrink-0 items-center justify-center gap-2 rounded-lg bg-brand-accent px-6 py-4 font-black text-white shadow-shell hover:bg-brand-ink disabled:cursor-wait disabled:opacity-50"
                       >
                         {busyId === job.id ? <LoaderCircle className="h-5 w-5 animate-spin" /> : null}
-                        {busyId === job.id ? "Taking test..." : "Take test"}
+                        {busyId === job.id
+                          ? "Claiming..."
+                          : job.assignment_type === "paid"
+                            ? "Claim paid test"
+                            : "Take test"}
                         {busyId !== job.id ? <ArrowRight className="h-5 w-5" /> : null}
                       </button>
                     </div>
@@ -253,8 +294,8 @@ export default function TesterJobsPage({
             ) : application.status === "approved" ? (
               <section className="py-12 text-center">
                 <ShieldCheck className="mx-auto h-9 w-9 text-brand-success" />
-                <h2 className="mt-4 text-2xl font-black">You’re approved</h2>
-                <p className="mt-3 font-semibold text-brand-muted">We’ll email you when a paid test is ready.</p>
+                <h2 className="mt-4 text-2xl font-black">No paid tests are open right now</h2>
+                <p className="mt-3 font-semibold text-brand-muted">We’ll email you as soon as one is ready to claim.</p>
               </section>
             ) : (
               <section className="py-12 text-center">
@@ -274,7 +315,8 @@ export default function TesterJobsPage({
                       <div>
                         <div className="font-black">{job.product_name}</div>
                         <div className="mt-1 flex items-center gap-2 text-xs font-bold text-brand-success">
-                          <Check className="h-4 w-4" /> Complete
+                          <Check className="h-4 w-4" />
+                          {job.assignment_type === "paid" ? `${formatPay(job)} · ${payoutLabel(job.payout_status)}` : "Qualification complete"}
                         </div>
                       </div>
                       <button

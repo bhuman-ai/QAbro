@@ -32,8 +32,18 @@ const EMPTY_FORM = {
   testerName: "",
   testerEmail: "",
   testFocus: "",
-  knownIssues: ""
+  knownIssues: "",
+  assignmentType: "qualification" as "qualification" | "paid",
+  testerPay: ""
 };
+
+function formatPay(cents = 0, currency = "USD") {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: cents % 100 ? 2 : 0
+  }).format(cents / 100);
+}
 
 function statusLabel(status?: string) {
   if (status === "awaiting_consent") return "Waiting for acceptance";
@@ -134,10 +144,18 @@ export default function QaTrialAdmin({ search }: { search: string }) {
           body: {
             action: "publish",
             request_id: humanRequestId,
-            known_issues: form.knownIssues
+            known_issues: form.knownIssues,
+            assignment_type: form.assignmentType,
+            tester_pay_cents:
+              form.assignmentType === "paid" ? Math.round(Number(form.testerPay) * 100) : 0,
+            tester_pay_currency: "USD"
           }
         });
-        setPublishedMessage(`${form.productName} is available for testers.`);
+        setPublishedMessage(
+          form.assignmentType === "paid"
+            ? `${form.productName} is available to approved testers for ${formatPay(Math.round(Number(form.testerPay) * 100))}.`
+            : `${form.productName} is available as a qualification.`
+        );
         setHumanRequestId("");
         setForm(EMPTY_FORM);
         await loadRequests();
@@ -194,7 +212,9 @@ export default function QaTrialAdmin({ search }: { search: string }) {
       productName: request.product_name,
       targetUrl: request.target_url,
       leadEmail: request.owner_email,
-      testFocus: request.test_focus
+      testFocus: request.test_focus,
+      assignmentType: "paid",
+      testerPay: request.tester_pay_cents ? String(request.tester_pay_cents / 100) : ""
     }));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -241,6 +261,23 @@ export default function QaTrialAdmin({ search }: { search: string }) {
       await loadItems();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not score this trial.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function markPaid() {
+    if (!selected?.source_request_id) return;
+    setBusy(true);
+    setError("");
+    try {
+      await apiFetch("/api/human-test-requests", {
+        method: "POST",
+        body: { action: "mark_paid", request_id: selected.source_request_id }
+      });
+      await Promise.all([loadSelected(selected.session_id), loadRequests(), loadItems()]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not record this payment.");
     } finally {
       setBusy(false);
     }
@@ -319,7 +356,11 @@ export default function QaTrialAdmin({ search }: { search: string }) {
                 <div key={request.id} className="flex items-center justify-between gap-4 px-4 py-4">
                   <div className="min-w-0">
                     <div className="truncate font-black">{request.product_name}</div>
-                    <div className="mt-1 text-xs font-bold text-brand-muted">Waiting to be claimed</div>
+                    <div className="mt-1 text-xs font-bold text-brand-muted">
+                      {request.assignment_type === "paid"
+                        ? `${formatPay(request.tester_pay_cents, request.tester_pay_currency)} paid test · waiting to be claimed`
+                        : "Qualification · waiting to be claimed"}
+                    </div>
                   </div>
                   <Check className="h-5 w-5 shrink-0 text-brand-success" />
                 </div>
@@ -347,11 +388,60 @@ export default function QaTrialAdmin({ search }: { search: string }) {
 
           <form className="mt-8 grid gap-5" onSubmit={createTrial}>
             {humanRequestId ? (
-              <div className="border-y border-brand-line py-5">
-                <div className="text-sm font-black text-brand-accent">{form.productName}</div>
-                <p className="mt-2 font-semibold leading-7 text-brand-muted">{form.testFocus}</p>
-                <p className="mt-3 break-all text-xs font-bold text-brand-muted">{form.targetUrl}</p>
-              </div>
+              <>
+                <div className="border-y border-brand-line py-5">
+                  <div className="text-sm font-black text-brand-accent">{form.productName}</div>
+                  <p className="mt-2 font-semibold leading-7 text-brand-muted">{form.testFocus}</p>
+                  <p className="mt-3 break-all text-xs font-bold text-brand-muted">{form.targetUrl}</p>
+                </div>
+                <fieldset>
+                  <legend className="text-sm font-black">Who is this for?</legend>
+                  <div className="mt-2 grid grid-cols-2 gap-2 rounded-xl bg-brand-bg p-1">
+                    {([
+                      ["paid", "Approved tester"],
+                      ["qualification", "New tester"]
+                    ] as const).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-pressed={form.assignmentType === value}
+                        onClick={() => setForm((current) => ({
+                          ...current,
+                          assignmentType: value,
+                          testerPay: value === "paid" ? current.testerPay : ""
+                        }))}
+                        className={`min-h-11 rounded-lg px-3 text-sm font-black ${
+                          form.assignmentType === value ? "bg-white text-brand-ink shadow-sm" : "text-brand-muted"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+                {form.assignmentType === "paid" ? (
+                  <label className="grid gap-2 text-sm font-black">
+                    Tester pay
+                    <div className="flex items-center rounded-xl border border-brand-line bg-white px-4 focus-within:border-brand-accent">
+                      <span className="font-black text-brand-muted">$</span>
+                      <input
+                        required
+                        min="1"
+                        step="0.01"
+                        type="number"
+                        inputMode="decimal"
+                        value={form.testerPay}
+                        onChange={(event) => setForm((current) => ({ ...current, testerPay: event.target.value }))}
+                        className="min-h-12 w-full px-2 font-semibold outline-none"
+                        placeholder="25"
+                      />
+                    </div>
+                    <span className="text-xs font-semibold text-brand-muted">
+                      This exact amount is shown before the tester claims the job.
+                    </span>
+                  </label>
+                ) : null}
+              </>
             ) : (
               <>
             <div className="grid gap-5 sm:grid-cols-2">
@@ -414,14 +504,25 @@ export default function QaTrialAdmin({ search }: { search: string }) {
                 <div className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${trialStatusTone(selected.status)}`}>{statusLabel(selected.status)}</div>
                 <h2 className="mt-3 text-2xl font-black">{selected.product_name}</h2>
                 <p className="mt-1 text-sm font-semibold text-brand-muted">{selected.tester.email} testing for {selected.lead.email}</p>
+                {selected.assignment.type === "paid" ? (
+                  <p className="mt-2 text-lg font-black text-brand-success">
+                    {formatPay(selected.assignment.tester_pay_cents, selected.assignment.tester_pay_currency)} · {selected.assignment.payout_status.replaceAll("_", " ")}
+                  </p>
+                ) : null}
               </div>
               <a href={selected.target_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-brand-line px-4 py-2 text-sm font-black"><ExternalLink className="h-4 w-4" /> Product</a>
             </div>
 
             {selected.submission.submitted_at && selected.qualification.status !== "verified" ? (
               <div className="mt-8 border-t border-brand-line pt-8">
-                <h3 className="text-xl font-black">Score the trial</h3>
-                <p className="mt-1 text-sm font-semibold text-brand-muted">Check each private issue the tester found.</p>
+                <h3 className="text-xl font-black">
+                  {selected.assignment.type === "paid" ? "Review the paid test" : "Score the trial"}
+                </h3>
+                <p className="mt-1 text-sm font-semibold text-brand-muted">
+                  {selected.assignment.type === "paid"
+                    ? "Confirm what the tester found before approving payment."
+                    : "Check each private issue the tester found."}
+                </p>
                 <div className="mt-5 grid gap-3">
                   {benchmarkIssues.map((issue) => {
                     const checked = caughtIssueIds.includes(issue.id);
@@ -450,8 +551,29 @@ export default function QaTrialAdmin({ search }: { search: string }) {
                 <textarea value={reviewerNote} onChange={(event) => setReviewerNote(event.target.value)} placeholder="Optional note for the tester" className="mt-5 min-h-24 w-full rounded-xl border border-brand-line px-4 py-3 text-sm font-semibold outline-none focus:border-brand-accent" />
                 <button type="button" onClick={() => void scoreTrial()} disabled={busy} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-accent px-5 py-4 font-black text-white disabled:opacity-60 sm:w-auto">
                   {busy ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Star className="h-5 w-5" />}
-                  Publish score
+                  {selected.assignment.type === "paid" ? "Approve report and payment" : "Publish score"}
                 </button>
+              </div>
+            ) : selected.assignment.type === "paid" && selected.assignment.payout_status === "approved" ? (
+              <div className="mt-8 rounded-2xl bg-brand-success/10 p-6">
+                <div className="text-xs font-black uppercase tracking-widest text-brand-success">Payment approved</div>
+                <div className="mt-2 text-3xl font-black">
+                  {formatPay(selected.assignment.tester_pay_cents, selected.assignment.tester_pay_currency)}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void markPaid()}
+                  disabled={busy || !selected.source_request_id}
+                  className="mt-5 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-brand-ink px-5 py-3 font-black text-white hover:bg-brand-accent disabled:opacity-50"
+                >
+                  {busy ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
+                  Mark paid
+                </button>
+              </div>
+            ) : selected.assignment.type === "paid" && selected.assignment.payout_status === "paid" ? (
+              <div className="mt-8 flex items-center gap-3 rounded-2xl bg-brand-success/10 p-6 font-black">
+                <Check className="h-6 w-6 text-brand-success" />
+                {formatPay(selected.assignment.tester_pay_cents, selected.assignment.tester_pay_currency)} paid
               </div>
             ) : selected.qualification.status === "verified" ? (
               <div className="mt-8 rounded-2xl bg-brand-accent/5 p-6">
@@ -477,7 +599,13 @@ export default function QaTrialAdmin({ search }: { search: string }) {
                     <div className="font-black">{item.product_name}</div>
                     <div className="mt-1 text-xs font-semibold text-brand-muted">{statusLabel(item.status)}</div>
                   </div>
-                  <div className="text-sm font-black text-brand-accent">{item.score === null || item.score === undefined ? "Open" : `${item.score}/100`}</div>
+                  <div className="text-sm font-black text-brand-accent">
+                    {item.assignment_type === "paid"
+                      ? formatPay(item.tester_pay_cents, item.tester_pay_currency)
+                      : item.score === null || item.score === undefined
+                        ? "Open"
+                        : `${item.score}/100`}
+                  </div>
                 </button>
               ))}
             </div>
