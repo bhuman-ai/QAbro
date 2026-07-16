@@ -1324,7 +1324,7 @@ function collectExecutionVideoEvidence(finalReport, execution = {}) {
 function assessExecutionEvidence(finalReport, execution = {}, options = {}) {
   const artifacts = execution.artifacts && typeof execution.artifacts === "object" ? execution.artifacts : {};
   const hasBrowserbaseEvidence = Boolean(artifacts.browserbase_session_url || artifacts.browserbase_debug_url);
-  const requiredScreenshots = hasBrowserbaseEvidence
+  const configuredRequiredScreenshots = hasBrowserbaseEvidence
     ? 0
     : Math.max(1, Number(options.requiredScreenshots || process.env.QA_REQUIRED_SCREENSHOT_COUNT) || 4);
   const requiredVideos = Math.max(
@@ -1333,6 +1333,10 @@ function assessExecutionEvidence(finalReport, execution = {}, options = {}) {
   );
   const screenshots = collectExecutionScreenshotEvidence(finalReport, execution);
   const videos = collectExecutionVideoEvidence(finalReport, execution);
+  const hasRichVideoCoverage = videos.length >= Math.max(2, requiredVideos);
+  const requiredScreenshots = hasRichVideoCoverage
+    ? Math.min(configuredRequiredScreenshots, 2)
+    : configuredRequiredScreenshots;
   const missing = [];
   if (screenshots.length < requiredScreenshots) {
     missing.push(`at least ${requiredScreenshots} screenshots`);
@@ -1346,6 +1350,7 @@ function assessExecutionEvidence(finalReport, execution = {}, options = {}) {
     videos,
     screenshotCount: screenshots.length,
     videoCount: videos.length,
+    configuredRequiredScreenshots,
     requiredScreenshots,
     requiredVideos,
     ok: missing.length === 0,
