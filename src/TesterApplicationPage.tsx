@@ -285,15 +285,15 @@ export default function TesterApplicationPage({
             <div className="mx-auto mb-7 flex h-16 w-16 items-center justify-center rounded-full bg-brand-success text-white">
               <Check className="h-8 w-8" strokeWidth={3} />
             </div>
-            <h1 className="text-4xl font-black sm:text-5xl">Application received</h1>
+            <h1 className="text-4xl font-black sm:text-5xl">Choose your first test</h1>
             <p className="mx-auto mt-5 max-w-md text-lg font-semibold leading-relaxed text-slate-600">
-              We’ll email {user?.email || "you"} with a short qualification test.
+              Your application is ready. Take one available qualification when you have a computer and about 30 minutes.
             </p>
             <a
-              href="/"
+              href="/testers/jobs"
               className="mt-9 inline-flex items-center gap-2 rounded-lg bg-brand-ink px-6 py-4 font-black text-white transition-colors hover:bg-brand-accent"
             >
-              Back to Before Users Do
+              See available tests
               <ChevronRight className="h-5 w-5" />
             </a>
           </motion.section>

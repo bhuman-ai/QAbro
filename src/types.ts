@@ -409,11 +409,13 @@ export interface HumanTestRequest {
     prohibited_actions: string[];
   };
   context?: Record<string, unknown> | null;
-  status: "queued" | "assigned" | "in_progress" | "submitted" | "completed" | "cancelled";
+  status: "queued" | "available" | "assigned" | "in_progress" | "submitted" | "completed" | "cancelled";
   assigned_tester_application_id?: string | null;
   assigned_tester_name?: string | null;
   assigned_tester_email?: string | null;
   trial_session_id?: string | null;
+  published_at?: string | null;
+  claimed_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }

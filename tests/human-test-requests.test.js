@@ -3,7 +3,9 @@ const assert = require("node:assert/strict");
 
 const {
   normalizeHumanTestRequestPayload,
-  normalizeHumanTestRequestRow
+  normalizeHumanTestRequestRow,
+  publishHumanTestRequest,
+  reserveHumanTestRequest
 } = require("../lib/human-test-requests");
 const { openSecretObject, sealSecretObject } = require("../lib/qa-secret-box");
 
@@ -110,4 +112,81 @@ test("secret envelopes reject the wrong key", () => {
   assert.equal(sealed.ok, true);
   assert.equal(openSecretObject(sealed.envelope, { credentialsSecret: "right" }).value.username, "qa@example.com");
   assert.equal(openSecretObject(sealed.envelope, { credentialsSecret: "wrong" }).ok, false);
+});
+
+function jsonResponse(data, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    async json() {
+      return data;
+    }
+  };
+}
+
+function requestRow(overrides = {}) {
+  return {
+    id: "request-1",
+    owner_user_id: "owner-1",
+    owner_email: "founder@example.com",
+    product_name: "Example App",
+    target_url: "https://example.com",
+    review_type: "specific_flow",
+    test_focus: "Try signup.",
+    duration_minutes: 30,
+    access_mode: "public_only",
+    access_details: {},
+    context: {},
+    status: "queued",
+    source: "mcp_human_test",
+    ...overrides
+  };
+}
+
+test("operator publishing stores private review points and makes a request available", async () => {
+  const calls = [];
+  const result = await publishHumanTestRequest(
+    "request-1",
+    { known_issues: ["The main action is hard to find"] },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async (url, init = {}) => {
+        calls.push({ url: String(url), init });
+        if (init.method === "PATCH") {
+          const body = JSON.parse(init.body);
+          return jsonResponse([requestRow({ ...body })]);
+        }
+        return jsonResponse([requestRow()]);
+      }
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.request.status, "available");
+  const patchBody = JSON.parse(calls.find((call) => call.init.method === "PATCH").init.body);
+  assert.deepEqual(patchBody.private_benchmark, ["The main action is hard to find"]);
+  assert.equal(patchBody.status, "available");
+});
+
+test("tester reservation uses a conditional update so only one tester can take a job", async () => {
+  let capturedUrl = "";
+  const unavailable = await reserveHumanTestRequest(
+    "request-1",
+    { application_id: "application-1", name: "Maya", email: "maya@example.com" },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async (url) => {
+        capturedUrl = String(url);
+        return jsonResponse([]);
+      }
+    }
+  );
+
+  assert.equal(unavailable.status, 409);
+  assert.match(unavailable.error, /already took/i);
+  const requestUrl = new URL(capturedUrl);
+  assert.equal(requestUrl.searchParams.get("id"), "eq.request-1");
+  assert.equal(requestUrl.searchParams.get("status"), "eq.available");
 });

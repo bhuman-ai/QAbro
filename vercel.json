@@ -212,6 +212,10 @@
     {
       "source": "/testers/admin",
       "destination": "/index.html"
+    },
+    {
+      "source": "/testers/jobs",
+      "destination": "/index.html"
     }
   ]
 }

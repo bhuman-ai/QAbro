@@ -609,6 +609,7 @@ function buildHumanTestStatusText(payload = {}) {
     `Human test request ${request.id || "unknown"}: ${request.status || "unknown"}.`,
     request.assigned_tester_name ? `Tester: ${request.assigned_tester_name}.` : "",
     request.status === "queued" ? "Before Users Do is still matching a tester." : "",
+    request.status === "available" ? "The test is available for an eligible tester to claim." : "",
     request.status === "assigned" ? "A tester has been assigned and received the private test link." : "",
     request.status === "in_progress" ? "The tester is working now." : "",
     request.status === "submitted" || request.status === "completed" ? "The human test has been submitted." : "",
