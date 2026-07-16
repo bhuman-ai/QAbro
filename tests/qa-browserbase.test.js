@@ -1,5 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 
 const { executeBrowserbaseQaRun, __private } = require("../lib/qa-browserbase");
 
@@ -20,6 +23,32 @@ const {
   clickWithVisionLocalization,
   attachBrowserTelemetry
 } = __private;
+
+test("local vision screenshots persist as portable evidence files", () => {
+  const runDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-vision-screenshot-"));
+  const screenshotBuffer = Buffer.from("captured-png");
+  const artifacts = {
+    local_run_dir: runDir,
+    local_screenshots: [],
+    captured_screenshots: []
+  };
+  const runLog = [];
+
+  const stored = __private.storeCapturedScreenshotBuffer(
+    artifacts,
+    runLog,
+    { capturedBytes: 0, maxBytes: 1024 },
+    "step 1 before decision",
+    screenshotBuffer
+  );
+
+  assert.equal(stored, true);
+  assert.equal(artifacts.local_screenshots.length, 1);
+  assert.equal(fs.readFileSync(artifacts.local_screenshots[0]).toString(), "captured-png");
+  assert.match(artifacts.local_screenshots[0], /01-step-1-before-decision\.png$/);
+  assert.match(artifacts.captured_screenshots[0], /^data:image\/png;base64,/);
+  assert.equal(runLog.at(-1)?.event, "inline_screenshot_captured");
+});
 
 const REQUIRED_ENV = {
   BROWSERBASE_API_KEY: "test-browserbase-api-key",

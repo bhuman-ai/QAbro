@@ -76,6 +76,7 @@ function normalizeStringList(value, maxItems = 20, maxLength = 800) {
 
 const DEFAULT_MCP_WAIT_SLICE_SECONDS = 35;
 const MAX_MCP_WAIT_SLICE_SECONDS = 50;
+const TERMINAL_QUEUE_DISPLAY_STATUSES = new Set(["completed", "failed", "cancelled"]);
 
 function resolveMcpWaitSliceSeconds(input = {}) {
   const requestedTotal = Math.max(1, Number(input.timeout_seconds || input.timeoutSeconds || 1200));
@@ -86,12 +87,21 @@ function resolveMcpWaitSliceSeconds(input = {}) {
   return Math.min(requestedTotal, requestedSlice, MAX_MCP_WAIT_SLICE_SECONDS);
 }
 
+function resolveRunDisplayStatus(status = {}) {
+  const queueStatus = safeText(status?.queue?.queue_status || status?.queue?.status, 80).toLowerCase();
+  const reportStatus = safeText(status.report_status, 80).toLowerCase();
+
+  if (queueStatus && status.report_ready !== true && !TERMINAL_QUEUE_DISPLAY_STATUSES.has(queueStatus)) {
+    return queueStatus;
+  }
+
+  return reportStatus || queueStatus || "processing";
+}
+
 function buildRunPollingHandoff(runId, status = {}, options = {}) {
   const waitSliceSeconds = resolveMcpWaitSliceSeconds(options);
   const timeoutSeconds = Math.max(1, Number(options.timeout_seconds || options.timeoutSeconds || 1200));
-  const reportStatus =
-    safeText(status.report_status || status?.queue?.queue_status || status?.queue?.status || "processing", 80) ||
-    "processing";
+  const reportStatus = resolveRunDisplayStatus(status);
   const nextToolArguments = {
     run_id: runId,
     timeout_seconds: timeoutSeconds,
@@ -618,7 +628,7 @@ function buildRequestedRunText(payload) {
 function buildStatusText(payload) {
   const summary = summarizeStatusPayload(payload);
   return buildText([
-    `Run ${summary.run_id || "unknown"} status: ${summary.report_status || summary.queue_status || "processing"}.`,
+    `Run ${summary.run_id || "unknown"} status: ${resolveRunDisplayStatus(payload)}.`,
     summary.progress ? `Progress: ${formatJson(summary.progress)}` : "",
     summary.latest_frame_url ? `Latest frame: ${summary.latest_frame_url}` : "",
     summary.ui_report_url ? `Open report: ${summary.ui_report_url}` : ""
@@ -1185,7 +1195,7 @@ function createQaMcpServer(options = {}) {
               extra,
               tick,
               Math.max(1, Math.ceil((Number(timeout_seconds || 1200) || 1200) / pollEvery)),
-              `Run ${run_id} is ${status.report_status || status?.queue?.queue_status || status?.queue?.status || "processing"}`
+              `Run ${run_id} is ${resolveRunDisplayStatus(status)}`
             );
           }
         });
@@ -1784,7 +1794,7 @@ function createQaMcpServer(options = {}) {
               extra,
               1 + tick,
               Math.max(2, 2 + Math.ceil((Number(input.timeout_seconds || 1200) || 1200) / pollEvery)),
-              `Run ${queued.run_id} is ${status.report_status || status?.queue?.queue_status || status?.queue?.status || "processing"}`
+              `Run ${queued.run_id} is ${resolveRunDisplayStatus(status)}`
             );
           }
         });
@@ -1871,9 +1881,7 @@ function createQaMcpServer(options = {}) {
               extra,
               1 + tick,
               Math.max(2, 2 + Math.ceil((Number(input.timeout_seconds || 1200) || 1200) / pollEvery)),
-              `QA check ${queued.run_id} is ${
-                status.report_status || status?.queue?.queue_status || status?.queue?.status || "processing"
-              }`
+              `QA check ${queued.run_id} is ${resolveRunDisplayStatus(status)}`
             );
           }
         });

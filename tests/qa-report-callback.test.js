@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const nodemailer = require("nodemailer");
 
 const callbackHandler = require("../api/qa-report-callback");
+const { validateEvidenceCoverage } = callbackHandler.__private;
 
 function createRes() {
   return {
@@ -46,6 +47,64 @@ async function withEnv(overrides, callback) {
     }
   }
 }
+
+test("qa-report-callback accepts two screenshots when two distinct videos provide rich coverage", async () => {
+  await withEnv(
+    {
+      QA_REQUIRED_SCREENSHOT_COUNT: undefined,
+      QA_REQUIRED_VIDEO_COUNT: undefined
+    },
+    async () => {
+      const result = validateEvidenceCoverage(
+        {
+          evidence_gallery: {
+            screenshots: [
+              "https://cdn.example.com/start.png",
+              "https://cdn.example.com/final.png"
+            ],
+            videos: [
+              "https://cdn.example.com/full-run.webm",
+              "https://cdn.example.com/blocker.webm"
+            ]
+          }
+        },
+        {},
+        {}
+      );
+
+      assert.equal(result.ok, true);
+      assert.equal(result.screenshots.length, 2);
+      assert.equal(result.videos.length, 2);
+    }
+  );
+});
+
+test("qa-report-callback keeps a two-screenshot floor with rich video coverage", async () => {
+  await withEnv(
+    {
+      QA_REQUIRED_SCREENSHOT_COUNT: undefined,
+      QA_REQUIRED_VIDEO_COUNT: undefined
+    },
+    async () => {
+      const result = validateEvidenceCoverage(
+        {
+          evidence_gallery: {
+            screenshots: ["https://cdn.example.com/final.png"],
+            videos: [
+              "https://cdn.example.com/full-run.webm",
+              "https://cdn.example.com/blocker.webm"
+            ]
+          }
+        },
+        {},
+        {}
+      );
+
+      assert.equal(result.ok, false);
+      assert.match(result.error, /at least 2 screenshots/i);
+    }
+  );
+});
 
 test("qa-report-callback sanitizes stored report payloads before upsert", async () => {
   const originalFetch = global.fetch;
