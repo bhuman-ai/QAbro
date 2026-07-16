@@ -296,6 +296,44 @@ test("qa MCP client waitForRun polls until the report is ready and emits onPoll"
   ]);
 });
 
+test("qa MCP client keeps polling when a retry is processing with a stale terminal report status", async () => {
+  const pollStates = [
+    {
+      ok: true,
+      run_id: "run_retry",
+      report_ready: false,
+      report_status: "failed_validation",
+      queue: { status: "processing", attempt_count: 2 }
+    },
+    {
+      ok: true,
+      run_id: "run_retry",
+      report_ready: true,
+      report_status: "partial",
+      queue: { status: "completed", attempt_count: 2 }
+    }
+  ];
+
+  let index = 0;
+  const client = createQaApiClient({
+    baseUrl: "https://beforeusersdo.com",
+    serviceToken: "svc_123",
+    ownerUserId: "user_123",
+    ownerEmail: "owner@example.com",
+    fetchImpl: async () => createJsonResponse(pollStates[index++])
+  });
+
+  const result = await client.waitForRun("run_retry", {
+    timeout_seconds: 5,
+    poll_interval_seconds: 0.001
+  });
+
+  assert.equal(index, 2);
+  assert.equal(result.timed_out, false);
+  assert.equal(result.status.report_ready, true);
+  assert.equal(result.status.report_status, "partial");
+});
+
 test("qa MCP client waitForManualFeedback returns feedback package after Send All", async () => {
   const states = [
     {
