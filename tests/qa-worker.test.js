@@ -455,3 +455,47 @@ test("assessExecutionEvidence fails thin proof and passes when screenshot and vi
   assert.equal(passingAssessment.videoCount, 1);
   assert.deepEqual(passingAssessment.missing, []);
 });
+
+test("assessExecutionEvidence accepts a short run with two screenshots and two video artifacts", () => {
+  const assessment = __private.assessExecutionEvidence(
+    {
+      evidence_gallery: {
+        screenshots: [
+          "https://cdn.example.com/start.png",
+          "https://cdn.example.com/final.png"
+        ],
+        videos: [
+          "https://cdn.example.com/full-run.webm",
+          "https://cdn.example.com/blocker.webm"
+        ]
+      }
+    },
+    { artifacts: {} },
+    { requiredScreenshots: 4, requiredVideos: 1 }
+  );
+
+  assert.equal(assessment.ok, true);
+  assert.equal(assessment.configuredRequiredScreenshots, 4);
+  assert.equal(assessment.requiredScreenshots, 2);
+  assert.equal(assessment.screenshotCount, 2);
+  assert.equal(assessment.videoCount, 2);
+});
+
+test("assessExecutionEvidence still rejects one screenshot even with two videos", () => {
+  const assessment = __private.assessExecutionEvidence(
+    {
+      evidence_gallery: {
+        screenshots: ["https://cdn.example.com/final.png"],
+        videos: [
+          "https://cdn.example.com/full-run.webm",
+          "https://cdn.example.com/blocker.webm"
+        ]
+      }
+    },
+    { artifacts: {} },
+    { requiredScreenshots: 4, requiredVideos: 1 }
+  );
+
+  assert.equal(assessment.ok, false);
+  assert.deepEqual(assessment.missing, ["at least 2 screenshots"]);
+});
