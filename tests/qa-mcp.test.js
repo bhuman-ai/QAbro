@@ -23,8 +23,10 @@ const {
   buildManualFeedbackActionText,
   buildManualFeedbackRequiredAction,
   buildHumanTestNeedsInputResult,
+  buildRunPollingHandoff,
   buildManualReviewNeedsInputResult,
   buildManualReviewWorkflowText,
+  resolveMcpWaitSliceSeconds,
   shouldReturnQaAction
 } = require("../scripts/qa-mcp-server");
 
@@ -143,6 +145,29 @@ test("summarizeCodingAgentQaOutcome returns pass, needs_fix, and timed_out verdi
   });
   assert.equal(timedOut.verdict, "timed_out");
   assert.equal(timedOut.pass, false);
+});
+
+test("MCP QA polling slices stay below normal client request timeouts", () => {
+  assert.equal(resolveMcpWaitSliceSeconds({}), 35);
+  assert.equal(resolveMcpWaitSliceSeconds({ timeout_seconds: 12 }), 12);
+  assert.equal(resolveMcpWaitSliceSeconds({ timeout_seconds: 1200, wait_slice_seconds: 90 }), 50);
+});
+
+test("MCP QA polling handoff requires the agent to keep polling without calling the run timed out", () => {
+  const handoff = buildRunPollingHandoff(
+    "run_processing",
+    { report_status: "processing", report_ready: false },
+    { timeout_seconds: 1200, share_after: true }
+  );
+
+  assert.match(handoff.text, /Immediately call qa_wait_for_run again/i);
+  assert.match(handoff.text, /Keep this agent turn open/i);
+  assert.equal(handoff.result.verdict, "processing");
+  assert.equal(handoff.result.timed_out, false);
+  assert.equal(handoff.result.continue_polling, true);
+  assert.equal(handoff.result.next_tool.name, "qa_wait_for_run");
+  assert.equal(handoff.result.next_tool.arguments.wait_slice_seconds, 35);
+  assert.equal(handoff.result.next_tool.arguments.share_after, true);
 });
 
 test("qa MCP client requestRun sends service token and owner headers", async () => {

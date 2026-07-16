@@ -15,10 +15,11 @@ Create an MCP key and connect the hosted Before Users Do MCP endpoint.
 ## Public Flow
 
 1. Open `/docs` without signing in.
-2. Create an MCP key from the primary action.
-3. Copy either the Codex TOML or generic JSON MCP configuration.
-4. Ask the coding agent for one of three outcomes: AI QA, owner self-review, or a real human tester.
-5. Read what evidence comes back and how safe access is handled.
+2. Choose `Get MCP key`; sign in or create an account if needed.
+3. Land directly on focused MCP key setup without creating a brand or connecting GitHub first.
+4. Copy either the Codex TOML or generic JSON MCP configuration.
+5. Ask the coding agent for one of three outcomes: AI QA, owner self-review, or a real human tester.
+6. Read what evidence comes back and how safe access is handled.
 
 ## Information Budget
 
@@ -42,4 +43,5 @@ Create an MCP key and connect the hosted Before Users Do MCP endpoint.
 - Do not require customers to know MCP tool names.
 - State that a reachable URL is normally the only missing input after an agent finishes work.
 - State that human-test requests are created through MCP without another form.
+- Keep brand setup, repository setup, and dashboard exploration outside the first MCP connection path.
 - Never describe an inconclusive result as a pass.

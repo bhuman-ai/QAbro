@@ -1156,7 +1156,7 @@ function buildTrendData(runs: RunSummary[]) {
 
   return labels.map((name, index) => {
     const values = grouped.get(index) || [];
-    const score = values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : 70 + index * 3;
+    const score = values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : null;
     return { name, score };
   });
 }
@@ -1164,22 +1164,28 @@ function buildTrendData(runs: RunSummary[]) {
 function buildStarterHistoryRows(runs: RunSummary[]) {
   return runs.slice(0, 8).map((run) => {
     const persona = getStarterPersona(run.persona || run.goal || run.run_id);
+    const reportStatus = String(run.latest_report_status || run.status || run.queue_status || "").toLowerCase();
+    const reportFinished = Boolean(run.report_ready);
+    const needsReview =
+      reportFinished &&
+      (["failed", "partial", "blocked"].includes(reportStatus) || Number(run.findings_count || 0) > 0);
+    const result = !reportFinished ? "In progress" : needsReview ? "Needs review" : "Passed";
     return {
       id: run.run_id,
       date: formatDateTime(run.delivered_at) || run.run_id,
       agent: persona.name,
       persona,
       task: run.goal || run.target_url || inferBrandName(run.brand_key || "") || "Product audit",
-      result: ["failed", "partial"].includes(String(run.status || run.queue_status || "").toLowerCase()) ? "Friction Found" : "Success",
+      result,
       severity:
-        String(run.status || run.queue_status || "").toLowerCase() === "failed"
+        ["failed", "blocked"].includes(reportStatus)
           ? "High"
           : (run.findings_count || 0) > 2
             ? "Medium"
             : "None",
-      duration: run.scope_mode === "deep_45m" ? "6m 20s" : run.scope_mode === "feature_targeted" ? "3m 55s" : "4m 12s",
-      score: deriveScoreFromReport(null, run),
-      status: String(run.status || run.queue_status || "completed").toLowerCase()
+      duration: "-",
+      score: reportFinished ? deriveScoreFromReport(null, run) : 0,
+      status: !reportFinished ? "processing" : needsReview ? "needs_review" : "completed"
     };
   });
 }
@@ -2047,9 +2053,7 @@ function AuthGate({
   onSocialSignIn: (provider: "google" | "github") => Promise<void>;
 }) {
   const [isLogin, setIsLogin] = useState(true);
-  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [passwordOrInvite, setPasswordOrInvite] = useState("");
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<"google" | "github" | "">("");
   const [localError, setLocalError] = useState("");
@@ -2059,7 +2063,7 @@ function AuthGate({
     setLoading(true);
     setLocalError("");
     try {
-      await onSubmit(email, isLogin ? "" : passwordOrInvite || DEFAULT_SIGNUP_INVITE_CODE);
+      await onSubmit(email, isLogin ? "" : DEFAULT_SIGNUP_INVITE_CODE);
     } catch (caught) {
       setLocalError(caught instanceof Error ? caught.message : "Could not send sign-in link.");
     } finally {
@@ -2094,16 +2098,17 @@ function AuthGate({
 
         <div className="handcrafted-card bg-white p-8 md:p-10 rounded-[3rem]">
           <h2 className="text-3xl font-black mb-2 text-center">
-            {isLogin ? "Welcome back!" : "Join the fleet"}
+            {isLogin ? "Welcome back!" : "Create your account"}
           </h2>
           <p className="text-slate-500 font-bold text-center mb-8">
-            {isLogin ? "We will email you a sign-in link." : "Start testing at the speed of light."}
+            {isLogin ? "We will email you a sign-in link." : "Catch problems before you ship."}
           </p>
 
           <div className="space-y-4 mb-8">
             <button
               type="button"
               onClick={() => handleSocialClick("google")}
+              aria-label="Continue with Google"
               disabled={Boolean(socialLoading || loading)}
               className="w-full handcrafted-card p-4 rounded-2xl flex items-center justify-center gap-3 font-black hover:bg-brand-muted/20 transition-all disabled:cursor-wait disabled:opacity-60"
             >
@@ -2113,6 +2118,7 @@ function AuthGate({
             <button
               type="button"
               onClick={() => handleSocialClick("github")}
+              aria-label="Continue with GitHub"
               disabled={Boolean(socialLoading || loading)}
               className="w-full handcrafted-card p-4 rounded-2xl flex items-center justify-center gap-3 font-black hover:bg-brand-muted/20 transition-all disabled:cursor-wait disabled:opacity-60"
             >
@@ -2133,21 +2139,6 @@ function AuthGate({
           </div>
 
           <form className="space-y-4" onSubmit={handleSubmit}>
-            {!isLogin ? (
-              <div className="space-y-1">
-                <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-2">Full Name</label>
-                <div className="handcrafted-card p-4 rounded-2xl flex items-center gap-3">
-                  <Star className="text-slate-300 w-5 h-5" />
-                  <input
-                    type="text"
-                    placeholder="John Doe"
-                    className="bg-transparent outline-none w-full font-bold"
-                    value={fullName}
-                    onChange={(event) => setFullName(event.target.value)}
-                  />
-                </div>
-              </div>
-            ) : null}
             <div className="space-y-1">
               <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-2">Email Address</label>
               <div className="handcrafted-card p-4 rounded-2xl flex items-center gap-3">
@@ -2161,25 +2152,11 @@ function AuthGate({
                 />
               </div>
             </div>
-            {!isLogin ? (
-              <div className="space-y-1">
-                <label className="text-xs font-black uppercase tracking-widest text-slate-400 ml-2">Invite Code</label>
-                <div className="handcrafted-card p-4 rounded-2xl flex items-center gap-3">
-                  <Shield className="text-slate-300 w-5 h-5" />
-                  <input
-                    type="text"
-                    placeholder={DEFAULT_SIGNUP_INVITE_CODE}
-                    className="bg-transparent outline-none w-full font-bold"
-                    value={passwordOrInvite}
-                    onChange={(event) => setPasswordOrInvite(event.target.value)}
-                  />
-                </div>
-              </div>
-            ) : (
+            {isLogin ? (
               <p className="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500">
                 Enter your email and we&apos;ll send a magic link.
               </p>
-            )}
+            ) : null}
 
             <button
               disabled={Boolean(loading || socialLoading)}
@@ -2465,7 +2442,7 @@ function App() {
         authorized={authState.authorized}
         onOpenMcpSettings={() => {
           const next = new URLSearchParams();
-          next.set("panel", "settings");
+          next.set("panel", "coding_agents");
           navigate("/dashboard", next);
         }}
       />
@@ -2478,7 +2455,7 @@ function App() {
         authorized={authState.authorized}
         onOpenMcpSettings={() => {
           const next = new URLSearchParams();
-          next.set("panel", "settings");
+          next.set("panel", "coding_agents");
           navigate("/dashboard", next);
         }}
       />
@@ -4400,7 +4377,7 @@ function WorkspacePage({
   }
 
   const resolvedPanel =
-    !onboardingSeen && emptyWorkspace && !["help", "manual_qa"].includes(currentPanel) ? "onboarding" : currentPanel;
+    !onboardingSeen && emptyWorkspace && !["help", "manual_qa", "coding_agents"].includes(currentPanel) ? "onboarding" : currentPanel;
   const canShowReportPanel = Boolean(requestedRunId || selectedRun || selectedReport);
   const previousRun = requestedRunId ? sameBrandRuns.find((run, index) => sameBrandRuns[index + 1]?.run_id === requestedRunId) || null : null;
   const currentRunIndex = sameBrandRuns.findIndex((run) => run.run_id === requestedRunId);
@@ -4453,6 +4430,30 @@ function WorkspacePage({
         onConnectGitHub={handleGitHubInstall}
         onSaveProjectRepos={handleProjectRepositoriesSave}
         onAcknowledgeAlert={handleAlertAcknowledge}
+      />
+    );
+  } else if (resolvedPanel === "coding_agents") {
+    workspaceContent = (
+      <StarterBrandSettingsPage
+        codingAgentsOnly
+        activeBrand={activeStarterBrand}
+        currentProject={currentProject}
+        repoConnection={repoConnection}
+        repoLoading={repoLoading}
+        repoError={repoError}
+        mcpTokens={mcpTokens}
+        mcpTokensLoading={mcpTokensLoading}
+        mcpTokenError={mcpTokenError}
+        createdMcpToken={createdMcpToken}
+        onBack={() => navigate("/docs", new URLSearchParams())}
+        onSaveBrandSettings={handleSaveBrandSettings}
+        onConnectGitHub={handleGitHubInstall}
+        onRefreshGitHubConnection={handleRefreshGitHubConnection}
+        onSaveProjectRepos={handleProjectRepositoriesSave}
+        onDisconnectGitHub={handleDisconnectGitHubConnection}
+        onCreateMcpToken={handleCreateMcpToken}
+        onRevokeMcpToken={handleRevokeMcpToken}
+        onClearCreatedMcpToken={() => setCreatedMcpToken("")}
       />
     );
   } else if (resolvedPanel === "settings") {
@@ -4531,7 +4532,6 @@ function WorkspacePage({
         activeBrand={activeStarterBrand}
         ownerEmail={authState.user?.email || ""}
         workspaceError={runsError}
-        personas={starterPersonas}
         historyRows={historyRows}
         liveAgents={liveAgents}
         frictionRows={frictionRows}
@@ -7687,7 +7687,6 @@ function StarterDashboard({
   activeBrand,
   ownerEmail,
   workspaceError,
-  personas,
   historyRows,
   liveAgents,
   frictionRows,
@@ -7710,11 +7709,10 @@ function StarterDashboard({
   activeBrand: StarterBrand | null;
   ownerEmail: string;
   workspaceError: string;
-  personas: StarterPersona[];
   historyRows: StarterHistoryRow[];
   liveAgents: StarterLiveAgent[];
   frictionRows: StarterFrictionPoint[];
-  trendData: Array<{ name: string; score: number }>;
+  trendData: Array<{ name: string; score: number | null }>;
   workerLabel: string;
   onSwitchBrand: (brandId: string) => void;
   onAddBrand: () => void;
@@ -7731,7 +7729,9 @@ function StarterDashboard({
 }) {
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   const [selectedLiveAgent, setSelectedLiveAgent] = useState<StarterLiveAgent | null>(null);
-  const latestScore = trendData[trendData.length - 1]?.score || 0;
+  const latestFinishedRun = historyRows.find((item) => item.result !== "In progress");
+  const latestScore = latestFinishedRun?.score || 0;
+  const hasFinishedRun = Boolean(latestFinishedRun);
   const openBugCount = frictionRows.filter((item) => item.severity === "high").length;
   const showBrandLoadNotice = Boolean(workspaceError) || !brands.length;
 
@@ -7877,7 +7877,7 @@ function StarterDashboard({
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-4 gap-6">
-            <StarterStatCard label="Satisfaction Score" value={`${latestScore}%`} trend="+ real data" icon={<Star className="text-brand-success" />} color="bg-brand-success/5" />
+            <StarterStatCard label="Satisfaction Score" value={hasFinishedRun ? `${latestScore}%` : "-"} trend={hasFinishedRun ? "From your latest test" : "No tests yet"} icon={<Star className="text-brand-success" />} color="bg-brand-success/5" />
             <StarterStatCard label="Open Bugs" value={String(openBugCount).padStart(2, "0")} trend={`${frictionRows.filter((item) => item.severity === "high").length} critical`} icon={<Shield className="text-brand-danger" />} color="bg-brand-danger/5" />
             <StarterStatCard label="Friction Points" value={String(frictionRows.length).padStart(2, "0")} trend={`${historyRows.length} runs tracked`} icon={<Zap className="text-brand-warning" />} color="bg-brand-warning/5" />
             <StarterStatCard label="Active Agents" value={String(liveAgents.length).padStart(2, "0")} trend={liveAgents.length ? "Running now" : "Standing by"} icon={<MessageCircle className="text-brand-secondary" />} color="bg-brand-secondary/5" />
@@ -7889,13 +7889,21 @@ function StarterDashboard({
                 <h3 className="text-xl font-black tracking-tight">User Satisfaction Trend</h3>
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Last 7 Days</p>
               </div>
-              <div className="flex items-center gap-2 text-brand-secondary">
-                <TrendingUp className="w-5 h-5" />
-                <span className="font-black text-lg">{latestScore}%</span>
-              </div>
+              {hasFinishedRun ? (
+                <div className="flex items-center gap-2 text-brand-secondary">
+                  <TrendingUp className="w-5 h-5" />
+                  <span className="font-black text-lg">{latestScore}%</span>
+                </div>
+              ) : null}
             </div>
             <div className="h-[250px]">
-              <StarterHealthScoreChart data={trendData} />
+              {hasFinishedRun ? (
+                <StarterHealthScoreChart data={trendData} />
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm font-bold text-slate-500">
+                  Your first completed test will appear here.
+                </div>
+              )}
             </div>
           </div>
 
@@ -7932,7 +7940,19 @@ function StarterDashboard({
               </div>
             </div>
 
-            <StarterLiveAgentPeek agent={liveAgents[0] || { ...personas[0], task: "Next run", status: "Waiting for a new test", progress: 0, logs: [], thoughts: "Run a new test to see a live agent stream here." }} />
+            {liveAgents[0] ? (
+              <StarterLiveAgentPeek agent={liveAgents[0]} />
+            ) : (
+              <div className="dash-card flex min-h-[320px] flex-col items-center justify-center p-8 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+                  <MonitorUp className="h-6 w-6" />
+                </div>
+                <h3 className="mt-4 text-lg font-black tracking-tight">No live test</h3>
+                <p className="mt-2 max-w-xs text-sm font-semibold leading-6 text-slate-500">
+                  Start a test to watch the browser here.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="lg:col-span-3 space-y-8">
@@ -7954,9 +7974,13 @@ function StarterDashboard({
               <button onClick={onViewHistory} className="text-sm font-black text-brand-accent hover:underline">View all reports</button>
             </div>
             <div className="divide-y border-t border-brand-muted">
-              {historyRows.slice(0, 3).map((item) => (
-                <StarterTestRow key={item.id} item={item} onClick={() => onViewReport(item.id)} />
-              ))}
+              {historyRows.length ? (
+                historyRows.slice(0, 3).map((item) => (
+                  <StarterTestRow key={item.id} item={item} onClick={() => onViewReport(item.id)} />
+                ))
+              ) : (
+                <div className="px-8 py-10 text-center text-sm font-bold text-slate-500">No tests yet.</div>
+              )}
             </div>
           </div>
         </div>
@@ -8287,12 +8311,14 @@ function StarterFrictionPointRow({ point }: { point: StarterFrictionPoint }) {
 }
 
 function StarterTestRow({ item, onClick }: { item: StarterHistoryRow; onClick?: () => void }) {
+  const passed = item.result === "Passed";
+  const processing = item.result === "In progress";
   return (
     <div onClick={onClick} className="flex items-center justify-between px-8 py-6 hover:bg-slate-50 transition-all group cursor-pointer">
       <div className="flex items-center gap-6">
         <div className="relative">
-          <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-transform ${item.status === "completed" ? "bg-brand-success/10 text-brand-success" : "bg-brand-danger/10 text-brand-danger"}`}>
-            {item.status === "completed" ? <Zap className="w-6 h-6" /> : <Shield className="w-6 h-6" />}
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-transform ${passed ? "bg-brand-success/10 text-brand-success" : processing ? "bg-slate-100 text-slate-400" : "bg-brand-warning/10 text-brand-warning"}`}>
+            {passed ? <Zap className="w-6 h-6" /> : processing ? <LoaderCircle className="w-6 h-6 animate-spin" /> : <Shield className="w-6 h-6" />}
           </div>
           <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-lg border border-white overflow-hidden ${item.persona.color} shadow-sm`}>
             <img src={item.persona.avatar} alt={item.persona.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -8300,7 +8326,7 @@ function StarterTestRow({ item, onClick }: { item: StarterHistoryRow; onClick?: 
         </div>
         <div>
           <div className="font-black text-lg tracking-tight">{item.date}</div>
-          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.status} • Tested by {item.persona.name}</div>
+          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.result} &bull; Tested by {item.persona.name}</div>
         </div>
       </div>
       <div className="flex items-center gap-12">
@@ -8324,7 +8350,7 @@ function StarterTestRow({ item, onClick }: { item: StarterHistoryRow; onClick?: 
   );
 }
 
-function StarterHealthScoreChart({ data }: { data: Array<{ name: string; score: number }> }) {
+function StarterHealthScoreChart({ data }: { data: Array<{ name: string; score: number | null }> }) {
   return (
     <div className="h-full w-full min-h-[200px]">
       <ResponsiveContainer width="100%" height="100%">
@@ -8391,8 +8417,8 @@ function StarterTestHistory({
       </header>
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-8 md:p-12">
-        <div className="dash-card overflow-hidden">
-          <table className="w-full text-left">
+        <div className="dash-card overflow-x-auto">
+          <table className="w-full min-w-[900px] text-left">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
                 <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Date & Time</th>
@@ -8425,8 +8451,8 @@ function StarterTestHistory({
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${item.result === "Success" ? "bg-brand-success" : "bg-brand-accent"}`} />
-                      <span className={`text-xs font-black uppercase tracking-widest ${item.result === "Success" ? "text-brand-success" : "text-brand-accent"}`}>{item.result}</span>
+                      <div className={`w-2 h-2 rounded-full ${item.result === "Passed" ? "bg-brand-success" : item.result === "In progress" ? "bg-slate-300" : "bg-brand-warning"}`} />
+                      <span className={`text-xs font-black uppercase tracking-widest ${item.result === "Passed" ? "text-brand-success" : item.result === "In progress" ? "text-slate-400" : "text-brand-warning"}`}>{item.result}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4">
@@ -8442,6 +8468,13 @@ function StarterTestHistory({
                   </td>
                 </tr>
               ))}
+              {!filteredRows.length ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-sm font-bold text-slate-500">
+                    {rows.length ? "No tests match your search." : "No tests yet."}
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
@@ -11250,6 +11283,7 @@ function StarterAutomationsPage({
 function StarterBrandSettingsPage({
   activeBrand,
   currentProject,
+  codingAgentsOnly = false,
   repoConnection,
   repoLoading,
   repoError,
@@ -11269,6 +11303,7 @@ function StarterBrandSettingsPage({
 }: {
   activeBrand: StarterBrand | null;
   currentProject: ProjectSummary | null;
+  codingAgentsOnly?: boolean;
   repoConnection: RepoConnection | null;
   repoLoading: boolean;
   repoError: string;
@@ -11537,7 +11572,157 @@ function StarterBrandSettingsPage({
     }
   }
 
-  if (!activeBrand && !currentProject) {
+  const codingAgentsSection = (
+    <section className="dash-card min-w-0 overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-5 sm:p-8">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex items-start gap-4">
+          <div className="flex h-14 w-14 items-center justify-center rounded-[1.25rem] bg-slate-900 text-white shadow-xl">
+            <Code className="h-7 w-7" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-2xl font-black tracking-tight text-brand-ink">Coding agents</h2>
+              <StatusPill label={`${activeMcpTokens.length} active`} tone={activeMcpTokens.length ? "success" : "neutral"} />
+            </div>
+            <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-500">
+              Create one key, add it to your coding agent, and ask BUD to test your work.
+            </p>
+          </div>
+        </div>
+        <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left">
+          <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Hosted MCP URL</div>
+          <div className="mt-1 break-all font-mono text-xs font-bold text-brand-ink">{HOSTED_MCP_URL}</div>
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <div className="min-w-0 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5 sm:p-6">
+          <div className="text-base font-black tracking-tight text-brand-ink">Create an MCP key</div>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            The full key is shown once. Store it in the coding agent, then keep only the prefix here.
+          </p>
+          <div className="mt-5 grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+            <TextInput
+              value={mcpTokenName}
+              onChange={(event) => setMcpTokenName(event.target.value)}
+              placeholder="Codex MCP key"
+            />
+            <Button
+              type="button"
+              tone="primary"
+              onClick={() => handleCreateAgentKey().catch(() => null)}
+              disabled={mcpTokenSaving || mcpTokensLoading}
+              className="rounded-xl px-5 py-2.5 font-black"
+            >
+              {mcpTokenSaving ? "Creating..." : "Create key"}
+            </Button>
+          </div>
+
+          {createdMcpToken ? (
+            <div className="mt-5 rounded-2xl border border-brand-secondary/20 bg-brand-secondary/10 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-black text-brand-ink">Copy this key now</div>
+                  <div className="mt-1 text-xs font-bold text-brand-secondary">It will not be shown again after you clear it.</div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => handleCopyMcpValue(createdMcpToken, "Token copied").catch(() => null)}
+                    className="rounded-xl px-4 py-2 font-black"
+                  >
+                    <Copy className="h-4 w-4" />
+                    Copy
+                  </Button>
+                  <Button type="button" tone="secondary" onClick={onClearCreatedMcpToken} className="rounded-xl px-4 py-2 font-black">
+                    Clear
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-3 break-all rounded-xl border border-brand-secondary/20 bg-white px-3 py-3 font-mono text-xs font-bold text-brand-ink">
+                {createdMcpToken}
+              </div>
+            </div>
+          ) : null}
+
+          {(mcpTokenMessage || mcpTokenError) ? (
+            <div className={`mt-5 rounded-xl border px-4 py-3 text-sm font-bold ${mcpTokenTone === "success" && !mcpTokenError ? "border-brand-secondary/20 bg-brand-secondary/10 text-brand-secondary" : "border-brand-danger/20 bg-brand-danger/10 text-brand-danger"}`}>
+              {mcpTokenError || mcpTokenMessage}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="min-w-0 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5 sm:p-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="text-base font-black tracking-tight text-brand-ink">Agent config</div>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                Paste this into an MCP client that supports Streamable HTTP.
+              </p>
+            </div>
+            <Button
+              type="button"
+              onClick={() => handleCopyMcpValue(mcpConfigSnippet, "Config copied").catch(() => null)}
+              className="rounded-xl px-4 py-2 font-black"
+            >
+              <Copy className="h-4 w-4" />
+              Copy config
+            </Button>
+          </div>
+          <pre className="mt-4 max-h-80 max-w-full overflow-auto rounded-2xl border border-slate-200 bg-white p-4 text-xs leading-5 text-brand-ink">
+            <code>{mcpConfigSnippet}</code>
+          </pre>
+          {mcpCopyFeedback ? <div className="mt-3 text-xs font-black uppercase tracking-widest text-brand-secondary">{mcpCopyFeedback}</div> : null}
+        </div>
+      </div>
+
+      <div className="mt-6 min-w-0 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5 sm:p-6">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-base font-black tracking-tight text-brand-ink">Keys</div>
+            <p className="mt-1 text-sm text-slate-500">Revoke any key that leaves your team or an agent you no longer use.</p>
+          </div>
+          {mcpTokensLoading ? <LoaderCircle className="h-5 w-5 animate-spin text-slate-400" /> : null}
+        </div>
+
+        <div className="mt-4 space-y-2">
+          {visibleMcpTokens.length ? (
+            visibleMcpTokens.map((token) => (
+              <div key={token.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 md:flex-row md:items-center md:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="truncate text-sm font-black text-brand-ink">{token.name || "MCP key"}</div>
+                    <StatusPill label={token.active === false ? "Revoked" : "Active"} tone={token.active === false ? "danger" : "success"} />
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-slate-500">
+                    <span className="font-mono">{token.token_prefix || "mcp_"}</span>
+                    {token.created_at ? <span>Created {formatRelativeTime(token.created_at)}</span> : null}
+                    {token.last_used_at ? <span>Last used {formatRelativeTime(token.last_used_at)}</span> : <span>Never used</span>}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  tone="danger"
+                  onClick={() => handleRevokeAgentKey(token.id).catch(() => null)}
+                  disabled={token.active === false || revokingMcpTokenId === token.id}
+                  className="rounded-xl px-4 py-2 font-black"
+                >
+                  {revokingMcpTokenId === token.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  Revoke
+                </Button>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-5 text-sm text-slate-400">
+              No MCP keys yet.
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+
+  if (codingAgentsOnly || (!activeBrand && !currentProject)) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col">
         <header className="bg-white border-b border-slate-200 px-8 py-4 flex items-center gap-6 sticky top-0 z-50">
@@ -11545,20 +11730,12 @@ function StarterBrandSettingsPage({
             <ArrowRight className="w-5 h-5 rotate-180 text-slate-400 group-hover:text-brand-ink" />
           </button>
           <div>
-            <h1 className="text-xl font-black tracking-tight">Brand Settings</h1>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Choose a brand first</p>
+            <h1 className="text-xl font-black tracking-tight">Connect your coding agent</h1>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Create a key and paste the config</p>
           </div>
         </header>
-        <main className="flex-1 flex items-center justify-center p-8">
-          <div className="dash-card max-w-xl rounded-[2rem] border border-slate-200 bg-white p-10 text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-              <Settings2 className="h-8 w-8" />
-            </div>
-            <h2 className="mt-6 text-2xl font-black tracking-tight text-brand-ink">No brand selected</h2>
-            <p className="mt-3 text-sm leading-7 text-slate-500">
-              Pick a brand from the switcher first, then open Settings to manage its name, repos, and team.
-            </p>
-          </div>
+        <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 p-4 sm:p-6 md:p-12">
+          {codingAgentsSection}
         </main>
       </div>
     );
@@ -11720,153 +11897,7 @@ function StarterBrandSettingsPage({
           </section>
         </div>
 
-        <section className="dash-card rounded-[2rem] border border-slate-200 bg-white p-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-[1.25rem] bg-slate-900 text-white shadow-xl">
-                <Code className="h-7 w-7" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-3">
-                  <h2 className="text-2xl font-black tracking-tight text-brand-ink">Coding agents</h2>
-                  <StatusPill label={`${activeMcpTokens.length} active`} tone={activeMcpTokens.length ? "success" : "neutral"} />
-                </div>
-                <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-500">
-                  Give Codex, Claude Desktop, Cursor, or another MCP client a revocable key for hosted QA runs.
-                </p>
-              </div>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left">
-              <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Hosted MCP URL</div>
-              <div className="mt-1 max-w-xs truncate font-mono text-xs font-bold text-brand-ink">{HOSTED_MCP_URL}</div>
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-            <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6">
-              <div className="text-base font-black tracking-tight text-brand-ink">Create an MCP key</div>
-              <p className="mt-1 text-sm leading-6 text-slate-500">
-                The full key is shown once. Store it in the coding agent, then keep only the prefix here.
-              </p>
-              <div className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-                <TextInput
-                  value={mcpTokenName}
-                  onChange={(event) => setMcpTokenName(event.target.value)}
-                  placeholder="Codex MCP key"
-                />
-                <Button
-                  type="button"
-                  tone="primary"
-                  onClick={() => handleCreateAgentKey().catch(() => null)}
-                  disabled={mcpTokenSaving || mcpTokensLoading}
-                  className="rounded-xl px-5 py-2.5 font-black"
-                >
-                  {mcpTokenSaving ? "Creating..." : "Create key"}
-                </Button>
-              </div>
-
-              {createdMcpToken ? (
-                <div className="mt-5 rounded-2xl border border-brand-secondary/20 bg-brand-secondary/10 p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <div className="text-sm font-black text-brand-ink">Copy this key now</div>
-                      <div className="mt-1 text-xs font-bold text-brand-secondary">It will not be shown again after you clear it.</div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        onClick={() => handleCopyMcpValue(createdMcpToken, "Token copied").catch(() => null)}
-                        className="rounded-xl px-4 py-2 font-black"
-                      >
-                        <Copy className="h-4 w-4" />
-                        Copy
-                      </Button>
-                      <Button type="button" tone="secondary" onClick={onClearCreatedMcpToken} className="rounded-xl px-4 py-2 font-black">
-                        Clear
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="mt-3 break-all rounded-xl border border-brand-secondary/20 bg-white px-3 py-3 font-mono text-xs font-bold text-brand-ink">
-                    {createdMcpToken}
-                  </div>
-                </div>
-              ) : null}
-
-              {(mcpTokenMessage || mcpTokenError) ? (
-                <div className={`mt-5 rounded-xl border px-4 py-3 text-sm font-bold ${mcpTokenTone === "success" && !mcpTokenError ? "border-brand-secondary/20 bg-brand-secondary/10 text-brand-secondary" : "border-brand-danger/20 bg-brand-danger/10 text-brand-danger"}`}>
-                  {mcpTokenError || mcpTokenMessage}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6">
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <div className="text-base font-black tracking-tight text-brand-ink">Agent config</div>
-                  <p className="mt-1 text-sm leading-6 text-slate-500">
-                    Paste this into an MCP client that supports Streamable HTTP.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  onClick={() => handleCopyMcpValue(mcpConfigSnippet, "Config copied").catch(() => null)}
-                  className="rounded-xl px-4 py-2 font-black"
-                >
-                  <Copy className="h-4 w-4" />
-                  Copy config
-                </Button>
-              </div>
-              <pre className="mt-4 max-h-80 overflow-auto rounded-2xl border border-slate-200 bg-white p-4 text-xs leading-5 text-brand-ink">
-                <code>{mcpConfigSnippet}</code>
-              </pre>
-              {mcpCopyFeedback ? <div className="mt-3 text-xs font-black uppercase tracking-widest text-brand-secondary">{mcpCopyFeedback}</div> : null}
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-6">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-base font-black tracking-tight text-brand-ink">Keys</div>
-                <p className="mt-1 text-sm text-slate-500">Revoke any key that leaves your team or an agent you no longer use.</p>
-              </div>
-              {mcpTokensLoading ? <LoaderCircle className="h-5 w-5 animate-spin text-slate-400" /> : null}
-            </div>
-
-            <div className="mt-4 space-y-2">
-              {visibleMcpTokens.length ? (
-                visibleMcpTokens.map((token) => (
-                  <div key={token.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 md:flex-row md:items-center md:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="truncate text-sm font-black text-brand-ink">{token.name || "MCP key"}</div>
-                        <StatusPill label={token.active === false ? "Revoked" : "Active"} tone={token.active === false ? "danger" : "success"} />
-                      </div>
-                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-slate-500">
-                        <span className="font-mono">{token.token_prefix || "mcp_"}</span>
-                        {token.created_at ? <span>Created {formatRelativeTime(token.created_at)}</span> : null}
-                        {token.last_used_at ? <span>Last used {formatRelativeTime(token.last_used_at)}</span> : <span>Never used</span>}
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      tone="danger"
-                      onClick={() => handleRevokeAgentKey(token.id).catch(() => null)}
-                      disabled={token.active === false || revokingMcpTokenId === token.id}
-                      className="rounded-xl px-4 py-2 font-black"
-                    >
-                      {revokingMcpTokenId === token.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                      Revoke
-                    </Button>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-5 text-sm text-slate-400">
-                  No MCP keys yet.
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
+        {codingAgentsSection}
 
         <section className="dash-card rounded-[2rem] border border-slate-200 bg-white p-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
