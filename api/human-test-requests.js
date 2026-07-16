@@ -5,6 +5,7 @@ const {
   createHumanTestRequest,
   getHumanTestRequest,
   listHumanTestRequests,
+  markHumanTestRequestPaid,
   publishHumanTestRequest
 } = require("../lib/human-test-requests");
 const { isTesterOperatorEmail } = require("../lib/tester-applications");
@@ -146,6 +147,17 @@ module.exports = async (req, res) => {
       }
     }
     return res.status(200).json({ ...published, notifications });
+  }
+
+  if (action === "mark_paid") {
+    if (!isOperator(owner)) {
+      return res.status(403).json({ ok: false, error: "Tester operator access required" });
+    }
+    const requestId = sanitizeString(body?.request_id || body?.requestId, 128);
+    if (!requestId) return res.status(400).json({ ok: false, error: "request_id is required" });
+    const paid = await markHumanTestRequestPaid(requestId, options);
+    if (!paid.ok) return res.status(paid.status || 500).json({ ok: false, error: paid.error });
+    return res.status(200).json({ ok: true, request: paid.request, warning: paid.warning || null });
   }
 
   return res.status(400).json({ ok: false, error: "Unknown action" });

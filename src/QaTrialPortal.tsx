@@ -39,6 +39,15 @@ function formatBytes(value?: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatTesterPay(trial: QaTrialView) {
+  const cents = Math.max(0, Number(trial.assignment.tester_pay_cents) || 0);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: trial.assignment.tester_pay_currency || "USD",
+    minimumFractionDigits: cents % 100 ? 2 : 0
+  }).format(cents / 100);
+}
+
 function evidenceUrl(entry: QaTrialEvidence, token: string) {
   if (!entry.url) return "";
   const url = new URL(entry.url, window.location.origin);
@@ -260,7 +269,7 @@ export default function QaTrialPortal({ search }: { search: string }) {
       setError("Use a current version of Chrome to record this trial.");
       return;
     }
-    const targetWindow = window.open(trial?.target_url || "about:blank", "beforeusersdo-qualification-target");
+    const targetWindow = window.open(trial?.target_url || "about:blank", "beforeusersdo-test-target");
     try {
       const displayPromise = navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
       const [started, display] = await Promise.all([performAction("start"), displayPromise]);
@@ -340,6 +349,7 @@ export default function QaTrialPortal({ search }: { search: string }) {
   }
 
   const submitted = Boolean(trial.submission.submitted_at);
+  const paidAssignment = trial.assignment.type === "paid";
   const otherPersonAccepted = trial.role === "tester" ? trial.consent.lead_accepted : trial.consent.tester_accepted;
   const videoEvidence = trial.submission.evidence_media.filter((entry) => entry.kind === "video");
 
@@ -349,7 +359,7 @@ export default function QaTrialPortal({ search }: { search: string }) {
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4">
           <TrialLogo />
           <span className="text-xs font-black uppercase tracking-widest text-brand-muted">
-            {trial.role === "tester" ? "Tester trial" : "Free test"}
+            {trial.role === "tester" ? (paidAssignment ? "Paid test" : "Tester trial") : "Product test"}
           </span>
         </div>
       </header>
@@ -358,7 +368,11 @@ export default function QaTrialPortal({ search }: { search: string }) {
         <div className="rounded-2xl border border-brand-line bg-white p-6 shadow-sm sm:p-8">
           <div className="text-xs font-black uppercase tracking-widest text-brand-accent">{trial.product_name}</div>
           <h1 className="mt-3 text-3xl font-black leading-tight sm:text-4xl">
-            {trial.role === "tester" ? "Complete your first verified test" : "Your free product test"}
+            {trial.role === "tester"
+              ? paidAssignment
+                ? `Complete this ${formatTesterPay(trial)} test`
+                : "Complete your first verified test"
+              : "Your product test"}
           </h1>
           <p className="mt-4 text-base font-semibold leading-7 text-brand-muted">{trial.test_focus}</p>
 
@@ -406,8 +420,12 @@ export default function QaTrialPortal({ search }: { search: string }) {
               <h2 className="text-xl font-black">Before we start</h2>
               <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted">
                 {trial.role === "tester"
-                  ? `This one ${trial.duration_minutes}-minute qualification is unpaid. Your recording and report are shared with the product owner and scored against a private benchmark. A strong result becomes your first BUD Verified Trial.`
-                  : "A new tester will review your product as their first BUD qualification. You receive the complete test for free and can rate how useful it was."}
+                  ? paidAssignment
+                    ? `This ${trial.duration_minutes}-minute test pays ${formatTesterPay(trial)}. Before Users Do approves payment after reviewing your submitted recording and report.`
+                    : `This one ${trial.duration_minutes}-minute qualification is unpaid. Your recording and report are shared with the product owner and scored against a private benchmark. A strong result becomes your first BUD Verified Trial.`
+                  : paidAssignment
+                    ? "An approved tester will follow your brief and record the full test. The report and evidence will appear here when it is submitted."
+                    : "A new tester will review your product as their first BUD qualification. You receive the complete test for free and can rate how useful it was."}
               </p>
               <button
                 type="button"
@@ -416,7 +434,7 @@ export default function QaTrialPortal({ search }: { search: string }) {
                 className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-ink px-5 py-4 font-black text-white transition hover:bg-brand-accent disabled:opacity-60 sm:w-auto"
               >
                 {busy ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
-                {trial.role === "tester" ? "Accept trial" : "Approve free test"}
+                {trial.role === "tester" ? (paidAssignment ? "Accept paid test" : "Accept trial") : "Approve test"}
               </button>
             </div>
           ) : !otherPersonAccepted ? (
@@ -530,7 +548,25 @@ export default function QaTrialPortal({ search }: { search: string }) {
                 </div>
               ) : null}
 
-              {trial.qualification.status === "verified" ? (
+              {paidAssignment && trial.role === "tester" ? (
+                <div className="mt-6 rounded-2xl border border-brand-success/30 bg-brand-success/10 p-5">
+                  <div className="text-xs font-black uppercase tracking-widest text-brand-success">{formatTesterPay(trial)}</div>
+                  <div className="mt-2 text-xl font-black">
+                    {trial.assignment.payout_status === "paid"
+                      ? "Paid"
+                      : trial.assignment.payout_status === "approved"
+                        ? "Payment approved"
+                        : "Report under review"}
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-brand-muted">
+                    {trial.assignment.payout_status === "paid"
+                      ? "Before Users Do recorded this payment as sent."
+                      : trial.assignment.payout_status === "approved"
+                        ? "Your report passed review and is ready for payment."
+                        : "Before Users Do will review the report before approving payment."}
+                  </p>
+                </div>
+              ) : !paidAssignment && trial.qualification.status === "verified" ? (
                 <div className="mt-6 rounded-2xl border border-brand-accent/30 bg-brand-accent/5 p-5">
                   <div className="text-xs font-black uppercase tracking-widest text-brand-accent">BUD Verified Trial</div>
                   <div className="mt-2 text-4xl font-black">{trial.qualification.score}/100</div>

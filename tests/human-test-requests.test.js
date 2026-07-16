@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
   normalizeHumanTestRequestPayload,
   normalizeHumanTestRequestRow,
+  markHumanTestRequestPaid,
   publishHumanTestRequest,
   reserveHumanTestRequest
 } = require("../lib/human-test-requests");
@@ -168,6 +169,84 @@ test("operator publishing stores private review points and makes a request avail
   const patchBody = JSON.parse(calls.find((call) => call.init.method === "PATCH").init.body);
   assert.deepEqual(patchBody.private_benchmark, ["The main action is hard to find"]);
   assert.equal(patchBody.status, "available");
+});
+
+test("operator publishing a paid assignment requires and stores the exact tester pay", async () => {
+  let patchBody = null;
+  const missingPay = await publishHumanTestRequest(
+    "request-1",
+    { assignment_type: "paid", known_issues: ["The main action is hard to find"] },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async () => jsonResponse([requestRow()])
+    }
+  );
+  assert.equal(missingPay.ok, false);
+  assert.match(missingPay.error, /tester pay/i);
+
+  const published = await publishHumanTestRequest(
+    "request-1",
+    {
+      assignment_type: "paid",
+      tester_pay_cents: 2500,
+      tester_pay_currency: "usd",
+      known_issues: ["The main action is hard to find"]
+    },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async (_url, init = {}) => {
+        if (init.method === "PATCH") {
+          patchBody = JSON.parse(init.body);
+          return jsonResponse([requestRow({ ...patchBody })]);
+        }
+        return jsonResponse([requestRow()]);
+      }
+    }
+  );
+
+  assert.equal(published.ok, true);
+  assert.equal(published.request.assignment_type, "paid");
+  assert.equal(published.request.tester_pay_cents, 2500);
+  assert.equal(published.request.tester_pay_currency, "USD");
+  assert.equal(published.request.payout_status, "pending");
+  assert.equal(patchBody.payout_paid_at, null);
+});
+
+test("a completed approved payout can be recorded as paid", async () => {
+  let patchBody = null;
+  const result = await markHumanTestRequestPaid("request-1", {
+    supabaseUrl: "https://supabase.example",
+    serviceKey: "service-key",
+    fetchImpl: async (_url, init = {}) => {
+      if (init.method === "PATCH") {
+        patchBody = JSON.parse(init.body);
+        return jsonResponse([
+          requestRow({
+            assignment_type: "paid",
+            tester_pay_cents: 2500,
+            payout_status: "paid",
+            status: "completed",
+            ...patchBody
+          })
+        ]);
+      }
+      return jsonResponse([
+        requestRow({
+          assignment_type: "paid",
+          tester_pay_cents: 2500,
+          payout_status: "approved",
+          status: "completed",
+          trial_session_id: null
+        })
+      ]);
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.request.payout_status, "paid");
+  assert.ok(patchBody.payout_paid_at);
 });
 
 test("republishing an available request is marked as a retry and preserves its publication time", async () => {

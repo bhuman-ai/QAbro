@@ -67,10 +67,41 @@ test("publishing notifies each eligible available tester without exposing the jo
       email: "maya@example.com",
       name: "Maya",
       durationMinutes: 30,
+      assignmentType: "qualification",
+      testerPayCents: undefined,
+      testerPayCurrency: undefined,
       jobsUrl: "https://beforeusersdo.com/testers/jobs"
     }
   ]);
   assert.equal(JSON.stringify(deliveries).includes("customer.example"), false);
+});
+
+test("paid job alerts go only to approved desktop testers and include the pay", async () => {
+  const deliveries = [];
+  const result = await notifyEligibleTestersAboutJob(
+    {
+      assignment_type: "paid",
+      duration_minutes: 20,
+      tester_pay_cents: 3500,
+      tester_pay_currency: "USD"
+    },
+    {
+      publicBaseUrl: "https://beforeusersdo.com",
+      listTesterApplications: async ({ status }) => ({
+        ok: true,
+        items: status === "approved" ? [application({ status: "approved" })] : []
+      }),
+      listHumanTestRequests: async () => ({ ok: true, items: [] }),
+      sendTesterJobAvailableEmail: async (payload) => {
+        deliveries.push(payload);
+        return { ok: true };
+      }
+    }
+  );
+
+  assert.equal(result.sent_count, 1);
+  assert.equal(deliveries[0].assignmentType, "paid");
+  assert.equal(deliveries[0].testerPayCents, 3500);
 });
 
 test("notification lookup failures do not throw into the publisher", async () => {

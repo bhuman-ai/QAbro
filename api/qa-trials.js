@@ -52,6 +52,13 @@ function trialOptions(req, owner = {}) {
   };
 }
 
+function shouldMarkTesterQualified(trial, owner = {}) {
+  return (
+    trial?.assignment?.type !== "paid" &&
+    (owner.is_service_token === true || isTesterOperatorEmail(owner.ownerEmail))
+  );
+}
+
 module.exports = async (req, res) => {
   const sessionId = sanitizeString(req.query?.session_id || req.query?.sessionId, 128);
   const queryToken = sanitizeString(req.query?.token, 512);
@@ -127,7 +134,7 @@ module.exports = async (req, res) => {
     const scored = await scoreQaTrial(bodySessionId, body || {}, options);
     if (!scored.ok) return res.status(scored.status || 500).json({ ok: false, error: scored.error });
     let application = null;
-    if (owner.is_service_token || isTesterOperatorEmail(owner.ownerEmail)) {
+    if (shouldMarkTesterQualified(scored.trial, owner)) {
       const synced = await markTesterApplicationQualifiedBySession(bodySessionId);
       if (synced.ok) {
         application = synced.application;
@@ -141,5 +148,6 @@ module.exports = async (req, res) => {
 
 module.exports.__private = {
   resolveOwner,
+  shouldMarkTesterQualified,
   trialOptions
 };

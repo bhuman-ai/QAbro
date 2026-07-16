@@ -18,6 +18,12 @@ function testerJobView(request, options = {}) {
     test_focus: sanitizeString(safe.test_focus, 2400),
     expected_success: sanitizeString(safe.expected_success, 1600) || null,
     duration_minutes: Math.max(10, Math.min(60, Number(safe.duration_minutes) || 30)),
+    assignment_type: safe.assignment_type === "paid" ? "paid" : "qualification",
+    tester_pay_cents: Math.max(0, Math.round(Number(safe.tester_pay_cents) || 0)),
+    tester_pay_currency: sanitizeString(safe.tester_pay_currency, 3).toUpperCase() || "USD",
+    payout_status: ["not_applicable", "pending", "approved", "paid"].includes(safe.payout_status)
+      ? safe.payout_status
+      : "not_applicable",
     access_mode: ["public_only", "signup_allowed", "test_account"].includes(safe.access_mode)
       ? safe.access_mode
       : "public_only",
@@ -34,11 +40,16 @@ function splitTesterJobs(application, availableItems, ownItems) {
   const history = ownItems.filter((item) => item.status === "completed");
   const desktopReady = Array.isArray(application?.devices) && application.devices.includes("computer");
   const canClaimQualification = application?.status === "applied" && desktopReady && !current.length;
+  const canClaimPaid = application?.status === "approved" && desktopReady && !current.length;
+  const eligibleAvailable = availableItems.filter((item) =>
+    canClaimPaid ? item.assignment_type === "paid" : canClaimQualification ? item.assignment_type !== "paid" : false
+  );
   return {
-    available: canClaimQualification ? availableItems.map((item) => testerJobView(item)) : [],
+    available: eligibleAvailable.map((item) => testerJobView(item)),
     current: current.map((item) => testerJobView(item, { includeOpenState: true })),
     history: history.map((item) => testerJobView(item, { includeOpenState: true })),
     can_claim_qualification: canClaimQualification,
+    can_claim_paid: canClaimPaid,
     desktop_ready: desktopReady
   };
 }
@@ -76,6 +87,7 @@ module.exports = async (req, res) => {
         current: [],
         history: [],
         can_claim_qualification: false,
+        can_claim_paid: false,
         desktop_ready: false
       });
     }
@@ -113,14 +125,22 @@ module.exports = async (req, res) => {
   if (!requestId) return res.status(400).json({ ok: false, error: "request_id is required" });
 
   if (action === "claim") {
-    if (application.status !== "applied") {
-      return res.status(409).json({ ok: false, error: "Your qualification is already underway or complete" });
-    }
     if (!application.devices.includes("computer")) {
       return res.status(409).json({
         ok: false,
-        error: "Qualification recording currently requires a computer with Chrome"
+        error: "Test recording currently requires a computer with Chrome"
       });
+    }
+    const loaded = await getHumanTestRequest(requestId);
+    if (!loaded.ok) {
+      return res.status(loaded.status || 500).json({ ok: false, error: loaded.error });
+    }
+    const paidAssignment = loaded.request.assignment_type === "paid";
+    if (paidAssignment && application.status !== "approved") {
+      return res.status(403).json({ ok: false, error: "Paid tests are available after your qualification is approved" });
+    }
+    if (!paidAssignment && application.status !== "applied") {
+      return res.status(409).json({ ok: false, error: "Your qualification is already underway or complete" });
     }
     const claimed = await claimHumanTestRequest(
       requestId,

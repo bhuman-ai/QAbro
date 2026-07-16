@@ -17,6 +17,7 @@ const {
   normalizeManualQaSessionRow,
   verifyManualQaWidgetToken
 } = require("../lib/manual-qa");
+const qaTrialsApiPrivate = require("../api/qa-trials").__private;
 
 function createSupabaseFetchMock() {
   const rows = new Map();
@@ -285,7 +286,45 @@ test("qualification trials require a real private benchmark", async () => {
 
   assert.equal(created.ok, false);
   assert.equal(created.status, 400);
-  assert.match(created.error, /private benchmark issue/i);
+  assert.match(created.error, /private review point/i);
+});
+
+test("paid assignments preserve pay through recording and approve payout without qualifying the tester", async () => {
+  const mock = createSupabaseFetchMock();
+  const options = optionsFor(mock);
+  const created = await createQaTrial(
+    {
+      product_name: "Paid App",
+      target_url: "https://example.com",
+      lead_email: "founder@example.com",
+      tester_email: "approved@example.com",
+      test_focus: "Review the homepage.",
+      known_issues: ["The primary action is unclear"],
+      lead_preapproved: true,
+      assignment_type: "paid",
+      tester_pay_cents: 4000,
+      tester_pay_currency: "USD"
+    },
+    options
+  );
+
+  assert.equal(created.ok, true);
+  assert.equal(created.trial.assignment.type, "paid");
+  assert.equal(created.trial.assignment.tester_pay_cents, 4000);
+  const testerToken = new URL(created.tester_url).searchParams.get("token");
+  await acceptQaTrial(created.session_id, testerToken, options);
+  await startQaTrial(created.session_id, testerToken, options);
+  await submitQaTrial(created.session_id, testerToken, { note: "The primary action was unclear." }, options);
+  const scored = await scoreQaTrial(
+    created.session_id,
+    { caught_issue_ids: ["issue_1"], clarity: "good" },
+    options
+  );
+
+  assert.equal(scored.ok, true);
+  assert.equal(scored.trial.status, "completed");
+  assert.equal(scored.trial.assignment.payout_status, "approved");
+  assert.equal(qaTrialsApiPrivate.shouldMarkTesterQualified(scored.trial, { is_service_token: true }), false);
 });
 
 test("MCP-requested trials preapprove the owner and reveal test credentials only to the tester", async () => {

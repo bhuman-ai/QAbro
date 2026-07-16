@@ -399,6 +399,12 @@ export interface HumanTestRequest {
   test_focus: string;
   expected_success?: string | null;
   duration_minutes: number;
+  assignment_type: "qualification" | "paid";
+  tester_pay_cents: number;
+  tester_pay_currency: string;
+  payout_status: "not_applicable" | "pending" | "approved" | "paid";
+  payout_approved_at?: string | null;
+  payout_paid_at?: string | null;
   access_mode: "public_only" | "signup_allowed" | "test_account";
   access: {
     login_url?: string | null;
@@ -428,6 +434,13 @@ export interface QaTrialView {
   target_url: string;
   test_focus: string;
   duration_minutes: number;
+  source_request_id?: string | null;
+  assignment: {
+    type: "qualification" | "paid";
+    tester_pay_cents?: number;
+    tester_pay_currency?: string;
+    payout_status: "not_applicable" | "pending" | "approved" | "paid";
+  };
   access: {
     mode: "public_only" | "signup_allowed" | "test_account";
     login_url?: string | null;
@@ -493,6 +506,10 @@ export interface QaTrialSummary {
   lead_name?: string | null;
   score?: number | null;
   customer_rating?: number | null;
+  assignment_type?: "qualification" | "paid";
+  tester_pay_cents?: number;
+  tester_pay_currency?: string;
+  payout_status?: "not_applicable" | "pending" | "approved" | "paid";
   created_at?: string | null;
 }
 

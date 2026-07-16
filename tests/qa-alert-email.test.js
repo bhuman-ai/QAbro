@@ -103,6 +103,34 @@ test("tester job alert has one public action and does not reveal customer detail
   assert.doesNotMatch(content.text, /target URL|known issue|benchmark|customer/i);
 });
 
+test("paid tester alerts state the exact pay without exposing customer details", () => {
+  const content = buildTesterJobAvailableEmailContent({
+    name: "Maya",
+    durationMinutes: 20,
+    assignmentType: "paid",
+    testerPayCents: 3500,
+    testerPayCurrency: "USD",
+    jobsUrl: "https://beforeusersdo.com/testers/jobs"
+  });
+  const invite = buildQaTrialInviteEmailContent({
+    role: "tester",
+    productName: "Example App",
+    testFocus: "Review signup.",
+    durationMinutes: 20,
+    assignmentType: "paid",
+    testerPayCents: 3500,
+    testerPayCurrency: "USD",
+    trialUrl: "https://beforeusersdo.com/trial?token=private"
+  });
+
+  assert.match(content.subject, /\$35 paid test/i);
+  assert.match(content.text, /20-minute paid test/i);
+  assert.match(content.text, /payment after reviewing/i);
+  assert.doesNotMatch(content.text, /unpaid|customer/i);
+  assert.match(invite.subject, /paid test ready/i);
+  assert.match(invite.text, /pays? \$35|for \$35/i);
+});
+
 test("sendQaAlertEmail sends the scheduled QA alert to the configured recipient", async () => {
   const originalCreateTransport = nodemailer.createTransport;
   let transportConfig = null;
