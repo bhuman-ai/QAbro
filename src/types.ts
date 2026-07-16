@@ -389,6 +389,35 @@ export interface QaTrialEvidence {
   created_at?: string | null;
 }
 
+export interface HumanTestRequest {
+  id: string;
+  owner_user_id: string;
+  owner_email: string;
+  product_name: string;
+  target_url: string;
+  review_type: "specific_flow" | "general_first_time_user";
+  test_focus: string;
+  expected_success?: string | null;
+  duration_minutes: number;
+  access_mode: "public_only" | "signup_allowed" | "test_account";
+  access: {
+    login_url?: string | null;
+    credentials_supplied: boolean;
+    account_creation_allowed: boolean;
+    purchase_allowed: boolean;
+    irreversible_actions_allowed: boolean;
+    prohibited_actions: string[];
+  };
+  context?: Record<string, unknown> | null;
+  status: "queued" | "assigned" | "in_progress" | "submitted" | "completed" | "cancelled";
+  assigned_tester_application_id?: string | null;
+  assigned_tester_name?: string | null;
+  assigned_tester_email?: string | null;
+  trial_session_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
 export interface QaTrialView {
   session_id: string;
   role: "lead" | "tester" | "admin";
@@ -397,6 +426,21 @@ export interface QaTrialView {
   target_url: string;
   test_focus: string;
   duration_minutes: number;
+  access: {
+    mode: "public_only" | "signup_allowed" | "test_account";
+    login_url?: string | null;
+    credentials_supplied: boolean;
+    account_creation_allowed: boolean;
+    purchase_allowed: boolean;
+    irreversible_actions_allowed: boolean;
+    prohibited_actions: string[];
+    credentials?: {
+      login_url?: string | null;
+      username?: string | null;
+      password?: string | null;
+      otp_mode?: "none" | "manual_prompt" | "provider_hook";
+    };
+  };
   consent: {
     accepted: boolean;
     lead_accepted: boolean;

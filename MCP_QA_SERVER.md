@@ -36,6 +36,8 @@ Use the hosted Streamable HTTP endpoint when you want Codex, Cursor, Claude Desk
 
 Then ask the coding agent to call `qa_check_work` with the preview URL, changed files, what changed, and the user task it should try.
 
+For a real person, ask the agent to call `qa_request_human_test`. The agent uses the same work context and creates the request directly; there is no separate customer form.
+
 ## First-time setup
 
 For most users, connect once with:
@@ -80,6 +82,7 @@ Optional:
 - `QA_MCP_DEFAULT_PERSONA`
 - `QA_MCP_DEFAULT_EXECUTION_ENGINE`
 - `QA_MCP_AUTH_PATH`
+- `HUMAN_TEST_CREDENTIALS_SECRET` recommended dedicated encryption secret for private tester logins
 - `QA_MCP_HTTP_HOST` default: `127.0.0.1`
 - `QA_MCP_HTTP_PORT` default: `8788`
 - `QA_MCP_HTTP_PATH` default: `/mcp`
@@ -99,8 +102,12 @@ Optional:
   - Fetch the normalized report JSON and markdown.
 - `qa_share_run_report`
   - Create a team share link for a report.
+- `qa_request_human_test`
+  - Request a different real person or QA professional. The agent should infer the brief from its current work and ask only for a missing URL, specific flow, or selected test-account login. No separate intake form is used.
+- `qa_get_human_test_status`
+  - Read the request state (`queued`, `assigned`, `in_progress`, `submitted`, or `completed`) and retrieve the report after submission.
 - `qa_start_manual_review`
-  - Default manual QA tool. Use when the user says “manual review with BeforeUsersDo”, “manual QA”, “human review”, or asks for a checklist for recent code changes. It returns a required widget snippet the coding agent must inject into the preview before the human opens the target page. If `target_url` is missing, it returns the exact missing field to ask for.
+  - Self-review tool. Use when the owner wants to test the product themselves with the widget, drawing, voice, recording, freestyle mode, or a checklist. For a different real tester, use `qa_request_human_test`.
 - `qa_create_manual_session`
   - Strict manual QA session creation tool. Use when the agent already has the target URL and context.
 - `qa_manual_review_guide`
@@ -108,7 +115,7 @@ Optional:
 - `qa_get_manual_session`
   - Read checklist status for a manual QA session.
 - `qa_get_manual_report`
-  - Export the completed human checklist as redacted Markdown and JSON.
+  - Export the completed manual self-review checklist as redacted Markdown and JSON.
 - `qa_get_manual_work_packets`
   - Split manual QA notes, transcript, drawings, videos, page anchors, console errors, and network signals into focused agent work packets. Use this after `qa_wait_for_manual_feedback` or `qa_wait_for_manual_evidence` before summarizing, previewing, coding, or spawning sub-agents.
 - `qa_run_feature_check`
@@ -130,7 +137,7 @@ Optional:
 - `qa://workflows/manual-review`
   - Markdown instructions for agents that need to understand manual review setup.
 - `qa://manual/{session_id}/report.md`
-  - Markdown export of a human manual QA session.
+  - Markdown export of a manual self-review session.
 
 ## Suggested use
 
@@ -198,7 +205,32 @@ For a feature branch or preview:
 
 The MCP layer converts that into a `feature_targeted` QA run and attaches brand/auth metadata automatically.
 
-### Manual human review
+### Real human tester
+
+If the user says “have a real person test this,” “send this to a QA professional,” or otherwise wants someone else to test:
+
+1. Reuse the URL, work summary, changed files, acceptance criteria, and expected behavior already in the agent's context.
+2. Infer `specific_flow` when the request is about current work. Use `general_first_time_user` when the user wants broad product feedback.
+3. Choose the safest access mode that permits the flow: `public_only`, `signup_allowed`, or `test_account`.
+4. Never infer permission for a real purchase or irreversible action.
+5. Call `qa_request_human_test`. Do not send the user to an intake form.
+6. Ask the user only if the target URL, an explicitly requested flow, or selected test-account login is missing.
+7. Return the request id and use `qa_get_human_test_status` later for assignment and report state.
+
+```json
+{
+  "target_url": "https://preview.example.com/signup",
+  "work_summary": "Added phone and password validation to signup",
+  "acceptance_criteria": [
+    "A valid signup reaches OTP",
+    "Validation errors explain how to recover"
+  ],
+  "access_mode": "signup_allowed",
+  "purchase_allowed": false
+}
+```
+
+### Manual self-review
 
 If the user asks for manual QA or says “I want to do a manual review with BeforeUsersDo,” the agent should:
 
@@ -311,6 +343,7 @@ SUPABASE_SERVICE_KEY=...
 SUPABASE_ANON_KEY=...
 QA_SERVICE_TOKEN=... # required for user MCP-key callers; also enables service-token callers
 MCP_TOKEN_PEPPER=... # optional, but recommended before creating production keys
+HUMAN_TEST_CREDENTIALS_SECRET=... # recommended dedicated key for private test logins
 ```
 
 The server also honors platform `PORT` automatically and binds to `0.0.0.0` when `PORT` is present.

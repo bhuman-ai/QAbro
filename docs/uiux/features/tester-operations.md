@@ -12,15 +12,17 @@ After a qualification passes, the primary action becomes `Approve for paid tests
 
 ## Flow
 
-1. The operator opens `/testers/admin` and sees the newest applications first.
-2. The operator opens one applicant and reviews their location, devices, experience, and availability.
-3. `Set up qualification` opens the existing paired-trial flow with the tester name and email already filled in.
-4. Creating the trial links its session to the application and marks the application `Qualification sent`.
-5. Publishing the trial score marks the linked application `Passed qualification`.
-6. The operator approves the tester for paid work or declines the application.
+1. The operator opens `/trials` to see MCP-created requests waiting for a tester, or `/testers/admin` to see the newest applications.
+2. Selecting a waiting request fills its product, customer, URL, and brief into the existing pairing flow.
+3. The operator opens one applicant and reviews their location, devices, experience, and availability.
+4. `Set up qualification` opens the existing paired-trial flow with the tester name and email already filled in.
+5. Creating the trial links its session to the application and marks the application `Qualification sent`.
+6. Publishing the trial score marks the linked application `Passed qualification`.
+7. The operator approves the tester for paid work or declines the application.
 
 ## Information Budget
 
+- Waiting request list: product, brief, scope, access mode, and one `Pair tester` action.
 - Applicant list: name, location, and current status.
 - Applicant detail: matching information and one next action.
 - Source, dates, decline, and manual status repair remain secondary.

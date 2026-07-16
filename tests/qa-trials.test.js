@@ -100,6 +100,7 @@ function optionsFor(mock) {
     ownerUserId: "owner_1",
     ownerEmail: "owner@example.com",
     authOk: true,
+    credentialsSecret: "test-credentials-secret",
     sendInvites: false
   };
 }
@@ -252,4 +253,48 @@ test("qualification trials require a real private benchmark", async () => {
   assert.equal(created.ok, false);
   assert.equal(created.status, 400);
   assert.match(created.error, /private benchmark issue/i);
+});
+
+test("MCP-requested trials preapprove the owner and reveal test credentials only to the tester", async () => {
+  const mock = createSupabaseFetchMock();
+  const options = optionsFor(mock);
+  const created = await createQaTrial(
+    {
+      product_name: "Private App",
+      target_url: "https://private.example.com/settings",
+      lead_email: "founder@example.com",
+      tester_email: "tester@example.com",
+      test_focus: "Open settings and update the profile name.",
+      known_issues: ["Save confirmation is easy to miss"],
+      lead_preapproved: true,
+      source_request_id: "request_123",
+      access_mode: "test_account",
+      access_details: {
+        login_url: "https://private.example.com/login",
+        prohibited_actions: ["Do not make a real purchase"]
+      },
+      credentials: {
+        login_url: "https://private.example.com/login",
+        username: "qa@example.com",
+        password: "TestPassword1!",
+        otp_mode: "none"
+      }
+    },
+    options
+  );
+
+  assert.equal(created.ok, true);
+  const leadToken = new URL(created.lead_url).searchParams.get("token");
+  const testerToken = new URL(created.tester_url).searchParams.get("token");
+  const lead = await verifyQaTrialAccess(created.session_id, leadToken, options);
+  const tester = await verifyQaTrialAccess(created.session_id, testerToken, options);
+
+  assert.equal(lead.view.consent.accepted, true);
+  assert.equal(lead.view.access.credentials, undefined);
+  assert.equal(tester.view.access.mode, "test_account");
+  assert.equal(tester.view.access.credentials.username, "qa@example.com");
+  assert.equal(tester.view.access.credentials.password, "TestPassword1!");
+
+  const accepted = await acceptQaTrial(created.session_id, testerToken, options);
+  assert.equal(accepted.view.status, "ready");
 });

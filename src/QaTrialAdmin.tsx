@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Check,
   Clipboard,
+  Clock3,
   ExternalLink,
   LoaderCircle,
   Plus,
@@ -10,7 +11,7 @@ import {
   UserRoundCheck
 } from "lucide-react";
 import { apiFetch } from "./lib/api";
-import type { QaTrialSummary, QaTrialView } from "./types";
+import type { HumanTestRequest, QaTrialSummary, QaTrialView } from "./types";
 
 type CreatedTrial = {
   session_id: string;
@@ -58,6 +59,8 @@ export default function QaTrialAdmin({ search }: { search: string }) {
   const testerEmail = String(initialParams.get("tester_email") || "").trim();
   const [form, setForm] = useState({ ...EMPTY_FORM, testerName, testerEmail });
   const [items, setItems] = useState<QaTrialSummary[]>([]);
+  const [requests, setRequests] = useState<HumanTestRequest[]>([]);
+  const [humanRequestId, setHumanRequestId] = useState("");
   const [selectedId, setSelectedId] = useState(initialSessionId);
   const [selected, setSelected] = useState<QaTrialView | null>(null);
   const [created, setCreated] = useState<CreatedTrial | null>(null);
@@ -77,6 +80,13 @@ export default function QaTrialAdmin({ search }: { search: string }) {
     setItems(response.items || []);
   }
 
+  async function loadRequests() {
+    const response = await apiFetch<{ items: HumanTestRequest[] }>("/api/human-test-requests", {
+      params: { scope: "admin", status: "queued", limit: 100 }
+    });
+    setRequests(response.items || []);
+  }
+
   async function loadSelected(sessionId: string) {
     if (!sessionId) {
       setSelected(null);
@@ -92,7 +102,7 @@ export default function QaTrialAdmin({ search }: { search: string }) {
 
   useEffect(() => {
     let active = true;
-    Promise.all([loadItems(), initialSessionId ? loadSelected(initialSessionId) : Promise.resolve()])
+    Promise.all([loadItems(), loadRequests(), initialSessionId ? loadSelected(initialSessionId) : Promise.resolve()])
       .catch((caught) => {
         if (active) setError(caught instanceof Error ? caught.message : "Could not load qualification trials.");
       })
@@ -110,24 +120,27 @@ export default function QaTrialAdmin({ search }: { search: string }) {
     setBusy(true);
     setError("");
     try {
-      const response = await apiFetch<CreatedTrial>("/api/qa-trials", {
+      const response = await apiFetch<CreatedTrial>(humanRequestId ? "/api/human-test-requests" : "/api/qa-trials", {
         method: "POST",
         body: {
-          action: "create",
+          action: humanRequestId ? "assign" : "create",
+          ...(humanRequestId ? { request_id: humanRequestId } : {}),
           product_name: form.productName,
           target_url: form.targetUrl,
           lead_email: form.leadEmail,
           tester_name: form.testerName,
           tester_email: form.testerEmail,
           test_focus: form.testFocus,
-          known_issues: form.knownIssues
+          known_issues: form.knownIssues,
+          ...(testerApplicationId ? { tester_application_id: testerApplicationId } : {})
         }
       });
       setCreated(response);
       setSelectedId(response.session_id);
       setSelected(response.trial);
       setForm(EMPTY_FORM);
-      await loadItems();
+      setHumanRequestId("");
+      await Promise.all([loadItems(), loadRequests()]);
       if (testerApplicationId) {
         try {
           await apiFetch("/api/tester-applications", {
@@ -147,6 +160,19 @@ export default function QaTrialAdmin({ search }: { search: string }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  function chooseHumanRequest(request: HumanTestRequest) {
+    setHumanRequestId(request.id);
+    setCreated(null);
+    setForm((current) => ({
+      ...current,
+      productName: request.product_name,
+      targetUrl: request.target_url,
+      leadEmail: request.owner_email,
+      testFocus: request.test_focus
+    }));
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function copyLink(value: string, label: string) {
@@ -213,15 +239,54 @@ export default function QaTrialAdmin({ search }: { search: string }) {
       </header>
 
       <main className="mx-auto max-w-4xl px-4 py-10">
+        {requests.length ? (
+          <section className="mb-8">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-black">Waiting for a tester</h1>
+                <p className="mt-1 text-sm font-semibold text-brand-muted">Requests created by coding agents.</p>
+              </div>
+              <span className="text-sm font-black text-brand-accent">{requests.length}</span>
+            </div>
+            <div className="mt-4 divide-y divide-brand-line border-y border-brand-line bg-white">
+              {requests.map((request) => (
+                <div key={request.id} className="flex flex-col gap-4 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Clock3 className="h-4 w-4 shrink-0 text-brand-accent" />
+                      <div className="truncate font-black">{request.product_name}</div>
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-sm font-semibold text-brand-muted">{request.test_focus}</p>
+                    <p className="mt-2 text-xs font-bold text-brand-muted">
+                      {request.review_type === "specific_flow" ? "Specific flow" : "First-time review"} · {request.access_mode.replaceAll("_", " ")}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => chooseHumanRequest(request)}
+                    className="shrink-0 rounded-xl bg-brand-ink px-5 py-3 text-sm font-black text-white transition hover:bg-brand-accent"
+                  >
+                    Pair tester
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         <section className="rounded-2xl border border-brand-line bg-white p-6 shadow-sm sm:p-8">
           <div className="flex items-start gap-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-brand-accent/10 text-brand-accent">
               <UserRoundCheck className="h-6 w-6" />
             </div>
             <div>
-              <h1 className="text-3xl font-black">{testerName ? `Set up ${testerName}'s qualification` : "Pair a free test"}</h1>
+              <h1 className="text-3xl font-black">
+                {humanRequestId ? "Assign a tester" : testerName ? `Set up ${testerName}'s qualification` : "Pair a free test"}
+              </h1>
               <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted">
-                The customer gets a free report. The new tester earns their first verified score.
+                {humanRequestId
+                  ? "The customer brief is filled in. Choose the tester and add the private benchmark."
+                  : "The customer gets a free report. The new tester earns their first verified score."}
               </p>
             </div>
           </div>
@@ -259,7 +324,7 @@ export default function QaTrialAdmin({ search }: { search: string }) {
 
             <button disabled={busy} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-ink px-6 py-4 font-black text-white transition hover:bg-brand-accent disabled:opacity-60 sm:w-auto">
               {busy ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Plus className="h-5 w-5" />}
-              Pair trial
+              {humanRequestId ? "Assign tester" : "Pair trial"}
             </button>
           </form>
 

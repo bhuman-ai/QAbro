@@ -4,6 +4,7 @@ import {
   Check,
   CircleAlert,
   ExternalLink,
+  KeyRound,
   LoaderCircle,
   Mic,
   MonitorUp,
@@ -360,6 +361,45 @@ export default function QaTrialPortal({ search }: { search: string }) {
             {trial.role === "tester" ? "Complete your first verified test" : "Your free product test"}
           </h1>
           <p className="mt-4 text-base font-semibold leading-7 text-brand-muted">{trial.test_focus}</p>
+
+          {trial.role === "tester" ? (
+            <div className="mt-7 border-y border-brand-line py-5">
+              <div className="flex items-center gap-2 text-sm font-black">
+                <KeyRound className="h-4 w-4 text-brand-accent" />
+                Access for this test
+              </div>
+              <p className="mt-2 text-sm font-semibold text-brand-muted">
+                {trial.access.mode === "test_account"
+                  ? "Use the private test account below."
+                  : trial.access.mode === "signup_allowed"
+                    ? "You may create a fresh test account."
+                    : "Stay on pages that work without signing in."}
+              </p>
+              {trial.access.credentials ? (
+                <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <dt className="text-xs font-black uppercase text-brand-muted">Username</dt>
+                    <dd className="mt-1 select-all break-all font-mono font-bold">{trial.access.credentials.username}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs font-black uppercase text-brand-muted">Password</dt>
+                    <dd className="mt-1 select-all break-all font-mono font-bold">{trial.access.credentials.password}</dd>
+                  </div>
+                </dl>
+              ) : null}
+              {trial.access.login_url ? (
+                <a href={trial.access.login_url} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-2 text-sm font-black text-brand-accent hover:text-brand-ink">
+                  Open sign in
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              ) : null}
+              {trial.access.prohibited_actions.length ? (
+                <p className="mt-4 text-xs font-bold leading-5 text-brand-muted">
+                  {trial.access.prohibited_actions.join(" · ")}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           {!trial.consent.accepted ? (
             <div className="mt-8 rounded-2xl bg-brand-bg p-6">
