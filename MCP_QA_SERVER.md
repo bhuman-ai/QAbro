@@ -4,6 +4,8 @@ This repo includes both stdio and streamable HTTP MCP servers that let LLM agent
 
 Public brand note: `Before Users Do` is the product brand and `beforeusersdo.com` is the primary domain. `SwarmTester` may still appear in internal service names, legacy paths, and backwards-compatible URLs during migration.
 
+Public setup and workflow guide: `https://beforeusersdo.com/docs`
+
 ## Scripts
 
 ```bash

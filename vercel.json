@@ -194,6 +194,10 @@
       "destination": "/index.html"
     },
     {
+      "source": "/docs",
+      "destination": "/index.html"
+    },
+    {
       "source": "/trial",
       "destination": "/index.html"
     },
