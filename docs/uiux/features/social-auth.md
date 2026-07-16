@@ -21,6 +21,7 @@ GitHub is the developer-focused alternative. Magic-link email remains visible as
 ## Visible States
 
 - Ready: Google, GitHub, and email are available in one auth card.
+- New account: the email fallback asks only for an email address; internal invite handling stays invisible.
 - Opening: the selected provider button says `Opening Google...` or `Opening GitHub...`; other submit actions are disabled.
 - Provider unavailable: one short inline message asks the user to use email.
 - Complete: the user returns to the page where sign-in started.

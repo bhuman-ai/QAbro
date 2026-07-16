@@ -74,6 +74,60 @@ function normalizeStringList(value, maxItems = 20, maxLength = 800) {
     .slice(0, maxItems);
 }
 
+const DEFAULT_MCP_WAIT_SLICE_SECONDS = 35;
+const MAX_MCP_WAIT_SLICE_SECONDS = 50;
+
+function resolveMcpWaitSliceSeconds(input = {}) {
+  const requestedTotal = Math.max(1, Number(input.timeout_seconds || input.timeoutSeconds || 1200));
+  const requestedSlice = Math.max(
+    1,
+    Number(input.wait_slice_seconds || input.waitSliceSeconds || DEFAULT_MCP_WAIT_SLICE_SECONDS)
+  );
+  return Math.min(requestedTotal, requestedSlice, MAX_MCP_WAIT_SLICE_SECONDS);
+}
+
+function buildRunPollingHandoff(runId, status = {}, options = {}) {
+  const waitSliceSeconds = resolveMcpWaitSliceSeconds(options);
+  const timeoutSeconds = Math.max(1, Number(options.timeout_seconds || options.timeoutSeconds || 1200));
+  const reportStatus =
+    safeText(status.report_status || status?.queue?.queue_status || status?.queue?.status || "processing", 80) ||
+    "processing";
+  const nextToolArguments = {
+    run_id: runId,
+    timeout_seconds: timeoutSeconds,
+    wait_slice_seconds: waitSliceSeconds,
+    include_report: true,
+    ...(options.share_after ? { share_after: true } : {}),
+    ...(options.feedback_action ? { feedback_action: options.feedback_action } : {}),
+    ...(options.agent_action_mode ? { agent_action_mode: options.agent_action_mode } : {}),
+    ...(options.auto_start_work !== undefined ? { auto_start_work: options.auto_start_work } : {})
+  };
+
+  return {
+    text: buildText([
+      `QA run ${runId} is still ${reportStatus}.`,
+      "REQUIRED NEXT STEP FOR THE CODING AGENT:",
+      `Immediately call qa_wait_for_run again for ${runId}. Keep this agent turn open and repeat until continue_polling is false.`,
+      "This short polling handoff prevents normal MCP clients from timing out while the browser keeps working.",
+      "Do not call this run a pass, failure, or completed test yet."
+    ]),
+    result: {
+      ok: true,
+      run_id: runId,
+      verdict: "processing",
+      pass: false,
+      timed_out: false,
+      continue_polling: true,
+      report_status: reportStatus,
+      status,
+      next_tool: {
+        name: "qa_wait_for_run",
+        arguments: nextToolArguments
+      }
+    }
+  };
+}
+
 const AGENT_ACTION_MODES = new Set(["report_only", "preview_then_fix", "fix_and_retest"]);
 
 function normalizeAgentActionMode(input = {}, fallback = "report_only") {
@@ -699,6 +753,13 @@ function buildRunInputSchema() {
     run_id: z.string().max(128).optional(),
     dry_run: z.boolean().optional(),
     share_after: z.boolean().optional(),
+    wait_slice_seconds: z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_MCP_WAIT_SLICE_SECONDS)
+      .optional()
+      .describe("Maximum time one MCP tool call waits before returning a continue-polling handoff. Defaults to 35 seconds."),
     feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback for automated QA. Use preview_fix_first when the user wants a simulated fix preview before coding, or share_feedback_and_start_work when they want fixes to start automatically."),
     agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
     auto_start_work: z.boolean().optional().describe("Boolean alias. true means share_feedback_and_start_work; false means share_feedback."),
@@ -744,6 +805,13 @@ function buildCodingAgentCheckInputSchema() {
     run_id: z.string().max(128).optional(),
     timeout_seconds: z.number().int().min(1).max(7200).optional(),
     poll_interval_seconds: z.number().int().min(1).max(120).optional(),
+    wait_slice_seconds: z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_MCP_WAIT_SLICE_SECONDS)
+      .optional()
+      .describe("Maximum time one MCP tool call waits before returning a continue-polling handoff. Defaults to 35 seconds."),
     share_after: z.boolean().optional(),
     feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback for automated QA. Use preview_fix_first when the user wants a simulated fix preview before coding, or share_feedback_and_start_work when they want fixes to start automatically."),
     agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
@@ -1082,11 +1150,19 @@ function createQaMcpServer(options = {}) {
     "qa_wait_for_run",
     {
       title: "Wait For QA Run",
-      description: "Poll a QA run until it finishes or times out, then optionally include the final report.",
+      description:
+        "Poll a QA run in client-safe slices. Return the final report when ready; otherwise return continue_polling=true and require the agent to call this tool again without ending its turn.",
       inputSchema: {
         run_id: z.string().max(128),
         timeout_seconds: z.number().int().min(1).max(7200).optional(),
         poll_interval_seconds: z.number().int().min(1).max(120).optional(),
+        wait_slice_seconds: z
+          .number()
+          .int()
+          .min(1)
+          .max(MAX_MCP_WAIT_SLICE_SECONDS)
+          .optional()
+          .describe("Maximum time this MCP call waits before handing polling back to the agent. Defaults to 35 seconds."),
         include_report: z.boolean().optional(),
         share_after: z.boolean().optional(),
         feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback. Use preview_fix_first when the user wants a simulated fix preview before coding, or share_feedback_and_start_work when they want fixes to start automatically."),
@@ -1094,12 +1170,13 @@ function createQaMcpServer(options = {}) {
         auto_start_work: z.boolean().optional().describe("Boolean alias.")
       }
     },
-    async ({ run_id, timeout_seconds, poll_interval_seconds, include_report, share_after, feedback_action, agent_action_mode, auto_start_work }, extra) => {
+    async ({ run_id, timeout_seconds, poll_interval_seconds, wait_slice_seconds, include_report, share_after, feedback_action, agent_action_mode, auto_start_work }, extra) => {
       try {
         let tick = 0;
         const pollEvery = Math.max(1, Number(poll_interval_seconds || 5));
+        const waitWindowSeconds = resolveMcpWaitSliceSeconds({ timeout_seconds, wait_slice_seconds });
         const waitResult = await apiClient.waitForRun(run_id, {
-          timeout_seconds,
+          timeout_seconds: waitWindowSeconds,
           poll_interval_seconds,
           signal: extra.signal,
           async onPoll(status) {
@@ -1112,6 +1189,22 @@ function createQaMcpServer(options = {}) {
             );
           }
         });
+
+        if (waitResult.timed_out === true) {
+          const handoff = buildRunPollingHandoff(run_id, waitResult.status || {}, {
+            timeout_seconds,
+            wait_slice_seconds,
+            share_after,
+            feedback_action,
+            agent_action_mode,
+            auto_start_work
+          });
+          return makeToolResult(handoff.text, {
+            ...handoff.result,
+            poll_count: waitResult.poll_count,
+            elapsed_ms: waitResult.elapsed_ms
+          });
+        }
 
         const result = {
           ok: true,
@@ -1665,7 +1758,8 @@ function createQaMcpServer(options = {}) {
     "qa_run_feature_check",
     {
       title: "Run Feature QA",
-      description: "One-shot tool: queue a real QA run for a feature, wait for it to finish, then return the final report.",
+      description:
+        "Queue a real QA run and wait in client-safe slices. Returns the final report when ready or a required qa_wait_for_run handoff while the browser continues.",
       inputSchema: {
         ...buildRunInputSchema(),
         timeout_seconds: z.number().int().min(1).max(7200).optional(),
@@ -1679,8 +1773,9 @@ function createQaMcpServer(options = {}) {
 
         let tick = 0;
         const pollEvery = Math.max(1, Number(input.poll_interval_seconds || 5));
+        const waitWindowSeconds = resolveMcpWaitSliceSeconds(input);
         const waitResult = await apiClient.waitForRun(queued.run_id, {
-          timeout_seconds: input.timeout_seconds,
+          timeout_seconds: waitWindowSeconds,
           poll_interval_seconds: input.poll_interval_seconds,
           signal: extra.signal,
           async onPoll(status) {
@@ -1693,6 +1788,16 @@ function createQaMcpServer(options = {}) {
             );
           }
         });
+
+        if (waitResult.timed_out === true) {
+          const handoff = buildRunPollingHandoff(queued.run_id, waitResult.status || {}, input);
+          return makeToolResult(handoff.text, {
+            ...handoff.result,
+            queued,
+            wait: waitResult,
+            ui_report_url: queued.ui_report_url || waitResult.status?.ui_report_url || null
+          });
+        }
 
         const report = waitResult.status?.report_ready ? await apiClient.getRunReport(queued.run_id, { signal: extra.signal }) : null;
         const shared = input.share_after ? await apiClient.shareRunReport(queued.run_id, { signal: extra.signal }) : null;
@@ -1744,7 +1849,7 @@ function createQaMcpServer(options = {}) {
     {
       title: "QA Check Work",
       description:
-        "Coding-agent-oriented one-shot QA: submit a preview URL plus implementation context, wait for real browser QA, and return a pass/fix/review verdict with evidence links.",
+        "Coding-agent QA with client-safe polling: submit a preview plus work context, then return the verdict or require qa_wait_for_run calls until the browser finishes.",
       inputSchema: buildCodingAgentCheckInputSchema()
     },
     async (input, extra) => {
@@ -1755,8 +1860,9 @@ function createQaMcpServer(options = {}) {
 
         let tick = 0;
         const pollEvery = Math.max(1, Number(input.poll_interval_seconds || 5));
+        const waitWindowSeconds = resolveMcpWaitSliceSeconds(input);
         const waitResult = await apiClient.waitForRun(queued.run_id, {
-          timeout_seconds: input.timeout_seconds,
+          timeout_seconds: waitWindowSeconds,
           poll_interval_seconds: input.poll_interval_seconds,
           signal: extra.signal,
           async onPoll(status) {
@@ -1771,6 +1877,25 @@ function createQaMcpServer(options = {}) {
             );
           }
         });
+
+        if (waitResult.timed_out === true) {
+          const handoff = buildRunPollingHandoff(queued.run_id, waitResult.status || {}, {
+            ...input,
+            feedback_action: input.feedback_action || "share_feedback_and_start_work"
+          });
+          return makeToolResult(handoff.text, {
+            ...handoff.result,
+            target_url: qaInput.target_url || input.target_url,
+            queued,
+            wait: waitResult,
+            evidence: {
+              ui_report_url: queued.ui_report_url || waitResult.status?.ui_report_url || null,
+              status_resource: `qa://runs/${encodeURIComponent(queued.run_id)}/status`,
+              report_resource: `qa://runs/${encodeURIComponent(queued.run_id)}/report`,
+              markdown_resource: `qa://runs/${encodeURIComponent(queued.run_id)}/report.md`
+            }
+          });
+        }
 
         const report = waitResult.status?.report_ready ? await apiClient.getRunReport(queued.run_id, { signal: extra.signal }) : null;
         const shared = input.share_after ? await apiClient.shareRunReport(queued.run_id, { signal: extra.signal }) : null;
@@ -1915,11 +2040,13 @@ module.exports = {
   buildHumanTestNeedsInputResult,
   buildHumanTestRequestText,
   buildHumanTestStatusText,
+  buildRunPollingHandoff,
   buildManualReviewNeedsInputResult,
   buildManualReviewWorkflowText,
   createQaMcpServer,
   registerQaPrompts,
   registerQaResources,
+  resolveMcpWaitSliceSeconds,
   shouldReturnQaAction,
   main
 };

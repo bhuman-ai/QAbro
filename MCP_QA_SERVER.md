@@ -18,10 +18,10 @@ npm run mcp:qa:http
 
 Use the hosted Streamable HTTP endpoint when you want Codex, Cursor, Claude Desktop, or another coding agent to call Before Users Do without running a local server.
 
-1. Sign in at `https://beforeusersdo.com`. Legacy `https://swarmtester.com` remains supported during the domain cutover.
-2. Open Dashboard -> Settings -> Coding agents.
-3. Create an MCP key. The secret is shown once.
-4. Paste this into your MCP client config:
+1. Open `https://beforeusersdo.com/docs` and choose **Get MCP key**.
+2. Sign in or create an account with email, Google, or GitHub.
+3. Create an MCP key. The secret is shown once; no brand or GitHub setup is required first.
+4. Paste the generated config into your MCP client:
 
 ```json
 {
@@ -93,13 +93,13 @@ Optional:
 ## Tools
 
 - `qa_check_work`
-  - Coding-agent default. Pass a preview URL plus implementation context, wait for browser QA, and get a `pass`, `needs_fix`, `needs_review`, or `timed_out` verdict with evidence resources.
+  - Coding-agent default. Pass a preview URL plus implementation context and get a final verdict or a client-safe polling handoff while browser QA continues.
 - `qa_request_run`
   - Queue a QA run for a feature or flow.
 - `qa_get_run_status`
   - Read current status for a run.
 - `qa_wait_for_run`
-  - Poll until a run finishes or times out.
+  - Wait in short slices. If it returns `continue_polling: true`, call it again immediately in the same agent turn.
 - `qa_get_run_report`
   - Fetch the normalized report JSON and markdown.
 - `qa_share_run_report`
@@ -121,7 +121,7 @@ Optional:
 - `qa_get_manual_work_packets`
   - Split manual QA notes, transcript, drawings, videos, page anchors, console errors, and network signals into focused agent work packets. Use this after `qa_wait_for_manual_feedback` or `qa_wait_for_manual_evidence` before summarizing, previewing, coding, or spawning sub-agents.
 - `qa_run_feature_check`
-  - High-level one-shot tool: queue, wait, and return the final report. This is the best default for preview URLs and PR deploys.
+  - High-level tool for preview URLs and PR deploys. It queues the run and returns either the final report or the same required polling handoff.
 
 ## Prompts
 
@@ -188,9 +188,30 @@ Expected response shape:
 }
 ```
 
+Long browser runs may first return a processing handoff instead of the final shape:
+
+```json
+{
+  "ok": true,
+  "run_id": "mcp_preview_example_com_...",
+  "verdict": "processing",
+  "pass": false,
+  "timed_out": false,
+  "continue_polling": true,
+  "next_tool": {
+    "name": "qa_wait_for_run",
+    "arguments": {
+      "run_id": "mcp_preview_example_com_...",
+      "wait_slice_seconds": 35
+    }
+  }
+}
+```
+
 Agent policy:
 
 - Treat `pass: true` as the only automatic green result.
+- When `continue_polling` is true, immediately call the supplied `next_tool` and repeat without ending the agent turn.
 - Treat `needs_fix` as a blocker to repair before merge.
 - Treat `needs_review` as requiring a human or maintainer decision.
 - Treat `timed_out` as inconclusive, not pass.
@@ -320,7 +341,7 @@ The streamable HTTP server listens on:
 
 ## Hosted MCP
 
-For real “any coding agent can call this” usage, deploy the streamable HTTP server as a long-lived Node service:
+For real “any coding agent can call this” usage, deploy the streamable HTTP server as a Node service:
 
 ```bash
 npm run mcp:qa:http
@@ -332,9 +353,9 @@ Recommended platforms:
 - Fly.io
 - Render
 - Railway
-- any Node host that supports long request timeouts
+- any Node host that supports Streamable HTTP
 
-Avoid putting the wait-heavy `qa_check_work` path behind a short serverless timeout. A QA run can legitimately take several minutes while the tester navigates, waits for pages, records proof, and polls for completion.
+QA runs can take several minutes, but each MCP call waits at most 35 seconds by default and returns a structured `qa_wait_for_run` handoff. The coding agent must keep polling until `continue_polling` is false.
 
 Hosted environment:
 
