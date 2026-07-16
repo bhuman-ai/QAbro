@@ -2,27 +2,28 @@
 
 ## User Job
 
-Let a Before Users Do operator turn a new tester application into an approved tester without maintaining a spreadsheet.
+Let a Before Users Do operator prepare customer requests for self-service tester claiming and approve submitted qualifications without maintaining a spreadsheet.
 
 ## Primary Action
 
-`Set up qualification`
+`Publish test`
 
 After a qualification passes, the primary action becomes `Approve for paid tests`.
 
 ## Flow
 
 1. The operator opens `/trials` to see MCP-created requests waiting for a tester, or `/testers/admin` to see the newest applications.
-2. Selecting a waiting request fills its product, customer, URL, and brief into the existing pairing flow.
-3. The operator opens one applicant and reviews their location, devices, experience, and availability.
-4. `Set up qualification` opens the existing paired-trial flow with the tester name and email already filled in.
-5. Creating the trial links its session to the application and marks the application `Qualification sent`.
+2. Selecting a waiting request shows its product, URL, and brief.
+3. The operator adds private review points and publishes the request.
+4. An eligible tester claims it from `/testers/jobs`.
+5. Claiming creates the existing trial, links it to the application, and marks the application `Qualification sent`.
 6. Publishing the trial score marks the linked application `Passed qualification`.
 7. The operator approves the tester for paid work or declines the application.
 
 ## Information Budget
 
-- Waiting request list: product, brief, scope, access mode, and one `Pair tester` action.
+- Waiting request list: product, brief, scope, access mode, and one `Prepare test` action.
+- Available request list: product and waiting-to-be-claimed state.
 - Applicant list: name, location, and current status.
 - Applicant detail: matching information and one next action.
 - Source, dates, decline, and manual status repair remain secondary.

@@ -45,11 +45,19 @@ function createRes() {
 test("tester application direct URL is preserved by the SPA router", () => {
   const formatSource = fs.readFileSync(path.resolve(__dirname, "../src/lib/format.ts"), "utf8");
   const appSource = fs.readFileSync(path.resolve(__dirname, "../src/App.tsx"), "utf8");
+  const vercelConfig = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../vercel.json"), "utf8"));
 
   assert.match(formatSource, /"\/testers\/apply"/);
   assert.match(formatSource, /"\/testers\/admin"/);
+  assert.match(formatSource, /"\/testers\/jobs"/);
   assert.match(appSource, /pathname === "\/testers\/apply"/);
   assert.match(appSource, /pathname === "\/testers\/admin"/);
+  assert.match(appSource, /pathname === "\/testers\/jobs"/);
+  assert.ok(
+    vercelConfig.rewrites.some(
+      (rewrite) => rewrite.source === "/testers/jobs" && rewrite.destination === "/index.html"
+    )
+  );
 });
 
 test("tester operator access uses an explicit email allowlist", () => {

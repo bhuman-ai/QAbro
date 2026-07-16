@@ -312,8 +312,8 @@ function PublicDocsPage({
               <h3 className="text-2xl">For a real tester</h3>
               <div className="mt-6 grid gap-6 sm:grid-cols-4">
                 {[
-                  ["Queued", "BUD is finding the right tester."],
-                  ["Assigned", "The tester received a private link."],
+                  ["Prepared", "BUD turns the request into a safe tester brief."],
+                  ["Available", "An eligible tester can take it."],
                   ["Testing", "Evidence is being recorded."],
                   ["Complete", "The report is ready for your agent."]
                 ].map(([title, body], index) => (
@@ -365,7 +365,8 @@ function PublicDocsPage({
                 ["Can BUD test localhost?", "The tester needs a URL it can reach. Ask your agent to deploy a preview or create a secure tunnel first."],
                 ["Does BUD change my code?", "BUD returns proof and focused work items. Your coding agent changes the code when you choose to start work."],
                 ["Is an inconclusive test a pass?", "No. A timeout, blocked flow, or uncertain result is reported as inconclusive or needs review, never as a pass."],
-                ["Do I fill out a form for a human tester?", "No. The MCP creates the request from the same URL and work context your agent already has."]
+                ["Do I fill out a form for a human tester?", "No. The MCP creates the request from the same URL and work context your agent already has."],
+                ["Does the human tester need MCP?", "No. Testers sign in to the BUD website, take an available test, and record it in their browser."]
               ].map(([question, answer]) => (
                 <details key={question} className="group py-5">
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-black focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-accent">

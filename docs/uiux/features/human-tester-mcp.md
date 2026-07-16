@@ -6,7 +6,7 @@ Let a product owner ask their coding agent for a real person to test the current
 
 ## Product Archetype
 
-This is a marketplace handoff inside an existing developer tool. The coding agent prepares the brief, a BUD operator assigns the tester, and the tester completes the work in the existing private trial portal.
+This is a marketplace handoff inside an existing developer tool. The coding agent prepares the brief, a BUD operator publishes it, and a signed-in tester claims and completes it in the browser.
 
 ## Primary Flow
 
@@ -14,9 +14,10 @@ This is a marketplace handoff inside an existing developer tool. The coding agen
 2. The agent calls `qa_request_human_test` with the URL and context it already has: changed feature, expected behavior, scenarios, changed files, and safe access policy.
 3. If the URL, specific flow, or selected test-account login is genuinely missing, MCP asks only for that missing information.
 4. BUD creates a queued request. The owner does not fill out another form.
-5. A BUD operator sees the request under `Waiting for a tester`, selects it, chooses a tester, and adds private benchmark issues.
-6. The existing private trial flow records the tester's screen, voice, notes, and evidence.
-7. `qa_get_human_test_status` reports queued, assigned, in-progress, submitted, or completed state and returns the report after submission.
+5. A BUD operator adds private review points and publishes the request.
+6. An eligible tester claims it from `/testers/jobs`; no MCP is installed or used by the tester.
+7. The existing private trial flow records the tester's screen, voice, notes, and evidence.
+8. `qa_get_human_test_status` reports queued, available, assigned, in-progress, submitted, or completed state and returns the report after submission.
 
 ## Information Budget
 
@@ -31,8 +32,8 @@ This is a marketplace handoff inside an existing developer tool. The coding agen
 
 - Waiting product and tester brief
 - Access mode, never plaintext credentials
-- One primary action: `Pair tester`
-- Tester identity and private benchmark during assignment
+- One primary action: `Publish test`
+- Private review points before publication
 
 ### Tester
 
@@ -41,6 +42,7 @@ This is a marketplace handoff inside an existing developer tool. The coding agen
 - Private test credentials only when needed
 - Explicit prohibited actions
 - Start and finish recording
+- No MCP, coding agent, or code access
 
 ## Access Contract
 

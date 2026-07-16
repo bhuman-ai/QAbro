@@ -17,16 +17,16 @@ Before sign-in, `Continue with Google` is the primary version of that same actio
 3. The visitor gives their name, location, available devices, experience, and usual availability.
 4. The visitor confirms they can record their screen and speak their thoughts in English.
 5. Before Users Do stores one application for the signed-in user.
-6. The confirmation tells the applicant to expect a short qualification test by email.
+6. The confirmation opens `/testers/jobs`, where the applicant can choose an available qualification.
 
 ## Information Budget
 
 - One benefit: paid testing work.
 - One form: information needed for matching.
-- One next step: wait for the qualification email.
+- One next step: see available tests.
 - One clear disclosure: the first qualification test is unpaid; approved customer tests are paid.
 
-Do not show scores, customer matching, trial administration, or tester marketplace controls on this page.
+Do not show scores, trial administration, or job details on this page. Those belong on `/testers/jobs`.
 
 ## States
 
@@ -34,7 +34,7 @@ Do not show scores, customer matching, trial administration, or tester marketpla
 - Signed out: benefit, real tester faces, Google, and GitHub.
 - Applying: one form with large selections and a single submit action.
 - Error: one short inline explanation near the action.
-- Received: email destination and a return-home action.
+- Received: a direct `See available tests` action.
 
 ## Data And Safety
 

@@ -137,15 +137,6 @@ export default function TesterApplicationsAdmin({ search }: { search: string }) 
     }
   }
 
-  function qualificationHref(application: TesterApplication) {
-    const params = new URLSearchParams({
-      tester_application_id: application.id,
-      tester_name: application.name,
-      tester_email: application.owner_email
-    });
-    return `/trials?${params.toString()}`;
-  }
-
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-brand-bg" role="status">
@@ -219,8 +210,8 @@ export default function TesterApplicationsAdmin({ search }: { search: string }) 
 
             <div className="p-6 sm:p-8">
               {selected.status === "applied" ? (
-                <a href={qualificationHref(selected)} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-accent px-5 py-4 font-black text-white transition-colors hover:bg-brand-ink sm:w-auto">
-                  Set up qualification
+                <a href="/trials" className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-accent px-5 py-4 font-black text-white transition-colors hover:bg-brand-ink sm:w-auto">
+                  Prepare available tests
                   <ArrowRight className="h-5 w-5" />
                 </a>
               ) : selected.status === "invited" && selected.qualification_session_id ? (

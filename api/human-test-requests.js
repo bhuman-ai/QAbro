@@ -4,7 +4,8 @@ const {
   assignHumanTestRequest,
   createHumanTestRequest,
   getHumanTestRequest,
-  listHumanTestRequests
+  listHumanTestRequests,
+  publishHumanTestRequest
 } = require("../lib/human-test-requests");
 const { isTesterOperatorEmail } = require("../lib/tester-applications");
 
@@ -110,6 +111,19 @@ module.exports = async (req, res) => {
     const assigned = await assignHumanTestRequest(requestId, body || {}, options);
     if (!assigned.ok) return res.status(assigned.status || 500).json({ ok: false, error: assigned.error });
     return res.status(assigned.status || 201).json(assigned);
+  }
+
+  if (action === "publish") {
+    if (!isOperator(owner)) {
+      return res.status(403).json({ ok: false, error: "Tester operator access required" });
+    }
+    const requestId = sanitizeString(body?.request_id || body?.requestId, 128);
+    if (!requestId) return res.status(400).json({ ok: false, error: "request_id is required" });
+    const published = await publishHumanTestRequest(requestId, body || {}, options);
+    if (!published.ok) {
+      return res.status(published.status || 500).json({ ok: false, error: published.error });
+    }
+    return res.status(200).json(published);
   }
 
   return res.status(400).json({ ok: false, error: "Unknown action" });

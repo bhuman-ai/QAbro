@@ -121,6 +121,7 @@ import QaTrialAdmin from "./QaTrialAdmin";
 import QaTrialPortal from "./QaTrialPortal";
 import TesterApplicationPage from "./TesterApplicationPage";
 import TesterApplicationsAdmin from "./TesterApplicationsAdmin";
+import TesterJobsPage from "./TesterJobsPage";
 
 const PERSONA_PRESETS = [
   {
@@ -2251,7 +2252,8 @@ function App() {
   const isTrialAdminRoute = pathname === "/trials";
   const isTesterApplyRoute = pathname === "/testers/apply";
   const isTesterAdminRoute = pathname === "/testers/admin";
-  const isProtectedRoute = isWorkspaceRoute || isTrialAdminRoute || isTesterAdminRoute;
+  const isTesterJobsRoute = pathname === "/testers/jobs";
+  const isProtectedRoute = isWorkspaceRoute || isTrialAdminRoute || isTesterAdminRoute || isTesterJobsRoute;
 
   useEffect(() => {
     installBudWidgetFromUrl(route.search);
@@ -2421,6 +2423,20 @@ function App() {
       );
     }
     return <TesterApplicationsAdmin search={route.search} />;
+  }
+
+  if (isTesterJobsRoute) {
+    if (!authState.authorized) {
+      return (
+        <AuthGate
+          message={authState.message}
+          tone={authState.tone}
+          onSubmit={handleRequestMagicLink}
+          onSocialSignIn={handleSocialSignIn}
+        />
+      );
+    }
+    return <TesterJobsPage user={authState.user} onSignOut={handleSignOut} />;
   }
 
   if (isTesterApplyRoute) {

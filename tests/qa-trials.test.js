@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
   acceptQaTrial,
   createQaTrial,
+  issueQaTrialTesterLink,
   rateQaTrial,
   scoreQaTrial,
   startQaTrial,
@@ -11,7 +12,11 @@ const {
   verifyQaTrialAccess,
   __private
 } = require("../lib/qa-trials");
-const { buildManualQaSessionPayload, normalizeManualQaSessionRow } = require("../lib/manual-qa");
+const {
+  buildManualQaSessionPayload,
+  normalizeManualQaSessionRow,
+  verifyManualQaWidgetToken
+} = require("../lib/manual-qa");
 
 function createSupabaseFetchMock() {
   const rows = new Map();
@@ -114,6 +119,34 @@ test("trial tokens are one-way and role-specific", () => {
   assert.notEqual(hash, token);
   assert.equal(__private.compareTrialToken(token, hash), true);
   assert.equal(__private.compareTrialToken(otherToken, hash), false);
+});
+
+test("tester dashboard can issue a resumable link without invalidating the emailed link", async () => {
+  const mock = createSupabaseFetchMock();
+  const options = optionsFor(mock);
+  const created = await createQaTrial(
+    {
+      product_name: "Example App",
+      target_url: "https://example.com",
+      lead_email: "founder@example.com",
+      tester_email: "tester@example.com",
+      test_focus: "Try the main flow.",
+      known_issues: ["The first action is hard to find"],
+      lead_preapproved: true
+    },
+    options
+  );
+  const emailedToken = new URL(created.tester_url).searchParams.get("token");
+  const resumed = await issueQaTrialTesterLink(created.session_id, "tester@example.com", options);
+  const dashboardToken = new URL(resumed.tester_url).searchParams.get("token");
+
+  assert.equal(resumed.ok, true);
+  assert.notEqual(dashboardToken, emailedToken);
+  assert.equal((await verifyQaTrialAccess(created.session_id, emailedToken, options)).role, "tester");
+  assert.equal((await verifyQaTrialAccess(created.session_id, dashboardToken, options)).role, "tester");
+  assert.equal((await verifyManualQaWidgetToken(created.session_id, emailedToken, options)).ok, true);
+  assert.equal((await verifyManualQaWidgetToken(created.session_id, dashboardToken, options)).ok, true);
+  assert.equal((await issueQaTrialTesterLink(created.session_id, "other@example.com", options)).status, 403);
 });
 
 test("manual QA normalization keeps qualification secrets private", () => {
