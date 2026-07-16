@@ -164,9 +164,34 @@ test("operator publishing stores private review points and makes a request avail
 
   assert.equal(result.ok, true);
   assert.equal(result.request.status, "available");
+  assert.equal(result.newly_published, true);
   const patchBody = JSON.parse(calls.find((call) => call.init.method === "PATCH").init.body);
   assert.deepEqual(patchBody.private_benchmark, ["The main action is hard to find"]);
   assert.equal(patchBody.status, "available");
+});
+
+test("republishing an available request is marked as a retry and preserves its publication time", async () => {
+  const publishedAt = "2026-07-15T12:00:00.000Z";
+  let patchBody = null;
+  const result = await publishHumanTestRequest(
+    "request-1",
+    { known_issues: ["The main action is hard to find"] },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async (_url, init = {}) => {
+        if (init.method === "PATCH") {
+          patchBody = JSON.parse(init.body);
+          return jsonResponse([requestRow({ status: "available", published_at: publishedAt, ...patchBody })]);
+        }
+        return jsonResponse([requestRow({ status: "available", published_at: publishedAt })]);
+      }
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.newly_published, false);
+  assert.equal(patchBody.published_at, publishedAt);
 });
 
 test("tester reservation uses a conditional update so only one tester can take a job", async () => {

@@ -4,9 +4,11 @@ const nodemailer = require("nodemailer");
 
 const {
   buildQaTrialInviteEmailContent,
+  buildTesterJobAvailableEmailContent,
   isQaAlertEmailConfigured,
   normalizeAlertEmailList,
-  sendQaAlertEmail
+  sendQaAlertEmail,
+  sendTesterJobAvailableEmail
 } = require("../lib/qa-alert-email");
 
 async function withEnv(overrides, callback) {
@@ -86,6 +88,21 @@ test("trial invitation copy uses Before Users Do branding and the private role l
   assert.match(queuedLead.text, /Track test/);
 });
 
+test("tester job alert has one public action and does not reveal customer details", () => {
+  const content = buildTesterJobAvailableEmailContent({
+    name: "Maya",
+    durationMinutes: 30,
+    jobsUrl: "https://beforeusersdo.com/testers/jobs"
+  });
+
+  assert.match(content.subject, /qualification is ready/i);
+  assert.match(content.text, /Hi Maya/);
+  assert.match(content.text, /unpaid/i);
+  assert.match(content.text, /first verified tester score/i);
+  assert.match(content.text, /https:\/\/beforeusersdo\.com\/testers\/jobs/);
+  assert.doesNotMatch(content.text, /target URL|known issue|benchmark|customer/i);
+});
+
 test("sendQaAlertEmail sends the scheduled QA alert to the configured recipient", async () => {
   const originalCreateTransport = nodemailer.createTransport;
   let transportConfig = null;
@@ -140,6 +157,46 @@ test("sendQaAlertEmail sends the scheduled QA alert to the configured recipient"
     assert.deepEqual(mailPayload.to, ["team@example.com"]);
     assert.match(String(mailPayload.subject || ""), /Sign-up returned to the login screen/);
     assert.match(String(mailPayload.text || ""), /Open report:/);
+    assert.equal(mailPayload.replyTo, "support@example.com");
+  } finally {
+    nodemailer.createTransport = originalCreateTransport;
+  }
+});
+
+test("sendTesterJobAvailableEmail sends one private tester-board link", async () => {
+  const originalCreateTransport = nodemailer.createTransport;
+  let mailPayload = null;
+  nodemailer.createTransport = () => ({
+    async sendMail(payload) {
+      mailPayload = payload;
+      return { messageId: "tester_job_123" };
+    }
+  });
+
+  try {
+    const result = await withEnv(
+      {
+        QA_ALERT_EMAIL_SMTP_HOST: "smtp.example.com",
+        QA_ALERT_EMAIL_SMTP_PORT: "465",
+        QA_ALERT_EMAIL_SMTP_SECURE: "true",
+        QA_ALERT_EMAIL_SMTP_USERNAME: "alerts@example.com",
+        QA_ALERT_EMAIL_SMTP_PASSWORD: "secret",
+        QA_ALERT_EMAIL_FROM: "Before Users Do <alerts@example.com>",
+        QA_ALERT_EMAIL_REPLY_TO: "support@example.com"
+      },
+      () =>
+        sendTesterJobAvailableEmail({
+          email: "maya@example.com",
+          name: "Maya",
+          durationMinutes: 30,
+          jobsUrl: "https://beforeusersdo.com/testers/jobs"
+        })
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.messageId, "tester_job_123");
+    assert.deepEqual(mailPayload.to, ["maya@example.com"]);
+    assert.match(mailPayload.text, /https:\/\/beforeusersdo\.com\/testers\/jobs/);
     assert.equal(mailPayload.replyTo, "support@example.com");
   } finally {
     nodemailer.createTransport = originalCreateTransport;

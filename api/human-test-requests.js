@@ -8,6 +8,7 @@ const {
   publishHumanTestRequest
 } = require("../lib/human-test-requests");
 const { isTesterOperatorEmail } = require("../lib/tester-applications");
+const { notifyEligibleTestersAboutJob } = require("../lib/tester-job-notifications");
 
 function resolveOwner(auth, req) {
   return {
@@ -123,7 +124,28 @@ module.exports = async (req, res) => {
     if (!published.ok) {
       return res.status(published.status || 500).json({ ok: false, error: published.error });
     }
-    return res.status(200).json(published);
+    let notifications = {
+      ok: true,
+      skipped: true,
+      eligible_count: 0,
+      sent_count: 0,
+      failed_count: 0
+    };
+    if (published.newly_published) {
+      try {
+        notifications = await notifyEligibleTestersAboutJob(published.request, options);
+      } catch (error) {
+        notifications = {
+          ok: false,
+          skipped: true,
+          eligible_count: 0,
+          sent_count: 0,
+          failed_count: 0,
+          error: error?.message || "Could not notify eligible testers"
+        };
+      }
+    }
+    return res.status(200).json({ ...published, notifications });
   }
 
   return res.status(400).json({ ok: false, error: "Unknown action" });
