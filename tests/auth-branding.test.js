@@ -41,3 +41,12 @@ test("Supabase magic-link branding uses Before Users Do", () => {
   assert.doesNotMatch(script, /Sign in to SwarmTester|magic-link-swarmtester/);
   assert.doesNotMatch(template, /SwarmTester/);
 });
+
+test("auth gate sends Google and GitHub through the real OAuth starter", () => {
+  const app = fs.readFileSync(path.join(ROOT, "src", "App.tsx"), "utf8");
+
+  assert.match(app, /handleSocialClick\("google"\)/);
+  assert.match(app, /handleSocialClick\("github"\)/);
+  assert.match(app, /apiFetch<\{ url: string \}>\("\/api\/auth\/oauth"/);
+  assert.doesNotMatch(app, /Social sign-in is not wired yet/);
+});

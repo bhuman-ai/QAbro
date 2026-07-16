@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const nodemailer = require("nodemailer");
 
 const {
+  buildQaTrialInviteEmailContent,
   isQaAlertEmailConfigured,
   normalizeAlertEmailList,
   sendQaAlertEmail
@@ -51,6 +52,38 @@ test("isQaAlertEmailConfigured requires SMTP host, auth, and from address", () =
     true
   );
   assert.equal(isQaAlertEmailConfigured({}), false);
+});
+
+test("trial invitation copy uses Before Users Do branding and the private role link", () => {
+  const tester = buildQaTrialInviteEmailContent({
+    role: "tester",
+    productName: "Ciaro Pro",
+    testFocus: "Try signup and reach the dashboard.",
+    durationMinutes: 30,
+    trialUrl: "https://beforeusersdo.com/trial?session_id=trial_1&token=bud_trial_secret"
+  });
+  const lead = buildQaTrialInviteEmailContent({
+    role: "lead",
+    productName: "Ciaro Pro",
+    testFocus: "Try signup and reach the dashboard.",
+    trialUrl: "https://beforeusersdo.com/trial?session_id=trial_1&token=bud_trial_lead"
+  });
+  const queuedLead = buildQaTrialInviteEmailContent({
+    role: "lead",
+    productName: "Ciaro Pro",
+    testFocus: "Try signup and reach the dashboard.",
+    trialUrl: "https://beforeusersdo.com/trial?session_id=trial_1&token=bud_trial_lead",
+    leadPreapproved: true
+  });
+
+  assert.match(tester.subject, /first BUD Verified Trial/i);
+  assert.match(tester.text, /Before Users Do/);
+  assert.match(tester.text, /bud_trial_secret/);
+  assert.doesNotMatch(tester.text, /SwarmTester/i);
+  assert.match(lead.subject, /free product test/i);
+  assert.match(lead.text, /bud_trial_lead/);
+  assert.match(queuedLead.subject, /being assigned/i);
+  assert.match(queuedLead.text, /Track test/);
 });
 
 test("sendQaAlertEmail sends the scheduled QA alert to the configured recipient", async () => {

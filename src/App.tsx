@@ -115,6 +115,11 @@ import alexTesterPhoto from "./assets/testers/alex.jpg";
 import jordanTesterPhoto from "./assets/testers/jordan.jpg";
 import mayaTesterPhoto from "./assets/testers/maya.jpg";
 import ninaTesterPhoto from "./assets/testers/nina.jpg";
+import BrandLogo from "./BrandLogo";
+import QaTrialAdmin from "./QaTrialAdmin";
+import QaTrialPortal from "./QaTrialPortal";
+import TesterApplicationPage from "./TesterApplicationPage";
+import TesterApplicationsAdmin from "./TesterApplicationsAdmin";
 
 const PERSONA_PRESETS = [
   {
@@ -1331,28 +1336,7 @@ function StatusPill({ label, tone }: { label: string; tone: string }) {
   );
 }
 
-function Logo({ className = "" }: { className?: string }) {
-  return (
-    <div className={`flex items-center gap-3 ${className}`}>
-      <div className="relative group">
-        <div className="w-12 h-12 bg-brand-ink rounded-2xl flex items-center justify-center rotate-[-4deg] group-hover:rotate-0 transition-all duration-500 shadow-[4px_4px_0px_0px_rgba(139,92,246,0.3)]">
-          <Shield className="text-white w-6 h-6" />
-          <motion.div
-            initial={{ scale: 0.5, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="absolute -right-1 -bottom-1 w-6 h-6 bg-brand-accent rounded-lg flex items-center justify-center border-2 border-white shadow-sm"
-          >
-            <Zap className="text-white w-3 h-3 fill-current" />
-          </motion.div>
-        </div>
-      </div>
-      <span className="font-display text-2xl font-black tracking-tighter text-brand-ink">
-        beforeusersdo<span className="text-brand-accent">.</span>
-      </span>
-    </div>
-  );
-}
+const Logo = BrandLogo;
 
 function BrandMark() {
   return <Logo />;
@@ -1500,7 +1484,7 @@ function HomePage({
                   <ArrowRight className="w-5 h-5" />
                 </button>
                 <a
-                  href="#testing-modes"
+                  href="/testers/apply?source=homepage_hero"
                   className="handcrafted-card px-8 py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-2"
                 >
                   Earn money by testing
@@ -1597,6 +1581,13 @@ function HomePage({
                     <div className="mt-1 text-xs font-bold text-slate-500">Human QA testers ready today</div>
                   </div>
                 </div>
+                <a
+                  href="/testers/apply?source=homepage_human_qa"
+                  className="inline-flex items-center gap-2 text-sm font-black text-white/80 transition-colors hover:text-white"
+                >
+                  Become a tester
+                  <ArrowRight className="h-4 w-4" />
+                </a>
               </div>
               <button
                 type="button"
@@ -2044,17 +2035,20 @@ function HomePage({
 function AuthGate({
   message,
   tone,
-  onSubmit
+  onSubmit,
+  onSocialSignIn
 }: {
   message: string;
   tone: "neutral" | "success" | "danger";
   onSubmit: (email: string, inviteCode: string) => Promise<void>;
+  onSocialSignIn: (provider: "google" | "github") => Promise<void>;
 }) {
   const [isLogin, setIsLogin] = useState(true);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [passwordOrInvite, setPasswordOrInvite] = useState("");
   const [loading, setLoading] = useState(false);
+  const [socialLoading, setSocialLoading] = useState<"google" | "github" | "">("");
   const [localError, setLocalError] = useState("");
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -2070,8 +2064,15 @@ function AuthGate({
     }
   }
 
-  function handleSocialClick() {
-    setLocalError("Use email for this build. Social sign-in is not wired yet.");
+  async function handleSocialClick(provider: "google" | "github") {
+    setSocialLoading(provider);
+    setLocalError("");
+    try {
+      await onSocialSignIn(provider);
+    } catch (caught) {
+      setLocalError(caught instanceof Error ? caught.message : "Could not start social sign-in.");
+      setSocialLoading("");
+    }
   }
 
   const resolvedMessage = localError || message;
@@ -2097,15 +2098,25 @@ function AuthGate({
           </p>
 
           <div className="space-y-4 mb-8">
-            <button onClick={handleSocialClick} className="w-full handcrafted-card p-4 rounded-2xl flex items-center justify-center gap-3 font-black hover:bg-brand-muted/20 transition-all">
+            <button
+              type="button"
+              onClick={() => handleSocialClick("google")}
+              disabled={Boolean(socialLoading || loading)}
+              className="w-full handcrafted-card p-4 rounded-2xl flex items-center justify-center gap-3 font-black hover:bg-brand-muted/20 transition-all disabled:cursor-wait disabled:opacity-60"
+            >
               <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" referrerPolicy="no-referrer" />
-              Continue with Google
+              {socialLoading === "google" ? "Opening Google..." : "Continue with Google"}
             </button>
-            <button onClick={handleSocialClick} className="w-full handcrafted-card p-4 rounded-2xl flex items-center justify-center gap-3 font-black hover:bg-brand-muted/20 transition-all">
-              <div className="w-5 h-5 bg-brand-ink rounded flex items-center justify-center">
-                <Globe className="text-white w-3 h-3" />
+            <button
+              type="button"
+              onClick={() => handleSocialClick("github")}
+              disabled={Boolean(socialLoading || loading)}
+              className="w-full handcrafted-card p-4 rounded-2xl flex items-center justify-center gap-3 font-black hover:bg-brand-muted/20 transition-all disabled:cursor-wait disabled:opacity-60"
+            >
+              <div className="flex h-5 w-5 items-center justify-center rounded bg-brand-ink">
+                <GitBranch className="h-3 w-3 text-white" aria-hidden="true" />
               </div>
-              Continue with GitHub
+              {socialLoading === "github" ? "Opening GitHub..." : "Continue with GitHub"}
             </button>
           </div>
 
@@ -2167,7 +2178,10 @@ function AuthGate({
               </p>
             )}
 
-            <button className="w-full bg-brand-accent text-white p-5 rounded-2xl font-black text-xl hover:bg-brand-ink transition-all shadow-xl mt-4">
+            <button
+              disabled={Boolean(loading || socialLoading)}
+              className="w-full bg-brand-accent text-white p-5 rounded-2xl font-black text-xl hover:bg-brand-ink transition-all shadow-xl mt-4 disabled:cursor-wait disabled:opacity-60"
+            >
               {loading ? "Sending..." : isLogin ? "Send Sign-In Link" : "Create Account"}
             </button>
           </form>
@@ -2252,6 +2266,11 @@ function App() {
 
   const pathname = route.pathname;
   const isWorkspaceRoute = pathname === "/dashboard" || pathname === "/reports";
+  const isTrialRoute = pathname === "/trial";
+  const isTrialAdminRoute = pathname === "/trials";
+  const isTesterApplyRoute = pathname === "/testers/apply";
+  const isTesterAdminRoute = pathname === "/testers/admin";
+  const isProtectedRoute = isWorkspaceRoute || isTrialAdminRoute || isTesterAdminRoute;
 
   useEffect(() => {
     installBudWidgetFromUrl(route.search);
@@ -2363,6 +2382,18 @@ function App() {
     }));
   }
 
+  async function handleSocialSignIn(provider: "google" | "github") {
+    const response = await apiFetch<{ url: string }>("/api/auth/oauth", {
+      method: "POST",
+      body: {
+        provider,
+        redirect_to: getMagicLinkRedirectUrl()
+      }
+    });
+
+    window.location.assign(response.url);
+  }
+
   async function handleSignOut() {
     await apiFetch("/api/auth/signout", { method: "POST" });
     setAuthState({
@@ -2375,8 +2406,53 @@ function App() {
     navigate("/dashboard", new URLSearchParams(), true);
   }
 
-  if (!authState.ready && isWorkspaceRoute) {
+  if (!authState.ready && isProtectedRoute) {
     return <LoadingShell label="Opening your tests..." />;
+  }
+
+  if (isTrialRoute) {
+    return <QaTrialPortal search={route.search} />;
+  }
+
+  if (isTrialAdminRoute) {
+    if (!authState.authorized) {
+      return (
+        <AuthGate
+          message={authState.message}
+          tone={authState.tone}
+          onSubmit={handleRequestMagicLink}
+          onSocialSignIn={handleSocialSignIn}
+        />
+      );
+    }
+    return <QaTrialAdmin search={route.search} />;
+  }
+
+  if (isTesterAdminRoute) {
+    if (!authState.authorized) {
+      return (
+        <AuthGate
+          message={authState.message}
+          tone={authState.tone}
+          onSubmit={handleRequestMagicLink}
+          onSocialSignIn={handleSocialSignIn}
+        />
+      );
+    }
+    return <TesterApplicationsAdmin search={route.search} />;
+  }
+
+  if (isTesterApplyRoute) {
+    return (
+      <TesterApplicationPage
+        authReady={authState.ready}
+        authorized={authState.authorized}
+        user={authState.user}
+        authMessage={authState.message}
+        authTone={authState.tone}
+        onSocialSignIn={handleSocialSignIn}
+      />
+    );
   }
 
   if (!isWorkspaceRoute) {
@@ -2398,6 +2474,7 @@ function App() {
       navigate={navigate}
       authState={authState}
       onRequestMagicLink={handleRequestMagicLink}
+      onSocialSignIn={handleSocialSignIn}
       onRefreshSession={refreshSession}
       onSignOut={handleSignOut}
     />
@@ -2409,6 +2486,7 @@ function WorkspacePage({
   navigate,
   authState,
   onRequestMagicLink,
+  onSocialSignIn,
   onRefreshSession,
   onSignOut
 }: {
@@ -2416,6 +2494,7 @@ function WorkspacePage({
   navigate: ReturnType<typeof useBrowserRoute>["navigate"];
   authState: AuthState;
   onRequestMagicLink: (email: string, inviteCode: string) => Promise<void>;
+  onSocialSignIn: (provider: "google" | "github") => Promise<void>;
   onRefreshSession: () => Promise<AuthUser | null>;
   onSignOut: () => Promise<void>;
 }) {
@@ -4212,6 +4291,7 @@ function WorkspacePage({
         message={authState.message}
         tone={authState.tone}
         onSubmit={onRequestMagicLink}
+        onSocialSignIn={onSocialSignIn}
       />
     );
   }

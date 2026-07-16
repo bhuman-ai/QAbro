@@ -226,7 +226,7 @@ function buildManualReviewWorkflowText(input = {}) {
   return buildText([
     "# BeforeUsersDo Manual Review Workflow",
     "",
-    "Use this whenever the user says they want a manual review, manual QA, human review, freestyle QA, or a BeforeUsersDo checklist for work you just changed.",
+    "Use this whenever the user says they want to review the product themselves, run manual self-review, do freestyle QA, or use a BeforeUsersDo checklist for work you just changed.",
     "",
     "1. Gather the target URL.",
     "- Prefer the live preview URL the user gave you.",
@@ -475,6 +475,83 @@ function buildManualReviewNeedsInputResult(input = {}) {
   );
 }
 
+function hasHumanTestSpecificContext(input = {}) {
+  return Boolean(
+    safeText(input.test_focus || input.testFocus || input.task_to_try || input.taskToTry, 2400) ||
+      safeText(input.feature_name || input.featureName, 240) ||
+      safeText(input.work_summary || input.workSummary || input.change_summary || input.changeSummary, 4000) ||
+      normalizeStringList(input.acceptance_criteria || input.acceptanceCriteria, 24, 900).length
+  );
+}
+
+function buildHumanTestNeedsInputResult(input = {}) {
+  const targetUrl = safeText(input.target_url || input.targetUrl, 4096);
+  if (!targetUrl) {
+    const result = {
+      ok: false,
+      needs_input: true,
+      missing_fields: ["target_url"],
+      prompt: "What preview, staging, or production URL should the real tester open?",
+      recommended_tool: "qa_request_human_test"
+    };
+    return makeToolResult(buildText(["A real human tester needs a reachable URL.", result.prompt]), result);
+  }
+
+  const reviewType = safeText(input.review_type || input.reviewType, 60).toLowerCase();
+  if (reviewType === "specific_flow" && !hasHumanTestSpecificContext(input)) {
+    const result = {
+      ok: false,
+      needs_input: true,
+      missing_fields: ["test_focus"],
+      prompt: "Which flow should the tester try? If you want a general first-time-user review instead, say that.",
+      recommended_tool: "qa_request_human_test"
+    };
+    return makeToolResult(buildText(["The requested specific test has no flow yet.", result.prompt]), result);
+  }
+
+  const accessMode = safeText(input.access_mode || input.accessMode, 60).toLowerCase();
+  const credentials = input.credentials && typeof input.credentials === "object" ? input.credentials : {};
+  if (accessMode === "test_account" && (!safeText(credentials.username, 320) || !safeText(credentials.password, 320))) {
+    const result = {
+      ok: false,
+      needs_input: true,
+      missing_fields: ["credentials.username", "credentials.password"],
+      prompt: "Send the test login, or tell me to limit the tester to public pages or allow a fresh signup.",
+      recommended_tool: "qa_request_human_test"
+    };
+    return makeToolResult(buildText(["Test-account access was selected without a complete login.", result.prompt]), result);
+  }
+
+  return null;
+}
+
+function buildHumanTestRequestText(payload = {}) {
+  const request = payload.request && typeof payload.request === "object" ? payload.request : {};
+  const reviewLabel = request.review_type === "specific_flow" ? "Specific flow" : "General first-time-user review";
+  return buildText([
+    `Human test request ${request.id || "created"} is ${request.status || "queued"}.`,
+    request.target_url ? `Target: ${request.target_url}` : "",
+    `Scope: ${reviewLabel}.`,
+    request.test_focus ? `Tester brief: ${request.test_focus}` : "",
+    request.access_mode ? `Access: ${request.access_mode}.` : "",
+    "No customer form is required. Before Users Do will match a real tester and email the private tracking link.",
+    request.id ? `Check later with qa_get_human_test_status using request_id ${request.id}.` : ""
+  ]);
+}
+
+function buildHumanTestStatusText(payload = {}) {
+  const request = payload.request && typeof payload.request === "object" ? payload.request : {};
+  return buildText([
+    `Human test request ${request.id || "unknown"}: ${request.status || "unknown"}.`,
+    request.assigned_tester_name ? `Tester: ${request.assigned_tester_name}.` : "",
+    request.status === "queued" ? "Before Users Do is still matching a tester." : "",
+    request.status === "assigned" ? "A tester has been assigned and received the private test link." : "",
+    request.status === "in_progress" ? "The tester is working now." : "",
+    request.status === "submitted" || request.status === "completed" ? "The human test has been submitted." : "",
+    payload.report?.markdown ? payload.report.markdown : ""
+  ]);
+}
+
 function buildRequestedRunText(payload) {
   return buildText([
     `Queued QA run ${payload.run_id}.`,
@@ -716,6 +793,51 @@ function buildManualQaSessionInputSchema(options = {}) {
   };
 }
 
+function buildHumanTestInputSchema(options = {}) {
+  const targetUrlSchema = z.string().url().describe("Preview, staging, or production URL the real tester should open.");
+  return {
+    target_url: options.targetRequired === false ? targetUrlSchema.optional() : targetUrlSchema,
+    product_name: z.string().max(180).optional().describe("Product name. Defaults to the target hostname."),
+    review_type: z
+      .enum(["specific_flow", "general_first_time_user"])
+      .optional()
+      .describe("Infer specific_flow from the current work. Use general_first_time_user when no specific feature is requested."),
+    test_focus: z.string().max(2400).optional().describe("Plain-English task for the tester. Infer this from the current work when possible."),
+    task_to_try: z.string().max(2400).optional().describe("Alias for test_focus."),
+    expected_success: z.string().max(1600).optional(),
+    feature_name: z.string().max(240).optional(),
+    work_summary: z.string().max(4000).optional(),
+    change_summary: z.string().max(4000).optional(),
+    acceptance_criteria: z.array(z.string().max(900)).max(24).optional(),
+    scenario_list: z.array(z.string().max(1000)).max(24).optional(),
+    changed_files: z.array(z.string().max(400)).max(60).optional(),
+    repository: z.string().max(500).optional(),
+    branch: z.string().max(240).optional(),
+    commit_sha: z.string().max(120).optional(),
+    pull_request_url: z.string().url().optional(),
+    developer_notes: z.string().max(4000).optional(),
+    duration_minutes: z.number().int().min(10).max(60).optional(),
+    access_mode: z
+      .enum(["public_only", "signup_allowed", "test_account"])
+      .optional()
+      .describe("Use the safest mode that still permits the requested flow. Defaults to public_only."),
+    account_creation_allowed: z.boolean().optional(),
+    purchase_allowed: z.boolean().optional().describe("Defaults to false. Never infer permission to make a real purchase."),
+    irreversible_actions_allowed: z.boolean().optional().describe("Defaults to false."),
+    prohibited_actions: z.array(z.string().max(400)).max(20).optional(),
+    credentials: z
+      .object({
+        login_url: z.string().url().optional(),
+        username: z.string().max(320),
+        password: z.string().max(320),
+        otp_mode: z.enum(["none", "manual_prompt", "provider_hook"]).optional()
+      })
+      .optional()
+      .describe("Private test-account login. Encrypted at rest and shown only to the assigned tester."),
+    request_key: z.string().max(180).optional().describe("Optional idempotency key so an agent retry does not create a duplicate request.")
+  };
+}
+
 async function createManualSessionToolResult(apiClient, input, options = {}) {
   if (options.allowMissingTargetUrl) {
     const needsInput = buildManualReviewNeedsInputResult(input);
@@ -802,7 +924,7 @@ function registerQaResources(server, apiClient) {
     new ResourceTemplate(MCP_QA_RESOURCE_TEMPLATES.manual_qa_report_markdown, { list: undefined }),
     {
       title: "Manual QA Report Markdown",
-      description: "Human tester feedback exported as Markdown for a coding agent.",
+      description: "Manual reviewer feedback exported as Markdown for a coding agent.",
       mimeType: "text/markdown"
     },
     async (uri, variables) => {
@@ -869,7 +991,7 @@ function registerQaPrompts(server) {
     {
       title: "BeforeUsersDo Manual Review",
       description:
-        "Use when the user says 'manual review with BeforeUsersDo', 'manual QA', 'human review', or asks for a checklist plus a browser-side recorder.",
+        "Use when the user wants to review the product themselves with a checklist, drawing, voice, or screen recording. For a different real person or QA professional, use qa_request_human_test.",
       argsSchema: {
         target_url: z.string().url().optional().describe("Preview, staging, production, or tunnel URL to review."),
         work_summary: z.string().max(4000).optional().describe("Plain-English summary of what changed."),
@@ -1108,6 +1230,59 @@ function createQaMcpServer(options = {}) {
   );
 
   server.registerTool(
+    "qa_request_human_test",
+    {
+      title: "Request a Real Human Tester",
+      description:
+        "Use when the user asks for a real person, hired human, QA professional, or someone else to test the product. The coding agent should infer the URL, changed feature, test scope, success criteria, and safe access policy from its current work, then ask only for genuinely missing information. This creates the request directly; never send the customer to a separate intake form. Use qa_start_manual_review instead when the user wants to perform the review themselves.",
+      inputSchema: buildHumanTestInputSchema({ targetRequired: false })
+    },
+    async (input) => {
+      try {
+        const needsInput = buildHumanTestNeedsInputResult(input);
+        if (needsInput) return needsInput;
+        const response = await apiClient.requestHumanTest(input);
+        return makeToolResult(buildHumanTestRequestText(response), response);
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_get_human_test_status",
+    {
+      title: "Get Human Test Status",
+      description:
+        "Check whether a requested real human tester is queued, assigned, testing, or finished. When the tester has submitted, this also returns the evidence-backed report when available.",
+      inputSchema: {
+        request_id: z.string().max(128)
+      }
+    },
+    async ({ request_id }) => {
+      try {
+        const response = await apiClient.getHumanTestRequest(request_id);
+        const request = response.request && typeof response.request === "object" ? response.request : {};
+        let report = null;
+        if (
+          request.trial_session_id &&
+          ["submitted", "completed"].includes(safeText(request.status, 40).toLowerCase())
+        ) {
+          try {
+            report = await apiClient.exportManualQaSession(request.trial_session_id);
+          } catch {
+            report = null;
+          }
+        }
+        const result = { ...response, report };
+        return makeToolResult(buildHumanTestStatusText(result), result);
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
     "qa_create_manual_session",
     {
       title: "Create Manual QA Session",
@@ -1129,7 +1304,7 @@ function createQaMcpServer(options = {}) {
     {
       title: "Start BeforeUsersDo Manual Review",
       description:
-        "Default tool when the user says 'manual review with BeforeUsersDo', 'manual QA', 'human review', 'freestyle QA', or wants a human checklist for recent code changes. Returns a REQUIRED widget snippet. Use review_mode='freestyle' when the user wants open-ended recording/drawing/speaking without checklist items. The coding agent must inject it into the preview/dev build, deploy or refresh the preview, open the target once, verify the Review widget loaded, and only then send the user to the manual QA dashboard. If target_url is missing, returns exactly what to ask for. When available, include preview URL, work_summary, changed_files, acceptance_criteria, scenario_list, repository, branch, commit_sha, pull_request_url, and an explicit test_plan.",
+        "Use when the user wants to review the product themselves with BeforeUsersDo, including manual QA, freestyle QA, a checklist, drawing, voice, or recording. Returns a REQUIRED widget snippet. Do not use this when the user asks for a different real person or QA professional; use qa_request_human_test instead. The coding agent must inject and verify the widget before sharing the review URL.",
       inputSchema: buildManualQaSessionInputSchema({ targetRequired: false })
     },
     async (input) => {
@@ -1146,7 +1321,7 @@ function createQaMcpServer(options = {}) {
     {
       title: "BeforeUsersDo Manual Review Guide",
       description:
-        "Explains exactly what context an agent should gather and which tool to call for a BeforeUsersDo manual review. Use this if the request is ambiguous.",
+        "Explains self-review setup. If the user wants someone else to test, call qa_request_human_test instead.",
       inputSchema: {
         target_url: z.string().url().optional(),
         work_summary: z.string().max(4000).optional(),
@@ -1188,7 +1363,7 @@ function createQaMcpServer(options = {}) {
     "qa_get_manual_report",
     {
       title: "Get Manual QA Report",
-      description: "Export the human manual QA checklist as redacted Markdown and JSON.",
+      description: "Export the manual self-review checklist as redacted Markdown and JSON.",
       inputSchema: {
         session_id: z.string().max(128)
       }
@@ -1672,6 +1847,7 @@ function printHelp() {
     "- QA_MCP_DEFAULT_BRAND: optional default brand key",
     "- QA_MCP_DEFAULT_PERSONA: optional default persona text",
     "- QA_MCP_DEFAULT_EXECUTION_ENGINE: optional default execution engine",
+    "- HUMAN_TEST_CREDENTIALS_SECRET: recommended encryption secret for private human-test logins",
     "",
     "Tools:",
     "- qa_request_run",
@@ -1679,6 +1855,8 @@ function printHelp() {
     "- qa_wait_for_run",
     "- qa_get_run_report",
     "- qa_share_run_report",
+    "- qa_request_human_test",
+    "- qa_get_human_test_status",
     "- qa_create_manual_session",
     "- qa_start_manual_review",
     "- qa_manual_review_guide",
@@ -1734,6 +1912,9 @@ module.exports = {
   buildPostFixReviewRecord,
   buildManualFeedbackActionText,
   buildManualFeedbackRequiredAction,
+  buildHumanTestNeedsInputResult,
+  buildHumanTestRequestText,
+  buildHumanTestStatusText,
   buildManualReviewNeedsInputResult,
   buildManualReviewWorkflowText,
   createQaMcpServer,

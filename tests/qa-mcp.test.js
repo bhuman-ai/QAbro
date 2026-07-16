@@ -22,6 +22,7 @@ const {
   buildPostFixReviewRecord,
   buildManualFeedbackActionText,
   buildManualFeedbackRequiredAction,
+  buildHumanTestNeedsInputResult,
   buildManualReviewNeedsInputResult,
   buildManualReviewWorkflowText,
   shouldReturnQaAction
@@ -174,6 +175,55 @@ test("qa MCP client requestRun sends service token and owner headers", async () 
   assert.equal(calls[0].options.headers["x-qa-service-token"], "svc_123");
   assert.equal(calls[0].options.headers["x-owner-user-id"], "user_123");
   assert.equal(calls[0].options.headers["x-owner-email"], "owner@example.com");
+});
+
+test("qa MCP client creates and reads human tester requests without a form", async () => {
+  const calls = [];
+  const client = createQaApiClient({
+    baseUrl: "https://beforeusersdo.com",
+    serviceToken: "svc_123",
+    ownerUserId: "user_123",
+    ownerEmail: "owner@example.com",
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return createJsonResponse({
+        ok: true,
+        request: {
+          id: "request_123",
+          status: calls.length === 1 ? "queued" : "assigned"
+        }
+      });
+    }
+  });
+
+  const created = await client.requestHumanTest({
+    target_url: "https://preview.example.com",
+    review_type: "general_first_time_user"
+  });
+  const loaded = await client.getHumanTestRequest(created.request.id);
+
+  assert.equal(created.request.status, "queued");
+  assert.equal(loaded.request.status, "assigned");
+  assert.equal(new URL(calls[0].url).pathname, "/api/human-test-requests");
+  assert.equal(JSON.parse(calls[0].options.body).action, "request");
+  assert.equal(new URL(calls[1].url).searchParams.get("request_id"), "request_123");
+});
+
+test("human tester MCP preflight asks only for genuinely missing information", () => {
+  const missingUrl = buildHumanTestNeedsInputResult({});
+  assert.equal(missingUrl.structuredContent.needs_input, true);
+  assert.deepEqual(missingUrl.structuredContent.missing_fields, ["target_url"]);
+
+  const generalReview = buildHumanTestNeedsInputResult({
+    target_url: "https://preview.example.com"
+  });
+  assert.equal(generalReview, null);
+
+  const missingFlow = buildHumanTestNeedsInputResult({
+    target_url: "https://preview.example.com",
+    review_type: "specific_flow"
+  });
+  assert.deepEqual(missingFlow.structuredContent.missing_fields, ["test_focus"]);
 });
 
 test("qa MCP client waitForRun polls until the report is ready and emits onPoll", async () => {
