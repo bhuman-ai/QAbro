@@ -170,6 +170,26 @@ test("MCP QA polling handoff requires the agent to keep polling without calling 
   assert.equal(handoff.result.next_tool.arguments.share_after, true);
 });
 
+test("MCP QA polling handoff reports the active retry instead of a stale terminal report", () => {
+  const handoff = buildRunPollingHandoff(
+    "run_retrying",
+    {
+      report_status: "partial",
+      report_ready: false,
+      queue: {
+        queue_status: "processing",
+        attempt_count: 2
+      }
+    },
+    { timeout_seconds: 1200 }
+  );
+
+  assert.match(handoff.text, /is still processing/i);
+  assert.doesNotMatch(handoff.text, /is still partial/i);
+  assert.equal(handoff.result.report_status, "processing");
+  assert.equal(handoff.result.continue_polling, true);
+});
+
 test("qa MCP client requestRun sends service token and owner headers", async () => {
   const calls = [];
   const client = createQaApiClient({

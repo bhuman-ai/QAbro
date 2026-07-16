@@ -25,6 +25,7 @@ const {
   validateReport
 } = require("../lib/qa-core");
 const { buildLiveStreamArtifacts } = require("../lib/qa-live-stream");
+const { resolveEvidenceRequirements } = require("../lib/qa-evidence-policy");
 const { __private: qaLocalPublishPrivate } = require("../lib/qa-local-publish");
 const {
   buildQueuePayload,
@@ -1324,19 +1325,18 @@ function collectExecutionVideoEvidence(finalReport, execution = {}) {
 function assessExecutionEvidence(finalReport, execution = {}, options = {}) {
   const artifacts = execution.artifacts && typeof execution.artifacts === "object" ? execution.artifacts : {};
   const hasBrowserbaseEvidence = Boolean(artifacts.browserbase_session_url || artifacts.browserbase_debug_url);
-  const configuredRequiredScreenshots = hasBrowserbaseEvidence
-    ? 0
-    : Math.max(1, Number(options.requiredScreenshots || process.env.QA_REQUIRED_SCREENSHOT_COUNT) || 4);
-  const requiredVideos = Math.max(
-    0,
-    Number(options.requiredVideos || process.env.QA_REQUIRED_VIDEO_COUNT) || 1
-  );
   const screenshots = collectExecutionScreenshotEvidence(finalReport, execution);
   const videos = collectExecutionVideoEvidence(finalReport, execution);
-  const hasRichVideoCoverage = videos.length >= Math.max(2, requiredVideos);
-  const requiredScreenshots = hasRichVideoCoverage
-    ? Math.min(configuredRequiredScreenshots, 2)
-    : configuredRequiredScreenshots;
+  const {
+    configuredRequiredScreenshots,
+    requiredScreenshots,
+    requiredVideos
+  } = resolveEvidenceRequirements({
+    hasBrowserbaseEvidence,
+    requiredScreenshots: options.requiredScreenshots || process.env.QA_REQUIRED_SCREENSHOT_COUNT,
+    requiredVideos: options.requiredVideos || process.env.QA_REQUIRED_VIDEO_COUNT,
+    videoCount: videos.length
+  });
   const missing = [];
   if (screenshots.length < requiredScreenshots) {
     missing.push(`at least ${requiredScreenshots} screenshots`);

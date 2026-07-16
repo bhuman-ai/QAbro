@@ -16,6 +16,7 @@ const {
   summarizeScheduledAlert
 } = require("../lib/qa-schedules");
 const { sendQaAlertEmail, sendQaReportReadyEmail } = require("../lib/qa-alert-email");
+const { resolveEvidenceRequirements } = require("../lib/qa-evidence-policy");
 
 const ALLOWED_FINDING_TYPES = new Set([
   "bug",
@@ -215,15 +216,14 @@ function validateEvidenceCoverage(report, artifacts, evidenceMedia) {
   const hasBrowserbaseEvidence = Boolean(
     artifacts && (artifacts.browserbase_session_url || artifacts.browserbase_debug_url)
   );
-  const requiredScreenshots = hasBrowserbaseEvidence
-    ? 0
-    : Math.max(1, Number(process.env.QA_REQUIRED_SCREENSHOT_COUNT) || 4);
-  const requiredVideos = Math.max(
-    0,
-    Number(process.env.QA_REQUIRED_VIDEO_COUNT) || 1
-  );
   const screenshots = collectPortableEvidenceEntries(report, artifacts, evidenceMedia, "screenshots");
   const videos = collectPortableEvidenceEntries(report, artifacts, evidenceMedia, "videos");
+  const { requiredScreenshots, requiredVideos } = resolveEvidenceRequirements({
+    hasBrowserbaseEvidence,
+    requiredScreenshots: process.env.QA_REQUIRED_SCREENSHOT_COUNT,
+    requiredVideos: process.env.QA_REQUIRED_VIDEO_COUNT,
+    videoCount: videos.length
+  });
   const missing = [];
 
   if (screenshots.length < requiredScreenshots) {
@@ -807,4 +807,8 @@ module.exports = async (req, res) => {
     run_id: runId,
     id: Array.isArray(saved) && saved[0] ? saved[0].id : null
   });
+};
+
+module.exports.__private = {
+  validateEvidenceCoverage
 };
