@@ -21,7 +21,8 @@ const {
   prepareOcrCandidatesForJudge,
   chooseOcrCandidateWithJudge,
   clickWithVisionLocalization,
-  attachBrowserTelemetry
+  attachBrowserTelemetry,
+  buildVisionPlannerPrompt
 } = __private;
 
 test("local vision screenshots persist as portable evidence files", () => {
@@ -48,6 +49,35 @@ test("local vision screenshots persist as portable evidence files", () => {
   assert.match(artifacts.local_screenshots[0], /01-step-1-before-decision\.png$/);
   assert.match(artifacts.captured_screenshots[0], /^data:image\/png;base64,/);
   assert.equal(runLog.at(-1)?.event, "inline_screenshot_captured");
+});
+
+test("vision planner treats customer acceptance criteria as authoritative", () => {
+  const prompt = buildVisionPlannerPrompt({
+    runRequest: {
+      target_url: "https://example.com/docs",
+      scenario_list: ["Open the docs, then use the create-key action."],
+      metadata: {
+        instruction_priority: "customer_first",
+        task_to_try: "Open the docs and use the create-key action.",
+        expected_success: "The create-key action reaches the intended sign-in screen.",
+        acceptance_criteria: [
+          "The public docs remain readable.",
+          "The create-key action reaches sign-in without a blank page."
+        ],
+        auth_policy: "public_only"
+      }
+    },
+    step: 2,
+    currentUrl: "https://example.com/sign-in",
+    historyText: "- step 1: action=click, target=Get key, outcome=ok",
+    forcedEmail: ""
+  });
+
+  assert.match(prompt, /acceptance criteria.*authoritative/i);
+  assert.match(prompt, /Expected success: The create-key action reaches the intended sign-in screen\./);
+  assert.match(prompt, /Access policy: public_only/);
+  assert.match(prompt, /Do not report an explicitly expected authentication.*as a blocker/i);
+  assert.match(prompt, /return action=done/i);
 });
 
 const REQUIRED_ENV = {
