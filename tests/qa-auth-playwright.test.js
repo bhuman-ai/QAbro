@@ -253,7 +253,7 @@ test("collectAuthFailureSignals captures SaaSHub-style notification banners", as
             There was something wrong. Please contact us if you think this is our fault. (Error 4.22.1)
           </div>
           <form>
-            <label>Email <input type="email" name="email" value="team@enrichanything.com" /></label>
+            <label>Email <input type="email" name="email" value="team@example.com" /></label>
           </form>
         </body>
       </html>`);
@@ -361,18 +361,18 @@ test("retryInvalidAuthFields refills required signup fields reported by the page
       locators,
       {
         autoCreateAccount: true,
-        fullName: "EnrichAnything",
+        fullName: "Example Product",
         phone: "6505550100",
-        accountHandle: "team_enrichanything",
-        username: "team+betalist@enrichanything.com",
+        accountHandle: "team_example_product",
+        username: "team+betalist@example.com",
         password: "Secret123!"
       }
     );
 
     assert.equal(result.retried, true);
     assert.deepEqual(result.restored, ["email", "full_name", "phone"]);
-    assert.equal(await page.locator('input[name="subscriber[email]"]').inputValue(), "team+betalist@enrichanything.com");
-    assert.equal(await page.locator('input[name="user[name]"]').inputValue(), "EnrichAnything");
+    assert.equal(await page.locator('input[name="subscriber[email]"]').inputValue(), "team+betalist@example.com");
+    assert.equal(await page.locator('input[name="user[name]"]').inputValue(), "Example Product");
     assert.equal(await page.locator('input[name="user[phone]"]').inputValue(), "6505550100");
     assert.equal(await page.evaluate(() => window.__submitCount), 1);
   } finally {
@@ -1229,10 +1229,10 @@ test("performCredentialedLogin fills separate email, username, and confirmation 
               auto_create_account: true,
               otp_inbox: {
                 provider: "imap",
-                email: "team@enrichanything.com",
+                email: "team@example.com",
                 host: "imap.forwardemail.net",
                 port: 993,
-                username: "team@enrichanything.com",
+                username: "team@example.com",
                 password: "secret"
               }
             }

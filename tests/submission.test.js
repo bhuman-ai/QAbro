@@ -153,15 +153,15 @@ test("validateBrandProfileInput normalizes client-owned mailbox identity", () =>
 
 test("validateBrandProfileInput applies Forward Email mailbox defaults", () => {
   const result = validateBrandProfileInput({
-    brand_profile_id: "brand_enrichanything",
-    display_name: "EnrichAnything",
+    brand_profile_id: "brand_example_product",
+    display_name: "Example Product",
     track: "startup",
-    website_url: "https://www.enrichanything.com",
+    website_url: "https://www.example.com",
     identity_mode: "client_owned",
-    mailbox_email: "team@enrichanything.com",
+    mailbox_email: "team@example.com",
     mailbox_provider: "forwardemail",
     mailbox_auth_method: "smtp_imap_password",
-    mailbox_username: "team@enrichanything.com"
+    mailbox_username: "team@example.com"
   });
 
   assert.equal(result.ok, true);
@@ -516,9 +516,9 @@ test("submission runner classifySubmitOutcome keeps wizard steps out of submitte
 
 test("submission runner classifySubmitOutcome treats SaaSHub related alternatives flow as submitted", () => {
   const outcome = __private.classifySubmitOutcome({
-    url: "https://www.saashub.com/related-alternatives/enrichanything?flow=submit",
+    url: "https://www.saashub.com/related-alternatives/example-product?flow=submit",
     title: "Select Competitors - SaaSHub",
-    text_hints: ["EnrichAnything will appear as verified alternative on the pages of the selected products."],
+    text_hints: ["Example Product will appear as verified alternative on the pages of the selected products."],
     field_count: 0,
     forms_count: 0
   });
