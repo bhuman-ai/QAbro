@@ -22,10 +22,10 @@ A small marketplace job board. The primary action is `Take test` for qualificati
 1. The tester signs in and completes `/testers/apply`.
 2. The application confirmation links directly to `/testers/jobs`.
 3. A BUD operator prepares an MCP request with private review points and publishes it.
-4. Eligible desktop applicants see unpaid qualifications. Approved desktop testers see paid assignments.
+4. Eligible desktop applicants see unpaid qualifications. Approved desktop testers see paid assignments. An operator can also reserve a published test for a specific interested tester.
 5. Paid assignments show exact pay, duration, safe product brief, and access mode before acceptance.
 6. `Take test` or `Claim paid test` atomically reserves the request so only one tester can claim it.
-7. BUD creates the existing private recording trial and opens it immediately.
+7. BUD creates the existing private recording trial and opens it immediately. A directly invited tester skips the application and jobs pages and receives this private link by email.
 8. The tester can return to `/testers/jobs` and use `Start test`, `Continue test`, or `View submission`.
 9. Completed work remains under a collapsed history section with payout state for paid assignments.
 
@@ -41,9 +41,11 @@ Do not show the customer email, target URL before claim, credentials, private re
 ## Safety And State
 
 - The jobs route requires the tester's normal BUD login. It never requires MCP.
+- A direct invitation is a private, tokenized trial link. It does not require a BUD login and cannot expose another tester's assignment.
 - Only an application owned by the signed-in user can claim or reopen a test.
 - Qualification claiming currently requires `computer` because browser screen capture is desktop-Chrome-first.
 - A conditional database update changes `available` to `assigned`; a second claimant receives a conflict.
+- Direct operator invitations use the same conditional reservation, so an invite and a public claim cannot both take the same request.
 - Test-account credentials remain encrypted and appear only inside the private tester portal.
 - The original emailed tester token remains valid when the dashboard issues a resumable token.
 - Publishing a paid assignment is a commitment by Before Users Do to the displayed tester pay.

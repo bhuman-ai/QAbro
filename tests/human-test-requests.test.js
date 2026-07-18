@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  assignHumanTestRequest,
   normalizeHumanTestRequestPayload,
   normalizeHumanTestRequestRow,
   markHumanTestRequestPaid,
@@ -24,6 +25,7 @@ test("human test requests default to a safe first-time-user review", () => {
   assert.equal(result.ok, true);
   assert.equal(result.payload.review_type, "general_first_time_user");
   assert.equal(result.payload.access_mode, "public_only");
+  assert.equal(result.payload.duration_minutes, 15);
   assert.equal(result.payload.access_details.purchase_allowed, false);
   assert.equal(result.payload.access_details.irreversible_actions_allowed, false);
   assert.match(result.payload.test_focus, /first-time user/i);
@@ -293,4 +295,121 @@ test("tester reservation uses a conditional update so only one tester can take a
   const requestUrl = new URL(capturedUrl);
   assert.equal(requestUrl.searchParams.get("id"), "eq.request-1");
   assert.equal(requestUrl.searchParams.get("status"), "eq.available");
+});
+
+test("operator can send a published test directly to an invited tester", async () => {
+  const trialInputs = [];
+  let reservedBody = null;
+  let finalPatch = null;
+  const result = await assignHumanTestRequest(
+    "request-1",
+    { tester_name: "Haley", tester_email: "haley@example.com" },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      publicBaseUrl: "https://beforeusersdo.com",
+      createQaTrialImpl: async (input) => {
+        trialInputs.push(input);
+        return {
+          ok: true,
+          status: 201,
+          session_id: "trial-1",
+          tester_url: "https://beforeusersdo.com/trial?tester=1",
+          lead_url: "https://beforeusersdo.com/trial?lead=1"
+        };
+      },
+      fetchImpl: async (url, init = {}) => {
+        const requestUrl = new URL(String(url));
+        if (init.method === "PATCH" && requestUrl.searchParams.get("status") === "eq.available") {
+          reservedBody = JSON.parse(init.body);
+          return jsonResponse([
+            requestRow({
+              status: "assigned",
+              duration_minutes: 15,
+              assignment_type: "qualification",
+              private_benchmark: ["The main action is hard to find"],
+              ...reservedBody
+            })
+          ]);
+        }
+        if (init.method === "PATCH") {
+          finalPatch = JSON.parse(init.body);
+          return jsonResponse([
+            requestRow({
+              status: "assigned",
+              duration_minutes: 15,
+              assigned_tester_name: "Haley",
+              assigned_tester_email: "haley@example.com",
+              ...finalPatch
+            })
+          ]);
+        }
+        return jsonResponse([]);
+      }
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.session_id, "trial-1");
+  assert.equal(reservedBody.status, "assigned");
+  assert.equal(reservedBody.assigned_tester_email, "haley@example.com");
+  assert.equal(finalPatch.trial_session_id, "trial-1");
+  assert.equal(trialInputs.length, 1);
+  assert.equal(trialInputs[0].duration_minutes, 15);
+  assert.deepEqual(trialInputs[0].known_issues, ["The main action is hard to find"]);
+});
+
+test("direct invite does not create a trial after another tester takes the request", async () => {
+  let created = false;
+  const result = await assignHumanTestRequest(
+    "request-1",
+    { tester_name: "Haley", tester_email: "haley@example.com" },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      createQaTrialImpl: async () => {
+        created = true;
+        return { ok: true };
+      },
+      fetchImpl: async () => jsonResponse([])
+    }
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 409);
+  assert.equal(created, false);
+});
+
+test("failed direct invite releases the request back to the tester pool", async () => {
+  const patches = [];
+  const result = await assignHumanTestRequest(
+    "request-1",
+    { tester_name: "Haley", tester_email: "haley@example.com" },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      createQaTrialImpl: async () => ({ ok: false, status: 503, error: "Email service unavailable" }),
+      fetchImpl: async (url, init = {}) => {
+        const requestUrl = new URL(String(url));
+        if (init.method === "PATCH") patches.push({ requestUrl, body: JSON.parse(init.body) });
+        if (requestUrl.searchParams.get("status") === "eq.available") {
+          return jsonResponse([
+            requestRow({
+              status: "assigned",
+              private_benchmark: ["The main action is hard to find"],
+              assigned_tester_email: "haley@example.com"
+            })
+          ]);
+        }
+        return jsonResponse(null, 204);
+      }
+    }
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 503);
+  assert.equal(patches.length, 2);
+  assert.equal(patches[1].requestUrl.searchParams.get("assigned_tester_email"), "eq.haley@example.com");
+  assert.equal(patches[1].body.status, "available");
+  assert.equal(patches[1].body.assigned_tester_email, null);
 });

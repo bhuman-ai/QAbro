@@ -8,15 +8,17 @@ Bootstrap both sides of human QA: a customer receives one useful test for free w
 
 1. A customer request arrives through `qa_request_human_test`, or a BUD operator starts a pairing directly.
 2. The operator adds private review points and publishes the request to eligible testers.
-3. A tester claims it from `/testers/jobs`; BUD creates and emails separate private role links.
+3. A tester claims it from `/testers/jobs`, or an operator sends it directly to an interested tester. BUD creates and emails separate private role links.
 4. Direct MCP requests preapprove the customer; directly paired trials still ask both people to accept.
-5. The tester records screen and voice while trying the requested flow. Evidence uploads in short segments.
+5. The tester opens the private link and uses one `Start test` action. That action accepts the trial, opens the product, and starts screen-and-voice recording. Evidence uploads in short segments.
 6. The tester submits the test.
 7. A BUD operator marks which private benchmark issues were caught and rates report clarity.
 8. BUD publishes a `BUD Verified Trial` score.
 9. The customer separately rates how useful the test was.
 
 When a tester claims a qualification, the application is linked to the new session and moves to `Qualification sent`. Publishing the BUD score moves that same application to `Passed qualification` for final operator approval.
+
+New qualification requests default to 15 minutes. Explicit paid-test durations remain unchanged.
 
 ## Information Budget
 

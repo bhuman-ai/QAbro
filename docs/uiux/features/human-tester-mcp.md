@@ -15,8 +15,8 @@ This is a marketplace handoff inside an existing developer tool. The coding agen
 3. If the URL, specific flow, or selected test-account login is genuinely missing, MCP asks only for that missing information.
 4. BUD creates a queued request. The owner does not fill out another form.
 5. A BUD operator adds private review points, chooses qualification or paid assignment, sets tester pay when paid, and publishes the request.
-6. An eligible tester claims it from `/testers/jobs`; no MCP is installed or used by the tester.
-7. The existing private trial flow records the tester's screen, voice, notes, and evidence.
+6. An eligible tester claims it from `/testers/jobs`, or a BUD operator reserves it for a specific person who already said they are available. No MCP is installed or used by the tester.
+7. A directly invited tester receives one private link and skips the application and jobs pages. The existing private trial flow records the tester's screen, voice, notes, and evidence.
 8. `qa_get_human_test_status` reports queued, available, assigned, in-progress, submitted, or completed state and returns the report after submission.
 
 ## Information Budget
@@ -34,6 +34,7 @@ This is a marketplace handoff inside an existing developer tool. The coding agen
 - Access mode, never plaintext credentials
 - Job type and exact tester pay when paid
 - One primary action: `Publish test`
+- One follow-up action after publication: `Invite tester`
 - Private review points before publication
 
 ### Tester

@@ -272,7 +272,7 @@ function PublicDocsPage({
                   <h3 className="mt-4 text-2xl">A real person tests it</h3>
                 </div>
                 <div>
-                  <p className="font-semibold leading-7 text-brand-muted">Your agent creates the request from its existing work context. BUD matches an eligible tester, tracks progress, and sends the evidence-backed report back through MCP. Approved testers see the exact pay and time before they claim paid work.</p>
+                  <p className="font-semibold leading-7 text-brand-muted">Your agent creates the request from its existing work context. BUD can offer it to eligible testers or send one private start link to a tester who is ready. The evidence-backed report comes back through MCP.</p>
                   <Prompt>{PROMPTS.human}</Prompt>
                 </div>
               </article>
@@ -313,7 +313,7 @@ function PublicDocsPage({
               <div className="mt-6 grid gap-6 sm:grid-cols-4">
                 {[
                   ["Prepared", "BUD turns the request into a safe tester brief."],
-                  ["Available", "An eligible tester sees the scope, time, and pay before taking it."],
+                  ["Matched", "A tester claims it or receives one private start link."],
                   ["Testing", "Evidence is being recorded."],
                   ["Complete", "The report is ready for your agent."]
                 ].map(([title, body], index) => (
@@ -366,8 +366,8 @@ function PublicDocsPage({
                 ["Does BUD change my code?", "BUD returns proof and focused work items. Your coding agent changes the code when you choose to start work."],
                 ["Is an inconclusive test a pass?", "No. A timeout, blocked flow, or uncertain result is reported as inconclusive or needs review, never as a pass."],
                 ["Do I fill out a form for a human tester?", "No. The MCP creates the request from the same URL and work context your agent already has."],
-                ["Does the human tester need MCP?", "No. Testers sign in to the BUD website, take an available test, and record it in their browser."],
-                ["How do tester qualifications and paid tests work?", "A new tester completes one unpaid qualification for an initial verified score. Once approved, they can claim paid tests with the amount and expected time shown before acceptance."]
+                ["Does the human tester need MCP?", "No. Testers either claim a test on the BUD website or open a private invite link, then record it in their browser."],
+                ["How do tester qualifications and paid tests work?", "A new tester completes one unpaid 15-minute qualification for an initial verified score. Once approved, they can claim paid tests with the amount and expected time shown before starting."]
               ].map(([question, answer]) => (
                 <details key={question} className="group py-5">
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-black focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-accent">
