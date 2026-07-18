@@ -287,7 +287,7 @@ export default function TesterApplicationPage({
             </div>
             <h1 className="text-4xl font-black sm:text-5xl">Choose your first test</h1>
             <p className="mx-auto mt-5 max-w-md text-lg font-semibold leading-relaxed text-slate-600">
-              Your application is ready. Take one available qualification when you have a computer and about 30 minutes.
+              Your application is ready. Take one available qualification when you have a computer and about 15 minutes.
             </p>
             <a
               href="/testers/jobs"

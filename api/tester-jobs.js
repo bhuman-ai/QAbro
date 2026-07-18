@@ -17,7 +17,7 @@ function testerJobView(request, options = {}) {
       safe.review_type === "specific_flow" ? "specific_flow" : "general_first_time_user",
     test_focus: sanitizeString(safe.test_focus, 2400),
     expected_success: sanitizeString(safe.expected_success, 1600) || null,
-    duration_minutes: Math.max(10, Math.min(60, Number(safe.duration_minutes) || 30)),
+    duration_minutes: Math.max(10, Math.min(60, Number(safe.duration_minutes) || 15)),
     assignment_type: safe.assignment_type === "paid" ? "paid" : "qualification",
     tester_pay_cents: Math.max(0, Math.round(Number(safe.tester_pay_cents) || 0)),
     tester_pay_currency: sanitizeString(safe.tester_pay_currency, 3).toUpperCase() || "USD",

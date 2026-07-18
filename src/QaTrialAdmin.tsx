@@ -7,6 +7,7 @@ import {
   ExternalLink,
   LoaderCircle,
   Plus,
+  Send,
   Star,
   UserRoundCheck
 } from "lucide-react";
@@ -72,6 +73,7 @@ export default function QaTrialAdmin({ search }: { search: string }) {
   const [requests, setRequests] = useState<HumanTestRequest[]>([]);
   const [availableRequests, setAvailableRequests] = useState<HumanTestRequest[]>([]);
   const [humanRequestId, setHumanRequestId] = useState("");
+  const [humanRequestAction, setHumanRequestAction] = useState<"publish" | "invite" | "">("");
   const [selectedId, setSelectedId] = useState(initialSessionId);
   const [selected, setSelected] = useState<QaTrialView | null>(null);
   const [created, setCreated] = useState<CreatedTrial | null>(null);
@@ -139,6 +141,28 @@ export default function QaTrialAdmin({ search }: { search: string }) {
     setError("");
     try {
       if (humanRequestId) {
+        if (humanRequestAction === "invite") {
+          const invitedEmail = form.testerEmail.trim();
+          const response = await apiFetch<CreatedTrial>("/api/human-test-requests", {
+            method: "POST",
+            body: {
+              action: "assign",
+              request_id: humanRequestId,
+              tester_name: form.testerName,
+              tester_email: invitedEmail
+            }
+          });
+          setCreated(response);
+          setSelectedId(response.session_id);
+          setSelected(response.trial);
+          setPublishedMessage(`Private test reserved for ${invitedEmail}.`);
+          setHumanRequestId("");
+          setHumanRequestAction("");
+          setForm(EMPTY_FORM);
+          await Promise.all([loadItems(), loadRequests()]);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          return;
+        }
         await apiFetch("/api/human-test-requests", {
           method: "POST",
           body: {
@@ -157,6 +181,7 @@ export default function QaTrialAdmin({ search }: { search: string }) {
             : `${form.productName} is available as a qualification.`
         );
         setHumanRequestId("");
+        setHumanRequestAction("");
         setForm(EMPTY_FORM);
         await loadRequests();
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -205,6 +230,7 @@ export default function QaTrialAdmin({ search }: { search: string }) {
 
   function chooseHumanRequest(request: HumanTestRequest) {
     setHumanRequestId(request.id);
+    setHumanRequestAction("publish");
     setCreated(null);
     setPublishedMessage("");
     setForm((current) => ({
@@ -216,6 +242,23 @@ export default function QaTrialAdmin({ search }: { search: string }) {
       assignmentType: "paid",
       testerPay: request.tester_pay_cents ? String(request.tester_pay_cents / 100) : ""
     }));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function chooseInviteRequest(request: HumanTestRequest) {
+    setHumanRequestId(request.id);
+    setHumanRequestAction("invite");
+    setCreated(null);
+    setPublishedMessage("");
+    setForm({
+      ...EMPTY_FORM,
+      productName: request.product_name,
+      targetUrl: request.target_url,
+      leadEmail: request.owner_email,
+      testFocus: request.test_focus,
+      assignmentType: request.assignment_type,
+      testerPay: request.tester_pay_cents ? String(request.tester_pay_cents / 100) : ""
+    });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -287,6 +330,9 @@ export default function QaTrialAdmin({ search }: { search: string }) {
     return <div className="flex min-h-screen items-center justify-center bg-brand-bg"><LoaderCircle className="h-6 w-6 animate-spin text-brand-accent" /></div>;
   }
 
+  const publishingRequest = Boolean(humanRequestId && humanRequestAction === "publish");
+  const invitingTester = Boolean(humanRequestId && humanRequestAction === "invite");
+
   return (
     <div className="min-h-screen bg-brand-bg text-brand-ink">
       <header className="border-b border-brand-line bg-white px-4 py-4">
@@ -347,7 +393,7 @@ export default function QaTrialAdmin({ search }: { search: string }) {
             <div className="flex items-center justify-between gap-4 px-4 py-4">
               <div>
                 <h2 className="text-lg font-black">Available to testers</h2>
-                <p className="mt-1 text-sm font-semibold text-brand-muted">These can now be claimed from the tester jobs page.</p>
+                <p className="mt-1 text-sm font-semibold text-brand-muted">Let a tester claim one, or send it directly to someone who is ready.</p>
               </div>
               <span className="text-sm font-black text-brand-success">{availableRequests.length}</span>
             </div>
@@ -362,7 +408,14 @@ export default function QaTrialAdmin({ search }: { search: string }) {
                         : "Qualification · waiting to be claimed"}
                     </div>
                   </div>
-                  <Check className="h-5 w-5 shrink-0 text-brand-success" />
+                  <button
+                    type="button"
+                    onClick={() => chooseInviteRequest(request)}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-brand-ink px-4 py-3 text-sm font-black text-white transition hover:bg-brand-accent"
+                  >
+                    <Send className="h-4 w-4" />
+                    Invite tester
+                  </button>
                 </div>
               ))}
             </div>
@@ -376,71 +429,108 @@ export default function QaTrialAdmin({ search }: { search: string }) {
             </div>
             <div>
               <h1 className="text-3xl font-black">
-                {humanRequestId ? "Publish for testers" : testerName ? `Set up ${testerName}'s qualification` : "Pair a free test"}
+                {publishingRequest
+                  ? "Publish for testers"
+                  : invitingTester
+                    ? `Invite a tester to ${form.productName}`
+                    : testerName
+                      ? `Set up ${testerName}'s qualification`
+                      : "Pair a free test"}
               </h1>
               <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted">
-                {humanRequestId
+                {publishingRequest
                   ? "The customer brief is ready. Add private review points before testers can see it."
+                  : invitingTester
+                    ? "They get one private link that opens this brief and starts the recording."
                   : "The customer gets a free report. The new tester earns their first verified score."}
               </p>
             </div>
           </div>
 
           <form className="mt-8 grid gap-5" onSubmit={createTrial}>
-            {humanRequestId ? (
+            {publishingRequest || invitingTester ? (
               <>
                 <div className="border-y border-brand-line py-5">
                   <div className="text-sm font-black text-brand-accent">{form.productName}</div>
                   <p className="mt-2 font-semibold leading-7 text-brand-muted">{form.testFocus}</p>
                   <p className="mt-3 break-all text-xs font-bold text-brand-muted">{form.targetUrl}</p>
                 </div>
-                <fieldset>
-                  <legend className="text-sm font-black">Who is this for?</legend>
-                  <div className="mt-2 grid grid-cols-2 gap-2 rounded-xl bg-brand-bg p-1">
-                    {([
-                      ["paid", "Approved tester"],
-                      ["qualification", "New tester"]
-                    ] as const).map(([value, label]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        aria-pressed={form.assignmentType === value}
-                        onClick={() => setForm((current) => ({
-                          ...current,
-                          assignmentType: value,
-                          testerPay: value === "paid" ? current.testerPay : ""
-                        }))}
-                        className={`min-h-11 rounded-lg px-3 text-sm font-black ${
-                          form.assignmentType === value ? "bg-white text-brand-ink shadow-sm" : "text-brand-muted"
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </fieldset>
-                {form.assignmentType === "paid" ? (
-                  <label className="grid gap-2 text-sm font-black">
-                    Tester pay
-                    <div className="flex items-center rounded-xl border border-brand-line bg-white px-4 focus-within:border-brand-accent">
-                      <span className="font-black text-brand-muted">$</span>
+                {publishingRequest ? (
+                  <>
+                    <fieldset>
+                      <legend className="text-sm font-black">Who is this for?</legend>
+                      <div className="mt-2 grid grid-cols-2 gap-2 rounded-xl bg-brand-bg p-1">
+                        {([
+                          ["paid", "Approved tester"],
+                          ["qualification", "New tester"]
+                        ] as const).map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            aria-pressed={form.assignmentType === value}
+                            onClick={() => setForm((current) => ({
+                              ...current,
+                              assignmentType: value,
+                              testerPay: value === "paid" ? current.testerPay : ""
+                            }))}
+                            className={`min-h-11 rounded-lg px-3 text-sm font-black ${
+                              form.assignmentType === value ? "bg-white text-brand-ink shadow-sm" : "text-brand-muted"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </fieldset>
+                    {form.assignmentType === "paid" ? (
+                      <label className="grid gap-2 text-sm font-black">
+                        Tester pay
+                        <div className="flex items-center rounded-xl border border-brand-line bg-white px-4 focus-within:border-brand-accent">
+                          <span className="font-black text-brand-muted">$</span>
+                          <input
+                            required
+                            min="1"
+                            step="0.01"
+                            type="number"
+                            inputMode="decimal"
+                            value={form.testerPay}
+                            onChange={(event) => setForm((current) => ({ ...current, testerPay: event.target.value }))}
+                            className="min-h-12 w-full px-2 font-semibold outline-none"
+                            placeholder="25"
+                          />
+                        </div>
+                        <span className="text-xs font-semibold text-brand-muted">
+                          This exact amount is shown before the tester claims the job.
+                        </span>
+                      </label>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <label className="grid gap-2 text-sm font-black">
+                      Tester name
+                      <input
+                        value={form.testerName}
+                        onChange={(event) => setForm((current) => ({ ...current, testerName: event.target.value }))}
+                        className="rounded-xl border border-brand-line px-4 py-3 font-semibold outline-none focus:border-brand-accent"
+                        placeholder="Haley Birch"
+                        autoComplete="name"
+                      />
+                    </label>
+                    <label className="grid gap-2 text-sm font-black">
+                      Tester email
                       <input
                         required
-                        min="1"
-                        step="0.01"
-                        type="number"
-                        inputMode="decimal"
-                        value={form.testerPay}
-                        onChange={(event) => setForm((current) => ({ ...current, testerPay: event.target.value }))}
-                        className="min-h-12 w-full px-2 font-semibold outline-none"
-                        placeholder="25"
+                        type="email"
+                        value={form.testerEmail}
+                        onChange={(event) => setForm((current) => ({ ...current, testerEmail: event.target.value }))}
+                        className="rounded-xl border border-brand-line px-4 py-3 font-semibold outline-none focus:border-brand-accent"
+                        placeholder="tester@example.com"
+                        autoComplete="email"
                       />
-                    </div>
-                    <span className="text-xs font-semibold text-brand-muted">
-                      This exact amount is shown before the tester claims the job.
-                    </span>
-                  </label>
-                ) : null}
+                    </label>
+                  </div>
+                )}
               </>
             ) : (
               <>
@@ -470,15 +560,17 @@ export default function QaTrialAdmin({ search }: { search: string }) {
               </>
             )}
 
-            <label className="grid gap-2 text-sm font-black">
-              Private review points
-              <textarea required value={form.knownIssues} onChange={(event) => setForm((current) => ({ ...current, knownIssues: event.target.value }))} className="min-h-28 rounded-xl border border-brand-line px-4 py-3 font-semibold outline-none focus:border-brand-accent" placeholder={"One known issue per line\nPhone field is easy to miss\nPassword error is unclear"} />
-              <span className="text-xs font-semibold text-brand-muted">Only BUD sees these. Use known issues or important areas the tester should notice.</span>
-            </label>
+            {!invitingTester ? (
+              <label className="grid gap-2 text-sm font-black">
+                Private review points
+                <textarea required value={form.knownIssues} onChange={(event) => setForm((current) => ({ ...current, knownIssues: event.target.value }))} className="min-h-28 rounded-xl border border-brand-line px-4 py-3 font-semibold outline-none focus:border-brand-accent" placeholder={"One known issue per line\nPhone field is easy to miss\nPassword error is unclear"} />
+                <span className="text-xs font-semibold text-brand-muted">Only BUD sees these. Use known issues or important areas the tester should notice.</span>
+              </label>
+            ) : null}
 
             <button disabled={busy} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-ink px-6 py-4 font-black text-white transition hover:bg-brand-accent disabled:opacity-60 sm:w-auto">
-              {busy ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Plus className="h-5 w-5" />}
-              {humanRequestId ? "Publish test" : "Pair trial"}
+              {busy ? <LoaderCircle className="h-5 w-5 animate-spin" /> : invitingTester ? <Send className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+              {publishingRequest ? "Publish test" : invitingTester ? "Send private invite" : "Pair trial"}
             </button>
           </form>
 

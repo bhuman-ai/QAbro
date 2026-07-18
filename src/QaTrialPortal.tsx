@@ -264,15 +264,23 @@ export default function QaTrialPortal({ search }: { search: string }) {
     return true;
   }
 
-  async function startTest() {
+  async function startTest(acceptFirst = false) {
     if (!navigator.mediaDevices?.getDisplayMedia || typeof MediaRecorder === "undefined") {
       setError("Use a current version of Chrome to record this trial.");
       return;
     }
     const targetWindow = window.open(trial?.target_url || "about:blank", "beforeusersdo-test-target");
     try {
-      const displayPromise = navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-      const [started, display] = await Promise.all([performAction("start"), displayPromise]);
+      const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      if (acceptFirst) {
+        const accepted = await performAction("accept");
+        if (!accepted) {
+          display.getTracks().forEach((track) => track.stop());
+          targetWindow?.close();
+          return;
+        }
+      }
+      const started = await performAction("start");
       if (!started) {
         display.getTracks().forEach((track) => track.stop());
         targetWindow?.close();
@@ -416,27 +424,43 @@ export default function QaTrialPortal({ search }: { search: string }) {
           ) : null}
 
           {!trial.consent.accepted ? (
-            <div className="mt-8 rounded-2xl bg-brand-bg p-6">
-              <h2 className="text-xl font-black">Before we start</h2>
-              <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted">
-                {trial.role === "tester"
-                  ? paidAssignment
-                    ? `This ${trial.duration_minutes}-minute test pays ${formatTesterPay(trial)}. Before Users Do approves payment after reviewing your submitted recording and report.`
-                    : `This one ${trial.duration_minutes}-minute qualification is unpaid. Your recording and report are shared with the product owner and scored against a private benchmark. A strong result becomes your first BUD Verified Trial.`
-                  : paidAssignment
+            trial.role === "tester" ? (
+              <div className="mt-8 border-t border-brand-line pt-8">
+                <p className="text-sm font-semibold leading-6 text-brand-muted">
+                  {paidAssignment
+                    ? `This ${trial.duration_minutes}-minute test pays ${formatTesterPay(trial)} after Before Users Do reviews the submitted recording and report.`
+                    : `This ${trial.duration_minutes}-minute qualification is unpaid. Your recording and report are shared with the product owner and scored for your first verified result.`}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void startTest(true)}
+                  disabled={busy}
+                  className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-xl bg-brand-accent px-6 py-5 text-lg font-black text-white transition hover:bg-brand-ink disabled:opacity-60"
+                >
+                  {busy ? <LoaderCircle className="h-6 w-6 animate-spin" /> : <MonitorUp className="h-6 w-6" />}
+                  {paidAssignment ? "Start paid test" : `Start ${trial.duration_minutes}-minute test`}
+                  <ArrowRight className="h-5 w-5" />
+                </button>
+              </div>
+            ) : (
+              <div className="mt-8 rounded-2xl bg-brand-bg p-6">
+                <h2 className="text-xl font-black">Approve this test</h2>
+                <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted">
+                  {paidAssignment
                     ? "An approved tester will follow your brief and record the full test. The report and evidence will appear here when it is submitted."
                     : "A new tester will review your product as their first BUD qualification. You receive the complete test for free and can rate how useful it was."}
-              </p>
-              <button
-                type="button"
-                onClick={() => void performAction("accept")}
-                disabled={busy}
-                className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-ink px-5 py-4 font-black text-white transition hover:bg-brand-accent disabled:opacity-60 sm:w-auto"
-              >
-                {busy ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
-                {trial.role === "tester" ? (paidAssignment ? "Accept paid test" : "Accept trial") : "Approve test"}
-              </button>
-            </div>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void performAction("accept")}
+                  disabled={busy}
+                  className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-ink px-5 py-4 font-black text-white transition hover:bg-brand-accent disabled:opacity-60 sm:w-auto"
+                >
+                  {busy ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
+                  Approve test
+                </button>
+              </div>
+            )
           ) : !otherPersonAccepted ? (
             <TrialState
               icon={<LoaderCircle className="h-7 w-7 animate-spin" />}
