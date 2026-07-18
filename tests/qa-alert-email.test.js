@@ -5,6 +5,7 @@ const nodemailer = require("nodemailer");
 const {
   buildQaTrialInviteEmailContent,
   buildTesterJobAvailableEmailContent,
+  getQaAlertEmailConfigurationError,
   isQaAlertEmailConfigured,
   normalizeAlertEmailList,
   sendQaAlertEmail,
@@ -42,18 +43,76 @@ test("normalizeAlertEmailList dedupes and lowercases recipients", () => {
   ]);
 });
 
-test("isQaAlertEmailConfigured requires SMTP host, auth, and from address", () => {
+test("isQaAlertEmailConfigured requires SMTP auth and a Before Users Do sender", () => {
   assert.equal(
     isQaAlertEmailConfigured({
       QA_ALERT_EMAIL_SMTP_HOST: "smtp.example.com",
       QA_ALERT_EMAIL_SMTP_PORT: "465",
-      QA_ALERT_EMAIL_SMTP_USERNAME: "alerts@example.com",
+      QA_ALERT_EMAIL_SMTP_USERNAME: "alerts@beforeusersdo.com",
       QA_ALERT_EMAIL_SMTP_PASSWORD: "secret",
-      QA_ALERT_EMAIL_FROM: "Swarm Tester <alerts@example.com>"
+      QA_ALERT_EMAIL_FROM: "Before Users Do <alerts@beforeusersdo.com>"
+    }),
+    true
+  );
+  const unrelatedProject = {
+    QA_ALERT_EMAIL_SMTP_HOST: "smtp.example.com",
+    QA_ALERT_EMAIL_SMTP_PORT: "465",
+    QA_ALERT_EMAIL_SMTP_USERNAME: "alerts@example.com",
+    QA_ALERT_EMAIL_SMTP_PASSWORD: "secret",
+    QA_ALERT_EMAIL_FROM: "Other Project <alerts@otherproject.com>"
+  };
+  assert.equal(isQaAlertEmailConfigured(unrelatedProject), false);
+  assert.match(getQaAlertEmailConfigurationError(unrelatedProject), /must use beforeusersdo\.com/i);
+  assert.match(
+    getQaAlertEmailConfigurationError({
+      ...unrelatedProject,
+      QA_ALERT_EMAIL_FROM: "Before Users Do <alerts@beforeusersdo.com>"
+    }),
+    /SMTP account must use beforeusersdo\.com/i
+  );
+  assert.equal(
+    isQaAlertEmailConfigured({
+      ...unrelatedProject,
+      QA_ALERT_EMAIL_SMTP_USERNAME: "opaque-provider-token",
+      QA_ALERT_EMAIL_FROM: "Before Users Do <alerts@beforeusersdo.com>"
     }),
     true
   );
   assert.equal(isQaAlertEmailConfigured({}), false);
+});
+
+test("sendQaAlertEmail refuses an unrelated project sender before opening SMTP", async () => {
+  const originalCreateTransport = nodemailer.createTransport;
+  let transportCreated = false;
+  nodemailer.createTransport = () => {
+    transportCreated = true;
+    throw new Error("transport should not be created");
+  };
+
+  try {
+    const result = await sendQaAlertEmail(
+      {
+        schedule: { alert_email_to: "owner@example.com" },
+        alert: { title: "Test alert" }
+      },
+      {
+        env: {
+          QA_ALERT_EMAIL_SMTP_HOST: "smtp.example.com",
+          QA_ALERT_EMAIL_SMTP_PORT: "465",
+          QA_ALERT_EMAIL_SMTP_USERNAME: "alerts@otherproject.com",
+          QA_ALERT_EMAIL_SMTP_PASSWORD: "secret",
+          QA_ALERT_EMAIL_FROM: "Other Project <alerts@otherproject.com>"
+        }
+      }
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(result.skipped, true);
+    assert.match(result.error, /must use beforeusersdo\.com/i);
+    assert.equal(transportCreated, false);
+  } finally {
+    nodemailer.createTransport = originalCreateTransport;
+  }
 });
 
 test("trial invitation copy uses Before Users Do branding and the private role link", () => {
@@ -152,10 +211,10 @@ test("sendQaAlertEmail sends the scheduled QA alert to the configured recipient"
         QA_ALERT_EMAIL_SMTP_HOST: "smtp.example.com",
         QA_ALERT_EMAIL_SMTP_PORT: "465",
         QA_ALERT_EMAIL_SMTP_SECURE: "true",
-        QA_ALERT_EMAIL_SMTP_USERNAME: "alerts@example.com",
+        QA_ALERT_EMAIL_SMTP_USERNAME: "alerts@beforeusersdo.com",
         QA_ALERT_EMAIL_SMTP_PASSWORD: "secret",
-        QA_ALERT_EMAIL_FROM: "Swarm Tester <alerts@example.com>",
-        QA_ALERT_EMAIL_REPLY_TO: "support@example.com"
+        QA_ALERT_EMAIL_FROM: "Before Users Do <alerts@beforeusersdo.com>",
+        QA_ALERT_EMAIL_REPLY_TO: "support@beforeusersdo.com"
       },
       () =>
         sendQaAlertEmail({
@@ -168,7 +227,7 @@ test("sendQaAlertEmail sends the scheduled QA alert to the configured recipient"
             title: "Sign-up returned to the login screen",
             message: "The tester clicked Sign up and got sent back to the login page.",
             severity: "high",
-            ui_report_url: "https://swarmtester.com/dashboard?view=report&run_id=run_123&brand=clusterseo.com"
+            ui_report_url: "https://beforeusersdo.com/dashboard?view=report&run_id=run_123&brand=clusterseo.com"
           },
           report: {
             run_id: "run_123",
@@ -184,8 +243,10 @@ test("sendQaAlertEmail sends the scheduled QA alert to the configured recipient"
     assert.equal(transportConfig.secure, true);
     assert.deepEqual(mailPayload.to, ["team@example.com"]);
     assert.match(String(mailPayload.subject || ""), /Sign-up returned to the login screen/);
+    assert.match(String(mailPayload.subject || ""), /Before Users Do/);
+    assert.doesNotMatch(String(mailPayload.subject || ""), /SwarmTester/i);
     assert.match(String(mailPayload.text || ""), /Open report:/);
-    assert.equal(mailPayload.replyTo, "support@example.com");
+    assert.equal(mailPayload.replyTo, "support@beforeusersdo.com");
   } finally {
     nodemailer.createTransport = originalCreateTransport;
   }
@@ -207,10 +268,10 @@ test("sendTesterJobAvailableEmail sends one private tester-board link", async ()
         QA_ALERT_EMAIL_SMTP_HOST: "smtp.example.com",
         QA_ALERT_EMAIL_SMTP_PORT: "465",
         QA_ALERT_EMAIL_SMTP_SECURE: "true",
-        QA_ALERT_EMAIL_SMTP_USERNAME: "alerts@example.com",
+        QA_ALERT_EMAIL_SMTP_USERNAME: "alerts@beforeusersdo.com",
         QA_ALERT_EMAIL_SMTP_PASSWORD: "secret",
-        QA_ALERT_EMAIL_FROM: "Before Users Do <alerts@example.com>",
-        QA_ALERT_EMAIL_REPLY_TO: "support@example.com"
+        QA_ALERT_EMAIL_FROM: "Before Users Do <alerts@beforeusersdo.com>",
+        QA_ALERT_EMAIL_REPLY_TO: "support@beforeusersdo.com"
       },
       () =>
         sendTesterJobAvailableEmail({
@@ -225,7 +286,7 @@ test("sendTesterJobAvailableEmail sends one private tester-board link", async ()
     assert.equal(result.messageId, "tester_job_123");
     assert.deepEqual(mailPayload.to, ["maya@example.com"]);
     assert.match(mailPayload.text, /https:\/\/beforeusersdo\.com\/testers\/jobs/);
-    assert.equal(mailPayload.replyTo, "support@example.com");
+    assert.equal(mailPayload.replyTo, "support@beforeusersdo.com");
   } finally {
     nodemailer.createTransport = originalCreateTransport;
   }

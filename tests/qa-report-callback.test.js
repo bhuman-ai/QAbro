@@ -572,9 +572,9 @@ test("qa-report-callback sends scheduled QA alert emails when a recipient is con
         QA_ALERT_EMAIL_SMTP_HOST: "smtp.example.com",
         QA_ALERT_EMAIL_SMTP_PORT: "465",
         QA_ALERT_EMAIL_SMTP_SECURE: "true",
-        QA_ALERT_EMAIL_SMTP_USERNAME: "alerts@example.com",
+        QA_ALERT_EMAIL_SMTP_USERNAME: "alerts@beforeusersdo.com",
         QA_ALERT_EMAIL_SMTP_PASSWORD: "secret",
-        QA_ALERT_EMAIL_FROM: "Swarm Tester <alerts@example.com>"
+        QA_ALERT_EMAIL_FROM: "Before Users Do <alerts@beforeusersdo.com>"
       },
       async () => {
         const req = {
@@ -646,4 +646,5 @@ test("qa-report-callback sends scheduled QA alert emails when a recipient is con
   assert.ok(sentMail);
   assert.deepEqual(sentMail.to, ["alerts@example.com"]);
   assert.match(String(sentMail.subject || ""), /Sign-up returned to the login screen/);
+  assert.match(String(sentMail.subject || ""), /Before Users Do/);
 });
