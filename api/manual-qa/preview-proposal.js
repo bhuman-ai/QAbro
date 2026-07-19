@@ -2,6 +2,7 @@ const { parseRequestBody, sanitizeString } = require("../../lib/qa-core");
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
 const {
   buildManualQaCaptureSessionView,
+  buildManualQaReportSessionView,
   recordManualQaPreviewProposal,
   verifyManualQaWidgetToken
 } = require("../../lib/manual-qa");
@@ -123,6 +124,6 @@ module.exports = async (req, res) => {
     ok: true,
     session_id: sessionId,
     preview_proposal: recorded.proposal,
-    session: recorded.session
+    session: buildManualQaReportSessionView(recorded.session)
   });
 };

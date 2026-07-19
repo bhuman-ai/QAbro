@@ -4,8 +4,8 @@
 
 - **Primary Action:** Watch the tester's recording, then open the exact recording moment behind a completed finding.
 - **Primary Risk:** Presenting a tester note, an unfinished analysis, or a missing signal as if it were a finding from the recording.
-- **Information Budget:** One recording-analysis state, one recording player, one completed findings digest, one supplemental tester note, one test brief, and one secondary review handoff.
-- **View Model Contract:** Submitted sessions show read-only evidence. The system transcribes the recording's audio and inspects its visible activity; only that analysis may produce findings. Notes and the requested flow are supplemental context, never findings sources. Before analysis completes, one status replaces the entire digest and `Copy report` is disabled. Setup controls, checklist metrics, note editors, raw URLs, raw transcript, and capture diagnostics are hidden from the default view. Active sessions keep the existing workbench.
+- **Information Budget:** One recording-analysis state, one recording player, Problems, What worked, Suggested fixes, one collapsed observations disclosure, one supplemental tester note, one test brief, and one secondary review handoff.
+- **View Model Contract:** Submitted sessions show read-only evidence. The system transcribes the recording's audio and inspects its visible activity; only that analysis may produce findings. New findings also pass independent semantic verification against their exact anchors. Notes and the requested flow are supplemental context, never findings sources. Suggestions are labeled AI recommendations tied to verified problems. Before analysis completes, one status replaces the entire digest and `Copy report` is disabled. Empty sections, setup controls, checklist metrics, note editors, raw URLs, raw transcript, and capture diagnostics are hidden from the default view. Active sessions keep the existing workbench.
 - **Archetype:** Focused report reader inside the repo's guided-triage inbox.
 
 ## R1 — Recording-First Story
@@ -24,16 +24,18 @@ RECORDING                         Part 1 of 82
 [Previous]          Continue through clips          [Next]
 
 WHAT THE TESTER FOUND
-Bugs
-• The primary action did not respond in Chrome.
+Problems
+Bug · The primary action did not respond in Chrome.
   [Watch part 23 at 0:06]
 
-Frustrations
-• The tester hesitated after the action produced no response.
+Friction · The tester hesitated after the action produced no response.
   [Watch part 23 at 0:08]
 
-Aha moments
-None found in the recording.
+Suggested fixes
+• Repair the Chrome action and make its result visible.
+  AI recommendation based on the problem above.
+
+More observations (3) ▾
 
 TESTER'S NOTE · SUPPLEMENTAL
 “...”
@@ -46,7 +48,8 @@ WHAT THEY WERE ASKED TO DO
 
 - Simplified: one reading column and one proof surface.
 - Merged: 82 segments become one playlist.
-- Explained: completed audio transcription and visual analysis become one vertical Bugs / Frustrations / Aha digest immediately after proof.
+- Explained: completed audio transcription, visual analysis, and semantic verification become one vertical Problems / What worked / Suggested fixes digest immediately after proof.
+- Reduced: empty sections disappear and neutral observations stay collapsed under `More observations`.
 - Evidence-linked: every supported finding can select its clip and seek to its clip-relative timestamp.
 - Safe to share: `Copy report` is disabled until analysis completes, then mirrors only the recording-derived digest and omits the tester note as evidence, internal agent tasks, benchmark data, developer context, raw transcript, and raw evidence URLs.
 - Hidden: widget setup, checklist metrics, status editor, raw transcript, raw links, agent context, capture logs.
@@ -62,7 +65,7 @@ complete     Recording-derived digest + timestamp evidence + [Copy report]
 failed       We couldn't analyze the recording. [Try again, only when retryable]
 ```
 
-Category headings and empty-category claims stay hidden in `not_started`, `queued`, `processing`, and `failed`. `Copy report` stays disabled in those states. The recording remains playable whenever media is available. The raw transcript appears only inside collapsed `Technical details`.
+Finding sections and empty conclusions stay hidden in `not_started`, `queued`, `processing`, and `failed`. `Copy report` stays disabled in those states. On completion, empty sections remain hidden and a fully empty digest uses one plain sentence. The recording remains playable whenever media is available. The raw transcript appears only inside collapsed `Technical details`.
 Submitted legacy recordings enter the same automatic analysis queue without a second tester action.
 
 ## R2 — Proof And Takeaway Split

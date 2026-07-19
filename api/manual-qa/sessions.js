@@ -5,6 +5,7 @@ const {
 } = require("../../lib/qa-core");
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
 const {
+  buildManualQaReportSessionView,
   createManualQaSession,
   getManualQaSession,
   listManualQaSessions
@@ -60,7 +61,10 @@ module.exports = async (req, res) => {
       if (!loaded.ok) {
         return res.status(loaded.status || 500).json({ ok: false, error: loaded.error });
       }
-      return res.status(200).json({ ok: true, session: loaded.session });
+      return res.status(200).json({
+        ok: true,
+        session: buildManualQaReportSessionView(loaded.session)
+      });
     }
 
     const listed = await listManualQaSessions({
@@ -71,7 +75,10 @@ module.exports = async (req, res) => {
     if (!listed.ok) {
       return res.status(listed.status || 500).json({ ok: false, error: listed.error });
     }
-    return res.status(200).json({ ok: true, items: listed.items });
+    return res.status(200).json({
+      ok: true,
+      items: listed.items.map(buildManualQaReportSessionView)
+    });
   }
 
   if (req.method === "POST") {
@@ -93,7 +100,7 @@ module.exports = async (req, res) => {
     }
     return res.status(201).json({
       ok: true,
-      session: created.session,
+      session: buildManualQaReportSessionView(created.session),
       session_id: created.session.session_id,
       review_url: created.widget_install?.review_url || created.session.target_url,
       manual_session_url: created.session.session_url,

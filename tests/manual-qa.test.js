@@ -7,6 +7,7 @@ const {
   buildManualQaCaptureSessionView,
   buildManualQaChecklist,
   buildManualQaCustomerReportMarkdown,
+  buildManualQaReportSessionView,
   buildManualQaRecordingFingerprint,
   buildManualQaRecordingSetFingerprint,
   buildManualQaSessionPayload,
@@ -1282,6 +1283,8 @@ test("customer human-test export matches the visible findings report without int
           category: "frustration",
           title: "The main button was unclear",
           summary: "The tester hesitated because the button did not explain the next step.",
+          suggested_fix:
+            "Rename the button so its next action is explicit. Review https://ciaro.pro/reset?token=SECRET-SUGGESTION-TOKEN.",
           evidence_anchors: [
             {
               evidence_id: "video-23",
@@ -1292,6 +1295,34 @@ test("customer human-test export matches the visible findings report without int
             }
           ],
           confidence: 0.95
+        },
+        {
+          finding_id: "finding_worked",
+          category: "aha_moment",
+          title: "The tester understood the next step",
+          summary: "The recording captured a moment of understanding.",
+          evidence_anchors: [{
+            evidence_id: "video-23",
+            recording_index: 23,
+            start_ms: 6000,
+            end_ms: 9000,
+            quote: "I cannot tell what this button will do."
+          }],
+          confidence: 0.8
+        },
+        {
+          finding_id: "finding_observation",
+          category: "observation",
+          title: "The tester paused on the button",
+          summary: "A neutral recording observation was retained for optional review.",
+          evidence_anchors: [{
+            evidence_id: "video-23",
+            recording_index: 23,
+            start_ms: 6000,
+            end_ms: 9000,
+            quote: "I cannot tell what this button will do."
+          }],
+          confidence: 0.7
         }
       ]
     },
@@ -1307,13 +1338,45 @@ test("customer human-test export matches the visible findings report without int
   });
 
   assert.match(completeMarkdown, /Status: Ready/);
-  assert.match(completeMarkdown, /### Frustrations/);
+  assert.match(completeMarkdown, /### Problems/);
+  assert.match(completeMarkdown, /Friction: The main button was unclear/);
   assert.match(completeMarkdown, /The main button was unclear/);
+  assert.match(completeMarkdown, /### Suggested fixes/);
+  assert.match(completeMarkdown, /AI recommendations based on the recording-backed problems above/);
+  assert.match(completeMarkdown, /Rename the button so its next action is explicit/);
+  assert.match(completeMarkdown, /token=\[redacted\]|token=%5Bredacted%5D/);
+  assert.doesNotMatch(completeMarkdown, /SECRET-SUGGESTION-TOKEN/);
+  assert.match(completeMarkdown, /### What worked/);
+  assert.match(completeMarkdown, /The tester understood the next step/);
+  assert.match(completeMarkdown, /### More observations/);
+  assert.match(completeMarkdown, /The tester paused on the button/);
   assert.match(completeMarkdown, /Source: Video and transcript/);
   assert.match(completeMarkdown, /Evidence: Watch part 23 at 0:06/);
   assert.match(completeMarkdown, /I cannot tell what this button will do/);
   assert.match(completeMarkdown, /Tester note \(supplemental\)/);
+  assert.doesNotMatch(completeMarkdown, /### Bugs|### Frustrations|### Aha moments|Other observations/);
   assert.doesNotMatch(completeMarkdown, /api\/manual-qa\/evidence|INTERNAL ONLY/);
+});
+
+test("a completed recording with no findings uses one plain empty state", () => {
+  const sessionId = "manual-empty-findings";
+  const recording = makeFinalRecording(sessionId, 1);
+  const session = {
+    session_id: sessionId,
+    title: "Empty findings report",
+    status: "manual_completed",
+    qualification_trial: {
+      status: "submitted",
+      submitted_at: "2026-07-19T05:00:00.000Z"
+    },
+    checklist: [{ id: "freestyle", title: "Review", evidence_media: [recording] }]
+  };
+  const markdown = buildManualQaCustomerReportMarkdown({
+    ...session,
+    findings_analysis: makeCompleteRecordingAnalysis(session)
+  });
+  assert.match(markdown, /No clear findings were identified in the recording/);
+  assert.doesNotMatch(markdown, /### Problems|### What worked|### Suggested fixes|### More observations/);
 });
 
 test("recording analysis media is deduped, numerically ordered, and fingerprinted", () => {
@@ -1460,6 +1523,26 @@ test("raw complete analysis schema cannot normalize malformed findings into an e
   const recordings = collectManualQaRecordingMedia(session);
   const valid = makeCompleteRecordingAnalysis(session);
   assert.equal(manualQaPrivate.validateRawCompleteFindingsAnalysis(valid, recordings).ok, true);
+  const normalizedFrustration = {
+    ...valid,
+    findings: [{
+      category: "frustration_point",
+      title: "The next step was unclear",
+      summary: "The tester could not identify the next step.",
+      confidence: 0.9,
+      evidence_anchors: [{
+        evidence_id: "video-1",
+        recording_index: 1,
+        start_ms: 0,
+        end_ms: 1000,
+        quote: "I cannot find the next step."
+      }]
+    }]
+  };
+  assert.equal(
+    manualQaPrivate.validateRawCompleteFindingsAnalysis(normalizedFrustration, recordings).ok,
+    true
+  );
 
   const unknownCategory = {
     ...valid,
@@ -1579,6 +1662,7 @@ test("historical recording-derived analysis remains valid without a post-submit 
   });
   assert.equal(normalized.findings_analysis.status, "complete");
   assert.equal(normalized.findings_analysis.findings[0].title, "Historical recording finding");
+  assert.equal(normalized.findings_analysis.ai_usage, null);
   assert.equal(normalized.work_packets.length, 1);
   assert.equal(normalized.work_packets[0].title, "Historical recording finding");
   assert.equal(
@@ -2004,26 +2088,66 @@ test("a changed recording fingerprint starts a fresh attempt budget", async () =
       lease_expires_at: null,
       error_code: "clip_analysis_failed",
       retryable: true,
+      ai_usage: {
+        provider: "openrouter",
+        currency: "USD",
+        tracking_available: true,
+        cost_complete: true,
+        total_cost_usd: 0.05,
+        request_count: 1,
+        priced_request_count: 1
+      },
       findings: []
     },
     options
   );
   assert.equal(failed.ok, true);
   assert.equal(failed.analysis.attempt_count, 1);
+  assert.equal(failed.analysis.ai_usage.total_cost_usd, 0.05);
 
-  const second = makeFinalRecording(created.session.session_id, 2);
+  const sameRecordingRetry = await queueManualQaFindingsAnalysis(
+    created.session.session_id,
+    { ...options, retry: true }
+  );
+  assert.equal(sameRecordingRetry.ok, true);
+  assert.equal(sameRecordingRetry.analysis.ai_usage.total_cost_usd, 0.05);
+  assert.equal(sameRecordingRetry.analysis.analysis_id, queued.analysis.analysis_id);
+
+  const oversizedReplacement = Array.from({ length: 241 }, (_entry, index) =>
+    makeFinalRecording(created.session.session_id, index + 1)
+  );
   await updateManualQaItem(
     created.session.session_id,
     itemId,
-    { evidence_media: [first, second] },
-    options
+    { evidence_media: oversizedReplacement },
+    { ...options, skipJournal: true }
   );
+  const rejectedReplacement = await queueManualQaFindingsAnalysis(
+    created.session.session_id,
+    { ...options, retry: true }
+  );
+  assert.equal(rejectedReplacement.ok, true);
+  assert.equal(rejectedReplacement.analysis.error_code, "recording_limit_exceeded");
+  assert.notEqual(rejectedReplacement.analysis.analysis_id, queued.analysis.analysis_id);
+  assert.equal(rejectedReplacement.analysis.ai_usage, null);
+  assert.deepEqual(rejectedReplacement.analysis.clip_results, []);
+
+  const second = makeFinalRecording(created.session.session_id, 2);
+  const restoredRecordingSet = await updateManualQaItem(
+    created.session.session_id,
+    itemId,
+    { evidence_media: [first, second] },
+    { ...options, skipJournal: true }
+  );
+  assert.equal(restoredRecordingSet.ok, true, JSON.stringify(restoredRecordingSet));
+  assert.equal(restoredRecordingSet.item.evidence_media.length, 2);
   const requeued = await queueManualQaFindingsAnalysis(created.session.session_id, { ...options, retry: true });
   assert.equal(requeued.ok, true, JSON.stringify(requeued));
-  assert.equal(requeued.analysis.status, "queued");
+  assert.equal(requeued.analysis.status, "queued", JSON.stringify(requeued));
   assert.equal(requeued.analysis.attempt_count, 0);
   assert.notEqual(requeued.analysis.analysis_id, queued.analysis.analysis_id);
   assert.deepEqual(requeued.analysis.clip_results, []);
+  assert.equal(requeued.analysis.ai_usage, null);
 });
 
 test("retry cap becomes a persisted nonretryable terminal state", async () => {
@@ -2428,6 +2552,56 @@ test("a same-timestamp submit race cannot be overwritten by a stale item snapsho
   assert.notEqual(stored.checklist[0].note, "This stale note must not replace submitted state.");
 });
 
+test("report session responses keep presentation data but strip analysis telemetry", () => {
+  const view = buildManualQaReportSessionView({
+    session_id: "manual-presentation",
+    findingsAnalysis: { aiUsage: { totalCostUsd: 999 } },
+    findings_analysis: {
+      analysis_id: "internal-analysis",
+      status: "complete",
+      lease_id: "internal-lease",
+      lease_expires_at: "2026-07-19T06:00:00.000Z",
+      attempt_count: 2,
+      recording_fingerprint: "internal-fingerprint",
+      model: "internal-model",
+      aggregation_model: "internal-aggregator",
+      verification_model: "internal-verifier",
+      semantic_verification_version: 1,
+      ai_usage: {
+        provider: "openrouter",
+        total_cost_usd: 0.123,
+        request_count: 3
+      },
+      clip_results: [{
+        evidence_id: "video-1",
+        recording_index: 1,
+        status: "complete",
+        speech_segments: [{ start_ms: 0, end_ms: 1000, text: "Visible transcript" }]
+      }],
+      findings: [{ title: "Visible finding" }]
+    }
+  });
+
+  assert.equal(view.findings_analysis.status, "complete");
+  assert.equal(view.findings_analysis.clip_results[0].speech_segments[0].text, "Visible transcript");
+  assert.equal(view.findings_analysis.findings[0].title, "Visible finding");
+  assert.equal(Object.prototype.hasOwnProperty.call(view, "findingsAnalysis"), false);
+  for (const key of [
+    "analysis_id",
+    "lease_id",
+    "lease_expires_at",
+    "attempt_count",
+    "recording_fingerprint",
+    "model",
+    "aggregation_model",
+    "verification_model",
+    "semantic_verification_version",
+    "ai_usage"
+  ]) {
+    assert.equal(Object.prototype.hasOwnProperty.call(view.findings_analysis, key), false, key);
+  }
+});
+
 test("customer JSON removes raw analysis internals and legacy findings", () => {
   const sessionId = "manual-customer-json";
   const recording = makeFinalRecording(sessionId, 1);
@@ -2466,6 +2640,17 @@ test("customer JSON removes raw analysis internals and legacy findings", () => {
       media_count: 1,
       processed_media_count: 1,
       model: "INTERNAL_MODEL",
+      aggregation_model: "INTERNAL_AGGREGATION_MODEL",
+      verification_model: "INTERNAL_VERIFICATION_MODEL",
+      ai_usage: {
+        provider: "INTERNAL_PROVIDER",
+        currency: "USD",
+        tracking_available: true,
+        cost_complete: true,
+        total_cost_usd: 0.123,
+        request_count: 3,
+        priced_request_count: 3
+      },
       lease_id: "INTERNAL_LEASE",
       clip_results: [{
         evidence_id: "video-1",
@@ -2529,6 +2714,9 @@ test("customer JSON removes raw analysis internals and legacy findings", () => {
     "INTERNAL_PASSWORD",
     "INTERNAL_ANALYSIS_ID",
     "INTERNAL_MODEL",
+    "INTERNAL_AGGREGATION_MODEL",
+    "INTERNAL_VERIFICATION_MODEL",
+    "INTERNAL_PROVIDER",
     "INTERNAL_LEASE",
     "INTERNAL_CONSOLE"
   ]) {
@@ -2552,6 +2740,9 @@ test("customer JSON removes raw analysis internals and legacy findings", () => {
   assert.equal(Object.prototype.hasOwnProperty.call(processing.findings_analysis, "analysis_id"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(processing.findings_analysis, "recording_fingerprint"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(processing.findings_analysis, "model"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(processing.findings_analysis, "aggregation_model"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(processing.findings_analysis, "verification_model"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(processing.findings_analysis, "ai_usage"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(processing.findings_analysis, "lease_id"), false);
 
   const complete = makeCompleteRecordingAnalysis(session, {

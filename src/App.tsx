@@ -97,6 +97,7 @@ import type {
   ManualQaFindingsAnalysis,
   ManualQaItem,
   ManualQaSession,
+  ManualQaTranscriptEvent,
   ManualQaWorkPacket,
   McpTokenSummary,
   ProjectSummary,
@@ -6620,6 +6621,7 @@ function getManualQaRecordingFindingPackets(session: ManualQaSession) {
       category: finding.category,
       title: finding.title,
       summary: finding.summary,
+      suggested_fix: finding.suggested_fix,
       confidence: finding.confidence,
       evidence_anchor: finding.evidence_anchor,
       evidence_anchors: finding.evidence_anchors
@@ -6627,7 +6629,7 @@ function getManualQaRecordingFindingPackets(session: ManualQaSession) {
     .filter((packet) => getManualQaFindingEvidenceAnchors(packet).length > 0);
 }
 
-function collectManualQaTranscriptEvents(session: ManualQaSession) {
+function collectManualQaTranscriptEvents(session: ManualQaSession): ManualQaTranscriptEvent[] {
   if (getManualQaFindingsAnalysisStatus(session) !== "complete") return [];
   return (session.findings_analysis?.clip_results || [])
     .filter((clip) => clip.status === "complete")
@@ -6647,32 +6649,6 @@ function collectManualQaTranscriptEvents(session: ManualQaSession) {
       return (Number(left.start_ms) || 0) - (Number(right.start_ms) || 0);
     });
 }
-
-const MANUAL_QA_FINDING_GROUPS: Array<{
-  category: ManualQaFindingCategory;
-  label: string;
-  empty: string;
-  tone: string;
-}> = [
-  {
-    category: "bug",
-    label: "Bugs",
-    empty: "No product bugs were found in the recording.",
-    tone: "text-brand-danger"
-  },
-  {
-    category: "frustration_point",
-    label: "Frustrations",
-    empty: "No frustration points were found in the recording.",
-    tone: "text-brand-warning"
-  },
-  {
-    category: "aha_moment",
-    label: "Aha moments",
-    empty: "No aha moments were found in the recording.",
-    tone: "text-brand-success"
-  }
-];
 
 function getManualQaFindingCategory(packet: ManualQaWorkPacket): ManualQaFindingCategory {
   const category = String(packet.category || "").toLowerCase().replace(/[\s-]+/g, "_");
@@ -6720,13 +6696,25 @@ function ManualQaFindings({
   onWatchEvidence: (anchor: ManualQaEvidenceAnchor) => void;
 }) {
   const packets = getManualQaRecordingFindingPackets(session);
+  const problems = packets.filter((packet) => {
+    const category = getManualQaFindingCategory(packet);
+    return category === "bug" || category === "frustration_point";
+  });
+  const wins = packets.filter((packet) => getManualQaFindingCategory(packet) === "aha_moment");
   const observations = packets.filter((packet) => getManualQaFindingCategory(packet) === "observation");
+  const suggestedFixes = problems.filter((packet) => Boolean(String(packet.suggested_fix || "").trim()));
 
-  function renderFinding(packet: ManualQaWorkPacket) {
+  function renderFinding(packet: ManualQaWorkPacket, showProblemType = false) {
     const summary = getManualQaFindingSummary(packet);
     const anchors = getManualQaFindingEvidenceAnchors(packet);
+    const category = getManualQaFindingCategory(packet);
     return (
       <li key={packet.packet_id} className="py-5 first:pt-0 last:pb-0">
+        {showProblemType ? (
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.12em] text-brand-ink">
+            {category === "bug" ? "Bug" : "Friction"}
+          </p>
+        ) : null}
         <h4 className="text-lg font-semibold leading-7 text-brand-ink">{packet.title || "Captured point"}</h4>
         {summary ? <p className="mt-2 max-w-3xl text-base leading-7 text-brand-muted">{summary}</p> : null}
         {anchors.length ? (
@@ -6775,29 +6763,57 @@ function ManualQaFindings({
       </p>
 
       <div className="mt-8 divide-y divide-brand-line border-y border-brand-line">
-        {MANUAL_QA_FINDING_GROUPS.map((group) => {
-          const groupPackets = packets.filter((packet) => getManualQaFindingCategory(packet) === group.category);
-          return (
-            <section key={group.category} className="py-7" aria-labelledby={`manual-qa-${group.category}-title`}>
-              <h3 id={`manual-qa-${group.category}-title`} className={`text-sm font-bold uppercase tracking-[0.14em] ${group.tone}`}>
-                {group.label}
-              </h3>
-              {groupPackets.length ? (
-                <ol className="mt-5 divide-y divide-brand-line">{groupPackets.map(renderFinding)}</ol>
-              ) : (
-                <p className="mt-3 text-sm text-brand-muted">{group.empty}</p>
-              )}
-            </section>
-          );
-        })}
+        {!packets.length ? (
+          <p className="py-7 text-sm text-brand-muted">No clear findings were identified in the recording.</p>
+        ) : null}
+
+        {problems.length ? (
+          <section className="py-7" aria-labelledby="manual-qa-problems-title">
+            <h3 id="manual-qa-problems-title" className="text-sm font-bold uppercase tracking-[0.14em] text-brand-ink">
+              Problems
+            </h3>
+            <ol className="mt-5 divide-y divide-brand-line">
+              {problems.map((packet) => renderFinding(packet, true))}
+            </ol>
+          </section>
+        ) : null}
+
+        {wins.length ? (
+          <section className="py-7" aria-labelledby="manual-qa-wins-title">
+            <h3 id="manual-qa-wins-title" className="text-sm font-bold uppercase tracking-[0.14em] text-brand-ink">
+              What worked
+            </h3>
+            <ol className="mt-5 divide-y divide-brand-line">{wins.map((packet) => renderFinding(packet))}</ol>
+          </section>
+        ) : null}
+
+        {suggestedFixes.length ? (
+          <section className="py-7" aria-labelledby="manual-qa-suggestions-title">
+            <h3 id="manual-qa-suggestions-title" className="text-sm font-bold uppercase tracking-[0.14em] text-brand-ink">
+              Suggested fixes
+            </h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-brand-muted">
+              AI recommendations based on the recording-backed problems above.
+            </p>
+            <ol className="mt-5 divide-y divide-brand-line">
+              {suggestedFixes.map((packet) => (
+                <li key={`${packet.packet_id}-suggestion`} className="py-4 first:pt-0 last:pb-0">
+                  <p className="max-w-3xl text-base leading-7 text-brand-ink">{packet.suggested_fix}</p>
+                  <p className="mt-1 text-sm text-brand-muted">For: {packet.title || "Recorded problem"}</p>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ) : null}
 
         {observations.length ? (
-          <section className="py-7" aria-labelledby="manual-qa-observations-title">
-            <h3 id="manual-qa-observations-title" className="text-sm font-bold uppercase tracking-[0.14em] text-brand-muted">
-              Other observations
-            </h3>
-            <ol className="mt-5 divide-y divide-brand-line">{observations.map(renderFinding)}</ol>
-          </section>
+          <details className="py-4">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 font-semibold text-brand-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-accent">
+              More observations ({observations.length})
+              <ChevronDown aria-hidden="true" className="h-4 w-4 text-brand-muted" />
+            </summary>
+            <ol className="mt-3 divide-y divide-brand-line">{observations.map((packet) => renderFinding(packet))}</ol>
+          </details>
         ) : null}
       </div>
     </section>
@@ -6874,14 +6890,47 @@ function ManualQaAnalysisState({
 
 type ManualQaRecordingJump = ManualQaEvidenceAnchor & { request_id: number };
 
+function formatManualQaVttTime(value?: number | null) {
+  const milliseconds = Math.max(0, Math.round(Number(value) || 0));
+  const hours = Math.floor(milliseconds / 3_600_000);
+  const minutes = Math.floor((milliseconds % 3_600_000) / 60_000);
+  const seconds = Math.floor((milliseconds % 60_000) / 1000);
+  const remainder = milliseconds % 1000;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(remainder).padStart(3, "0")}`;
+}
+
+function buildManualQaCaptionTrack(
+  transcriptEvents: ManualQaTranscriptEvent[],
+  recording: ManualQaRecording
+) {
+  const events = transcriptEvents.filter((event) => {
+    const evidenceId = String(event.evidence_id || "").trim();
+    if (evidenceId && evidenceId === recording.evidence_id) return true;
+    return Number(event.recording_index) === recording.sequence;
+  });
+  if (!events.length) return "";
+  const cues = events.map((event, index) => {
+    const startMs = Math.max(0, Number(event.start_ms) || 0);
+    const endMs = Math.max(startMs + 500, Number(event.end_ms) || startMs + 2000);
+    const text = String(event.text || "")
+      .replace(/-->/g, "→")
+      .replace(/[\r\n]+/g, " ")
+      .trim();
+    return `${index + 1}\n${formatManualQaVttTime(startMs)} --> ${formatManualQaVttTime(endMs)}\n${text}`;
+  });
+  return `WEBVTT\n\n${cues.join("\n\n")}\n`;
+}
+
 function ManualQaRecordingPlayer({
   recordings,
   sessionId,
-  jump
+  jump,
+  transcriptEvents
 }: {
   recordings: ManualQaRecording[];
   sessionId: string;
   jump: ManualQaRecordingJump | null;
+  transcriptEvents: ManualQaTranscriptEvent[];
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const continuePlaybackRef = useRef(false);
@@ -6889,7 +6938,10 @@ function ManualQaRecordingPlayer({
   const pendingSeekPlaybackRef = useRef(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [playbackError, setPlaybackError] = useState("");
+  const [captionTrackUrl, setCaptionTrackUrl] = useState("");
   const current = recordings[currentIndex] || null;
+  const currentKey = current?.evidence_id || current?.url ||
+    (current ? `${current.itemId}-${current.originalIndex}` : "no-recording");
 
   useEffect(() => {
     setCurrentIndex((value) => Math.min(Math.max(0, value), Math.max(0, recordings.length - 1)));
@@ -6928,6 +6980,21 @@ function ManualQaRecordingPlayer({
     }, 50);
     return () => window.clearTimeout(timer);
   }, [currentIndex]);
+
+  useEffect(() => {
+    if (!current) {
+      setCaptionTrackUrl("");
+      return;
+    }
+    const captions = buildManualQaCaptionTrack(transcriptEvents, current);
+    if (!captions) {
+      setCaptionTrackUrl("");
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([captions], { type: "text/vtt" }));
+    setCaptionTrackUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [currentKey, transcriptEvents]);
 
   function moveTo(index: number) {
     continuePlaybackRef.current = false;
@@ -6982,8 +7049,6 @@ function ManualQaRecordingPlayer({
     evidenceId: current.evidence_id,
     index: current.originalIndex
   });
-  const currentKey = current.evidence_id || current.url || `${current.itemId}-${current.originalIndex}`;
-
   return (
     <section aria-labelledby="manual-qa-recording-title">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
@@ -7020,7 +7085,11 @@ function ManualQaRecordingPlayer({
             continuePlaybackRef.current = false;
             setPlaybackError("This clip could not play in the browser.");
           }}
-        />
+        >
+          {captionTrackUrl ? (
+            <track kind="captions" srcLang="en" label="Tester speech" src={captionTrackUrl} default />
+          ) : null}
+        </video>
         <div className="border-t border-white/15 bg-brand-ink px-4 py-3 text-xs font-semibold text-white/70">
           <span>{current.label || `Recording part ${currentIndex + 1}`}</span>
           {formatManualQaEvidenceSize(current.byte_length) ? (
@@ -7187,7 +7256,12 @@ function ManualQaCompletedReport({
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
-        <ManualQaRecordingPlayer recordings={recordings} sessionId={session.session_id} jump={recordingJump} />
+        <ManualQaRecordingPlayer
+          recordings={recordings}
+          sessionId={session.session_id}
+          jump={recordingJump}
+          transcriptEvents={transcriptEvents}
+        />
 
         {analysisComplete ? (
           <ManualQaFindings session={session} recordings={recordings} onWatchEvidence={handleWatchEvidence} />
