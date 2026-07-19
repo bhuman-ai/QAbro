@@ -3088,7 +3088,13 @@ function WorkspacePage({
         });
         if (!cancelled) {
           setManualQaSession(response.session || null);
-          if (response.session?.widget?.installed && pollId) {
+          if (
+            (response.session?.widget?.installed ||
+              response.session?.status === "manual_completed" ||
+              response.session?.completed_at ||
+              response.session?.qualification_trial?.submitted_at) &&
+            pollId
+          ) {
             window.clearInterval(pollId);
             pollId = null;
           }
@@ -6367,7 +6373,398 @@ function getManualQaItemLabel(status: ManualQaItem["status"] | string) {
   if (status === "confusing") return "Confusing";
   if (status === "blocked") return "Blocked";
   if (status === "skip") return "Skipped";
+  if (status === "reviewed") return "Reviewed";
   return "Pending";
+}
+
+type ManualQaRecording = NonNullable<ManualQaItem["evidence_media"]>[number] & {
+  itemId: string;
+  itemTitle: string;
+  itemIndex: number;
+  originalIndex: number;
+  sequence: number;
+};
+
+function getManualQaRecordingSequence(entry: NonNullable<ManualQaItem["evidence_media"]>[number], fallback: number) {
+  const label = `${entry.label || ""} ${entry.evidence_id || ""}`.trim();
+  const namedMatch = label.match(/(?:segment|clip|part|recording)[^0-9]*(\d+)/i);
+  const trailingMatch = label.match(/(\d+)\D*$/);
+  const value = Number.parseInt(namedMatch?.[1] || trailingMatch?.[1] || "", 10);
+  return Number.isFinite(value) ? value : fallback + 1;
+}
+
+function collectManualQaRecordings(session: ManualQaSession) {
+  const recordings: ManualQaRecording[] = [];
+  (session.checklist || []).forEach((item, itemIndex) => {
+    (item.evidence_media || []).forEach((entry, originalIndex) => {
+      const kind = String(entry.kind || "").toLowerCase();
+      const contentType = String(entry.content_type || "").toLowerCase();
+      if (kind !== "video" && !contentType.startsWith("video/")) {
+        return;
+      }
+      recordings.push({
+        ...entry,
+        itemId: item.id,
+        itemTitle: item.title,
+        itemIndex,
+        originalIndex,
+        sequence: getManualQaRecordingSequence(entry, originalIndex)
+      });
+    });
+  });
+  return recordings.sort((left, right) => {
+    if (left.itemIndex !== right.itemIndex) return left.itemIndex - right.itemIndex;
+    if (left.sequence !== right.sequence) return left.sequence - right.sequence;
+    const leftTime = left.created_at ? new Date(left.created_at).getTime() : 0;
+    const rightTime = right.created_at ? new Date(right.created_at).getTime() : 0;
+    if (leftTime !== rightTime) return leftTime - rightTime;
+    return left.originalIndex - right.originalIndex;
+  });
+}
+
+function getManualQaEvidenceUrl(
+  rawUrl?: string | null,
+  fallback: {
+    sessionId?: string | null;
+    itemId?: string | null;
+    evidenceId?: string | null;
+    index?: number;
+  } = {}
+) {
+  const value = String(rawUrl || "").trim();
+  if (value) {
+    if (typeof window === "undefined") return value;
+    try {
+      const parsed = new URL(value, window.location.origin);
+      if (parsed.pathname === "/api/manual-qa/evidence") {
+        return `${window.location.origin}${parsed.pathname}${parsed.search}`;
+      }
+      return parsed.toString();
+    } catch {
+      return value;
+    }
+  }
+  const sessionId = String(fallback.sessionId || "").trim();
+  const itemId = String(fallback.itemId || "").trim();
+  const evidenceId = String(fallback.evidenceId || "").trim();
+  if (!sessionId || !itemId || (!evidenceId && !Number.isInteger(fallback.index))) return "";
+  const params = new URLSearchParams({ session_id: sessionId, item_id: itemId });
+  if (evidenceId) params.set("evidence_id", evidenceId);
+  else params.set("index", String(fallback.index));
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  return `${origin}/api/manual-qa/evidence?${params.toString()}`;
+}
+
+function formatManualQaEvidenceSize(value?: number | null) {
+  const bytes = Math.max(0, Number(value) || 0);
+  if (!bytes) return "";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function ManualQaRecordingPlayer({ recordings, sessionId }: { recordings: ManualQaRecording[]; sessionId: string }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const continuePlaybackRef = useRef(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [playbackError, setPlaybackError] = useState("");
+  const current = recordings[currentIndex] || null;
+
+  useEffect(() => {
+    setCurrentIndex((value) => Math.min(Math.max(0, value), Math.max(0, recordings.length - 1)));
+  }, [recordings.length]);
+
+  useEffect(() => {
+    setPlaybackError("");
+    if (!continuePlaybackRef.current) return;
+    const timer = window.setTimeout(() => {
+      videoRef.current?.play().catch(() => {
+        continuePlaybackRef.current = false;
+      });
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [currentIndex]);
+
+  function moveTo(index: number) {
+    continuePlaybackRef.current = false;
+    setPlaybackError("");
+    setCurrentIndex(Math.min(Math.max(0, index), recordings.length - 1));
+  }
+
+  function handleEnded() {
+    if (currentIndex >= recordings.length - 1) {
+      continuePlaybackRef.current = false;
+      return;
+    }
+    continuePlaybackRef.current = true;
+    setCurrentIndex((value) => value + 1);
+  }
+
+  if (!current) {
+    return (
+      <div className="border border-brand-danger/25 bg-brand-danger/5 px-5 py-8 sm:px-7">
+        <div className="flex items-start gap-3">
+          <CircleAlert className="mt-0.5 h-5 w-5 shrink-0 text-brand-danger" />
+          <div>
+            <h2 className="text-lg font-semibold text-brand-ink">Recording missing</h2>
+            <p className="mt-1 text-sm leading-6 text-brand-muted">The tester submitted this test, but no playable video was saved.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const currentUrl = getManualQaEvidenceUrl(current.url, {
+    sessionId,
+    itemId: current.itemId,
+    evidenceId: current.evidence_id,
+    index: current.originalIndex
+  });
+  const currentKey = current.evidence_id || current.url || `${current.itemId}-${current.originalIndex}`;
+
+  return (
+    <section aria-labelledby="manual-qa-recording-title">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h2 id="manual-qa-recording-title" className="font-display text-2xl font-bold tracking-tight text-brand-ink">
+            Tester recording
+          </h2>
+          <p className="mt-1 text-sm text-brand-muted">The next part plays automatically.</p>
+        </div>
+        <div className="text-sm font-semibold text-brand-muted">
+          Part {currentIndex + 1} of {recordings.length}
+        </div>
+      </div>
+
+      <div className="overflow-hidden border border-brand-ink bg-brand-ink">
+        <video
+          key={currentKey}
+          ref={videoRef}
+          controls
+          playsInline
+          preload="metadata"
+          className="aspect-video w-full bg-brand-ink object-contain"
+          src={currentUrl}
+          onPlay={() => {
+            continuePlaybackRef.current = true;
+            setPlaybackError("");
+          }}
+          onPause={() => {
+            if (!videoRef.current?.ended) continuePlaybackRef.current = false;
+          }}
+          onEnded={handleEnded}
+          onError={() => {
+            continuePlaybackRef.current = false;
+            setPlaybackError("This clip could not play in the browser.");
+          }}
+        />
+        <div className="border-t border-white/15 bg-brand-ink px-4 py-3 text-xs font-semibold text-white/70">
+          <span>{current.label || `Recording part ${currentIndex + 1}`}</span>
+          {formatManualQaEvidenceSize(current.byte_length) ? (
+            <span className="ml-2 text-white/45">{formatManualQaEvidenceSize(current.byte_length)}</span>
+          ) : null}
+        </div>
+      </div>
+
+      {recordings.length > 1 ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-[auto_minmax(180px,1fr)_auto] sm:items-center">
+          <Button tone="secondary" className="min-h-11" onClick={() => moveTo(currentIndex - 1)} disabled={currentIndex === 0}>
+            <ChevronRight className="h-4 w-4 rotate-180" />
+            Previous
+          </Button>
+          <label className="flex min-h-11 items-center gap-3 text-xs font-semibold text-brand-muted">
+            <span className="sr-only">Choose recording part</span>
+            <input
+              type="range"
+              min={1}
+              max={recordings.length}
+              value={currentIndex + 1}
+              onChange={(event) => moveTo(Number(event.target.value) - 1)}
+              className="w-full accent-brand-accent"
+              aria-label={`Recording part ${currentIndex + 1} of ${recordings.length}`}
+            />
+          </label>
+          <Button tone="secondary" className="min-h-11" onClick={() => moveTo(currentIndex + 1)} disabled={currentIndex === recordings.length - 1}>
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      ) : null}
+
+      {playbackError ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border border-brand-danger/25 bg-brand-danger/5 px-4 py-3 text-sm text-brand-danger" role="alert">
+          <span>{playbackError} Try the next part or open this part directly.</span>
+          {currentUrl ? (
+            <a href={currentUrl} target="_blank" rel="noreferrer" className="font-semibold underline underline-offset-4">
+              Open clip
+            </a>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ManualQaCompletedReport({
+  session,
+  copyFeedback,
+  onBack,
+  onExport
+}: {
+  session: ManualQaSession;
+  copyFeedback: string;
+  onBack: () => void;
+  onExport: () => Promise<void>;
+}) {
+  const checklist = session.checklist || [];
+  const recordings = collectManualQaRecordings(session);
+  const noteItem = checklist.find((item) => String(item.note || "").trim()) || checklist[0] || null;
+  const trial = session.qualification_trial;
+  const qualification = trial?.qualification;
+  const rawQualificationScore = qualification?.score;
+  const qualificationScore =
+    rawQualificationScore !== null && rawQualificationScore !== undefined && Number.isFinite(Number(rawQualificationScore))
+      ? Number(rawQualificationScore)
+      : null;
+  const reviewed = qualification?.status === "verified" || qualificationScore !== null;
+  const rawEvidenceLinks = Array.from(new Set(checklist.flatMap((item) => [
+    ...(item.evidence_urls || []).map((link) => getManualQaEvidenceUrl(link)),
+    ...(item.evidence_media || []).map((entry, index) =>
+      getManualQaEvidenceUrl(entry.url, {
+        sessionId: session.session_id,
+        itemId: item.id,
+        evidenceId: entry.evidence_id,
+        index
+      })
+    )
+  ]).filter(Boolean)));
+  const contextCopy = [session.context?.work_summary, session.context?.developer_notes].filter(Boolean).join("\n\n");
+  const reportStatus = recordings.length
+    ? reviewed
+      ? "Reviewed"
+      : trial
+        ? "Needs review"
+        : "Submitted"
+    : "Recording missing";
+  const reportStatusTone = recordings.length
+    ? reviewed
+      ? "text-brand-success"
+      : trial
+        ? "text-brand-warning"
+        : "text-brand-accent"
+    : "text-brand-danger";
+
+  return (
+    <section className="min-h-screen bg-brand-shell text-brand-ink" data-manual-qa-view="completed-report">
+      <header className="border-b border-brand-line bg-brand-shell px-4 py-5 sm:px-6">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-start justify-between gap-5">
+          <div className="min-w-0">
+            <button
+              type="button"
+              onClick={onBack}
+              className="mb-5 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-brand-muted hover:text-brand-ink"
+            >
+              <ChevronRight className="h-4 w-4 rotate-180" />
+              Dashboard
+            </button>
+            <div className={`flex items-center gap-2 text-sm font-semibold ${reportStatusTone}`}>
+              {reviewed ? <Check className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}
+              {reportStatus}
+            </div>
+            <h1 className="mt-3 font-display text-3xl font-bold tracking-tight text-brand-ink sm:text-4xl">
+              {session.title || "Manual QA report"}
+            </h1>
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-brand-muted">
+              <span>{session.brand_name || session.brand_key || "Manual QA"}</span>
+              {session.updated_at ? <span>{formatDateTime(session.updated_at)}</span> : null}
+              {session.target_url ? (
+                <a href={session.target_url} target="_blank" rel="noreferrer" className="break-all font-semibold hover:text-brand-accent">
+                  Open product <ExternalLink className="ml-1 inline h-3.5 w-3.5" />
+                </a>
+              ) : null}
+            </div>
+          </div>
+          <Button tone="secondary" className="min-h-11" onClick={onExport}>
+            <Copy className="h-4 w-4" />
+            {copyFeedback || "Copy report"}
+          </Button>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
+        <div className={`mb-10 border-y px-1 py-5 ${recordings.length ? "border-brand-warning/35" : "border-brand-danger/30"}`}>
+          <p className="max-w-3xl text-lg font-semibold leading-8 text-brand-ink">
+            {recordings.length
+              ? reviewed
+                ? `This test has been reviewed${qualificationScore !== null ? ` with a BUD score of ${qualificationScore}/100` : ""}.`
+                : `The tester submitted a recording and ${noteItem?.note ? "a note" : "no written note"}. Watch the recording before deciding whether the test was useful.`
+              : "The tester submitted this test, but the report does not contain a playable recording."}
+          </p>
+        </div>
+
+        <ManualQaRecordingPlayer recordings={recordings} sessionId={session.session_id} />
+
+        <section className="mt-12 border-t border-brand-line pt-9" aria-labelledby="manual-qa-note-title">
+          <div className="flex items-center gap-2 text-brand-muted">
+            <Quote className="h-5 w-5" />
+            <h2 id="manual-qa-note-title" className="font-display text-2xl font-bold tracking-tight text-brand-ink">Tester&apos;s note</h2>
+          </div>
+          {noteItem?.note ? (
+            <p className="mt-5 max-w-3xl whitespace-pre-wrap text-lg leading-8 text-brand-ink">{noteItem.note}</p>
+          ) : (
+            <p className="mt-4 text-base text-brand-muted">The tester did not leave a written note.</p>
+          )}
+        </section>
+
+        <section className="mt-12 border-t border-brand-line pt-9" aria-labelledby="manual-qa-brief-title">
+          <h2 id="manual-qa-brief-title" className="font-display text-2xl font-bold tracking-tight text-brand-ink">What they were asked to do</h2>
+          <p className="mt-4 max-w-3xl text-base leading-7 text-brand-muted">
+            {trial?.test_focus || noteItem?.instructions || "Review the requested product flow as a first-time user."}
+          </p>
+        </section>
+
+        <details className="mt-12 border-y border-brand-line py-5">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 font-semibold text-brand-ink">
+            Technical details
+            <ChevronDown className="h-4 w-4 text-brand-muted" />
+          </summary>
+          <div className="space-y-7 pb-3 pt-5 text-sm leading-6 text-brand-muted">
+            {noteItem?.expected ? (
+              <div>
+                <h3 className="font-semibold text-brand-ink">Expected outcome</h3>
+                <p className="mt-1 max-w-3xl">{noteItem.expected}</p>
+              </div>
+            ) : null}
+            {contextCopy ? (
+              <div>
+                <h3 className="font-semibold text-brand-ink">Request context</h3>
+                <p className="mt-1 max-w-3xl whitespace-pre-wrap">{contextCopy}</p>
+              </div>
+            ) : null}
+            <div>
+              <h3 className="font-semibold text-brand-ink">Capture status</h3>
+              <p className="mt-1">
+                Session: {formatStatusLabel(session.status || "manual_completed")} · Checklist item: {getManualQaItemLabel(noteItem?.status || "reviewed")} · Saved clips: {recordings.length}
+              </p>
+            </div>
+            {rawEvidenceLinks.length ? (
+              <div>
+                <h3 className="font-semibold text-brand-ink">Raw evidence</h3>
+                <ol className="mt-2 max-h-64 space-y-2 overflow-y-auto border border-brand-line bg-brand-bg p-3">
+                  {rawEvidenceLinks.map((link, index) => (
+                    <li key={`${link}-${index}`}>
+                      <a href={getManualQaEvidenceUrl(link)} target="_blank" rel="noreferrer" className="break-all font-semibold text-brand-accent hover:text-brand-ink">
+                        Clip or evidence {index + 1}
+                      </a>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
+          </div>
+        </details>
+      </main>
+    </section>
+  );
 }
 
 function getSupportedRecordingMimeType() {
@@ -6854,6 +7251,22 @@ function ManualQaPage({
     await onUpdateItem(selectedItem, status, noteDraft, evidenceDraft);
   }
 
+  const trialStatus = String(session?.qualification_trial?.status || "").toLowerCase();
+  const submittedHumanTest = Boolean(
+    session?.qualification_trial?.submitted_at || ["submitted", "verified", "completed"].includes(trialStatus)
+  );
+  const completedReport = submittedHumanTest;
+  if (session && completedReport) {
+    return (
+      <ManualQaCompletedReport
+        session={session}
+        copyFeedback={copyFeedback}
+        onBack={onBack}
+        onExport={onExport}
+      />
+    );
+  }
+
   return (
     <section className="min-h-screen bg-brand-bg text-brand-ink">
       <div className="border-b border-brand-line bg-brand-shell px-4 py-4 sm:px-6">
@@ -6905,7 +7318,7 @@ function ManualQaPage({
             <div className="flex items-center justify-between gap-3">
               <div className="text-sm font-semibold text-brand-ink">Checklist</div>
               <div className="text-xs font-semibold text-brand-muted">
-                {(counts.pass || 0) + (counts.fail || 0) + (counts.confusing || 0) + (counts.blocked || 0) + (counts.skip || 0)}/{checklist.length || 0}
+                {(counts.reviewed || 0) + (counts.pass || 0) + (counts.fail || 0) + (counts.confusing || 0) + (counts.blocked || 0) + (counts.skip || 0)}/{checklist.length || 0}
               </div>
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">

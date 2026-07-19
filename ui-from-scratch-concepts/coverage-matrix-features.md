@@ -30,3 +30,8 @@
 | F11 | P1 | H | H | H | D | M | H | E silently drops the engineering handoff. |
 | F12 | P2 | H | H | H | D | M | S | Best handled as a secondary utilities surface. |
 | F13 | P2 | H | H | H | D | M | S | Present in repo coverage but should stay outside the main child-simple path. |
+| F14 | P0 | D | D | D | P | D | P | The selected reader needs an explicit submitted-human-test truth state. |
+| F15 | P0 | D | D | D | P | D | P | One recording playlist is direct in reader concepts and weak in dashboard/command concepts. |
+| F16 | P0 | D | D | D | S | D | P | The tester takeaway and requested flow belong in the reader, not a utility. |
+| F17 | P1 | H | H | H | D | H | H | Operator scoring remains a secondary handoff after evidence review. |
+| F18 | P1 | H | H | H | D | H | H | Raw links and capture diagnostics stay behind one disclosure. |

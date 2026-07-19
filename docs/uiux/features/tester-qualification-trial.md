@@ -42,6 +42,34 @@ New qualification requests default to 15 minutes. Explicit paid-test durations r
 - Private benchmark issues
 - Scoring action after submission
 
+## Completed Report View
+
+### Primary Action
+
+`Watch recording`
+
+### Primary Risk
+
+A submitted recording is raw evidence, not automatically a passed, scored, or useful report.
+
+### View Model Contract
+
+- A submitted manual-QA session switches from the active testing workbench to a read-only report.
+- Show one truthful state: `Needs review`, `Reviewed`, or `Recording missing`.
+- Show one recording player that advances through the short saved segments in chronological order.
+- Show the tester note and requested flow after the player.
+- Keep operator scoring in the existing guarded operator workspace; the report shows whether that review is still pending.
+- Hide widget installation, checklist metrics, note editors, status buttons, raw evidence URLs, agent context, and capture diagnostics from the default report view.
+- Keep raw links, expected behavior, widget context, and diagnostics under `Technical details`.
+- If there are no structured findings, the recording and tester note are the report; do not render an empty findings dashboard.
+
+### States
+
+- `submitted-unreviewed`: recording and note are available; BUD scoring is pending.
+- `reviewed`: BUD score or review has been published.
+- `recording-missing`: submission exists but no playable video evidence was saved.
+- `clip-error`: keep the rest of the report visible and provide previous/next and direct clip fallback.
+
 ## Score Contract
 
 - Benchmark coverage: 70 points
