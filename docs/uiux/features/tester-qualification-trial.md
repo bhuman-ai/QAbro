@@ -33,6 +33,7 @@ New qualification requests default to 15 minutes. Explicit paid-test durations r
 
 - Current status
 - Submitted note and recordings
+- Bugs, frustrations, and aha moments captured from the submitted evidence
 - Customer rating action
 
 ### BUD Operator
@@ -57,15 +58,21 @@ A submitted recording is raw evidence, not automatically a passed, scored, or us
 - A submitted manual-QA session switches from the active testing workbench to a read-only report.
 - Show one truthful state: `Needs review`, `Reviewed`, or `Recording missing`.
 - Show one recording player that advances through the short saved segments in chronological order.
-- Show the tester note and requested flow after the player.
+- Immediately after the player, show one vertical `What the tester found` digest with `Bugs`, `Frustrations`, and `Aha moments`.
+- Derive draft points only from captured notes, transcripts, technical signals, and evidence work packets. Never infer a product bug from private benchmark data or unsupported assumptions.
+- Label unreviewed points as draft findings. Empty categories use one plain `none captured yet` line instead of empty cards.
+- Show the raw tester note and requested flow after the findings digest.
 - Keep operator scoring in the existing guarded operator workspace; the report shows whether that review is still pending.
 - Hide widget installation, checklist metrics, note editors, status buttons, raw evidence URLs, agent context, and capture diagnostics from the default report view.
 - Keep raw links, expected behavior, widget context, and diagnostics under `Technical details`.
-- If there are no structured findings, the recording and tester note are the report; do not render an empty findings dashboard.
+- `Copy report` exports the same customer-safe findings digest shown on screen. It excludes agent tasks, private benchmark data, developer context, and raw evidence URLs.
+- If there are no captured points, say that findings are waiting for review and keep the recording available. Do not fabricate findings or render analytics-style metrics.
 
 ### States
 
 - `submitted-unreviewed`: recording and note are available; BUD scoring is pending.
+- `draft-findings`: captured points are grouped by type but have not been reviewed.
+- `findings-empty`: no bug, frustration, or aha point has been confirmed from the available signals.
 - `reviewed`: BUD score or review has been published.
 - `recording-missing`: submission exists but no playable video evidence was saved.
 - `clip-error`: keep the rest of the report visible and provide previous/next and direct clip fallback.

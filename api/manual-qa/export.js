@@ -39,7 +39,8 @@ module.exports = async (req, res) => {
     adminOk: auth.user?.report_admin === true,
     ownerUserId: auth.user?.report_admin === true ? "" : owner.ownerUserId,
     ownerEmail: owner.ownerEmail,
-    request: req
+    request: req,
+    view: sanitizeString(req.query?.view, 32).toLowerCase()
   });
   if (!exported.ok) {
     return res.status(exported.status || 500).json({ ok: false, error: exported.error });

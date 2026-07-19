@@ -31,3 +31,19 @@ test("first-run dashboard uses real run state instead of demo data", () => {
   assert.doesNotMatch(app, /70 \+ index \* 3/);
   assert.doesNotMatch(app, /liveAgents\[0\] \|\|/);
 });
+
+test("completed human reports explain findings directly below the recording", () => {
+  const report = app.slice(app.indexOf("function ManualQaCompletedReport"), app.indexOf("function getSupportedRecordingMimeType"));
+  const playerIndex = report.indexOf("<ManualQaRecordingPlayer");
+  const findingsIndex = report.indexOf("<ManualQaFindings");
+  const noteIndex = report.indexOf('aria-labelledby="manual-qa-note-title"');
+
+  assert.ok(playerIndex >= 0);
+  assert.ok(findingsIndex > playerIndex);
+  assert.ok(noteIndex > findingsIndex);
+  assert.match(app, /What the tester found/);
+  assert.match(app, /Bugs/);
+  assert.match(app, /Frustrations/);
+  assert.match(app, /Aha moments/);
+  assert.match(app, /Draft findings from the captured note and evidence/);
+});

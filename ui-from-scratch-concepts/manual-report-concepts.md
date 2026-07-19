@@ -4,8 +4,8 @@
 
 - **Primary Action:** Watch the tester's recording.
 - **Primary Risk:** Treating a submitted but unscored test as a useful completed report.
-- **Information Budget:** One truthful status, one recording player, one tester takeaway, one test brief, and one secondary review handoff.
-- **View Model Contract:** Submitted sessions show read-only evidence. Setup controls, checklist metrics, note editors, raw URLs, and capture diagnostics are hidden from the default view. Active sessions keep the existing workbench.
+- **Information Budget:** One truthful status, one recording player, one findings digest, one tester takeaway, one test brief, and one secondary review handoff.
+- **View Model Contract:** Submitted sessions show read-only evidence followed by draft findings sourced only from captured notes, transcripts, and technical evidence. Setup controls, checklist metrics, note editors, raw URLs, and capture diagnostics are hidden from the default view. Active sessions keep the existing workbench.
 - **Archetype:** Focused report reader inside the repo's guided-triage inbox.
 
 ## R1 — Recording-First Story
@@ -23,6 +23,16 @@ RECORDING                         Part 1 of 82
 +--------------------------------------------------+
 [Previous]          Continue through clips          [Next]
 
+WHAT THE TESTER FOUND
+Bugs
+None captured yet.
+
+Frustrations
+• Could not start the test in Chrome...
+
+Aha moments
+None captured yet.
+
 TESTER'S NOTE
 “...”
 
@@ -34,6 +44,8 @@ WHAT THEY WERE ASKED TO DO
 
 - Simplified: one reading column and one proof surface.
 - Merged: 82 segments become one playlist.
+- Explained: captured notes and evidence become one vertical Bugs / Frustrations / Aha digest immediately after proof.
+- Safe to share: `Copy report` mirrors the visible digest and omits internal agent tasks, benchmark data, developer context, and raw evidence URLs.
 - Hidden: widget setup, checklist metrics, status editor, raw links, agent context, capture logs.
 - Risk: long recordings need reliable clip order and visible fallback controls.
 
@@ -111,6 +123,7 @@ Tester note
 | F16 takeaway and brief | D | D | S | S | D | P |
 | F17 review handoff | S | D | H | D | H | P |
 | F18 technical disclosure | H | H | H | H | H | D |
+| F19 human-test findings digest | D | D | S | D | P | M |
 | FL12 watch and understand | D | D | D | P | P | M |
 | FL13 continue to review | D | D | P | D | P | P |
 

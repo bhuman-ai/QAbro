@@ -5,6 +5,7 @@ const {
   appendManualQaItemEvidence,
   buildManualQaAgentFeedbackMarkdown,
   buildManualQaChecklist,
+  buildManualQaCustomerReportMarkdown,
   buildManualQaSessionPayload,
   buildManualQaWorkPackets,
   createManualQaSession,
@@ -804,6 +805,7 @@ test("manual QA evidence becomes agent work packets with page anchors", () => {
   assert.match(drawingPacket.transcript_snippets.join(" "), /MCP first/);
   assert.match(drawingPacket.evidence_urls[0], /token=%5Bredacted%5D/);
   assert.match(technicalPacket.technical_signals[0].url, /token=%5Bredacted%5D/);
+  assert.equal(technicalPacket.category, "bug");
   assert.match(technicalPacket.agent_task, /Investigate and fix/);
 
   const markdown = buildManualQaAgentFeedbackMarkdown(session);
@@ -812,6 +814,130 @@ test("manual QA evidence becomes agent work packets with page anchors", () => {
   assert.match(markdown, /Packet ID:/);
   assert.match(markdown, /Drawn area: 320x180 at 110,140/);
   assert.doesNotMatch(markdown, /token=secret/);
+});
+
+test("manual QA work packets classify only explicit human signals", () => {
+  const buildPacket = (note) => buildManualQaWorkPackets({
+    session_id: `manual_${note.slice(0, 8).replace(/\W/g, "")}`,
+    target_url: "https://example.com",
+    checklist: [
+      {
+        id: "freestyle",
+        title: "First-time user review",
+        status: "reviewed",
+        note,
+        widget_context: { page_url: "https://example.com" }
+      }
+    ]
+  })[0];
+
+  assert.equal(
+    buildPacket("I wasn't able to click the button in Chrome, so I had to switch browsers.").category,
+    "frustration_point"
+  );
+  assert.equal(
+    buildPacket("Aha, now I understand that the workspace is where all projects live.").category,
+    "aha_moment"
+  );
+  assert.equal(
+    buildPacket("At first I was confused, but then it made sense.").category,
+    "aha_moment"
+  );
+  assert.equal(
+    buildPacket("The continue button did not work when I clicked it.").category,
+    "bug"
+  );
+  assert.equal(
+    buildPacket("The navigation uses a compact menu on smaller screens.").category,
+    "observation"
+  );
+
+  const warningPacket = buildManualQaWorkPackets({
+    session_id: "manual_warning_only",
+    target_url: "https://example.com",
+    checklist: [
+      {
+        id: "freestyle",
+        title: "First-time user review",
+        status: "reviewed",
+        widget_context: {
+          page_url: "https://example.com",
+          console_events: [{ type: "warn", message: "Third-party cookie will be blocked in a future browser release." }]
+        }
+      }
+    ]
+  }).find((packet) => packet.source_kind === "technical");
+  assert.ok(warningPacket);
+  assert.equal(warningPacket.category, "observation");
+
+  const mediaOnlyPackets = buildManualQaWorkPackets({
+    session_id: "manual_media_only",
+    target_url: "https://example.com",
+    checklist: [
+      {
+        id: "freestyle",
+        title: "Homepage review",
+        status: "reviewed",
+        evidence_media: [
+          {
+            evidence_id: "video-1",
+            kind: "video",
+            content_type: "video/webm",
+            url: "https://beforeusersdo.com/api/manual-qa/evidence?session_id=manual_media_only&item_id=freestyle&evidence_id=video-1"
+          }
+        ]
+      }
+    ]
+  });
+  assert.deepEqual(mediaOnlyPackets, []);
+});
+
+test("customer human-test export matches the visible findings report without internal evidence", () => {
+  const recordings = Array.from({ length: 82 }, (_, index) => ({
+    evidence_id: `video-${index + 1}`,
+    kind: "video",
+    label: `Trial recording segment ${index + 1}`,
+    content_type: "video/webm",
+    url: `https://beforeusersdo.com/api/manual-qa/evidence?session_id=manual-ciaro&item_id=freestyle&evidence_id=video-${index + 1}`
+  }));
+  const markdown = buildManualQaCustomerReportMarkdown({
+    session_id: "manual-ciaro",
+    title: "Ciaro Pro free QA trial",
+    brand_name: "Ciaro Pro",
+    target_url: "https://ciaro.pro/",
+    status: "manual_completed",
+    updated_at: "2026-07-19T04:00:00.000Z",
+    qualification_trial: {
+      status: "submitted",
+      submitted_at: "2026-07-19T03:21:00.000Z",
+      test_focus: "Test the complete first-time-user journey.",
+      qualification: { status: "pending_review", score: null }
+    },
+    context: {
+      developer_notes: "INTERNAL ONLY: inspect the private benchmark and repository."
+    },
+    checklist: [
+      {
+        id: "freestyle",
+        title: "Ciaro Pro qualification review",
+        status: "reviewed",
+        note: "I wasn't able to click the button when using Chrome, so it defaulted to a Safari test.",
+        evidence_media: recordings
+      }
+    ]
+  });
+
+  assert.match(markdown, /# Ciaro Pro free QA trial/);
+  assert.match(markdown, /Status: Needs review/);
+  assert.match(markdown, /Findings: Draft — review before sharing/);
+  assert.match(markdown, /Submitted: 2026-07-19T03:21:00.000Z/);
+  assert.doesNotMatch(markdown, /Submitted: 2026-07-19T04:00:00.000Z/);
+  assert.match(markdown, /### Bugs/);
+  assert.match(markdown, /### Frustrations/);
+  assert.match(markdown, /wasn't able to click the button when using Chrome/);
+  assert.match(markdown, /### Aha moments/);
+  assert.match(markdown, /82 recording parts saved in the report/);
+  assert.doesNotMatch(markdown, /Agent task|Packet ID|Evidence URLs|api\/manual-qa\/evidence|manual_completed|INTERNAL ONLY/);
 });
 
 test("manual QA transcript segments become topic work packets through an LLM segmenter", async () => {
@@ -869,6 +995,7 @@ test("manual QA transcript segments become topic work packets through an LLM seg
         return {
           topic_segments: [
             {
+              category: "frustration_point",
               title: "Hero and primary CTA clarity",
               summary: "The reviewer is focused on the homepage hero and what the MCP CTA promises.",
               start_index: 0,
@@ -876,8 +1003,8 @@ test("manual QA transcript segments become topic work packets through an LLM seg
               confidence: 0.92
             },
             {
-              title: "Pricing explanation",
-              summary: "The reviewer moved to pricing clarity as a separate topic.",
+              title: "Pricing page crashed",
+              summary: "The pricing page crashed while the reviewer explored it.",
               start_index: 2,
               end_index: 2,
               confidence: 0.86
@@ -895,6 +1022,8 @@ test("manual QA transcript segments become topic work packets through an LLM seg
   const topicPackets = updated.session.work_packets.filter((packet) => packet.source_kind === "topic");
   assert.equal(topicPackets.length, 2);
   assert.equal(topicPackets[0].title, "Hero and primary CTA clarity");
+  assert.equal(topicPackets[0].category, "frustration_point");
+  assert.equal(topicPackets[1].category, "bug");
   assert.match(topicPackets[0].transcript_snippets.join(" "), /main button/);
   assert.deepEqual(topicPackets[0].page_anchor.bounds, { x: 120, y: 90, width: 420, height: 160 });
   assert.equal(updated.session.work_packets.some((packet) => packet.source_kind === "feedback"), false);
