@@ -2,7 +2,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const evidenceHandler = require("../api/qa/evidence");
-const { ensureEvidenceStorageBucket } = require("../lib/qa-evidence-storage");
+const {
+  ensureEvidenceStorageBucket,
+  fetchStoredEvidenceObject,
+  measureStoredEvidenceForRun
+} = require("../lib/qa-evidence-storage");
 
 function createRes() {
   return {
@@ -178,21 +182,244 @@ test("fetchStoredEvidenceObject streams media from Supabase storage", async () =
   assert.equal(result.data.toString(), "proof-bytes");
 });
 
+test("fetchStoredEvidenceObject rejects oversized declared content before reading", async () => {
+  let bodyRead = false;
+  const result = await fetchStoredEvidenceObject(
+    {
+      storage_bucket: "qa-evidence",
+      storage_path: "run_1/videos/too-large.webm",
+      content_type: "video/webm"
+    },
+    {
+      maxBytes: 10,
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async () => ({
+        ok: true,
+        headers: {
+          get(name) {
+            const key = String(name || "").toLowerCase();
+            if (key === "content-length") return "11";
+            if (key === "content-type") return "video/webm";
+            return "";
+          }
+        },
+        async arrayBuffer() {
+          bodyRead = true;
+          return Uint8Array.from(Buffer.from("too-large!!")).buffer;
+        }
+      })
+    }
+  );
+  assert.equal(result, null);
+  assert.equal(bodyRead, false);
+});
+
+test("fetchStoredEvidenceObject rejects oversized actual bytes when length is absent", async () => {
+  const result = await fetchStoredEvidenceObject(
+    {
+      storage_bucket: "qa-evidence",
+      storage_path: "run_1/videos/undeclared-large.webm",
+      content_type: "video/webm"
+    },
+    {
+      maxBytes: 10,
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async () => ({
+        ok: true,
+        headers: {
+          get(name) {
+            return String(name || "").toLowerCase() === "content-type" ? "video/webm" : "";
+          }
+        },
+        async arrayBuffer() {
+          return Uint8Array.from(Buffer.from("eleven-bytes")).buffer;
+        }
+      })
+    }
+  );
+  assert.equal(result, null);
+});
+
+test("stored evidence paths reject traversal before a service-key request is sent", async () => {
+  let fetchCalls = 0;
+  const result = await fetchStoredEvidenceObject(
+    {
+      storage_bucket: "qa-evidence",
+      storage_path: "session/manual-widget-video-chunks-upload/../../victim/private.webm",
+      content_type: "video/webm"
+    },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async () => {
+        fetchCalls += 1;
+        throw new Error("must not fetch");
+      }
+    }
+  );
+  assert.equal(result, null);
+  assert.equal(fetchCalls, 0);
+});
+
+test("stored evidence cannot use the service key to read another bucket", async () => {
+  let fetchCalls = 0;
+  const result = await fetchStoredEvidenceObject(
+    {
+      storage_bucket: "unrelated-private-bucket",
+      storage_path: "session/private.webm",
+      content_type: "video/webm"
+    },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      bucket: "qa-evidence",
+      fetchImpl: async () => {
+        fetchCalls += 1;
+        throw new Error("must not fetch");
+      }
+    }
+  );
+  assert.equal(result, null);
+  assert.equal(fetchCalls, 0);
+});
+
 test("ensureEvidenceStorageBucket treats existing-bucket messages as ready", async () => {
+  const calls = [];
   const result = await ensureEvidenceStorageBucket({
     supabaseUrl: "https://supabase-existing-bucket.example",
     serviceKey: "service-key",
     bucket: "qa-evidence",
-    fetchImpl: async () => ({
-      ok: false,
-      status: 400,
-      async json() {
-        return { message: "The resource already exists" };
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      if (options.method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          async json() {
+            return { id: "qa-evidence", name: "qa-evidence", public: false };
+          }
+        };
       }
-    })
+      return {
+        ok: false,
+        status: 400,
+        async json() {
+          return { message: "The resource already exists" };
+        }
+      };
+    }
   });
 
   assert.equal(result, true);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].options.method, "POST");
+  assert.equal(calls[1].options.method, "GET");
+  assert.match(calls[1].url, /storage\/v1\/bucket\/qa-evidence$/);
+  assert.equal(calls[1].options.headers.apikey, "service-key");
+});
+
+test("ensureEvidenceStorageBucket accepts a private bucket after a create conflict", async () => {
+  const result = await ensureEvidenceStorageBucket({
+    supabaseUrl: "https://supabase-private-conflict.example",
+    serviceKey: "service-key",
+    bucket: "private-evidence",
+    fetchImpl: async (_url, options = {}) => {
+      if (options.method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          async json() {
+            return { id: "private-evidence", public: false };
+          }
+        };
+      }
+      return {
+        ok: false,
+        status: 409,
+        async json() {
+          return { message: "Bucket already exists" };
+        }
+      };
+    }
+  });
+
+  assert.equal(result, true);
+});
+
+test("ensureEvidenceStorageBucket rejects a pre-existing public bucket", async () => {
+  await assert.rejects(
+    ensureEvidenceStorageBucket({
+      supabaseUrl: "https://supabase-public-conflict.example",
+      serviceKey: "service-key",
+      bucket: "public-evidence",
+      fetchImpl: async (_url, options = {}) => {
+        if (options.method === "GET") {
+          return {
+            ok: true,
+            status: 200,
+            async json() {
+              return { id: "public-evidence", public: true };
+            }
+          };
+        }
+        return {
+          ok: false,
+          status: 409,
+          async json() {
+            return { message: "Bucket already exists" };
+          }
+        };
+      }
+    }),
+    /must be private/i
+  );
+});
+
+test("session storage usage recursively counts nested objects with list-v2 cursor pagination", async () => {
+  const requests = [];
+  const usage = await measureStoredEvidenceForRun("manual-nested", {
+    stopAfterBytes: 10,
+    supabaseUrl: "https://supabase.example",
+    serviceKey: "service-key",
+    fetchImpl: async (url, options = {}) => {
+      requests.push({ url, body: JSON.parse(options.body || "{}") });
+      const body = JSON.parse(options.body || "{}");
+      assert.match(url, /storage\/v1\/object\/list-v2\/qa-evidence$/);
+      assert.equal(body.prefix, "manual-nested/");
+      assert.equal(body.with_delimiter, false);
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return body.cursor
+            ? {
+                objects: [{
+                  name: "manual-nested/manual-widget-video/part-2.webm",
+                  metadata: { size: 5 }
+                }],
+                folders: [],
+                hasNext: false
+              }
+            : {
+                objects: [{
+                  name: "manual-nested/manual-widget-video-chunks-a/part-1.webm",
+                  metadata: { size: 6 }
+                }],
+                folders: [],
+                hasNext: true,
+                nextCursor: "cursor-2"
+              };
+        }
+      };
+    }
+  });
+
+  assert.deepEqual(usage, { byte_length: 11, object_count: 2, limit_exceeded: true });
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].body.cursor, undefined);
+  assert.equal(requests[1].body.cursor, "cursor-2");
 });
 
 test("readEvidenceList includes journey step clip videos in lookup order", () => {

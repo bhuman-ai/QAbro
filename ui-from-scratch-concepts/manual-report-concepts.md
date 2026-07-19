@@ -2,10 +2,10 @@
 
 ## Concept Packet
 
-- **Primary Action:** Watch the tester's recording.
-- **Primary Risk:** Treating a submitted but unscored test as a useful completed report.
-- **Information Budget:** One truthful status, one recording player, one findings digest, one tester takeaway, one test brief, and one secondary review handoff.
-- **View Model Contract:** Submitted sessions show read-only evidence followed by draft findings sourced only from captured notes, transcripts, and technical evidence. Setup controls, checklist metrics, note editors, raw URLs, and capture diagnostics are hidden from the default view. Active sessions keep the existing workbench.
+- **Primary Action:** Watch the tester's recording, then open the exact recording moment behind a completed finding.
+- **Primary Risk:** Presenting a tester note, an unfinished analysis, or a missing signal as if it were a finding from the recording.
+- **Information Budget:** One recording-analysis state, one recording player, one completed findings digest, one supplemental tester note, one test brief, and one secondary review handoff.
+- **View Model Contract:** Submitted sessions show read-only evidence. The system transcribes the recording's audio and inspects its visible activity; only that analysis may produce findings. Notes and the requested flow are supplemental context, never findings sources. Before analysis completes, one status replaces the entire digest and `Copy report` is disabled. Setup controls, checklist metrics, note editors, raw URLs, raw transcript, and capture diagnostics are hidden from the default view. Active sessions keep the existing workbench.
 - **Archetype:** Focused report reader inside the repo's guided-triage inbox.
 
 ## R1 — Recording-First Story
@@ -13,7 +13,7 @@
 ```text
 [Dashboard]                     [Copy report]
 Ciaro Pro free QA trial
-[Needs review] Tester submitted 82 clips and a note.
+[Findings ready] Recording analysis complete.
 
 RECORDING                         Part 1 of 82
 +--------------------------------------------------+
@@ -25,29 +25,46 @@ RECORDING                         Part 1 of 82
 
 WHAT THE TESTER FOUND
 Bugs
-None captured yet.
+• The primary action did not respond in Chrome.
+  [Watch part 23 at 0:06]
 
 Frustrations
-• Could not start the test in Chrome...
+• The tester hesitated after the action produced no response.
+  [Watch part 23 at 0:08]
 
 Aha moments
-None captured yet.
+None found in the recording.
 
-TESTER'S NOTE
+TESTER'S NOTE · SUPPLEMENTAL
 “...”
 
 WHAT THEY WERE ASKED TO DO
 ...
 
-[Review is pending]              Technical details ▾
+[Qualification review pending]   Technical details ▾
 ```
 
 - Simplified: one reading column and one proof surface.
 - Merged: 82 segments become one playlist.
-- Explained: captured notes and evidence become one vertical Bugs / Frustrations / Aha digest immediately after proof.
-- Safe to share: `Copy report` mirrors the visible digest and omits internal agent tasks, benchmark data, developer context, and raw evidence URLs.
-- Hidden: widget setup, checklist metrics, status editor, raw links, agent context, capture logs.
+- Explained: completed audio transcription and visual analysis become one vertical Bugs / Frustrations / Aha digest immediately after proof.
+- Evidence-linked: every supported finding can select its clip and seek to its clip-relative timestamp.
+- Safe to share: `Copy report` is disabled until analysis completes, then mirrors only the recording-derived digest and omits the tester note as evidence, internal agent tasks, benchmark data, developer context, raw transcript, and raw evidence URLs.
+- Hidden: widget setup, checklist metrics, status editor, raw transcript, raw links, agent context, capture logs.
 - Risk: long recordings need reliable clip order and visible fallback controls.
+
+### R1 analysis states
+
+```text
+not_started  This recording hasn't been analyzed yet. [Analyze video]
+queued       Video analysis is waiting to start.
+processing   Analyzing the recording and speech… 23 of 82 parts.
+complete     Recording-derived digest + timestamp evidence + [Copy report]
+failed       We couldn't analyze the recording. [Try again, only when retryable]
+consent      Waiting for the tester's permission. [No owner action]
+```
+
+Category headings and empty-category claims stay hidden in `not_started`, `queued`, `processing`, and `failed`. `Copy report` stays disabled in those states. The recording remains playable whenever media is available. The raw transcript appears only inside collapsed `Technical details`.
+Historical recordings captured before the third-party AI disclosure stay blocked until the tester approves from the existing private link; this does not require a new recording.
 
 ## R2 — Proof And Takeaway Split
 

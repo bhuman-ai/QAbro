@@ -1,6 +1,10 @@
 const { sanitizeString } = require("../../lib/qa-core");
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
-const { fetchStoredEvidenceObject } = require("../../lib/qa-evidence-storage");
+const {
+  DEFAULT_EVIDENCE_STORAGE_BUCKET,
+  fetchStoredEvidenceObject,
+  __private: evidenceStoragePrivate
+} = require("../../lib/qa-evidence-storage");
 const {
   getManualQaSession,
   verifyManualQaWidgetToken
@@ -55,6 +59,18 @@ module.exports = async (req, res) => {
     : item?.evidence_media?.[index];
   if (!evidence) {
     return res.status(404).json({ ok: false, error: "Evidence item not found" });
+  }
+
+  const configuredBucket = sanitizeString(process.env.QA_EVIDENCE_STORAGE_BUCKET, 128) || DEFAULT_EVIDENCE_STORAGE_BUCKET;
+  const storagePath = evidenceStoragePrivate.normalizeStoragePath(evidence.storage_path);
+  const sessionPrefix = `${evidenceStoragePrivate.sanitizeStoragePathSegment(sessionId, "run")}/`;
+  const relativePath = storagePath.startsWith(sessionPrefix) ? storagePath.slice(sessionPrefix.length) : "";
+  if (
+    evidence.storage_bucket !== configuredBucket ||
+    storagePath !== evidence.storage_path ||
+    !/^manual-widget-(?:screenshot|video|audio)\/[^/]+$/.test(relativePath)
+  ) {
+    return res.status(404).json({ ok: false, error: "Stored evidence not found" });
   }
 
   const storedObject = await fetchStoredEvidenceObject(evidence);

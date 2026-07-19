@@ -1,6 +1,7 @@
 const { parseRequestBody, sanitizeString } = require("../../lib/qa-core");
 const {
   buildManualQaAgentFeedbackMarkdown,
+  buildManualQaCaptureSessionView,
   recordManualQaAgentFeedback,
   verifyManualQaWidgetToken
 } = require("../../lib/manual-qa");
@@ -67,6 +68,23 @@ module.exports = async (req, res) => {
     return res.status(404).json({ ok: false, error: "Checklist item not found" });
   }
 
+  if (verified.session.qualification_trial) {
+    return res.status(200).json({
+      ok: true,
+      scope,
+      session_id: sessionId,
+      item_id: scope === "item" ? itemId : null,
+      feedback_action: feedbackAction || null,
+      feedback_id: feedbackId || null,
+      agent_delivery: {
+        ready: false,
+        note: "Your feedback is saved with this test submission."
+      },
+      generated_at: new Date().toISOString(),
+      session: buildManualQaCaptureSessionView(verified.session)
+    });
+  }
+
   const markdown = buildManualQaAgentFeedbackMarkdown(verified.session, {
     item_id: scope === "item" ? itemId : "",
     feedback_action: feedbackAction
@@ -86,6 +104,7 @@ module.exports = async (req, res) => {
   if (!recorded.ok) {
     return res.status(recorded.status || 500).json({ ok: false, error: recorded.error, data: recorded.data });
   }
+  const session = buildManualQaCaptureSessionView(recorded.session);
 
   return res.status(200).json({
     ok: true,
@@ -101,6 +120,6 @@ module.exports = async (req, res) => {
     },
     generated_at: new Date().toISOString(),
     markdown: recorded.feedback.markdown || markdown,
-    session: recorded.session
+    session
   });
 };

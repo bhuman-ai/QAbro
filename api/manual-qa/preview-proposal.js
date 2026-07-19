@@ -1,6 +1,7 @@
 const { parseRequestBody, sanitizeString } = require("../../lib/qa-core");
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
 const {
+  buildManualQaCaptureSessionView,
   recordManualQaPreviewProposal,
   verifyManualQaWidgetToken
 } = require("../../lib/manual-qa");
@@ -87,11 +88,12 @@ module.exports = async (req, res) => {
     if (!recorded.ok) {
       return res.status(recorded.status || 500).json({ ok: false, error: recorded.error, data: recorded.data });
     }
+    const session = buildManualQaCaptureSessionView(recorded.session);
     return res.status(200).json({
       ok: true,
       session_id: sessionId,
-      preview_proposal: recorded.proposal,
-      session: recorded.session
+      preview_proposal: session.preview_proposal,
+      session
     });
   }
 

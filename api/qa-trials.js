@@ -2,6 +2,7 @@ const { requireDashboardOrServiceAuth } = require("../lib/auth");
 const { getPublicBaseUrl, parseRequestBody, sanitizeString } = require("../lib/qa-core");
 const {
   acceptQaTrial,
+  acceptQaTrialRecordingAnalysis,
   createQaTrial,
   getQaTrialForAdmin,
   listQaTrials,
@@ -102,7 +103,7 @@ module.exports = async (req, res) => {
   const bodySessionId = sanitizeString(body?.session_id || body?.sessionId || sessionId, 128);
   const bodyToken = sanitizeString(body?.token || queryToken, 512);
 
-  if (["accept", "start", "submit", "rate"].includes(action)) {
+  if (["accept", "accept_analysis", "start", "submit", "rate"].includes(action)) {
     if (!bodySessionId || !bodyToken) {
       return res.status(400).json({ ok: false, error: "session_id and token are required" });
     }
@@ -110,13 +111,19 @@ module.exports = async (req, res) => {
     const result =
       action === "accept"
         ? await acceptQaTrial(bodySessionId, bodyToken, options)
+        : action === "accept_analysis"
+          ? await acceptQaTrialRecordingAnalysis(bodySessionId, bodyToken, options)
         : action === "start"
           ? await startQaTrial(bodySessionId, bodyToken, options)
           : action === "submit"
             ? await submitQaTrial(bodySessionId, bodyToken, body || {}, options)
             : await rateQaTrial(bodySessionId, bodyToken, body || {}, options);
     if (!result.ok) return res.status(result.status || 500).json({ ok: false, error: result.error });
-    return res.status(result.status || 200).json({ ok: true, trial: result.view });
+    return res.status(result.status || 200).json({
+      ok: true,
+      trial: result.view,
+      ...(result.queue_pending === true ? { queue_pending: true } : {})
+    });
   }
 
   const owner = await requireOwner(req, res);

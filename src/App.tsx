@@ -92,7 +92,9 @@ import type {
   AlertItem,
   AuthUser,
   LaunchDraft,
+  ManualQaEvidenceAnchor,
   ManualQaFindingCategory,
+  ManualQaFindingsAnalysis,
   ManualQaItem,
   ManualQaSession,
   ManualQaWorkPacket,
@@ -2544,6 +2546,15 @@ function WorkspacePage({
   const [manualQaError, setManualQaError] = useState("");
   const [manualQaBusyItemId, setManualQaBusyItemId] = useState("");
   const [manualQaCopyFeedback, setManualQaCopyFeedback] = useState("");
+  const [manualQaAnalysisBusy, setManualQaAnalysisBusy] = useState(false);
+  const [manualQaAnalysisError, setManualQaAnalysisError] = useState("");
+  const manualQaAnalysisAutoStartedRef = useRef<Set<string>>(new Set());
+  const activeManualQaTrialStatus = String(manualQaSession?.qualification_trial?.status || "").toLowerCase();
+  const activeManualQaSubmitted = Boolean(
+    manualQaSession?.qualification_trial?.submitted_at ||
+      ["submitted", "verified", "completed"].includes(activeManualQaTrialStatus)
+  );
+  const activeManualQaAnalysisStatus = getManualQaFindingsAnalysisStatus(manualQaSession);
   const [shareState, setShareState] = useState<ShareResponse | null>(null);
   const [copyFeedback, setCopyFeedback] = useState("");
   const [selectedFindingId, setSelectedFindingId] = useState("");
@@ -3090,16 +3101,6 @@ function WorkspacePage({
         });
         if (!cancelled) {
           setManualQaSession(response.session || null);
-          if (
-            (response.session?.widget?.installed ||
-              response.session?.status === "manual_completed" ||
-              response.session?.completed_at ||
-              response.session?.qualification_trial?.submitted_at) &&
-            pollId
-          ) {
-            window.clearInterval(pollId);
-            pollId = null;
-          }
         }
       } catch (caught) {
         if (!cancelled) {
@@ -3118,16 +3119,61 @@ function WorkspacePage({
     }
 
     loadManualQaSession();
-    pollId = window.setInterval(() => {
-      loadManualQaSession(true);
-    }, 5000);
+    const analysisSettled =
+      activeManualQaAnalysisStatus === "complete" ||
+      (
+        activeManualQaAnalysisStatus === "failed" &&
+        manualQaSession?.findings_analysis?.error_code !== "recording_analysis_consent_required"
+      );
+    const legacySessionSettled = Boolean(
+      manualQaSession?.widget?.installed ||
+        manualQaSession?.status === "manual_completed" ||
+        manualQaSession?.completed_at
+    );
+    if (activeManualQaSubmitted ? !analysisSettled : !legacySessionSettled) {
+      pollId = window.setInterval(() => {
+        loadManualQaSession(true);
+      }, 5000);
+    }
     return () => {
       cancelled = true;
       if (pollId) {
         window.clearInterval(pollId);
       }
     };
-  }, [currentPanel, isSharedView, requestedManualSessionId]);
+  }, [
+    activeManualQaAnalysisStatus,
+    activeManualQaSubmitted,
+    currentPanel,
+    isSharedView,
+    manualQaSession?.completed_at,
+    manualQaSession?.findings_analysis?.error_code,
+    manualQaSession?.status,
+    manualQaSession?.widget?.installed,
+    requestedManualSessionId
+  ]);
+
+  useEffect(() => {
+    const sessionId = String(manualQaSession?.session_id || "").trim();
+    if (
+      isSharedView ||
+      currentPanel !== "manual_qa" ||
+      !activeManualQaSubmitted ||
+      !sessionId ||
+      !["not_started", "queued"].includes(activeManualQaAnalysisStatus) ||
+      manualQaAnalysisAutoStartedRef.current.has(sessionId)
+    ) {
+      return;
+    }
+    manualQaAnalysisAutoStartedRef.current.add(sessionId);
+    handleManualQaAnalyzeRecording().catch(() => null);
+  }, [
+    activeManualQaAnalysisStatus,
+    activeManualQaSubmitted,
+    currentPanel,
+    isSharedView,
+    manualQaSession?.session_id
+  ]);
 
   useEffect(() => {
     if (!requestedRunId || !selectedStatus) {
@@ -3784,6 +3830,54 @@ function WorkspacePage({
     }
   }
 
+  async function handleManualQaAnalyzeRecording() {
+    const sessionId = String(manualQaSession?.session_id || requestedManualSessionId || "").trim();
+    if (!sessionId || manualQaAnalysisBusy) {
+      return;
+    }
+    setManualQaAnalysisBusy(true);
+    setManualQaAnalysisError("");
+    setManualQaSession((previous) => previous
+      ? {
+          ...previous,
+          findings_analysis: {
+            ...previous.findings_analysis,
+            status: "queued",
+            source: "recording_transcript",
+            queued_at: previous.findings_analysis?.queued_at || new Date().toISOString(),
+            failed_at: null,
+            error_code: null
+          }
+        }
+      : previous);
+    try {
+      const response = await apiFetch<{
+        session?: ManualQaSession;
+        analysis?: ManualQaFindingsAnalysis;
+        findings_analysis?: ManualQaFindingsAnalysis;
+      }>("/api/manual-qa/analyze-recording", {
+        method: "POST",
+        params: { session_id: sessionId }
+      });
+      if (response.session) {
+        setManualQaSession(response.session);
+      } else {
+        const analysis = response.findings_analysis || response.analysis;
+        if (analysis) {
+          setManualQaSession((previous) => previous
+            ? { ...previous, findings_analysis: analysis }
+            : previous);
+        }
+      }
+    } catch (caught) {
+      setManualQaAnalysisError(
+        caught instanceof Error ? caught.message : "We couldn't start the video analysis."
+      );
+    } finally {
+      setManualQaAnalysisBusy(false);
+    }
+  }
+
   async function handleManualQaExport() {
     if (!requestedManualSessionId) {
       setManualQaCopyFeedback("Missing session");
@@ -3795,6 +3889,11 @@ function WorkspacePage({
       const submittedHumanTest = Boolean(
         manualQaSession?.qualification_trial?.submitted_at || ["submitted", "verified", "completed"].includes(trialStatus)
       );
+      if (submittedHumanTest && getManualQaFindingsAnalysisStatus(manualQaSession) !== "complete") {
+        setManualQaCopyFeedback("Preparing report");
+        window.setTimeout(() => setManualQaCopyFeedback(""), 1600);
+        return;
+      }
       const response = await apiFetch<{ markdown: string }>("/api/manual-qa/export", {
         params: {
           session_id: requestedManualSessionId,
@@ -4520,7 +4619,10 @@ function WorkspacePage({
         error={manualQaError}
         busyItemId={manualQaBusyItemId}
         copyFeedback={manualQaCopyFeedback}
+        analysisBusy={manualQaAnalysisBusy}
+        analysisError={manualQaAnalysisError}
         onBack={() => openPanel("overview", { brand: currentBrandKey || "" })}
+        onAnalyzeRecording={handleManualQaAnalyzeRecording}
         onUpdateItem={handleManualQaItemUpdate}
         onExport={handleManualQaExport}
       />
@@ -6471,38 +6573,117 @@ function formatManualQaEvidenceSize(value?: number | null) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function getManualQaFindingsAnalysisStatus(
+  session: ManualQaSession | null | undefined
+): ManualQaFindingsAnalysis["status"] {
+  const status = String(session?.findings_analysis?.status || "not_started").toLowerCase();
+  if (["not_started", "queued", "processing", "complete", "failed"].includes(status)) {
+    return status as ManualQaFindingsAnalysis["status"];
+  }
+  return "not_started";
+}
+
+function formatManualQaClipTime(value?: number | null) {
+  const totalSeconds = Math.max(0, Math.floor((Number(value) || 0) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function getManualQaFindingEvidenceAnchors(packet: ManualQaWorkPacket) {
+  const anchors = [
+    ...(packet.evidence_anchor ? [packet.evidence_anchor] : []),
+    ...(packet.evidence_anchors || [])
+  ];
+  const seen = new Set<string>();
+  return anchors.filter((anchor) => {
+    const key = [
+      anchor.evidence_id || "",
+      Number(anchor.recording_index) || 0,
+      Number(anchor.start_ms) || 0,
+      anchor.quote || "",
+      anchor.visual_evidence || ""
+    ].join(":");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return Boolean(
+      anchor.evidence_id ||
+        Number(anchor.recording_index) > 0 ||
+        anchor.quote ||
+        anchor.visual_evidence
+    );
+  });
+}
+
+function getManualQaRecordingFindingPackets(session: ManualQaSession) {
+  return (session.findings_analysis?.findings || [])
+    .filter((finding) => Boolean(String(finding.title || finding.summary || "").trim()))
+    .map((finding, index): ManualQaWorkPacket => ({
+      packet_id: String(finding.packet_id || finding.finding_id || `recording-finding-${index + 1}`),
+      source_kind: "recording_transcript",
+      status: "open",
+      category: finding.category,
+      title: finding.title,
+      summary: finding.summary,
+      confidence: finding.confidence,
+      evidence_anchor: finding.evidence_anchor,
+      evidence_anchors: finding.evidence_anchors
+    }))
+    .filter((packet) => getManualQaFindingEvidenceAnchors(packet).length > 0);
+}
+
+function collectManualQaTranscriptEvents(session: ManualQaSession) {
+  if (getManualQaFindingsAnalysisStatus(session) !== "complete") return [];
+  return (session.findings_analysis?.clip_results || [])
+    .filter((clip) => clip.status === "complete")
+    .flatMap((clip) => (clip.speech_segments || []).map((segment) => ({
+      source: "server_recording_analysis",
+      item_id: clip.item_id,
+      evidence_id: clip.evidence_id,
+      recording_index: clip.recording_index,
+      start_ms: segment.start_ms,
+      end_ms: segment.end_ms,
+      text: segment.text
+    })))
+    .filter((event) => Boolean(String(event.text || "").trim()))
+    .sort((left, right) => {
+      const recordingDelta = (Number(left.recording_index) || 0) - (Number(right.recording_index) || 0);
+      if (recordingDelta) return recordingDelta;
+      return (Number(left.start_ms) || 0) - (Number(right.start_ms) || 0);
+    });
+}
+
 const MANUAL_QA_FINDING_GROUPS: Array<{
   category: ManualQaFindingCategory;
   label: string;
   empty: string;
-  reviewedEmpty: string;
   tone: string;
 }> = [
   {
     category: "bug",
     label: "Bugs",
-    empty: "No product bugs captured yet.",
-    reviewedEmpty: "No product bugs were captured.",
+    empty: "No product bugs were found in the recording.",
     tone: "text-brand-danger"
   },
   {
     category: "frustration_point",
     label: "Frustrations",
-    empty: "No frustration points captured yet.",
-    reviewedEmpty: "No frustration points were captured.",
+    empty: "No frustration points were found in the recording.",
     tone: "text-brand-warning"
   },
   {
     category: "aha_moment",
     label: "Aha moments",
-    empty: "No aha moments captured yet.",
-    reviewedEmpty: "No aha moments were captured.",
+    empty: "No aha moments were found in the recording.",
     tone: "text-brand-success"
   }
 ];
 
 function getManualQaFindingCategory(packet: ManualQaWorkPacket): ManualQaFindingCategory {
   const category = String(packet.category || "").toLowerCase().replace(/[\s-]+/g, "_");
+  if (["frustration", "confusion", "confusion_point"].includes(category)) return "frustration_point";
+  if (["aha", "realization"].includes(category)) return "aha_moment";
+  if (["positive", "delight"].includes(category)) return "observation";
   if (["bug", "frustration_point", "aha_moment", "observation"].includes(category)) {
     return category as ManualQaFindingCategory;
   }
@@ -6520,29 +6701,68 @@ function getManualQaFindingSummary(packet: ManualQaWorkPacket) {
 }
 
 function getManualQaFindingSource(packet: ManualQaWorkPacket) {
-  const source = packet.source_kind === "technical"
-    ? "Technical evidence"
-    : packet.source_kind === "topic"
-      ? "Tester transcript"
-      : packet.source_kind === "drawing"
-        ? "Tester annotation"
-        : "Tester note";
-  const page = packet.source_kind === "feedback" ? "" : String(packet.page_anchor?.title || "").trim();
-  return page ? `${source} · ${page}` : source;
+  const page = String(packet.page_anchor?.title || "").trim();
+  return page ? `Video and transcript · ${page}` : "Video and transcript";
 }
 
-function ManualQaFindings({ session, reviewed }: { session: ManualQaSession; reviewed: boolean }) {
-  const packets = (session.work_packets || []).filter((packet) =>
-    packet.status !== "dismissed" && Boolean(String(packet.title || packet.summary || "").trim())
-  );
+function getManualQaAnchorRecordingNumber(anchor: ManualQaEvidenceAnchor, recordings: ManualQaRecording[]) {
+  const statedIndex = Number(anchor.recording_index);
+  if (Number.isInteger(statedIndex) && statedIndex > 0) return statedIndex;
+  const evidenceId = String(anchor.evidence_id || "").trim();
+  const matchingIndex = evidenceId
+    ? recordings.findIndex((recording) => recording.evidence_id === evidenceId)
+    : -1;
+  return matchingIndex >= 0 ? recordings[matchingIndex].sequence || matchingIndex + 1 : 1;
+}
+
+function ManualQaFindings({
+  session,
+  recordings,
+  onWatchEvidence
+}: {
+  session: ManualQaSession;
+  recordings: ManualQaRecording[];
+  onWatchEvidence: (anchor: ManualQaEvidenceAnchor) => void;
+}) {
+  const packets = getManualQaRecordingFindingPackets(session);
   const observations = packets.filter((packet) => getManualQaFindingCategory(packet) === "observation");
 
   function renderFinding(packet: ManualQaWorkPacket) {
     const summary = getManualQaFindingSummary(packet);
+    const anchors = getManualQaFindingEvidenceAnchors(packet);
     return (
       <li key={packet.packet_id} className="py-5 first:pt-0 last:pb-0">
         <h4 className="text-lg font-semibold leading-7 text-brand-ink">{packet.title || "Captured point"}</h4>
         {summary ? <p className="mt-2 max-w-3xl text-base leading-7 text-brand-muted">{summary}</p> : null}
+        {anchors.length ? (
+          <ol className="mt-4 space-y-4 border-l-2 border-brand-line pl-4">
+            {anchors.map((anchor, index) => {
+              const partNumber = getManualQaAnchorRecordingNumber(anchor, recordings);
+              return (
+                <li key={`${packet.packet_id}-evidence-${index}`}>
+                  {anchor.quote ? (
+                    <blockquote className="max-w-3xl text-sm leading-6 text-brand-ink">
+                      &ldquo;{anchor.quote}&rdquo;
+                    </blockquote>
+                  ) : null}
+                  {anchor.visual_evidence ? (
+                    <p className="mt-1 max-w-3xl text-sm leading-6 text-brand-muted">
+                      On screen: {anchor.visual_evidence}
+                    </p>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => onWatchEvidence(anchor)}
+                    className="mt-2 inline-flex min-h-11 items-center gap-2 font-semibold text-brand-accent underline decoration-brand-accent/35 underline-offset-4 hover:text-brand-ink"
+                  >
+                    <Play className="h-4 w-4" />
+                    Watch Part {partNumber} at {formatManualQaClipTime(anchor.start_ms)}
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        ) : null}
         <p className="mt-3 text-xs font-semibold uppercase tracking-[0.12em] text-brand-muted">
           {getManualQaFindingSource(packet)}
         </p>
@@ -6556,9 +6776,7 @@ function ManualQaFindings({ session, reviewed }: { session: ManualQaSession; rev
         What the tester found
       </h2>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-brand-muted">
-        {reviewed
-          ? "Captured from the tester's note and evidence. Open the recording above when you need the full context."
-          : "Draft findings from the captured note and evidence. Review them before sharing this report."}
+        Created only from the video and speech transcript.
       </p>
 
       <div className="mt-8 divide-y divide-brand-line border-y border-brand-line">
@@ -6572,7 +6790,7 @@ function ManualQaFindings({ session, reviewed }: { session: ManualQaSession; rev
               {groupPackets.length ? (
                 <ol className="mt-5 divide-y divide-brand-line">{groupPackets.map(renderFinding)}</ol>
               ) : (
-                <p className="mt-3 text-sm text-brand-muted">{reviewed ? group.reviewedEmpty : group.empty}</p>
+                <p className="mt-3 text-sm text-brand-muted">{group.empty}</p>
               )}
             </section>
           );
@@ -6591,9 +6809,106 @@ function ManualQaFindings({ session, reviewed }: { session: ManualQaSession; rev
   );
 }
 
-function ManualQaRecordingPlayer({ recordings, sessionId }: { recordings: ManualQaRecording[]; sessionId: string }) {
+function ManualQaAnalysisState({
+  session,
+  busy,
+  error,
+  onAnalyze
+}: {
+  session: ManualQaSession;
+  busy: boolean;
+  error: string;
+  onAnalyze: () => Promise<void>;
+}) {
+  const status = getManualQaFindingsAnalysisStatus(session);
+  const analysis = session.findings_analysis;
+  const processed = Math.max(0, Number(analysis?.processed_media_count) || 0);
+  const total = Math.max(processed, Number(analysis?.media_count) || 0);
+  const canStart = status === "not_started";
+  const failed = status === "failed";
+  const consentRequired = analysis?.error_code === "recording_analysis_consent_required";
+  const retryExhausted = failed && (
+    analysis?.retryable === false || Math.max(0, Number(analysis?.attempt_count) || 0) >= 3
+  );
+  const startError = Boolean(error && canStart);
+
+  return (
+    <section className="mt-12 border-y border-brand-line py-8" aria-labelledby="manual-qa-analysis-title" aria-live="polite">
+      <div className="flex max-w-3xl items-start gap-3">
+        {status === "processing" || status === "queued" || busy ? (
+          <LoaderCircle className="mt-1 h-5 w-5 shrink-0 animate-spin text-brand-accent" />
+        ) : (failed && !consentRequired) || startError ? (
+          <CircleAlert className="mt-1 h-5 w-5 shrink-0 text-brand-danger" />
+        ) : (
+          consentRequired
+            ? <LoaderCircle className="mt-1 h-5 w-5 shrink-0 text-brand-accent" />
+            : <Play className="mt-1 h-5 w-5 shrink-0 text-brand-accent" />
+        )}
+        <div>
+          <h2 id="manual-qa-analysis-title" className="text-lg font-semibold text-brand-ink">
+            {consentRequired
+              ? "Waiting for the tester’s permission."
+              : failed
+              ? "We couldn’t analyze the recording."
+              : startError
+                ? "We couldn’t start the video analysis."
+                : status === "processing"
+                  ? `Analyzing the recording and speech${total ? `… ${processed} of ${total} parts` : "…"}`
+                  : status === "queued" || busy
+                    ? "Video analysis is waiting to start."
+                    : "This recording hasn’t been analyzed yet."}
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-brand-muted">
+            {consentRequired
+              ? "The tester can approve video-and-transcript analysis from their private trial link."
+              : retryExhausted
+              ? "The recording is still safe, but automatic retries are exhausted. Contact Before Users Do support."
+              : failed || startError
+                ? "The recording is still safe. Try the analysis again."
+              : "Bugs, frustrations, and aha moments will appear here when it is ready."}
+          </p>
+          {(failed && !retryExhausted && !consentRequired) || startError ? (
+            <Button
+              tone="primary"
+              className="mt-4 min-h-11"
+              onClick={() => void onAnalyze()}
+              disabled={busy}
+            >
+              {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+              Try again
+            </Button>
+          ) : canStart ? (
+            <Button
+              tone="primary"
+              className="mt-4 min-h-11"
+              onClick={() => void onAnalyze()}
+              disabled={busy}
+            >
+              {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+              Analyze video
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+type ManualQaRecordingJump = ManualQaEvidenceAnchor & { request_id: number };
+
+function ManualQaRecordingPlayer({
+  recordings,
+  sessionId,
+  jump
+}: {
+  recordings: ManualQaRecording[];
+  sessionId: string;
+  jump: ManualQaRecordingJump | null;
+}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const continuePlaybackRef = useRef(false);
+  const pendingSeekSecondsRef = useRef<number | null>(null);
+  const pendingSeekPlaybackRef = useRef(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [playbackError, setPlaybackError] = useState("");
   const current = recordings[currentIndex] || null;
@@ -6601,6 +6916,29 @@ function ManualQaRecordingPlayer({ recordings, sessionId }: { recordings: Manual
   useEffect(() => {
     setCurrentIndex((value) => Math.min(Math.max(0, value), Math.max(0, recordings.length - 1)));
   }, [recordings.length]);
+
+  useEffect(() => {
+    if (!jump || !recordings.length) return;
+    const evidenceId = String(jump.evidence_id || "").trim();
+    let nextIndex = evidenceId
+      ? recordings.findIndex((recording) => recording.evidence_id === evidenceId)
+      : -1;
+    const recordingIndex = Number(jump.recording_index);
+    if (nextIndex < 0 && Number.isInteger(recordingIndex) && recordingIndex > 0) {
+      nextIndex = recordings.findIndex((recording) => recording.sequence === recordingIndex);
+      if (nextIndex < 0 && recordingIndex <= recordings.length) nextIndex = recordingIndex - 1;
+    }
+    if (nextIndex < 0) return;
+    continuePlaybackRef.current = false;
+    pendingSeekSecondsRef.current = Math.max(0, (Number(jump.start_ms) || 0) / 1000);
+    pendingSeekPlaybackRef.current = true;
+    setPlaybackError("");
+    if (nextIndex === currentIndex) {
+      const timer = window.setTimeout(() => applyEvidenceJump(), 0);
+      return () => window.clearTimeout(timer);
+    }
+    setCurrentIndex(nextIndex);
+  }, [jump?.request_id]);
 
   useEffect(() => {
     setPlaybackError("");
@@ -6615,6 +6953,8 @@ function ManualQaRecordingPlayer({ recordings, sessionId }: { recordings: Manual
 
   function moveTo(index: number) {
     continuePlaybackRef.current = false;
+    pendingSeekSecondsRef.current = null;
+    pendingSeekPlaybackRef.current = false;
     setPlaybackError("");
     setCurrentIndex(Math.min(Math.max(0, index), recordings.length - 1));
   }
@@ -6626,6 +6966,22 @@ function ManualQaRecordingPlayer({ recordings, sessionId }: { recordings: Manual
     }
     continuePlaybackRef.current = true;
     setCurrentIndex((value) => value + 1);
+  }
+
+  function applyEvidenceJump() {
+    const video = videoRef.current;
+    const seconds = pendingSeekSecondsRef.current;
+    if (!video || seconds === null || video.readyState < 1) return;
+    const maxTime = Number.isFinite(video.duration) ? Math.max(0, video.duration - 0.05) : seconds;
+    video.currentTime = Math.min(seconds, maxTime);
+    pendingSeekSecondsRef.current = null;
+    const shouldPlay = pendingSeekPlaybackRef.current;
+    pendingSeekPlaybackRef.current = false;
+    if (shouldPlay) {
+      video.play().catch(() => {
+        continuePlaybackRef.current = false;
+      });
+    }
   }
 
   if (!current) {
@@ -6642,7 +6998,7 @@ function ManualQaRecordingPlayer({ recordings, sessionId }: { recordings: Manual
     );
   }
 
-  const currentUrl = getManualQaEvidenceUrl(current.url, {
+  const currentUrl = getManualQaEvidenceUrl(undefined, {
     sessionId,
     itemId: current.itemId,
     evidenceId: current.evidence_id,
@@ -6673,6 +7029,7 @@ function ManualQaRecordingPlayer({ recordings, sessionId }: { recordings: Manual
           preload="metadata"
           className="aspect-video w-full bg-brand-ink object-contain"
           src={currentUrl}
+          onLoadedMetadata={applyEvidenceJump}
           onPlay={() => {
             continuePlaybackRef.current = true;
             setPlaybackError("");
@@ -6736,51 +7093,82 @@ function ManualQaRecordingPlayer({ recordings, sessionId }: { recordings: Manual
 function ManualQaCompletedReport({
   session,
   copyFeedback,
+  analysisBusy,
+  analysisError,
   onBack,
+  onAnalyzeRecording,
   onExport
 }: {
   session: ManualQaSession;
   copyFeedback: string;
+  analysisBusy: boolean;
+  analysisError: string;
   onBack: () => void;
+  onAnalyzeRecording: () => Promise<void>;
   onExport: () => Promise<void>;
 }) {
   const checklist = session.checklist || [];
   const recordings = collectManualQaRecordings(session);
+  const analysisStatus = getManualQaFindingsAnalysisStatus(session);
+  const analysisComplete = analysisStatus === "complete";
+  const transcriptEvents = analysisComplete ? collectManualQaTranscriptEvents(session) : [];
+  const analysisFailed = analysisStatus === "failed";
+  const analysisConsentRequired = session.findings_analysis?.error_code === "recording_analysis_consent_required";
+  const recordingJumpRequestRef = useRef(0);
+  const [recordingJump, setRecordingJump] = useState<ManualQaRecordingJump | null>(null);
   const noteItem = checklist.find((item) => String(item.note || "").trim()) || checklist[0] || null;
   const trial = session.qualification_trial;
   const qualification = trial?.qualification;
-  const rawQualificationScore = qualification?.score;
-  const qualificationScore =
-    rawQualificationScore !== null && rawQualificationScore !== undefined && Number.isFinite(Number(rawQualificationScore))
-      ? Number(rawQualificationScore)
-      : null;
-  const reviewed = qualification?.status === "verified" || qualificationScore !== null;
+  const reviewed =
+    qualification?.status === "verified" ||
+    (qualification?.score !== null &&
+      qualification?.score !== undefined &&
+      Number.isFinite(Number(qualification.score)));
   const rawEvidenceLinks = Array.from(new Set(checklist.flatMap((item) => [
     ...(item.evidence_urls || []).map((link) => getManualQaEvidenceUrl(link)),
     ...(item.evidence_media || []).map((entry, index) =>
-      getManualQaEvidenceUrl(entry.url, {
-        sessionId: session.session_id,
-        itemId: item.id,
-        evidenceId: entry.evidence_id,
-        index
-      })
+      getManualQaEvidenceUrl(
+        entry.kind === "video" || String(entry.content_type || "").toLowerCase().startsWith("video/")
+          ? undefined
+          : entry.url,
+        {
+          sessionId: session.session_id,
+          itemId: item.id,
+          evidenceId: entry.evidence_id,
+          index
+        }
+      )
     )
   ]).filter(Boolean)));
   const contextCopy = [session.context?.work_summary, session.context?.developer_notes].filter(Boolean).join("\n\n");
   const reportStatus = recordings.length
-    ? reviewed
-      ? "Reviewed"
-      : trial
-        ? "Needs review"
-        : "Submitted"
+    ? analysisConsentRequired
+      ? "Waiting for tester permission"
+      : analysisFailed
+      ? "Analysis failed"
+      : analysisComplete
+        ? reviewed
+          ? "Reviewed"
+          : "Report ready"
+        : "Preparing report"
     : "Recording missing";
   const reportStatusTone = recordings.length
-    ? reviewed
-      ? "text-brand-success"
-      : trial
-        ? "text-brand-warning"
+    ? analysisConsentRequired
+      ? "text-brand-accent"
+      : analysisFailed
+      ? "text-brand-danger"
+      : analysisComplete
+        ? "text-brand-success"
         : "text-brand-accent"
     : "text-brand-danger";
+
+  function handleWatchEvidence(anchor: ManualQaEvidenceAnchor) {
+    recordingJumpRequestRef.current += 1;
+    setRecordingJump({ ...anchor, request_id: recordingJumpRequestRef.current });
+    window.requestAnimationFrame(() => {
+      document.getElementById("manual-qa-recording-title")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
 
   return (
     <section className="min-h-screen bg-brand-shell text-brand-ink" data-manual-qa-view="completed-report">
@@ -6796,7 +7184,13 @@ function ManualQaCompletedReport({
               Dashboard
             </button>
             <div className={`flex items-center gap-2 text-sm font-semibold ${reportStatusTone}`}>
-              {reviewed ? <Check className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}
+              {analysisComplete ? (
+                <Check className="h-4 w-4" />
+              ) : (analysisFailed && !analysisConsentRequired) || !recordings.length ? (
+                <CircleAlert className="h-4 w-4" />
+              ) : (
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+              )}
               {reportStatus}
             </div>
             <h1 className="mt-3 font-display text-3xl font-bold tracking-tight text-brand-ink sm:text-4xl">
@@ -6812,33 +7206,33 @@ function ManualQaCompletedReport({
               ) : null}
             </div>
           </div>
-          <Button tone="secondary" className="min-h-11" onClick={onExport}>
-            <Copy className="h-4 w-4" />
-            {copyFeedback || "Copy report"}
+          <Button tone="secondary" className="min-h-11" onClick={onExport} disabled={!analysisComplete}>
+            {analysisComplete ? <Copy className="h-4 w-4" /> : <LoaderCircle className="h-4 w-4 animate-spin" />}
+            {analysisComplete ? copyFeedback || "Copy report" : "Preparing report"}
           </Button>
         </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
-        <div className={`mb-10 border-y px-1 py-5 ${recordings.length ? "border-brand-warning/35" : "border-brand-danger/30"}`}>
-          <p className="max-w-3xl text-lg font-semibold leading-8 text-brand-ink">
-            {recordings.length
-              ? reviewed
-                ? `This test has been reviewed${qualificationScore !== null ? ` with a BUD score of ${qualificationScore}/100` : ""}.`
-                : `The tester submitted a recording and ${noteItem?.note ? "a note" : "no written note"}. Watch the recording before deciding whether the test was useful.`
-              : "The tester submitted this test, but the report does not contain a playable recording."}
-          </p>
-        </div>
+        <ManualQaRecordingPlayer recordings={recordings} sessionId={session.session_id} jump={recordingJump} />
 
-        <ManualQaRecordingPlayer recordings={recordings} sessionId={session.session_id} />
-
-        <ManualQaFindings session={session} reviewed={reviewed} />
+        {analysisComplete ? (
+          <ManualQaFindings session={session} recordings={recordings} onWatchEvidence={handleWatchEvidence} />
+        ) : (
+          <ManualQaAnalysisState
+            session={session}
+            busy={analysisBusy}
+            error={analysisError}
+            onAnalyze={onAnalyzeRecording}
+          />
+        )}
 
         <section className="mt-12 border-t border-brand-line pt-9" aria-labelledby="manual-qa-note-title">
           <div className="flex items-center gap-2 text-brand-muted">
             <Quote className="h-5 w-5" />
             <h2 id="manual-qa-note-title" className="font-display text-2xl font-bold tracking-tight text-brand-ink">Tester&apos;s note</h2>
           </div>
+          <p className="mt-2 text-sm leading-6 text-brand-muted">Supplemental context. This note is not used to create the findings above.</p>
           {noteItem?.note ? (
             <p className="mt-5 max-w-3xl whitespace-pre-wrap text-lg leading-8 text-brand-ink">{noteItem.note}</p>
           ) : (
@@ -6871,10 +7265,25 @@ function ManualQaCompletedReport({
                 <p className="mt-1 max-w-3xl whitespace-pre-wrap">{contextCopy}</p>
               </div>
             ) : null}
+            {transcriptEvents.length ? (
+              <div>
+                <h3 className="font-semibold text-brand-ink">Raw transcript</h3>
+                <ol className="mt-2 max-h-64 space-y-3 overflow-y-auto border border-brand-line bg-brand-bg p-3">
+                  {transcriptEvents.map((event, index) => (
+                    <li key={`${event.evidence_id || event.recording_index || "transcript"}-${event.start_ms || 0}-${index}`}>
+                      <div className="text-xs font-semibold uppercase tracking-[0.1em] text-brand-muted">
+                        Part {getManualQaAnchorRecordingNumber(event, recordings)} at {formatManualQaClipTime(event.start_ms)}
+                      </div>
+                      <p className="mt-1 whitespace-pre-wrap text-brand-ink">{event.text}</p>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
             <div>
               <h3 className="font-semibold text-brand-ink">Capture status</h3>
               <p className="mt-1">
-                Session: {formatStatusLabel(session.status || "manual_completed")} · Checklist item: {getManualQaItemLabel(noteItem?.status || "reviewed")} · Saved clips: {recordings.length}
+                Session: {formatStatusLabel(session.status || "manual_completed")} · Analysis: {formatStatusLabel(analysisStatus)} · Saved clips: {recordings.length}
               </p>
             </div>
             {rawEvidenceLinks.length ? (
@@ -7336,7 +7745,10 @@ function ManualQaPage({
   error,
   busyItemId,
   copyFeedback,
+  analysisBusy,
+  analysisError,
   onBack,
+  onAnalyzeRecording,
   onUpdateItem,
   onExport
 }: {
@@ -7345,7 +7757,10 @@ function ManualQaPage({
   error: string;
   busyItemId: string;
   copyFeedback: string;
+  analysisBusy: boolean;
+  analysisError: string;
   onBack: () => void;
+  onAnalyzeRecording: () => Promise<void>;
   onUpdateItem: (item: ManualQaItem, status: ManualQaItem["status"], note: string, evidenceText: string) => Promise<void>;
   onExport: () => Promise<void>;
 }) {
@@ -7392,7 +7807,10 @@ function ManualQaPage({
       <ManualQaCompletedReport
         session={session}
         copyFeedback={copyFeedback}
+        analysisBusy={analysisBusy}
+        analysisError={analysisError}
         onBack={onBack}
+        onAnalyzeRecording={onAnalyzeRecording}
         onExport={onExport}
       />
     );

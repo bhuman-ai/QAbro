@@ -15,8 +15,15 @@ import {
 import { apiFetch } from "./lib/api";
 import type { QaTrialEvidence, QaTrialView } from "./types";
 
-const RECORDING_SEGMENT_MS = 10_000;
+const RECORDING_SEGMENT_MS = 30_000;
 const UPLOAD_CHUNK_BYTES = 1_400_000;
+
+function recordingExtension(contentType: string) {
+  const normalized = String(contentType || "").toLowerCase();
+  if (normalized.includes("quicktime")) return "mov";
+  if (normalized.includes("mp4")) return "mp4";
+  return "webm";
+}
 
 function supportedRecordingType() {
   if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") return "";
@@ -53,6 +60,26 @@ function evidenceUrl(entry: QaTrialEvidence, token: string) {
   const url = new URL(entry.url, window.location.origin);
   url.searchParams.set("trial_token", token);
   return url.toString();
+}
+
+function recordingPartNumber(entry: QaTrialEvidence) {
+  const indexedEntry = entry as QaTrialEvidence & {
+    recording_index?: number | null;
+    recordingIndex?: number | null;
+  };
+  const explicit = Number(indexedEntry.recording_index ?? indexedEntry.recordingIndex);
+  if (Number.isInteger(explicit) && explicit > 0) return explicit;
+  const label = String(entry.label || "");
+  const match = label.match(/(?:part|segment|clip|recording)[^0-9]{0,24}(\d+)/i) || label.match(/(\d+)/);
+  const parsed = Number(match?.[1]);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function nextRecordingSegmentIndex(evidence: QaTrialEvidence[]) {
+  return evidence.reduce((highest, entry) => {
+    if (entry.kind !== "video") return highest;
+    return Math.max(highest, recordingPartNumber(entry));
+  }, 0);
 }
 
 function TrialLogo() {
@@ -92,6 +119,9 @@ export default function QaTrialPortal({ search }: { search: string }) {
   const [savedSegments, setSavedSegments] = useState(0);
   const [recordingMessage, setRecordingMessage] = useState("");
   const streamRef = useRef<MediaStream | null>(null);
+  const sourceStreamsRef = useRef<MediaStream[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceNodesRef = useRef<MediaStreamAudioSourceNode[]>([]);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const segmentTimerRef = useRef<number | null>(null);
   const segmentDoneRef = useRef<Promise<void> | null>(null);
@@ -131,14 +161,61 @@ export default function QaTrialPortal({ search }: { search: string }) {
 
   useEffect(() => {
     return () => {
-      if (segmentTimerRef.current) window.clearTimeout(segmentTimerRef.current);
-      const recorder = recorderRef.current;
-      if (recorder && recorder.state !== "inactive") recorder.stop();
-      streamRef.current?.getTracks().forEach((track) => track.stop());
+      const uploads = uploadPromisesRef.current.splice(0);
+      if (uploads.length) void Promise.allSettled(uploads);
+      releaseRecordingResources();
     };
   }, []);
 
-  async function performAction(action: "accept" | "start" | "submit" | "rate", body: Record<string, unknown> = {}) {
+  function releaseRecordingResources() {
+    stopRequestedRef.current = true;
+    if (segmentTimerRef.current !== null) window.clearTimeout(segmentTimerRef.current);
+    segmentTimerRef.current = null;
+    const recorder = recorderRef.current;
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onerror = null;
+      recorder.onstop = null;
+      if (recorder.state !== "inactive") {
+        try {
+          recorder.stop();
+        } catch {
+          // The browser may already be stopping this recorder.
+        }
+      }
+    }
+    const tracks = new Set<MediaStreamTrack>();
+    streamRef.current?.getTracks().forEach((track) => tracks.add(track));
+    sourceStreamsRef.current.forEach((stream) => stream.getTracks().forEach((track) => tracks.add(track)));
+    tracks.forEach((track) => track.stop());
+    audioSourceNodesRef.current.forEach((source) => {
+      try {
+        source.disconnect();
+      } catch {
+        // The node may already be disconnected.
+      }
+    });
+    const audioContext = audioContextRef.current;
+    if (audioContext && audioContext.state !== "closed") void audioContext.close().catch(() => undefined);
+    streamRef.current = null;
+    sourceStreamsRef.current = [];
+    audioContextRef.current = null;
+    audioSourceNodesRef.current = [];
+    recorderRef.current = null;
+    segmentDoneRef.current = null;
+  }
+
+  function failRecordingStart(caught: unknown) {
+    const uploads = uploadPromisesRef.current.splice(0);
+    if (uploads.length) void Promise.allSettled(uploads);
+    releaseRecordingResources();
+    setRecording(false);
+    setSaving(false);
+    setRecordingMessage("");
+    setError(caught instanceof Error ? caught.message : "Could not start screen and microphone recording.");
+  }
+
+  async function performAction(action: "accept" | "accept_analysis" | "start" | "submit" | "rate", body: Record<string, unknown> = {}) {
     setBusy(true);
     setError("");
     try {
@@ -156,8 +233,9 @@ export default function QaTrialPortal({ search }: { search: string }) {
     }
   }
 
-  async function uploadRecordingBlob(blob: Blob, segmentIndex: number) {
+  async function uploadRecordingBlob(blob: Blob, segmentIndex: number, durationMs: number) {
     const contentType = blob.type || "video/webm";
+    const extension = recordingExtension(contentType);
     const uploadId = `trial_${Date.now().toString(36)}_${segmentIndex.toString(36)}`;
     const chunks = [];
     let chunkIndex = 0;
@@ -173,7 +251,7 @@ export default function QaTrialPortal({ search }: { search: string }) {
           kind: "video",
           chunk_index: chunkIndex,
           content_type: contentType,
-          filename: `trial-part-${segmentIndex + 1}.webm`,
+          filename: `trial-part-${segmentIndex + 1}.${extension}`,
           data_url: await blobToDataUrl(chunk)
         }
       });
@@ -190,8 +268,9 @@ export default function QaTrialPortal({ search }: { search: string }) {
         upload_id: uploadId,
         kind: "video",
         content_type: contentType,
-        filename: `trial-recording-segment-${segmentIndex + 1}.webm`,
+        filename: `trial-recording-segment-${segmentIndex + 1}.${extension}`,
         label: `Trial recording segment ${segmentIndex + 1}`,
+        duration_ms: durationMs,
         chunks
       }
     });
@@ -199,14 +278,25 @@ export default function QaTrialPortal({ search }: { search: string }) {
   }
 
   function streamIsLive() {
-    return Boolean(streamRef.current?.getVideoTracks().some((track) => track.readyState === "live"));
+    const stream = streamRef.current;
+    return Boolean(
+      stream?.getVideoTracks().some((track) => track.readyState === "live") &&
+        stream.getAudioTracks().some((track) => track.readyState === "live")
+    );
   }
 
   function startSegment() {
-    if (stopRequestedRef.current || !streamRef.current || !streamIsLive()) return;
+    if (stopRequestedRef.current) return;
+    if (!streamRef.current || !streamIsLive()) {
+      throw new Error("Screen and microphone must both be live before recording can start.");
+    }
     const chunks: Blob[] = [];
     const mimeType = supportedRecordingType();
-    const recorder = new MediaRecorder(streamRef.current, mimeType ? { mimeType } : undefined);
+    const recorder = new MediaRecorder(streamRef.current, {
+      ...(mimeType ? { mimeType } : {}),
+      videoBitsPerSecond: 600_000
+    });
+    const segmentStartedAt = performance.now();
     recorderRef.current = recorder;
     let resolveSegment: () => void = () => undefined;
     segmentDoneRef.current = new Promise<void>((resolve) => {
@@ -224,19 +314,40 @@ export default function QaTrialPortal({ search }: { search: string }) {
       const segmentIndex = segmentIndexRef.current++;
       if (chunks.length) {
         const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || "video/webm" });
-        const upload = uploadRecordingBlob(blob, segmentIndex).catch((caught) => {
+        const durationMs = Math.max(1, Math.round(performance.now() - segmentStartedAt));
+        const upload = uploadRecordingBlob(blob, segmentIndex, durationMs).catch((caught) => {
           setError(caught instanceof Error ? caught.message : "A recording segment could not save.");
           throw caught;
         });
         uploadPromisesRef.current.push(upload);
       }
       resolveSegment();
-      if (!stopRequestedRef.current && streamIsLive()) startSegment();
+      if (!stopRequestedRef.current) {
+        if (!streamIsLive()) {
+          failRecordingStart(new Error("Screen or microphone access stopped. Allow access, then resume recording."));
+          return;
+        }
+        try {
+          startSegment();
+        } catch (caught) {
+          failRecordingStart(caught);
+        }
+      }
     };
-    recorder.start(1000);
-    segmentTimerRef.current = window.setTimeout(() => {
-      if (recorder.state !== "inactive") recorder.stop();
-    }, RECORDING_SEGMENT_MS);
+    try {
+      recorder.start();
+      segmentTimerRef.current = window.setTimeout(() => {
+        if (recorder.state !== "inactive") recorder.stop();
+      }, RECORDING_SEGMENT_MS);
+    } catch (caught) {
+      recorder.ondataavailable = null;
+      recorder.onerror = null;
+      recorder.onstop = null;
+      recorderRef.current = null;
+      segmentDoneRef.current = null;
+      resolveSegment();
+      throw caught;
+    }
   }
 
   async function stopAndSaveRecording() {
@@ -246,13 +357,19 @@ export default function QaTrialPortal({ search }: { search: string }) {
     stopRequestedRef.current = true;
     if (segmentTimerRef.current) window.clearTimeout(segmentTimerRef.current);
     const recorder = recorderRef.current;
-    if (recorder && recorder.state !== "inactive") recorder.stop();
+    if (recorder && recorder.state !== "inactive") {
+      try {
+        recorder.stop();
+      } catch (caught) {
+        failRecordingStart(caught);
+        return false;
+      }
+    }
     if (segmentDoneRef.current) await segmentDoneRef.current;
     const uploads = uploadPromisesRef.current.slice();
     const results = await Promise.allSettled(uploads);
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
-    recorderRef.current = null;
+    uploadPromisesRef.current = [];
+    releaseRecordingResources();
     setRecording(false);
     setSaving(false);
     const failed = results.filter((result) => result.status === "rejected");
@@ -265,51 +382,90 @@ export default function QaTrialPortal({ search }: { search: string }) {
   }
 
   async function startTest(acceptFirst = false) {
-    if (!navigator.mediaDevices?.getDisplayMedia || typeof MediaRecorder === "undefined") {
+    const AudioContextConstructor =
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (
+      !navigator.mediaDevices?.getDisplayMedia ||
+      !navigator.mediaDevices.getUserMedia ||
+      typeof MediaRecorder === "undefined" ||
+      !AudioContextConstructor
+    ) {
       setError("Use a current version of Chrome to record this trial.");
       return;
     }
     const targetWindow = window.open(trial?.target_url || "about:blank", "beforeusersdo-test-target");
     try {
       const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      sourceStreamsRef.current = [display];
+      const displayVideoTracks = display.getVideoTracks().filter((track) => track.readyState === "live");
+      if (!displayVideoTracks.length) throw new Error("Choose a screen or tab to share, then try again.");
+
+      let mic: MediaStream;
+      try {
+        mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        throw new Error("Microphone access is required. Allow it, then press Start again.");
+      }
+      sourceStreamsRef.current.push(mic);
+      const microphoneTracks = mic.getAudioTracks().filter((track) => track.readyState === "live");
+      if (!microphoneTracks.length) {
+        throw new Error("Microphone access is required. Allow it, then press Start again.");
+      }
+
+      const audioContext = new AudioContextConstructor();
+      audioContextRef.current = audioContext;
+      const destination = audioContext.createMediaStreamDestination();
+      const audioTracks = [
+        ...display.getAudioTracks().filter((track) => track.readyState === "live"),
+        ...microphoneTracks
+      ];
+      audioSourceNodesRef.current = audioTracks.map((track) => {
+        const source = audioContext.createMediaStreamSource(new MediaStream([track]));
+        source.connect(destination);
+        return source;
+      });
+      if (audioContext.state === "suspended") await audioContext.resume();
+      const mixedAudioTrack = destination.stream.getAudioTracks().find((track) => track.readyState === "live");
+      if (!mixedAudioTrack) throw new Error("Could not combine screen and microphone audio. Please try again.");
+      const stream = new MediaStream([...displayVideoTracks, mixedAudioTrack]);
+      streamRef.current = stream;
+
       if (acceptFirst) {
         const accepted = await performAction("accept");
         if (!accepted) {
-          display.getTracks().forEach((track) => track.stop());
+          releaseRecordingResources();
           targetWindow?.close();
           return;
         }
       }
       const started = await performAction("start");
       if (!started) {
-        display.getTracks().forEach((track) => track.stop());
+        releaseRecordingResources();
         targetWindow?.close();
         return;
       }
-      let mic: MediaStream | null = null;
-      try {
-        mic = await navigator.mediaDevices.getUserMedia({ audio: true });
-      } catch {
-        mic = null;
+      if (!microphoneTracks.some((track) => track.readyState === "live")) {
+        throw new Error("Microphone access is required. Allow it, then press Start again.");
       }
-      const stream = new MediaStream([
-        ...display.getVideoTracks(),
-        ...display.getAudioTracks(),
-        ...(mic ? mic.getAudioTracks() : [])
-      ]);
-      streamRef.current = stream;
       stopRequestedRef.current = false;
       uploadPromisesRef.current = [];
-      segmentIndexRef.current = started.submission.evidence_media.filter((entry) => entry.kind === "video").length;
-      setSavedSegments(segmentIndexRef.current);
+      segmentIndexRef.current = nextRecordingSegmentIndex(started.submission.evidence_media);
+      setSavedSegments(started.submission.evidence_media.filter((entry) => entry.kind === "video").length);
+      startSegment();
       setRecording(true);
       setRecordingMessage("Recording screen and voice. Saved segments will appear as you test.");
       display.getVideoTracks()[0]?.addEventListener("ended", () => {
         void stopAndSaveRecording();
       });
-      startSegment();
+      microphoneTracks[0]?.addEventListener("ended", () => {
+        if (stopRequestedRef.current) return;
+        setError("Microphone stopped. Allow it, then resume recording.");
+        void stopAndSaveRecording();
+      });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not start screen recording.");
+      failRecordingStart(caught);
+      targetWindow?.close();
     }
   }
 
@@ -423,13 +579,30 @@ export default function QaTrialPortal({ search }: { search: string }) {
             </div>
           ) : null}
 
-          {!trial.consent.accepted ? (
+          {trial.role === "tester" && submitted && !trial.consent.recording_analysis_accepted ? (
+            <div className="mt-8 border-t border-brand-line pt-8">
+              <h2 className="text-xl font-black">One permission needed</h2>
+              <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted">
+                To create findings only from your submitted video and speech transcript, your screen and voice will be sent to a third-party AI provider for transient transcription and visual analysis. The provider is required not to retain or collect the AI request. Before Users Do and the product owner can view the recording, transcript, and timestamped report. This will not record a new test.
+              </p>
+              <button
+                type="button"
+                onClick={() => void performAction("accept_analysis")}
+                disabled={busy}
+                className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-xl bg-brand-accent px-6 py-5 text-lg font-black text-white transition hover:bg-brand-ink disabled:opacity-60"
+              >
+                {busy ? <LoaderCircle className="h-6 w-6 animate-spin" /> : <Check className="h-6 w-6" />}
+                Allow analysis of my recording
+              </button>
+            </div>
+          ) : !trial.consent.accepted ? (
             trial.role === "tester" ? (
               <div className="mt-8 border-t border-brand-line pt-8">
                 <p className="text-sm font-semibold leading-6 text-brand-muted">
                   {paidAssignment
                     ? `This ${trial.duration_minutes}-minute test pays ${formatTesterPay(trial)} after Before Users Do reviews the submitted recording and report.`
                     : `This ${trial.duration_minutes}-minute qualification is unpaid. Your recording and report are shared with the product owner and scored for your first verified result.`}
+                  {" "}Your screen and voice are sent to a third-party AI provider for transient transcription and visual analysis. The provider is required not to retain or collect the AI request. Before Users Do and the product owner can view the recording, transcript, and timestamped report.
                 </p>
                 <button
                   type="button"
@@ -656,7 +829,7 @@ export default function QaTrialPortal({ search }: { search: string }) {
 
         <div className="mt-6 flex items-center justify-center gap-2 text-xs font-bold text-brand-muted">
           <Video className="h-4 w-4" />
-          Recordings are private to this trial.
+          Shared only with Before Users Do and the product owner for this trial.
         </div>
       </main>
     </div>

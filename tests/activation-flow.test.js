@@ -32,7 +32,7 @@ test("first-run dashboard uses real run state instead of demo data", () => {
   assert.doesNotMatch(app, /liveAgents\[0\] \|\|/);
 });
 
-test("completed human reports explain findings directly below the recording", () => {
+test("completed human reports wait for recording analysis and link findings to evidence", () => {
   const report = app.slice(app.indexOf("function ManualQaCompletedReport"), app.indexOf("function getSupportedRecordingMimeType"));
   const playerIndex = report.indexOf("<ManualQaRecordingPlayer");
   const findingsIndex = report.indexOf("<ManualQaFindings");
@@ -45,5 +45,49 @@ test("completed human reports explain findings directly below the recording", ()
   assert.match(app, /Bugs/);
   assert.match(app, /Frustrations/);
   assert.match(app, /Aha moments/);
-  assert.match(app, /Draft findings from the captured note and evidence/);
+  assert.match(report, /analysisComplete \? \(/);
+  assert.match(report, /disabled=\{!analysisComplete\}/);
+  assert.match(report, /Preparing report/);
+  assert.match(app, /session\.findings_analysis\?\.findings/);
+  assert.match(app, /Watch Part \{partNumber\} at/);
+  assert.match(app, /Created only from the video and speech transcript/);
+  assert.match(report, /Raw transcript/);
+  assert.match(report, /analysisComplete \? collectManualQaTranscriptEvents\(session\) : \[\]/);
+  assert.match(report, /This note is not used to create the findings above/);
+  assert.match(app, /session\.findings_analysis\?\.clip_results/);
+  assert.match(app, /source: "server_recording_analysis"/);
+  assert.match(app, /getManualQaEvidenceUrl\(undefined/);
+  assert.match(app, /\/api\/manual-qa\/analyze-recording/);
+  assert.doesNotMatch(app, /Draft findings from the captured note and evidence/);
+  assert.doesNotMatch(app, /const packets = \(session\.work_packets \|\| \[\]\)/);
+  assert.match(app, /retryExhausted/);
+  assert.match(app, /error_code !== "recording_analysis_consent_required"/);
+});
+
+test("trial recorder requires one mixed microphone track and resumes after the highest saved part", () => {
+  const portal = fs.readFileSync(path.join(ROOT, "src", "QaTrialPortal.tsx"), "utf8");
+  const uploadEndpoint = fs.readFileSync(path.join(ROOT, "api", "manual-qa", "widget-evidence-chunks.js"), "utf8");
+
+  assert.match(portal, /duration_ms: durationMs/);
+  assert.match(portal, /third-party AI provider for transient transcription and visual analysis/);
+  assert.match(portal, /required not to retain or collect the AI request/);
+  assert.match(portal, /recordingExtension\(contentType\)/);
+  assert.match(portal, /performAction\("accept_analysis"\)/);
+  assert.match(portal, /This will not record a new test/);
+  assert.match(portal, /recorder\.start\(\);/);
+  assert.doesNotMatch(portal, /recorder\.start\(1000\)/);
+  assert.doesNotMatch(portal, /private to this trial/);
+  assert.match(portal, /getUserMedia\(\{ audio: true \}\)/);
+  assert.match(portal, /Microphone access is required/);
+  assert.match(portal, /!microphoneTracks\.some\(\(track\) => track\.readyState === "live"\)/);
+  assert.match(portal, /createMediaStreamDestination\(\)/);
+  assert.match(portal, /createMediaStreamSource\(new MediaStream\(\[track\]\)\)/);
+  assert.match(portal, /new MediaStream\(\[\.\.\.displayVideoTracks, mixedAudioTrack\]\)/);
+  assert.doesNotMatch(portal, /\.\.\.display\.getAudioTracks\(\),/);
+  assert.match(portal, /segmentIndexRef\.current = nextRecordingSegmentIndex\(started\.submission\.evidence_media\)/);
+  assert.match(portal, /return Math\.max\(highest, recordingPartNumber\(entry\)\)/);
+  assert.match(portal, /releaseRecordingResources\(\)/);
+  assert.match(portal, /sourceStreamsRef\.current\.forEach/);
+  assert.match(portal, /audioContext\.close\(\)/);
+  assert.match(uploadEndpoint, /duration_ms: durationMs/);
 });

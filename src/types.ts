@@ -303,6 +303,92 @@ export interface WorkerInfo {
 
 export type ManualQaFindingCategory = "bug" | "frustration_point" | "aha_moment" | "observation";
 
+export type ManualQaFindingsAnalysisStatus = "not_started" | "queued" | "processing" | "complete" | "failed";
+
+export interface ManualQaEvidenceAnchor {
+  evidence_id?: string | null;
+  recording_index?: number | null;
+  start_ms?: number | null;
+  end_ms?: number | null;
+  quote?: string | null;
+  visual_evidence?: string | null;
+}
+
+export interface ManualQaRecordingFinding {
+  finding_id?: string | null;
+  packet_id?: string | null;
+  category?: ManualQaFindingCategory | string | null;
+  title?: string | null;
+  summary?: string | null;
+  confidence?: string | number | null;
+  evidence_anchor?: ManualQaEvidenceAnchor | null;
+  evidence_anchors?: ManualQaEvidenceAnchor[];
+}
+
+export interface ManualQaRecordingAnalysisClip {
+  evidence_id?: string | null;
+  item_id?: string | null;
+  recording_index?: number | null;
+  label?: string | null;
+  status?: "pending" | "processing" | "complete" | "failed" | string;
+  duration_ms?: number | null;
+  speech_segments?: Array<{
+    start_ms?: number | null;
+    end_ms?: number | null;
+    text?: string | null;
+    confidence?: number | null;
+  }>;
+  visual_events?: Array<{
+    start_ms?: number | null;
+    end_ms?: number | null;
+    description?: string | null;
+  }>;
+  summary?: string | null;
+  confidence?: number | null;
+  error_code?: string | null;
+  retryable?: boolean;
+}
+
+export interface ManualQaFindingsAnalysis {
+  analysis_id?: string | null;
+  status: ManualQaFindingsAnalysisStatus;
+  source?: "recording_transcript" | string | null;
+  media_count?: number | null;
+  processed_media_count?: number | null;
+  transcript_event_count?: number | null;
+  queued_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  failed_at?: string | null;
+  lease_id?: string | null;
+  lease_expires_at?: string | null;
+  error_code?: string | null;
+  retryable?: boolean;
+  attempt_count?: number | null;
+  recording_fingerprint?: string | null;
+  model?: string | null;
+  clip_results?: ManualQaRecordingAnalysisClip[];
+  findings?: ManualQaRecordingFinding[];
+}
+
+export interface ManualQaTranscriptEvent {
+  type?: string | null;
+  text?: string | null;
+  source?: string | null;
+  is_final?: boolean;
+  confidence?: number | null;
+  item_id?: string | null;
+  page_url?: string | null;
+  page_title?: string | null;
+  evidence_id?: string | null;
+  recording_index?: number | null;
+  start_ms?: number | null;
+  end_ms?: number | null;
+  started_at?: string | null;
+  ended_at?: string | null;
+  at?: string | null;
+}
+
 export interface ManualQaWorkPacket {
   packet_id: string;
   status?: "open" | "needs_question" | "in_progress" | "done" | "dismissed" | string;
@@ -311,7 +397,8 @@ export interface ManualQaWorkPacket {
   summary?: string | null;
   item_id?: string | null;
   item_title?: string | null;
-  source_kind?: "topic" | "drawing" | "technical" | "feedback" | string;
+  source_kind?: "recording_transcript" | "topic" | "drawing" | "technical" | "feedback" | string;
+  analysis_id?: string | null;
   confidence?: string | number | null;
   page_anchor?: {
     url?: string | null;
@@ -319,6 +406,8 @@ export interface ManualQaWorkPacket {
     viewport?: Record<string, number | null> | null;
     bounds?: Record<string, number | null> | null;
   } | null;
+  evidence_anchor?: ManualQaEvidenceAnchor | null;
+  evidence_anchors?: ManualQaEvidenceAnchor[];
   evidence_urls?: string[];
   evidence_media?: Array<{
     evidence_id?: string | null;
@@ -357,6 +446,7 @@ export interface ManualQaItem {
     content_type?: string | null;
     url?: string | null;
     byte_length?: number | null;
+    duration_ms?: number | null;
     storage_bucket?: string | null;
     storage_path?: string | null;
     created_at?: string | null;
@@ -369,6 +459,7 @@ export interface ManualQaItem {
     console_events?: Array<Record<string, unknown>>;
     network_events?: Array<Record<string, unknown>>;
     page_errors?: Array<Record<string, unknown>>;
+    transcript_events?: ManualQaTranscriptEvent[];
   };
   created_at?: string | null;
   reviewed_at?: string | null;
@@ -407,6 +498,7 @@ export interface ManualQaSession {
   } | null;
   checklist?: ManualQaItem[];
   work_packets?: ManualQaWorkPacket[];
+  findings_analysis?: ManualQaFindingsAnalysis | null;
   context?: {
     work_summary?: string | null;
     feature_name?: string | null;
@@ -452,6 +544,7 @@ export interface QaTrialEvidence {
   label?: string | null;
   content_type?: string | null;
   byte_length?: number;
+  duration_ms?: number | null;
   url?: string | null;
   created_at?: string | null;
 }
@@ -527,6 +620,7 @@ export interface QaTrialView {
     accepted: boolean;
     lead_accepted: boolean;
     tester_accepted: boolean;
+    recording_analysis_accepted?: boolean;
   };
   tester: {
     name?: string | null;
