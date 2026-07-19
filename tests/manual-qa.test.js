@@ -1222,8 +1222,8 @@ test("customer human-test export matches the visible findings report without int
   });
 
   assert.match(markdown, /# Ciaro Pro free QA trial/);
-  assert.match(markdown, /Status: Waiting for tester permission/);
-  assert.match(markdown, /tester must approve video-and-transcript analysis/i);
+  assert.match(markdown, /Status: Preparing report/);
+  assert.match(markdown, /queued for automatic video-and-transcript analysis/i);
   assert.match(markdown, /Submitted: 2026-07-19T03:21:00.000Z/);
   assert.doesNotMatch(markdown, /Submitted: 2026-07-19T04:00:00.000Z/);
   assert.doesNotMatch(markdown, /### Bugs|### Frustrations|### Aha moments/);
@@ -1440,6 +1440,15 @@ test("a mixed trusted and untrusted recording set fails instead of publishing a 
   assert.equal(resolved.error_code, "recording_set_invalid");
   assert.equal(resolved.retryable, false);
   assert.deepEqual(resolved.findings, []);
+
+  const retiredGateState = resolveCurrentManualQaFindingsAnalysis(mixed, {
+    status: "failed",
+    error_code: "recording_analysis_consent_required",
+    retryable: false
+  });
+  assert.equal(retiredGateState.status, "failed");
+  assert.equal(retiredGateState.error_code, "recording_set_invalid");
+  assert.equal(retiredGateState.retryable, false);
 });
 
 test("raw complete analysis schema cannot normalize malformed findings into an empty success", () => {
@@ -1500,14 +1509,11 @@ test("submitted qualification sessions suppress legacy note-derived work packets
     }
   });
   assert.deepEqual(normalized.work_packets, []);
-  assert.equal(normalized.findings_analysis.status, "failed");
-  assert.equal(
-    normalized.findings_analysis.error_code,
-    "recording_analysis_consent_required"
-  );
+  assert.equal(normalized.findings_analysis.status, "not_started");
+  assert.equal(normalized.findings_analysis.error_code, null);
 });
 
-test("historical complete analysis without tester consent is never exposed or reused", () => {
+test("historical recording-derived analysis remains valid without a post-submit permission gate", () => {
   const sessionId = "manual-historical-no-consent";
   const recording = makeFinalRecording(sessionId, 1);
   const storedSession = {
@@ -1525,14 +1531,14 @@ test("historical complete analysis without tester consent is never exposed or re
       widget_context: {
         transcript_events: [{
           source: "server_recording_analysis",
-          text: "Historical server transcript must stay hidden"
+          text: "Stale server transcript must be replaced"
         }]
       }
     }],
     work_packets: [{
       packet_id: "historical-packet",
       source_kind: "recording_transcript",
-      title: "Historical unauthorized finding"
+      title: "Stale stored packet"
     }]
   };
   storedSession.findings_analysis = makeCompleteRecordingAnalysis(storedSession, {
@@ -1546,22 +1552,22 @@ test("historical complete analysis without tester consent is never exposed or re
       speech_segments: [{
         start_ms: 1000,
         end_ms: 3000,
-        text: "Historical unauthorized finding"
+        text: "Historical recording finding"
       }],
       visual_events: [],
-      summary: "Historical unauthorized finding",
+      summary: "Historical recording finding",
       confidence: 1
     }],
     findings: [{
       finding_id: "historical-finding",
       category: "bug",
-      title: "Historical unauthorized finding",
+      title: "Historical recording finding",
       evidence_anchors: [{
         evidence_id: recording.evidence_id,
         recording_index: 1,
         start_ms: 1000,
         end_ms: 3000,
-        quote: "Historical unauthorized finding"
+        quote: "Historical recording finding"
       }]
     }]
   });
@@ -1571,21 +1577,18 @@ test("historical complete analysis without tester consent is never exposed or re
     source: "manual_qa",
     payload: { manual_qa: storedSession }
   });
-  assert.equal(normalized.findings_analysis.status, "failed");
+  assert.equal(normalized.findings_analysis.status, "complete");
+  assert.equal(normalized.findings_analysis.findings[0].title, "Historical recording finding");
+  assert.equal(normalized.work_packets.length, 1);
+  assert.equal(normalized.work_packets[0].title, "Historical recording finding");
   assert.equal(
-    normalized.findings_analysis.error_code,
-    "recording_analysis_consent_required"
-  );
-  assert.deepEqual(normalized.findings_analysis.clip_results, []);
-  assert.deepEqual(normalized.findings_analysis.findings, []);
-  assert.deepEqual(normalized.work_packets, []);
-  assert.equal(
-    JSON.stringify(normalized.checklist).includes("Historical server transcript"),
+    JSON.stringify(normalized.checklist).includes("Stale server transcript"),
     false
   );
+  assert.match(JSON.stringify(normalized.checklist), /Historical recording finding/);
   const markdown = buildManualQaCustomerReportMarkdown(storedSession);
-  assert.match(markdown, /Waiting for tester permission/);
-  assert.doesNotMatch(markdown, /Historical unauthorized finding/);
+  assert.match(markdown, /Historical recording finding/);
+  assert.doesNotMatch(markdown, /Stale stored packet|Stale server transcript/);
 });
 
 test("recording analysis persists lifecycle, transcript anchors, and recording-only work packets", async () => {

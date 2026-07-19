@@ -215,7 +215,7 @@ export default function QaTrialPortal({ search }: { search: string }) {
     setError(caught instanceof Error ? caught.message : "Could not start screen and microphone recording.");
   }
 
-  async function performAction(action: "accept" | "accept_analysis" | "start" | "submit" | "rate", body: Record<string, unknown> = {}) {
+  async function performAction(action: "accept" | "start" | "submit" | "rate", body: Record<string, unknown> = {}) {
     setBusy(true);
     setError("");
     try {
@@ -579,30 +579,14 @@ export default function QaTrialPortal({ search }: { search: string }) {
             </div>
           ) : null}
 
-          {trial.role === "tester" && submitted && !trial.consent.recording_analysis_accepted ? (
-            <div className="mt-8 border-t border-brand-line pt-8">
-              <h2 className="text-xl font-black">One permission needed</h2>
-              <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted">
-                To create findings only from your submitted video and speech transcript, your screen and voice will be sent to a third-party AI provider for transient transcription and visual analysis. The provider is required not to retain or collect the AI request. Before Users Do and the product owner can view the recording, transcript, and timestamped report. This will not record a new test.
-              </p>
-              <button
-                type="button"
-                onClick={() => void performAction("accept_analysis")}
-                disabled={busy}
-                className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-xl bg-brand-accent px-6 py-5 text-lg font-black text-white transition hover:bg-brand-ink disabled:opacity-60"
-              >
-                {busy ? <LoaderCircle className="h-6 w-6 animate-spin" /> : <Check className="h-6 w-6" />}
-                Allow analysis of my recording
-              </button>
-            </div>
-          ) : !trial.consent.accepted ? (
+          {!trial.consent.accepted ? (
             trial.role === "tester" ? (
               <div className="mt-8 border-t border-brand-line pt-8">
                 <p className="text-sm font-semibold leading-6 text-brand-muted">
                   {paidAssignment
                     ? `This ${trial.duration_minutes}-minute test pays ${formatTesterPay(trial)} after Before Users Do reviews the submitted recording and report.`
                     : `This ${trial.duration_minutes}-minute qualification is unpaid. Your recording and report are shared with the product owner and scored for your first verified result.`}
-                  {" "}Your screen and voice are sent to a third-party AI provider for transient transcription and visual analysis. The provider is required not to retain or collect the AI request. Before Users Do and the product owner can view the recording, transcript, and timestamped report.
+                  {" "}We record your screen and voice, then use AI to make a transcript and report. Before Users Do and the product owner can view them; the AI provider does not keep them.
                 </p>
                 <button
                   type="button"
@@ -648,6 +632,11 @@ export default function QaTrialPortal({ search }: { search: string }) {
             />
           ) : trial.role === "tester" && !submitted ? (
             <div className="mt-8 border-t border-brand-line pt-8">
+              {!recording && !savedSegments && !trial.submission.evidence_media.length ? (
+                <p className="mb-6 text-sm font-semibold leading-6 text-brand-muted">
+                  We record your screen and voice, then use AI to make a transcript and report. Before Users Do and the product owner can view them; the AI provider does not keep them.
+                </p>
+              ) : null}
               {!recording ? (
                 <button
                   type="button"
@@ -719,7 +708,7 @@ export default function QaTrialPortal({ search }: { search: string }) {
                 <Check className="h-6 w-6 text-brand-success" />
                 <div>
                   <div className="font-black">Test submitted</div>
-                  <div className="text-sm font-semibold text-brand-muted">{videoEvidence.length} recording{videoEvidence.length === 1 ? "" : "s"} saved</div>
+                  <div className="text-sm font-semibold text-brand-muted">Your recording is saved. The report is created automatically.</div>
                 </div>
               </div>
 

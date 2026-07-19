@@ -7,7 +7,6 @@ const {
   claimManualQaFindingsAnalysis,
   collectManualQaRecordingMedia,
   getManualQaSession,
-  hasManualQaRecordingAnalysisConsent,
   normalizeManualQaSessionRow,
   queueManualQaFindingsAnalysis,
   updateManualQaFindingsAnalysis
@@ -83,9 +82,7 @@ function sessionHasSubmittedTrial(session = {}) {
 }
 
 function submittedSessionCanAnalyze(session = {}) {
-  const trial = session.qualification_trial || {};
   if (!sessionHasSubmittedTrial(session)) return false;
-  if (!hasManualQaRecordingAnalysisConsent(trial)) return false;
   return recordingStateForSession(session).recordings.length > 0;
 }
 
@@ -103,12 +100,9 @@ function analysisIsEligible(session = {}, nowMs = Date.now()) {
   if (!sameRecording) return true;
   if (status === "complete") return false;
   if (analysisAttemptCount(analysis) >= MAX_ANALYSIS_ATTEMPTS) return false;
-  if (status === "not_started") return false;
+  if (status === "not_started") return true;
   if (status === "queued") return analysis.retryable !== false;
-  if (status === "failed") {
-    if (analysis.error_code === "recording_analysis_consent_required") return true;
-    return analysis.retryable !== false;
-  }
+  if (status === "failed") return analysis.retryable !== false;
   if (status === "processing") return !analysisLeaseIsActive(analysis, nowMs);
   return false;
 }
@@ -413,22 +407,9 @@ async function processManualQaRecordingAnalysis(sessionId, options = {}, depende
       ok: false,
       status: 409,
       processed: false,
-      error: "Recording analysis requires a submitted human test with recorded tester consent",
-      error_code: "recording_analysis_consent_unavailable"
+      error: "Recording analysis requires a submitted human test with a complete recording",
+      error_code: "recording_analysis_unavailable"
     };
-  }
-  if (!hasManualQaRecordingAnalysisConsent(currentSession.qualification_trial || {})) {
-    const consentState = await queueAnalysis(
-      sessionId,
-      persistenceFence(
-        currentAnalysis,
-        deliveredAtFromResult(loaded),
-        { ...baseOptions, force: false, retry: false }
-      )
-    );
-    return consentState.ok
-      ? { ...consentState, processed: false }
-      : consentState;
   }
   if (sameRecording && currentAnalysis.status === "complete") {
     return { ...loaded, processed: false, analysis: currentAnalysis };

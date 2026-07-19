@@ -2,10 +2,10 @@ const { requireDashboardOrServiceAuth } = require("../lib/auth");
 const { getPublicBaseUrl, parseRequestBody, sanitizeString } = require("../lib/qa-core");
 const {
   acceptQaTrial,
-  acceptQaTrialRecordingAnalysis,
   createQaTrial,
   getQaTrialForAdmin,
   listQaTrials,
+  queueQaTrialRecordingAnalysis,
   rateQaTrial,
   scoreQaTrial,
   startQaTrial,
@@ -112,7 +112,7 @@ module.exports = async (req, res) => {
       action === "accept"
         ? await acceptQaTrial(bodySessionId, bodyToken, options)
         : action === "accept_analysis"
-          ? await acceptQaTrialRecordingAnalysis(bodySessionId, bodyToken, options)
+          ? await queueQaTrialRecordingAnalysis(bodySessionId, bodyToken, options)
         : action === "start"
           ? await startQaTrial(bodySessionId, bodyToken, options)
           : action === "submit"

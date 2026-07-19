@@ -3120,11 +3120,7 @@ function WorkspacePage({
 
     loadManualQaSession();
     const analysisSettled =
-      activeManualQaAnalysisStatus === "complete" ||
-      (
-        activeManualQaAnalysisStatus === "failed" &&
-        manualQaSession?.findings_analysis?.error_code !== "recording_analysis_consent_required"
-      );
+      activeManualQaAnalysisStatus === "complete" || activeManualQaAnalysisStatus === "failed";
     const legacySessionSettled = Boolean(
       manualQaSession?.widget?.installed ||
         manualQaSession?.status === "manual_completed" ||
@@ -3147,7 +3143,6 @@ function WorkspacePage({
     currentPanel,
     isSharedView,
     manualQaSession?.completed_at,
-    manualQaSession?.findings_analysis?.error_code,
     manualQaSession?.status,
     manualQaSession?.widget?.installed,
     requestedManualSessionId
@@ -6826,7 +6821,6 @@ function ManualQaAnalysisState({
   const total = Math.max(processed, Number(analysis?.media_count) || 0);
   const canStart = status === "not_started";
   const failed = status === "failed";
-  const consentRequired = analysis?.error_code === "recording_analysis_consent_required";
   const retryExhausted = failed && (
     analysis?.retryable === false || Math.max(0, Number(analysis?.attempt_count) || 0) >= 3
   );
@@ -6835,39 +6829,33 @@ function ManualQaAnalysisState({
   return (
     <section className="mt-12 border-y border-brand-line py-8" aria-labelledby="manual-qa-analysis-title" aria-live="polite">
       <div className="flex max-w-3xl items-start gap-3">
-        {status === "processing" || status === "queued" || busy ? (
+        {startError ? (
+          <CircleAlert className="mt-1 h-5 w-5 shrink-0 text-brand-danger" />
+        ) : status === "processing" || status === "queued" || canStart || busy ? (
           <LoaderCircle className="mt-1 h-5 w-5 shrink-0 animate-spin text-brand-accent" />
-        ) : (failed && !consentRequired) || startError ? (
+        ) : failed ? (
           <CircleAlert className="mt-1 h-5 w-5 shrink-0 text-brand-danger" />
         ) : (
-          consentRequired
-            ? <LoaderCircle className="mt-1 h-5 w-5 shrink-0 text-brand-accent" />
-            : <Play className="mt-1 h-5 w-5 shrink-0 text-brand-accent" />
+          <Play className="mt-1 h-5 w-5 shrink-0 text-brand-accent" />
         )}
         <div>
           <h2 id="manual-qa-analysis-title" className="text-lg font-semibold text-brand-ink">
-            {consentRequired
-              ? "Waiting for the tester’s permission."
-              : failed
+            {failed
               ? "We couldn’t analyze the recording."
               : startError
                 ? "We couldn’t start the video analysis."
                 : status === "processing"
                   ? `Analyzing the recording and speech${total ? `… ${processed} of ${total} parts` : "…"}`
-                  : status === "queued" || busy
-                    ? "Video analysis is waiting to start."
-                    : "This recording hasn’t been analyzed yet."}
+                  : "Preparing the report…"}
           </h2>
           <p className="mt-1 text-sm leading-6 text-brand-muted">
-            {consentRequired
-              ? "The tester can approve video-and-transcript analysis from their private trial link."
-              : retryExhausted
+            {retryExhausted
               ? "The recording is still safe, but automatic retries are exhausted. Contact Before Users Do support."
               : failed || startError
                 ? "The recording is still safe. Try the analysis again."
               : "Bugs, frustrations, and aha moments will appear here when it is ready."}
           </p>
-          {(failed && !retryExhausted && !consentRequired) || startError ? (
+          {(failed && !retryExhausted) || startError ? (
             <Button
               tone="primary"
               className="mt-4 min-h-11"
@@ -6876,16 +6864,6 @@ function ManualQaAnalysisState({
             >
               {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
               Try again
-            </Button>
-          ) : canStart ? (
-            <Button
-              tone="primary"
-              className="mt-4 min-h-11"
-              onClick={() => void onAnalyze()}
-              disabled={busy}
-            >
-              {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-              Analyze video
             </Button>
           ) : null}
         </div>
@@ -7113,7 +7091,6 @@ function ManualQaCompletedReport({
   const analysisComplete = analysisStatus === "complete";
   const transcriptEvents = analysisComplete ? collectManualQaTranscriptEvents(session) : [];
   const analysisFailed = analysisStatus === "failed";
-  const analysisConsentRequired = session.findings_analysis?.error_code === "recording_analysis_consent_required";
   const recordingJumpRequestRef = useRef(0);
   const [recordingJump, setRecordingJump] = useState<ManualQaRecordingJump | null>(null);
   const noteItem = checklist.find((item) => String(item.note || "").trim()) || checklist[0] || null;
@@ -7142,9 +7119,7 @@ function ManualQaCompletedReport({
   ]).filter(Boolean)));
   const contextCopy = [session.context?.work_summary, session.context?.developer_notes].filter(Boolean).join("\n\n");
   const reportStatus = recordings.length
-    ? analysisConsentRequired
-      ? "Waiting for tester permission"
-      : analysisFailed
+    ? analysisFailed
       ? "Analysis failed"
       : analysisComplete
         ? reviewed
@@ -7153,9 +7128,7 @@ function ManualQaCompletedReport({
         : "Preparing report"
     : "Recording missing";
   const reportStatusTone = recordings.length
-    ? analysisConsentRequired
-      ? "text-brand-accent"
-      : analysisFailed
+    ? analysisFailed
       ? "text-brand-danger"
       : analysisComplete
         ? "text-brand-success"
@@ -7186,7 +7159,7 @@ function ManualQaCompletedReport({
             <div className={`flex items-center gap-2 text-sm font-semibold ${reportStatusTone}`}>
               {analysisComplete ? (
                 <Check className="h-4 w-4" />
-              ) : (analysisFailed && !analysisConsentRequired) || !recordings.length ? (
+              ) : analysisFailed || !recordings.length ? (
                 <CircleAlert className="h-4 w-4" />
               ) : (
                 <LoaderCircle className="h-4 w-4 animate-spin" />
