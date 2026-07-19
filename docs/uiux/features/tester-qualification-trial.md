@@ -14,9 +14,10 @@ Bootstrap both sides of human QA: a customer receives one useful test for free w
 6. The tester submits the test.
 7. BUD queues the saved recording parts for audio transcription and visual analysis without making the tester wait.
 8. The report shows one analysis state until every eligible recording part is processed, then publishes recording-derived findings with timestamped proof.
-9. A BUD operator marks which private benchmark issues were caught and rates report clarity.
-10. BUD publishes a `BUD Verified Trial` score.
-11. The customer separately rates how useful the test was.
+9. After the complete report is durably saved, BUD emails the customer one fresh private `View your report` link and records the email provider's acceptance separately from analysis and qualification state.
+10. A BUD operator marks which private benchmark issues were caught and rates report clarity.
+11. BUD publishes a `BUD Verified Trial` score.
+12. The customer separately rates how useful the completed report was.
 
 When a tester claims a qualification, the application is linked to the new session and moves to `Qualification sent`. Publishing the BUD score moves that same application to `Passed qualification` for final operator approval.
 
@@ -50,7 +51,7 @@ New qualification requests default to 15 minutes. Explicit paid-test durations r
 
 ### Primary Action
 
-`Watch recording`
+`View your report`, then `Watch part N at M:SS` for supporting proof
 
 ### Primary Risk
 
@@ -59,6 +60,7 @@ A submitted recording is raw evidence. A tester note or an unfinished analysis m
 ### View Model Contract
 
 - A submitted manual-QA session switches from the active testing workbench to a read-only report.
+- The customer view has one primary report digest. Full recordings and the tester's extra note stay collapsed until requested.
 - Keep qualification review status separate from recording-analysis status. `Reviewed` means the operator reviewed the qualification; it does not mean the recording was analyzed.
 - Show one recording player that advances through the short saved segments in chronological order.
 - When timed speech is available, attach it to each matching recording part as an enabled captions track; keep the raw transcript as a secondary technical view.
@@ -68,7 +70,8 @@ A submitted recording is raw evidence. A tester note or an unfinished analysis m
 - When analysis is `complete`, show one vertical `What the tester found` digest. Merge bugs and frustrations under `Problems` with a plain `Bug` or `Friction` label, rename aha moments to `What worked`, show verified AI recommendations under `Suggested fixes`, and collapse neutral items under `More observations`.
 - Hide empty sections. If the entire digest is empty, show only `No clear findings were identified in the recording.`
 - Each finding links to its supporting moment with a plain action such as `Watch part 23 at 0:06`. The action selects the referenced clip and seeks to the clip-relative timestamp.
-- Show the raw tester note and requested flow after the completed findings digest as supplemental context.
+- Keep the requested flow out of the primary completed view. Put the raw tester note in one collapsed supplemental section after the digest.
+- Do not show the customer rating action until recording analysis is `complete`.
 - Keep operator scoring in the existing guarded operator workspace; the report shows whether that review is still pending.
 - Hide widget installation, checklist metrics, note editors, status buttons, raw evidence URLs, agent context, and capture diagnostics from the default report view.
 - Keep the raw transcript, raw links, expected behavior, widget context, and diagnostics under collapsed `Technical details`.
@@ -82,6 +85,21 @@ A submitted recording is raw evidence. A tester note or an unfinished analysis m
 - `processing`: `Analyzing the recording and speech… N of M parts.` Keep the recording playable. Hide findings categories and disable `Copy report`.
 - `complete`: show recording-derived findings and enable `Copy report`. Hide empty sections; show one all-empty conclusion only in this state.
 - `failed`: `We couldn't analyze the recording.` Keep the recording playable, hide findings categories, and disable `Copy report`. Show `Try again` only when the backend marks the job retryable and its retry cap is not exhausted.
+
+### Customer report delivery states
+
+- New human-test trials opt into automatic report delivery when they are created. Legacy completed trials remain disabled until an authenticated operator explicitly sends them.
+- Only a durably persisted `complete` recording analysis can be delivered. Finishing the tester submission or qualification review is not enough.
+- Claim the send on the existing trial row before contacting email, so concurrent cron/API workers cannot both send the same analysis.
+- Generate a fresh lead-only report token for each claimed analysis. Store only its hash; never return the raw report URL or token from an operator/cron response.
+- `pending`: the complete report is waiting to be emailed.
+- `sending`: one worker owns a short delivery lease.
+- `accepted`: the email provider accepted the message. Store the app-controlled Message-ID separately from the provider's SMTP response or explicit receipt ID, and complete the linked human-test request. This is provider acceptance, not proof that the buyer opened or received it.
+- `failed`: no provider acceptance occurred. Retry only failures known to be safe to retry, with a bounded attempt count.
+- `unknown`: the send outcome is ambiguous, including an expired sending lease or a thrown transport result. Stop automatic retries so the buyer cannot receive a duplicate.
+- Treat delivery state and fresh report-link hashes as server-owned fields. Ordinary rating, scoring, consent, and tester-link updates must preserve their newest stored values; only fenced delivery transitions may change them.
+- If linked-request completion fails after email acceptance, retry only that status sync on later idempotent delivery checks. Never resend the accepted email.
+- Keep report-delivery state separate from the report row's general `delivered_at` update timestamp, recording-analysis state, and tester qualification state.
 
 ### Evidence and failure states
 
@@ -99,6 +117,8 @@ A submitted recording is raw evidence. A tester note or an unfinished analysis m
 - Before a new finding is published, an independent text-only verifier must confirm that its title and summary follow from its exact anchors and that its category fits the evidence. A failed or malformed verdict fails closed. The verifier never rewrites findings.
 - A problem may carry one optional `suggested_fix`. It is an AI recommendation tied to a semantically verified finding, never a new evidence category or a tester quote. An unacceptable suggestion is dropped without discarding the verified finding.
 - The tester note, requested flow, private benchmark, and existing note-derived work packets never enter the recording findings input.
+- Redact private `bud_trial_`, `bud_widget_`, and `mcp_` bearer values from every published finding field, including titles, summaries, suggestions, quotes, and visible-evidence descriptions.
+- Trial-token report pages, APIs, and recording responses use private no-store caching and no-referrer policies. Recordings may stream with byte ranges but must not remain in a buyer browser cache.
 - Retries may reuse already completed clip analyses, but a changed recording fingerprint requires a fresh analysis before findings can be published.
 - Persist provider-reported AI cost cumulatively across same-recording batches and retries. Reset it when the recording fingerprint changes, including invalid replacement sets. Legacy reports keep cost unavailable rather than displaying `$0.00`; report API responses and customer-safe exports omit provider, model, token, cost, lease, and fingerprint internals.
 - Analyze bounded durable batches and publish only after the complete fingerprinted recording set succeeds. Exhausted retries stay terminal until support intervenes.

@@ -562,6 +562,7 @@ export interface ManualQaSession {
 
 export interface QaTrialEvidence {
   evidence_id?: string | null;
+  recording_index?: number | null;
   kind?: string | null;
   label?: string | null;
   content_type?: string | null;
@@ -659,6 +660,12 @@ export interface QaTrialView {
     note?: string | null;
     evidence_media: QaTrialEvidence[];
   };
+  report?: {
+    status: ManualQaFindingsAnalysisStatus;
+    source?: "recording_transcript" | string | null;
+    completed_at?: string | null;
+    findings: ManualQaRecordingFinding[];
+  } | null;
   benchmark?: {
     issues: Array<{ id: string; title: string; description?: string | null }>;
     issue_count: number;

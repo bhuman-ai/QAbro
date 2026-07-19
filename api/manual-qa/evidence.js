@@ -16,12 +16,25 @@ function readWidgetToken(req) {
   return sanitizeString(req.headers?.["x-bud-widget-token"], 512);
 }
 
+function setTrialEvidencePrivacyHeaders(res) {
+  res.setHeader("Cache-Control", "private, no-store, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+}
+
+function evidenceCacheControl(trialToken) {
+  return trialToken ? "private, no-store, max-age=0" : "private, max-age=3600";
+}
+
 module.exports = async (req, res) => {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
+  const trialToken = sanitizeString(req.query?.trial_token || req.query?.trialToken, 512);
+  if (trialToken) setTrialEvidencePrivacyHeaders(res);
   const sessionId = sanitizeString(req.query?.session_id || req.query?.sessionId, 128);
   const itemId = sanitizeString(req.query?.item_id || req.query?.itemId, 80);
   const evidenceId = sanitizeString(req.query?.evidence_id || req.query?.evidenceId, 160);
@@ -32,7 +45,6 @@ module.exports = async (req, res) => {
 
   let loaded;
   const widgetToken = readWidgetToken(req);
-  const trialToken = sanitizeString(req.query?.trial_token || req.query?.trialToken, 512);
   if (trialToken) {
     loaded = await verifyQaTrialAccess(sessionId, trialToken, { request: req });
   } else if (widgetToken) {
@@ -77,5 +89,16 @@ module.exports = async (req, res) => {
   if (!storedObject?.data?.length) {
     return res.status(404).json({ ok: false, error: "Stored evidence not found" });
   }
-  return sendMediaBuffer(req, res, storedObject.data, storedObject.contentType, "private, max-age=3600");
+  return sendMediaBuffer(
+    req,
+    res,
+    storedObject.data,
+    storedObject.contentType,
+    evidenceCacheControl(trialToken)
+  );
+};
+
+module.exports.__private = {
+  evidenceCacheControl,
+  setTrialEvidencePrivacyHeaders
 };

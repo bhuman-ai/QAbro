@@ -3,6 +3,7 @@ const { getPublicBaseUrl, parseRequestBody, sanitizeString } = require("../lib/q
 const {
   acceptQaTrial,
   createQaTrial,
+  deliverQaTrialReport,
   getQaTrialForAdmin,
   listQaTrials,
   queueQaTrialRecordingAnalysis,
@@ -49,7 +50,16 @@ function trialOptions(req, owner = {}) {
     ownerUserId: owner.ownerUserId,
     ownerEmail: owner.ownerEmail,
     authOk: Boolean(owner.ownerUserId),
+    adminOk: owner.user?.report_admin === true,
     launchedBy: owner.is_service_token ? "service_token" : "dashboard_user"
+  };
+}
+
+function trialListOptions(req, owner = {}) {
+  const options = trialOptions(req, owner);
+  return {
+    ...options,
+    ownerUserId: options.adminOk ? "" : options.ownerUserId
   };
 }
 
@@ -60,11 +70,18 @@ function shouldMarkTesterQualified(trial, owner = {}) {
   );
 }
 
+function setPrivateTrialResponseHeaders(res) {
+  res.setHeader("Cache-Control", "private, no-store, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Referrer-Policy", "no-referrer");
+}
+
 module.exports = async (req, res) => {
   const sessionId = sanitizeString(req.query?.session_id || req.query?.sessionId, 128);
   const queryToken = sanitizeString(req.query?.token, 512);
 
   if (req.method === "GET" && queryToken) {
+    setPrivateTrialResponseHeaders(res);
     if (!sessionId) return res.status(400).json({ ok: false, error: "session_id is required" });
     const verified = await verifyQaTrialAccess(sessionId, queryToken, { request: req });
     if (!verified.ok) return res.status(verified.status || 500).json({ ok: false, error: verified.error });
@@ -80,7 +97,7 @@ module.exports = async (req, res) => {
       return res.status(200).json({ ok: true, trial: loaded.trial });
     }
     const listed = await listQaTrials({
-      ...trialOptions(req, owner),
+      ...trialListOptions(req, owner),
       limit: req.query?.limit
     });
     if (!listed.ok) return res.status(listed.status || 500).json({ ok: false, error: listed.error });
@@ -104,6 +121,7 @@ module.exports = async (req, res) => {
   const bodyToken = sanitizeString(body?.token || queryToken, 512);
 
   if (["accept", "accept_analysis", "start", "submit", "rate"].includes(action)) {
+    setPrivateTrialResponseHeaders(res);
     if (!bodySessionId || !bodyToken) {
       return res.status(400).json({ ok: false, error: "session_id and token are required" });
     }
@@ -136,6 +154,29 @@ module.exports = async (req, res) => {
     return res.status(201).json(created);
   }
 
+  if (action === "deliver_report") {
+    if (!bodySessionId) return res.status(400).json({ ok: false, error: "session_id is required" });
+    const delivered = await deliverQaTrialReport(bodySessionId, {
+      ...options,
+      forceEnable: true
+    });
+    if (!delivered.ok) {
+      return res.status(delivered.status || 500).json({
+        ok: false,
+        error: delivered.error,
+        delivery: delivered.delivery || null
+      });
+    }
+    return res.status(delivered.status || 200).json({
+      ok: true,
+      delivered: delivered.delivered === true,
+      idempotent: delivered.idempotent === true,
+      skipped: delivered.skipped === true,
+      delivery: delivered.delivery || null,
+      ...(delivered.warning ? { warning: delivered.warning } : {})
+    });
+  }
+
   if (action === "score") {
     if (!bodySessionId) return res.status(400).json({ ok: false, error: "session_id is required" });
     const scored = await scoreQaTrial(bodySessionId, body || {}, options);
@@ -155,6 +196,8 @@ module.exports = async (req, res) => {
 
 module.exports.__private = {
   resolveOwner,
+  setPrivateTrialResponseHeaders,
   shouldMarkTesterQualified,
+  trialListOptions,
   trialOptions
 };

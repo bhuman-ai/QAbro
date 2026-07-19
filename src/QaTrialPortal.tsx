@@ -2,18 +2,25 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRight,
   Check,
+  ChevronDown,
   CircleAlert,
   ExternalLink,
   KeyRound,
   LoaderCircle,
   Mic,
   MonitorUp,
+  Play,
   Square,
   Star,
   Video
 } from "lucide-react";
 import { apiFetch } from "./lib/api";
-import type { QaTrialEvidence, QaTrialView } from "./types";
+import type {
+  ManualQaEvidenceAnchor,
+  ManualQaRecordingFinding,
+  QaTrialEvidence,
+  QaTrialView
+} from "./types";
 
 const RECORDING_SEGMENT_MS = 30_000;
 const UPLOAD_CHUNK_BYTES = 1_400_000;
@@ -55,10 +62,13 @@ function formatTesterPay(trial: QaTrialView) {
   }).format(cents / 100);
 }
 
-function evidenceUrl(entry: QaTrialEvidence, token: string) {
+function evidenceUrl(entry: QaTrialEvidence, token: string, startMs?: number | null) {
   if (!entry.url) return "";
   const url = new URL(entry.url, window.location.origin);
   url.searchParams.set("trial_token", token);
+  if (startMs !== undefined && startMs !== null) {
+    url.hash = `t=${Math.max(0, Number(startMs) || 0) / 1000}`;
+  }
   return url.toString();
 }
 
@@ -80,6 +90,183 @@ function nextRecordingSegmentIndex(evidence: QaTrialEvidence[]) {
     if (entry.kind !== "video") return highest;
     return Math.max(highest, recordingPartNumber(entry));
   }, 0);
+}
+
+function formatEvidenceTime(value?: number | null) {
+  const seconds = Math.max(0, Math.floor((Number(value) || 0) / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function findingAnchors(finding: ManualQaRecordingFinding) {
+  const anchors = [...(finding.evidence_anchors || [])];
+  const primary = finding.evidence_anchor;
+  if (primary && !anchors.some((anchor) => (
+    anchor.evidence_id === primary.evidence_id &&
+    anchor.recording_index === primary.recording_index &&
+    anchor.start_ms === primary.start_ms
+  ))) {
+    anchors.unshift(primary);
+  }
+  return anchors;
+}
+
+function recordingForAnchor(anchor: ManualQaEvidenceAnchor, recordings: QaTrialEvidence[]) {
+  const evidenceId = String(anchor.evidence_id || "").trim();
+  if (evidenceId) {
+    const directMatch = recordings.find((entry) => entry.evidence_id === evidenceId);
+    if (directMatch) return directMatch;
+  }
+  const partNumber = Number(anchor.recording_index);
+  if (Number.isInteger(partNumber) && partNumber > 0) {
+    return recordings.find((entry) => recordingPartNumber(entry) === partNumber) || recordings[partNumber - 1] || null;
+  }
+  return null;
+}
+
+function anchorPartNumber(anchor: ManualQaEvidenceAnchor, recording: QaTrialEvidence, recordings: QaTrialEvidence[]) {
+  const statedPart = Number(anchor.recording_index);
+  if (Number.isInteger(statedPart) && statedPart > 0) return statedPart;
+  const recordedPart = recordingPartNumber(recording);
+  if (recordedPart > 0) return recordedPart;
+  const index = recordings.indexOf(recording);
+  return index >= 0 ? index + 1 : 1;
+}
+
+function ReportFinding({
+  finding,
+  recordings,
+  token,
+  showProblemType = false
+}: {
+  finding: ManualQaRecordingFinding;
+  recordings: QaTrialEvidence[];
+  token: string;
+  showProblemType?: boolean;
+}) {
+  const anchors = findingAnchors(finding);
+  const category = String(finding.category || "").toLowerCase();
+  const summary = String(finding.summary || "").trim();
+  return (
+    <li className="py-5 first:pt-0 last:pb-0">
+      {showProblemType ? (
+        <p className="mb-2 text-xs font-black uppercase tracking-widest text-brand-muted">
+          {category === "bug" ? "Bug" : "Friction"}
+        </p>
+      ) : null}
+      <h3 className="text-lg font-black leading-7">{finding.title || "Captured point"}</h3>
+      {summary ? <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted">{summary}</p> : null}
+      {anchors.length ? (
+        <ol className="mt-4 space-y-4 border-l-2 border-brand-line pl-4">
+          {anchors.map((anchor, index) => {
+            const recording = recordingForAnchor(anchor, recordings);
+            const link = recording ? evidenceUrl(recording, token, anchor.start_ms) : "";
+            const partNumber = recording ? anchorPartNumber(anchor, recording, recordings) : 1;
+            return (
+              <li key={`${finding.finding_id || finding.title || "finding"}-evidence-${index}`}>
+                {anchor.quote ? (
+                  <blockquote className="text-sm font-semibold leading-6 text-brand-ink">&ldquo;{anchor.quote}&rdquo;</blockquote>
+                ) : null}
+                {anchor.visual_evidence ? (
+                  <p className="mt-1 text-sm font-semibold leading-6 text-brand-muted">On screen: {anchor.visual_evidence}</p>
+                ) : null}
+                {link ? (
+                  <a
+                    href={link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-flex min-h-11 items-center gap-2 font-black text-brand-accent underline decoration-brand-accent/30 underline-offset-4 hover:text-brand-ink"
+                  >
+                    <Play className="h-4 w-4" />
+                    Watch part {partNumber} at {formatEvidenceTime(anchor.start_ms)}
+                  </a>
+                ) : null}
+              </li>
+            );
+          })}
+        </ol>
+      ) : null}
+    </li>
+  );
+}
+
+function BuyerReport({ trial, recordings, token }: { trial: QaTrialView; recordings: QaTrialEvidence[]; token: string }) {
+  const findings = (trial.report?.findings || []).filter((finding) => finding.support_verified !== false);
+  const problems = findings.filter((finding) => ["bug", "frustration_point"].includes(String(finding.category || "").toLowerCase()));
+  const wins = findings.filter((finding) => String(finding.category || "").toLowerCase() === "aha_moment");
+  const observations = findings.filter((finding) => !["bug", "frustration_point", "aha_moment"].includes(String(finding.category || "").toLowerCase()));
+  const suggestedFixes = problems.filter((finding) => Boolean(String(finding.suggested_fix || "").trim()));
+
+  const renderFinding = (finding: ManualQaRecordingFinding, showProblemType = false) => (
+    <ReportFinding
+      key={finding.finding_id || `${finding.category}-${finding.title}`}
+      finding={finding}
+      recordings={recordings}
+      token={token}
+      showProblemType={showProblemType}
+    />
+  );
+
+  return (
+    <section aria-labelledby="buyer-report-title">
+      <div className="flex items-start gap-3 bg-brand-success/10 p-4">
+        <Check className="mt-0.5 h-6 w-6 shrink-0 text-brand-success" />
+        <div>
+          <h2 id="buyer-report-title" className="font-black">Report ready</h2>
+          <p className="mt-1 text-sm font-semibold leading-6 text-brand-muted">
+            Created only from the tester&apos;s video and speech transcript.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-7 divide-y divide-brand-line border-y border-brand-line">
+        {!findings.length ? (
+          <p className="py-7 text-sm font-semibold text-brand-muted">No clear findings were identified in the recording.</p>
+        ) : null}
+
+        {problems.length ? (
+          <section className="py-7" aria-labelledby="buyer-report-problems-title">
+            <h2 id="buyer-report-problems-title" className="text-sm font-black uppercase tracking-widest">Problems</h2>
+            <ol className="mt-5 divide-y divide-brand-line">{problems.map((finding) => renderFinding(finding, true))}</ol>
+          </section>
+        ) : null}
+
+        {wins.length ? (
+          <section className="py-7" aria-labelledby="buyer-report-wins-title">
+            <h2 id="buyer-report-wins-title" className="text-sm font-black uppercase tracking-widest">What worked</h2>
+            <ol className="mt-5 divide-y divide-brand-line">{wins.map((finding) => renderFinding(finding))}</ol>
+          </section>
+        ) : null}
+
+        {suggestedFixes.length ? (
+          <section className="py-7" aria-labelledby="buyer-report-fixes-title">
+            <h2 id="buyer-report-fixes-title" className="text-sm font-black uppercase tracking-widest">Suggested fixes</h2>
+            <p className="mt-2 text-sm font-semibold leading-6 text-brand-muted">
+              Recommendations based on the recording-backed problems above.
+            </p>
+            <ol className="mt-5 divide-y divide-brand-line">
+              {suggestedFixes.map((finding) => (
+                <li key={`${finding.finding_id || finding.title}-fix`} className="py-4 first:pt-0 last:pb-0">
+                  <p className="text-sm font-semibold leading-6">{finding.suggested_fix}</p>
+                  <p className="mt-1 text-sm font-semibold text-brand-muted">For: {finding.title || "Recorded problem"}</p>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ) : null}
+
+        {observations.length ? (
+          <details className="py-4">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 font-black focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-accent">
+              More observations ({observations.length})
+              <ChevronDown aria-hidden="true" className="h-4 w-4 text-brand-muted" />
+            </summary>
+            <ol className="mt-3 divide-y divide-brand-line">{observations.map((finding) => renderFinding(finding))}</ol>
+          </details>
+        ) : null}
+      </div>
+    </section>
+  );
 }
 
 function TrialLogo() {
@@ -516,6 +703,9 @@ export default function QaTrialPortal({ search }: { search: string }) {
   const paidAssignment = trial.assignment.type === "paid";
   const otherPersonAccepted = trial.role === "tester" ? trial.consent.lead_accepted : trial.consent.tester_accepted;
   const videoEvidence = trial.submission.evidence_media.filter((entry) => entry.kind === "video");
+  const reportComplete = trial.report?.status === "complete";
+  const reportFailed = trial.report?.status === "failed";
+  const showBuyerReport = trial.role !== "tester" && reportComplete;
 
   return (
     <div className="min-h-screen bg-brand-bg text-brand-ink">
@@ -536,9 +726,13 @@ export default function QaTrialPortal({ search }: { search: string }) {
               ? paidAssignment
                 ? `Complete this ${formatTesterPay(trial)} test`
                 : "Complete your first verified test"
-              : "Your product test"}
+              : showBuyerReport
+                ? "Your test report"
+                : "Your product test"}
           </h1>
-          <p className="mt-4 text-base font-semibold leading-7 text-brand-muted">{trial.test_focus}</p>
+          {!showBuyerReport ? (
+            <p className="mt-4 text-base font-semibold leading-7 text-brand-muted">{trial.test_focus}</p>
+          ) : null}
 
           {trial.role === "tester" ? (
             <div className="mt-7 border-y border-brand-line py-5">
@@ -630,6 +824,18 @@ export default function QaTrialPortal({ search }: { search: string }) {
               title={trial.status === "in_progress" ? "Testing is underway" : "Your test is ready"}
               body="The tester will record the flow and send the report here when finished."
             />
+          ) : trial.role === "lead" && reportFailed ? (
+            <TrialState
+              icon={<CircleAlert className="h-7 w-7" />}
+              title="We couldn't analyze the recording."
+              body="The recording is safe, but the report is not available yet."
+            />
+          ) : trial.role === "lead" && !reportComplete ? (
+            <TrialState
+              icon={<LoaderCircle className="h-7 w-7 animate-spin" />}
+              title="Preparing your report…"
+              body="We are reviewing the tester's video and speech. This page updates automatically."
+            />
           ) : trial.role === "tester" && !submitted ? (
             <div className="mt-8 border-t border-brand-line pt-8">
               {!recording && !savedSegments && !trial.submission.evidence_media.length ? (
@@ -704,34 +910,48 @@ export default function QaTrialPortal({ search }: { search: string }) {
             </div>
           ) : (
             <div className="mt-8 border-t border-brand-line pt-8">
-              <div className="flex items-center gap-3 rounded-2xl bg-brand-success/10 p-4 text-brand-ink">
-                <Check className="h-6 w-6 text-brand-success" />
-                <div>
-                  <div className="font-black">Test submitted</div>
-                  <div className="text-sm font-semibold text-brand-muted">Your recording is saved. The report is created automatically.</div>
+              {showBuyerReport ? (
+                <BuyerReport trial={trial} recordings={videoEvidence} token={token} />
+              ) : (
+                <div className="flex items-center gap-3 rounded-2xl bg-brand-success/10 p-4 text-brand-ink">
+                  <Check className="h-6 w-6 text-brand-success" />
+                  <div>
+                    <div className="font-black">Test submitted</div>
+                    <div className="text-sm font-semibold text-brand-muted">Your recording is saved. The report is created automatically.</div>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {trial.submission.note ? (
-                <div className="mt-5 rounded-2xl border border-brand-line p-5">
-                  <div className="text-xs font-black uppercase tracking-widest text-brand-muted">Tester note</div>
-                  <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6">{trial.submission.note}</p>
-                </div>
+                <details className="mt-6 border-y border-brand-line py-2">
+                  <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 font-black focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-accent">
+                    Tester&apos;s extra note
+                    <ChevronDown aria-hidden="true" className="h-4 w-4 text-brand-muted" />
+                  </summary>
+                  <p className="border-t border-brand-line py-4 whitespace-pre-wrap text-sm font-semibold leading-6 text-brand-muted">
+                    {trial.submission.note}
+                  </p>
+                </details>
               ) : null}
 
               {videoEvidence.length ? (
-                <div className="mt-6 space-y-4">
-                  <h2 className="text-xl font-black">Recordings</h2>
-                  {videoEvidence.map((entry, index) => (
-                    <div key={entry.evidence_id || `${entry.url}-${index}`} className="overflow-hidden rounded-2xl border border-brand-line bg-brand-ink">
-                      <video controls preload="metadata" className="aspect-video w-full" src={evidenceUrl(entry, token)} />
-                      <div className="flex items-center justify-between gap-3 bg-white px-4 py-3 text-xs font-bold text-brand-muted">
-                        <span>{entry.label || `Recording ${index + 1}`}</span>
-                        <span>{formatBytes(entry.byte_length)}</span>
+                <details className="mt-2 border-b border-brand-line py-2">
+                  <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 font-black focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-accent">
+                    All recordings ({videoEvidence.length})
+                    <ChevronDown aria-hidden="true" className="h-4 w-4 text-brand-muted" />
+                  </summary>
+                  <div className="space-y-4 border-t border-brand-line py-4">
+                    {videoEvidence.map((entry, index) => (
+                      <div key={entry.evidence_id || `${entry.url}-${index}`} className="overflow-hidden rounded-2xl border border-brand-line bg-brand-ink">
+                        <video controls preload="none" className="aspect-video w-full" src={evidenceUrl(entry, token)} />
+                        <div className="flex items-center justify-between gap-3 bg-white px-4 py-3 text-xs font-bold text-brand-muted">
+                          <span>{entry.label || `Recording ${index + 1}`}</span>
+                          <span>{formatBytes(entry.byte_length)}</span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                </details>
               ) : null}
 
               {paidAssignment && trial.role === "tester" ? (
@@ -762,7 +982,7 @@ export default function QaTrialPortal({ search }: { search: string }) {
                 <p className="mt-5 text-sm font-semibold text-brand-muted">BUD is reviewing your evidence for your first score.</p>
               ) : null}
 
-              {trial.role === "lead" && !trial.lead_rating.score ? (
+              {trial.role === "lead" && reportComplete && !trial.lead_rating.score ? (
                 <div className="mt-8 rounded-2xl bg-brand-bg p-6">
                   <h2 className="text-xl font-black">Was this useful?</h2>
                   <div className="mt-4 flex gap-2" role="group" aria-label="Rate this test">
@@ -794,7 +1014,7 @@ export default function QaTrialPortal({ search }: { search: string }) {
                     Send rating
                   </button>
                 </div>
-              ) : trial.role === "lead" && trial.lead_rating.score ? (
+              ) : trial.role === "lead" && reportComplete && trial.lead_rating.score ? (
                 <div className="mt-6 flex items-center gap-3 rounded-2xl bg-brand-bg p-5">
                   <Star className="h-6 w-6 fill-brand-warning text-brand-warning" />
                   <span className="font-black">You rated this {trial.lead_rating.score}/5</span>

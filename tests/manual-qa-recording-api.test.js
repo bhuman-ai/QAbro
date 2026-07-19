@@ -179,6 +179,7 @@ test("authenticated cron responses expose metadata only, never analysis or trans
   assert.equal(response.statusCode, 200);
   assert.deepEqual(Object.keys(response.body).sort(), [
     "analysis_status",
+    "delivery_status",
     "error_code",
     "media_count",
     "ok",
@@ -193,6 +194,173 @@ test("authenticated cron responses expose metadata only, never analysis or trans
   assert.equal(serialized.includes("PRIVATE REPORT CONTENT"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(response.body, "analysis"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(response.body, "session"), false);
+});
+
+test("cron selects a completed analysis whose buyer report is still pending", async () => {
+  const pending = currentSession(
+    {
+      status: "complete",
+      analysis_id: "analysis-awaiting-delivery",
+      attempt_count: 1,
+      retryable: false,
+      completed_at: "2026-07-19T00:10:00.000Z"
+    },
+    { sessionId: "completed-report-pending" }
+  );
+  pending.qualification_trial.report_delivery = {
+    status: "pending",
+    enabled_at: "2026-07-19T00:10:00.000Z",
+    attempt_count: 0,
+    retryable: true
+  };
+
+  const result = await findNextActionableSession(
+    {},
+    {
+      listSessionsPage: async () => ({
+        ok: true,
+        items: [pending],
+        has_more: false
+      })
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.candidate.session_id, "completed-report-pending");
+  assert.equal(result.scanned, 1);
+});
+
+test("processing an already-complete analysis invokes report delivery without reanalyzing", async () => {
+  const complete = currentSession(
+    {
+      status: "complete",
+      analysis_id: "analysis-ready-to-send",
+      attempt_count: 1,
+      retryable: false,
+      completed_at: "2026-07-19T00:10:00.000Z"
+    },
+    { sessionId: "already-complete-report" }
+  );
+  complete.qualification_trial.report_delivery = {
+    status: "pending",
+    enabled_at: "2026-07-19T00:10:00.000Z",
+    attempt_count: 0,
+    retryable: true
+  };
+  let queueCalls = 0;
+  let deliverCalls = 0;
+
+  const result = await processManualQaRecordingAnalysis(
+    "already-complete-report",
+    { authOk: true, adminOk: true },
+    {
+      loadSession: async () => ({
+        ok: true,
+        status: 200,
+        session: complete,
+        row: { delivered_at: "delivered-complete" }
+      }),
+      queueAnalysis: async () => {
+        queueCalls += 1;
+        throw new Error("complete analysis must not be queued again");
+      },
+      deliverReport: async (sessionId, options) => {
+        deliverCalls += 1;
+        assert.equal(sessionId, "already-complete-report");
+        assert.equal(options.authOk, true);
+        assert.equal(options.adminOk, true);
+        return {
+          ok: true,
+          status: 200,
+          delivery: { status: "accepted" }
+        };
+      }
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.processed, false);
+  assert.equal(result.analysis.status, "complete");
+  assert.equal(result.delivery_ok, true);
+  assert.equal(result.delivery.status, "accepted");
+  assert.equal(deliverCalls, 1);
+  assert.equal(queueCalls, 0);
+});
+
+test("report delivery failure does not turn a completed analysis into a failed job", async () => {
+  const complete = currentSession(
+    {
+      status: "complete",
+      analysis_id: "analysis-email-outage",
+      attempt_count: 1,
+      retryable: false,
+      completed_at: "2026-07-19T00:10:00.000Z"
+    },
+    { sessionId: "complete-email-outage" }
+  );
+  complete.qualification_trial.report_delivery = {
+    status: "pending",
+    enabled_at: "2026-07-19T00:10:00.000Z",
+    attempt_count: 0,
+    retryable: true
+  };
+
+  const result = await processManualQaRecordingAnalysis("complete-email-outage", {}, {
+    loadSession: async () => ({
+      ok: true,
+      status: 200,
+      session: complete,
+      row: { delivered_at: "delivered-email-outage" }
+    }),
+    deliverReport: async () => {
+      throw new Error("simulated email provider outage");
+    }
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 200);
+  assert.equal(result.processed, false);
+  assert.equal(result.analysis.status, "complete");
+  assert.equal(result.delivery_ok, false);
+  assert.equal(result.delivery.status, "unknown");
+  assert.equal(result.delivery_error_code, "report_delivery_failed");
+});
+
+test("cron does not select a report already accepted for the completed analysis", async () => {
+  const accepted = currentSession(
+    {
+      status: "complete",
+      analysis_id: "analysis-already-delivered",
+      attempt_count: 1,
+      retryable: false,
+      completed_at: "2026-07-19T00:10:00.000Z"
+    },
+    { sessionId: "completed-report-accepted" }
+  );
+  accepted.qualification_trial.report_delivery = {
+    status: "accepted",
+    enabled_at: "2026-07-19T00:10:00.000Z",
+    analysis_id: accepted.findings_analysis.analysis_id,
+    recording_fingerprint: accepted.findings_analysis.recording_fingerprint,
+    attempt_count: 1,
+    accepted_at: "2026-07-19T00:11:00.000Z",
+    retryable: false
+  };
+
+  const result = await findNextActionableSession(
+    {},
+    {
+      listSessionsPage: async () => ({
+        ok: true,
+        items: [accepted],
+        has_more: false
+      })
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.candidate, null);
+  assert.equal(result.scanned, 1);
 });
 
 test("cron selection paginates past ineligible sessions without starving later work", async () => {
