@@ -763,6 +763,61 @@ test("malformed or unsupported aggregation fails instead of publishing empty fin
     assert.equal(result.findings.length, 0);
   });
 
+  await t.test("known provider aliases are canonicalized before exact evidence validation", async () => {
+    const result = await runManualQaRecordingAnalysis(input, {
+      aggregateFindings: async () => ({
+        findings: [{
+          category: "frustration_point",
+          title: "The visible state caused hesitation",
+          summary: "The complete spoken and visual events support this finding.",
+          evidence_anchors: [{
+            evidence_id: "evidence-1",
+            recording_index: "1",
+            start_ms: "100",
+            end_ms: "900",
+            exact_quote: "Spoken words in part 1",
+            exact_visual_evidence: "Visible event in part 1"
+          }],
+          confidence: "high"
+        }]
+      })
+    });
+    assert.equal(result.status, "complete");
+    assert.equal(result.findings.length, 1);
+    assert.equal(result.findings[0].category, "frustration");
+    assert.equal(result.findings[0].confidence, 0.9);
+    assert.deepEqual(result.findings[0].evidence_anchors[0], {
+      evidence_id: "evidence-1",
+      recording_index: 1,
+      start_ms: 100,
+      end_ms: 900,
+      quote: "Spoken words in part 1",
+      visual_evidence: "Visible event in part 1"
+    });
+  });
+
+  await t.test("unknown qualitative confidence still fails closed", async () => {
+    const result = await runManualQaRecordingAnalysis(input, {
+      aggregateFindings: async () => ({
+        findings: [{
+          category: "bug",
+          title: "Unsupported confidence label",
+          summary: "The confidence must use a known numeric or qualitative value.",
+          evidence_anchors: [{
+            evidence_id: "evidence-1",
+            recording_index: 1,
+            start_ms: 100,
+            end_ms: 800,
+            quote: "Spoken words in part 1"
+          }],
+          confidence: "certain"
+        }]
+      })
+    });
+    assert.equal(result.status, "failed");
+    assert.equal(result.error_code, "aggregation_response_invalid");
+  });
+
   await t.test("an explicit empty findings array is valid", async () => {
     const result = await runManualQaRecordingAnalysis(input, {
       aggregateFindings: async () => ({ findings: [] })
