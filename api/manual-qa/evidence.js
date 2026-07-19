@@ -40,6 +40,7 @@ module.exports = async (req, res) => {
     }
     loaded = await getManualQaSession(sessionId, {
       authOk: auth.ok,
+      adminOk: auth.user?.report_admin === true,
       ownerUserId: sanitizeString(auth.user?.id, 128),
       request: req
     });

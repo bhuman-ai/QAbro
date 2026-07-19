@@ -3,6 +3,7 @@ export interface AuthUser {
   email?: string | null;
   created_at?: string | null;
   onboarding_seen?: boolean | null;
+  report_admin?: boolean | null;
   user_metadata?: Record<string, unknown> | null;
 }
 

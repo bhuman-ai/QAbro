@@ -36,7 +36,8 @@ module.exports = async (req, res) => {
 
   const exported = await exportManualQaSession(sessionId, {
     authOk: true,
-    ownerUserId: owner.ownerUserId,
+    adminOk: auth.user?.report_admin === true,
+    ownerUserId: auth.user?.report_admin === true ? "" : owner.ownerUserId,
     ownerEmail: owner.ownerEmail,
     request: req
   });
