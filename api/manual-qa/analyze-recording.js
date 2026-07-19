@@ -14,6 +14,10 @@ const {
   updateManualQaFindingsAnalysis
 } = require("../../lib/manual-qa");
 const { runManualQaRecordingAnalysis } = require("../../lib/manual-qa-recording-analysis");
+const {
+  deliverQaTrialReport,
+  reportDeliveryNeedsAction
+} = require("../../lib/qa-trials");
 
 const MANUAL_QA_SOURCE = "manual_qa";
 const DEFAULT_PAGE_SIZE = 100;
@@ -186,6 +190,7 @@ async function listManualQaSessionPage(options = {}) {
 
 async function findNextActionableSession(options = {}, dependencies = {}) {
   const listPage = dependencies.listSessionsPage || listManualQaSessionPage;
+  const deliveryNeedsAction = dependencies.reportDeliveryNeedsAction || reportDeliveryNeedsAction;
   const pageSize = Math.max(
     1,
     Math.min(DEFAULT_PAGE_SIZE, Number(options.pageSize || options.page_size || DEFAULT_PAGE_SIZE) || DEFAULT_PAGE_SIZE)
@@ -198,7 +203,10 @@ async function findNextActionableSession(options = {}, dependencies = {}) {
     const items = Array.isArray(page.items) ? page.items : [];
     scanned += items.length;
     const candidate = items.find(
-      (session) => analysisNeedsTerminalization(session) || analysisIsEligible(session)
+      (session) =>
+        analysisNeedsTerminalization(session) ||
+        analysisIsEligible(session) ||
+        deliveryNeedsAction(session)
     );
     if (candidate) {
       return { ok: true, status: 200, candidate, scanned };
@@ -212,6 +220,34 @@ async function findNextActionableSession(options = {}, dependencies = {}) {
       ? Math.round(proposedOffset)
       : offset + Math.max(items.length, pageSize);
   }
+}
+
+async function attemptCompletedReportDelivery(sessionId, session, options = {}, dependencies = {}) {
+  const deliveryNeedsAction = dependencies.reportDeliveryNeedsAction || reportDeliveryNeedsAction;
+  if (!deliveryNeedsAction(session)) return null;
+  const deliverReport = dependencies.deliverReport || deliverQaTrialReport;
+  try {
+    return await deliverReport(sessionId, operationOptions(options));
+  } catch {
+    return {
+      ok: false,
+      status: 500,
+      error: "Report delivery failed before its result could be recorded",
+      delivery: { status: "unknown" }
+    };
+  }
+}
+
+function withReportDelivery(result, deliveryResult) {
+  if (!deliveryResult) return result;
+  return {
+    ...result,
+    delivery_ok: deliveryResult.ok === true,
+    delivery: deliveryResult.delivery || null,
+    delivery_error_code: deliveryResult.ok
+      ? null
+      : sanitizeString(deliveryResult.delivery?.error_code, 160) || "report_delivery_failed"
+  };
 }
 
 function persistedAnalysisState(state, claimedAnalysis, now = new Date()) {
@@ -416,7 +452,16 @@ async function processManualQaRecordingAnalysis(sessionId, options = {}, depende
     };
   }
   if (sameRecording && currentAnalysis.status === "complete") {
-    return { ...loaded, processed: false, analysis: currentAnalysis };
+    const delivery = await attemptCompletedReportDelivery(
+      sessionId,
+      currentSession,
+      options,
+      dependencies
+    );
+    return withReportDelivery(
+      { ...loaded, processed: false, analysis: currentAnalysis },
+      delivery
+    );
   }
   if (sameRecording && analysisLeaseIsActive(currentAnalysis)) {
     return { ...loaded, ok: true, status: 202, processed: false, analysis: currentAnalysis };
@@ -441,7 +486,13 @@ async function processManualQaRecordingAnalysis(sessionId, options = {}, depende
   let queued = await queueAnalysis(sessionId, initialFence);
   if (!queued.ok) return queued;
   if (queued.analysis?.status === "complete" && sameRecording) {
-    return { ...queued, processed: false };
+    const delivery = await attemptCompletedReportDelivery(
+      sessionId,
+      queued.session || currentSession,
+      options,
+      dependencies
+    );
+    return withReportDelivery({ ...queued, processed: false }, delivery);
   }
   if (queued.analysis?.status === "failed" && queued.analysis.retryable === false) {
     return { ...queued, processed: false };
@@ -611,7 +662,7 @@ async function processManualQaRecordingAnalysis(sessionId, options = {}, depende
         session: lastPersistedSession
       };
     }
-    return {
+    const result = {
       ok: true,
       status: lastPersistedAnalysis.status === "complete" ? 200 : 202,
       processed: true,
@@ -624,6 +675,14 @@ async function processManualQaRecordingAnalysis(sessionId, options = {}, depende
       analysis: lastPersistedAnalysis,
       session: lastPersistedSession
     };
+    if (lastPersistedAnalysis.status !== "complete") return result;
+    const delivery = await attemptCompletedReportDelivery(
+      sessionId,
+      lastPersistedSession || { ...currentSession, findings_analysis: lastPersistedAnalysis },
+      options,
+      dependencies
+    );
+    return withReportDelivery(result, delivery);
   } catch (error) {
     const exhausted = analysisAttemptCount(claimed.analysis) >= MAX_ANALYSIS_ATTEMPTS;
     const failedState = persistedAnalysisState(
@@ -660,6 +719,7 @@ function minimalCronResponse(candidate, result) {
     terminalized: result?.terminalized === true,
     session_id: sanitizeString(candidate?.session_id, 128) || null,
     analysis_status: sanitizeString(analysis.status, 40) || null,
+    delivery_status: sanitizeString(result?.delivery?.status, 40) || null,
     processed_media_count: Math.max(0, Number(analysis.processed_media_count || 0) || 0),
     media_count: Math.max(0, Number(analysis.media_count || 0) || 0),
     error_code: result?.ok === true
@@ -689,7 +749,7 @@ function createHandler(dependencies = {}) {
           ok: true,
           processed: false,
           scanned: found.scanned,
-          message: "No recording analysis is waiting"
+          message: "No recording analysis or report delivery is waiting"
         });
       }
       const processAnalysis = dependencies.processAnalysis || processManualQaRecordingAnalysis;
@@ -758,6 +818,7 @@ module.exports.config = { maxDuration: 300 };
 module.exports.__private = {
   analysisIsEligible,
   analysisNeedsTerminalization,
+  attemptCompletedReportDelivery,
   createHandler,
   findNextActionableSession,
   isCronAuthorized,

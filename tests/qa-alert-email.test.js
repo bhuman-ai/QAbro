@@ -3,12 +3,14 @@ const assert = require("node:assert/strict");
 const nodemailer = require("nodemailer");
 
 const {
+  buildHumanTestReportReadyEmailContent,
   buildQaTrialInviteEmailContent,
   buildTesterJobAvailableEmailContent,
   getQaAlertEmailConfigurationError,
   isQaAlertEmailConfigured,
   normalizeAlertEmailList,
   sendQaAlertEmail,
+  sendHumanTestReportReadyEmail,
   sendTesterJobAvailableEmail
 } = require("../lib/qa-alert-email");
 
@@ -147,6 +149,36 @@ test("trial invitation copy uses Before Users Do branding and the private role l
   assert.match(queuedLead.text, /Track test/);
 });
 
+test("human test report email has one private action and no report or internal details", () => {
+  const content = buildHumanTestReportReadyEmailContent({
+    brandName: "Ciaro Pro",
+    reportUrl: "https://beforeusersdo.com/trial?session_id=trial_1&token=private_report_token",
+    testerNote: "The tester could not finish signup.",
+    runId: "run_secret_123",
+    findings: [{ title: "Signup button broke" }],
+    credentials: { username: "secret-user", password: "secret-password" },
+    internalTelemetry: { model: "secret-model", cost: 42 }
+  });
+
+  assert.equal(content.subject, "[Before Users Do] Ciaro Pro test report is ready");
+  assert.match(content.text, /recorded video and speech/i);
+  assert.equal((content.text.match(/View your report/g) || []).length, 1);
+  assert.equal((content.html.match(/View your report/g) || []).length, 1);
+  assert.equal((content.html.match(/<a\b/g) || []).length, 1);
+  assert.match(content.text, /private_report_token/);
+  for (const privateDetail of [
+    "The tester could not finish signup.",
+    "run_secret_123",
+    "Signup button broke",
+    "secret-user",
+    "secret-password",
+    "secret-model",
+    "42"
+  ]) {
+    assert.doesNotMatch(`${content.text}\n${content.html}`, new RegExp(privateDetail, "i"));
+  }
+});
+
 test("tester job alert has one public action and does not reveal customer details", () => {
   const content = buildTesterJobAvailableEmailContent({
     name: "Maya",
@@ -247,6 +279,57 @@ test("sendQaAlertEmail sends the scheduled QA alert to the configured recipient"
     assert.doesNotMatch(String(mailPayload.subject || ""), /SwarmTester/i);
     assert.match(String(mailPayload.text || ""), /Open report:/);
     assert.equal(mailPayload.replyTo, "support@beforeusersdo.com");
+  } finally {
+    nodemailer.createTransport = originalCreateTransport;
+  }
+});
+
+test("sendHumanTestReportReadyEmail uses a deterministic message ID and returns provider acceptance", async () => {
+  const originalCreateTransport = nodemailer.createTransport;
+  let mailPayload = null;
+  nodemailer.createTransport = () => ({
+    async sendMail(payload) {
+      mailPayload = payload;
+      return {
+        messageId: "<human-report-123@beforeusersdo.com>",
+        accepted: ["buyer@example.com"],
+        rejected: [],
+        response: "250 Ok ses-acceptance-123"
+      };
+    }
+  });
+
+  try {
+    const result = await withEnv(
+      {
+        QA_ALERT_EMAIL_SMTP_HOST: "smtp.example.com",
+        QA_ALERT_EMAIL_SMTP_PORT: "465",
+        QA_ALERT_EMAIL_SMTP_SECURE: "true",
+        QA_ALERT_EMAIL_SMTP_USERNAME: "alerts@beforeusersdo.com",
+        QA_ALERT_EMAIL_SMTP_PASSWORD: "secret",
+        QA_ALERT_EMAIL_FROM: "Before Users Do <alerts@beforeusersdo.com>",
+        QA_ALERT_EMAIL_REPLY_TO: "support@beforeusersdo.com"
+      },
+      () =>
+        sendHumanTestReportReadyEmail({
+          email: "Buyer@Example.com",
+          brandName: "Ciaro Pro",
+          reportUrl: "https://beforeusersdo.com/trial?session_id=trial_1&token=private",
+          messageId: "<human-report-123@beforeusersdo.com>"
+        })
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.messageId, "<human-report-123@beforeusersdo.com>");
+    assert.equal(result.appMessageId, "<human-report-123@beforeusersdo.com>");
+    assert.equal(result.providerMessageId, null);
+    assert.equal(result.providerResponse, "250 Ok ses-acceptance-123");
+    assert.deepEqual(result.accepted, ["buyer@example.com"]);
+    assert.deepEqual(result.rejected, []);
+    assert.equal(mailPayload.messageId, "<human-report-123@beforeusersdo.com>");
+    assert.deepEqual(mailPayload.to, ["buyer@example.com"]);
+    assert.equal(mailPayload.subject, "[Before Users Do] Ciaro Pro test report is ready");
+    assert.equal((mailPayload.html.match(/<a\b/g) || []).length, 1);
   } finally {
     nodemailer.createTransport = originalCreateTransport;
   }
