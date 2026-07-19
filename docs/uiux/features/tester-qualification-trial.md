@@ -12,9 +12,11 @@ Bootstrap both sides of human QA: a customer receives one useful test for free w
 4. Direct MCP requests preapprove the customer; directly paired trials still ask both people to accept.
 5. The tester opens the private link and uses one `Start test` action. That action accepts the trial, opens the product, and starts screen-and-voice recording. Evidence uploads in short segments.
 6. The tester submits the test.
-7. A BUD operator marks which private benchmark issues were caught and rates report clarity.
-8. BUD publishes a `BUD Verified Trial` score.
-9. The customer separately rates how useful the test was.
+7. BUD queues the saved recording parts for audio transcription and visual analysis without making the tester wait.
+8. The report shows one analysis state until every eligible recording part is processed, then publishes recording-derived findings with timestamped proof.
+9. A BUD operator marks which private benchmark issues were caught and rates report clarity.
+10. BUD publishes a `BUD Verified Trial` score.
+11. The customer separately rates how useful the test was.
 
 When a tester claims a qualification, the application is linked to the new session and moves to `Qualification sent`. Publishing the BUD score moves that same application to `Passed qualification` for final operator approval.
 
@@ -32,8 +34,9 @@ New qualification requests default to 15 minutes. Explicit paid-test durations r
 ### Customer
 
 - Current status
-- Submitted note and recordings
-- Bugs, frustrations, and aha moments captured from the submitted evidence
+- Submitted recording and supplemental tester note
+- Recording-analysis status
+- Bugs, frustrations, and aha moments derived from the recording's speech and visible activity
 - Customer rating action
 
 ### BUD Operator
@@ -51,31 +54,52 @@ New qualification requests default to 15 minutes. Explicit paid-test durations r
 
 ### Primary Risk
 
-A submitted recording is raw evidence, not automatically a passed, scored, or useful report.
+A submitted recording is raw evidence. A tester note or an unfinished analysis must not be presented as recording-derived findings.
 
 ### View Model Contract
 
 - A submitted manual-QA session switches from the active testing workbench to a read-only report.
-- Show one truthful state: `Needs review`, `Reviewed`, or `Recording missing`.
+- Keep qualification review status separate from recording-analysis status. `Reviewed` means the operator reviewed the qualification; it does not mean the recording was analyzed.
 - Show one recording player that advances through the short saved segments in chronological order.
-- Immediately after the player, show one vertical `What the tester found` digest with `Bugs`, `Frustrations`, and `Aha moments`.
-- Derive draft points only from captured notes, transcripts, technical signals, and evidence work packets. Never infer a product bug from private benchmark data or unsupported assumptions.
-- Label unreviewed points as draft findings. Empty categories use one plain `none captured yet` line instead of empty cards.
-- Show the raw tester note and requested flow after the findings digest.
+- Analyze the actual recording: transcribe its audio and inspect its visible activity. Findings may be derived only from that recording analysis.
+- Treat the tester note as supplemental context below the digest. Never use the note, private benchmark data, requested flow, or unsupported assumptions to generate findings.
+- While analysis is `not_started`, `queued`, or `processing`, replace the digest with one plain status line. Do not show category headings or claim that a category is empty.
+- When analysis is `complete`, show one vertical `What the tester found` digest with `Bugs`, `Frustrations`, and `Aha moments`. An empty category may then use one plain `None found in the recording` line.
+- Each finding links to its supporting moment with a plain action such as `Watch part 23 at 0:06`. The action selects the referenced clip and seeks to the clip-relative timestamp.
+- Show the raw tester note and requested flow after the completed findings digest as supplemental context.
 - Keep operator scoring in the existing guarded operator workspace; the report shows whether that review is still pending.
 - Hide widget installation, checklist metrics, note editors, status buttons, raw evidence URLs, agent context, and capture diagnostics from the default report view.
-- Keep raw links, expected behavior, widget context, and diagnostics under `Technical details`.
-- `Copy report` exports the same customer-safe findings digest shown on screen. It excludes agent tasks, private benchmark data, developer context, and raw evidence URLs.
-- If there are no captured points, say that findings are waiting for review and keep the recording available. Do not fabricate findings or render analytics-style metrics.
+- Keep the raw transcript, raw links, expected behavior, widget context, and diagnostics under collapsed `Technical details`.
+- Disable `Copy report` until recording analysis is `complete`. The completed export contains only recording-derived findings and their safe evidence labels. It excludes the tester note as a findings source, agent tasks, private benchmark data, developer context, raw transcript, and raw evidence URLs.
+- If analysis fails, keep the recording available and show one plain failure message. Offer one `Try again` action only while the job remains retryable; after the retry cap, direct the operator to support. Do not fabricate findings or render analytics-style metrics.
 
-### States
+### Recording-analysis states
 
-- `submitted-unreviewed`: recording and note are available; BUD scoring is pending.
-- `draft-findings`: captured points are grouped by type but have not been reviewed.
-- `findings-empty`: no bug, frustration, or aha point has been confirmed from the available signals.
-- `reviewed`: BUD score or review has been published.
-- `recording-missing`: submission exists but no playable video evidence was saved.
+- `not_started`: `This recording hasn't been analyzed yet.` Show one `Analyze video` action. Hide findings categories and disable `Copy report`.
+- `queued`: `Video analysis is waiting to start.` Keep the recording playable. Hide findings categories and disable `Copy report`.
+- `processing`: `Analyzing the recording and speech… N of M parts.` Keep the recording playable. Hide findings categories and disable `Copy report`.
+- `complete`: show recording-derived findings and enable `Copy report`. Category-empty conclusions are allowed only in this state.
+- `failed`: `We couldn't analyze the recording.` Keep the recording playable, hide findings categories, and disable `Copy report`. Show `Try again` only when the backend marks the job retryable and its retry cap is not exhausted.
+- `consent-required`: show `Waiting for the tester's permission.` The tester can approve from the existing private trial link without recording a new test. Hide findings and all owner retry controls.
+
+### Evidence and failure states
+
+- `recording-missing`: submission exists but no playable recording was saved, so analysis cannot claim findings or empty categories.
 - `clip-error`: keep the rest of the report visible and provide previous/next and direct clip fallback.
+- `review-pending` / `reviewed`: describe qualification scoring only and remain independent of recording analysis.
+
+### Source integrity contract
+
+- Persist the analysis source as `recording_transcript`. Missing analysis data is legacy `not_started`, never an implicit success.
+- `complete` requires every eligible saved recording part to finish successfully. Partial results may be retained for retry but must not publish findings or empty-category conclusions.
+- Preserve each transcript segment's `evidence_id`, numeric recording index, `start_ms`, and `end_ms`.
+- Persist recorder-measured clip duration and verify it against the saved media container before accepting timestamps. Never use a model-reported duration as the source of truth.
+- Every published finding carries at least one valid evidence anchor to a successfully analyzed recording part. A quoted speech excerpt must exist in that part's transcript; visible evidence must exist in that part's visual analysis.
+- The tester note, requested flow, private benchmark, and existing note-derived work packets never enter the recording findings input.
+- Retries may reuse already completed clip analyses, but a changed recording fingerprint requires a fresh analysis before findings can be published.
+- Analyze bounded durable batches and publish only after the complete fingerprinted recording set succeeds. Exhausted retries stay terminal until support intervenes.
+- Recording bytes sent for transcription and visual analysis use a third-party AI route configured for zero retention and denied data collection. Consent names that processing and the product-owner audience before capture starts.
+- Persist a versioned tester consent timestamp. Recordings captured before this disclosure must never be auto-enrolled or sent for analysis; their tester must explicitly approve from the existing private link first. The cron processes only explicitly queued, consented jobs.
 
 ## Score Contract
 

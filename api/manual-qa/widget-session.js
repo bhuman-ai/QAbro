@@ -1,5 +1,6 @@
 const { parseRequestBody, sanitizeString } = require("../../lib/qa-core");
 const {
+  buildManualQaCaptureSessionView,
   getManualQaWidgetSession,
   updateManualQaWidgetItem
 } = require("../../lib/manual-qa");
@@ -35,7 +36,10 @@ module.exports = async (req, res) => {
     if (!loaded.ok) {
       return res.status(loaded.status || 500).json({ ok: false, error: loaded.error });
     }
-    return res.status(200).json({ ok: true, session: loaded.session });
+    return res.status(200).json({
+      ok: true,
+      session: buildManualQaCaptureSessionView(loaded.session)
+    });
   }
 
   if (req.method !== "POST" && req.method !== "PATCH") {
@@ -64,9 +68,10 @@ module.exports = async (req, res) => {
   if (!updated.ok) {
     return res.status(updated.status || 500).json({ ok: false, error: updated.error, data: updated.data });
   }
+  const session = buildManualQaCaptureSessionView(updated.session);
   return res.status(200).json({
     ok: true,
-    session: updated.session,
-    item: updated.item
+    session,
+    item: session.checklist.find((candidate) => candidate.id === itemId) || null
   });
 };

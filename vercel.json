@@ -2,10 +2,19 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "functions": {
+    "api/manual-qa/analyze-recording.js": {
+      "maxDuration": 300
+    }
+  },
   "crons": [
     {
       "path": "/api/qa/schedules/trigger",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/manual-qa/analyze-recording",
+      "schedule": "* * * * *"
     }
   ],
   "redirects": [
