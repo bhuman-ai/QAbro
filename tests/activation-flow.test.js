@@ -34,6 +34,7 @@ test("first-run dashboard uses real run state instead of demo data", () => {
 
 test("completed human reports wait for recording analysis and link findings to evidence", () => {
   const report = app.slice(app.indexOf("function ManualQaCompletedReport"), app.indexOf("function getSupportedRecordingMimeType"));
+  const digest = app.slice(app.indexOf("function ManualQaFindings"), app.indexOf("function ManualQaAnalysisState"));
   const playerIndex = report.indexOf("<ManualQaRecordingPlayer");
   const findingsIndex = report.indexOf("<ManualQaFindings");
   const noteIndex = report.indexOf('aria-labelledby="manual-qa-note-title"');
@@ -42,9 +43,15 @@ test("completed human reports wait for recording analysis and link findings to e
   assert.ok(findingsIndex > playerIndex);
   assert.ok(noteIndex > findingsIndex);
   assert.match(app, /What the tester found/);
-  assert.match(app, /Bugs/);
-  assert.match(app, /Frustrations/);
-  assert.match(app, /Aha moments/);
+  assert.match(app, /Problems/);
+  assert.match(app, /Bug/);
+  assert.match(app, /Friction/);
+  assert.doesNotMatch(digest, /text-brand-danger|text-brand-warning|text-brand-success/);
+  assert.match(app, /What worked/);
+  assert.match(app, /Suggested fixes/);
+  assert.match(app, /More observations \(\{observations\.length\}\)/);
+  assert.match(app, /<details className="py-4">/);
+  assert.doesNotMatch(app, /No product bugs were found|No frustration points were found|No aha moments were found/);
   assert.match(report, /analysisComplete \? \(/);
   assert.match(report, /disabled=\{!analysisComplete\}/);
   assert.match(report, /Preparing report/);
@@ -53,6 +60,8 @@ test("completed human reports wait for recording analysis and link findings to e
   assert.match(app, /Created only from the video and speech transcript/);
   assert.match(report, /Raw transcript/);
   assert.match(report, /analysisComplete \? collectManualQaTranscriptEvents\(session\) : \[\]/);
+  assert.match(app, /buildManualQaCaptionTrack/);
+  assert.match(app, /<track kind="captions" srcLang="en" label="Tester speech"/);
   assert.match(report, /This note is not used to create the findings above/);
   assert.match(app, /session\.findings_analysis\?\.clip_results/);
   assert.match(app, /source: "server_recording_analysis"/);
@@ -63,6 +72,16 @@ test("completed human reports wait for recording analysis and link findings to e
   assert.match(app, /retryExhausted/);
   assert.match(app, /Preparing the report…/);
   assert.doesNotMatch(report, /Waiting for the tester’s permission|Analyze video/);
+});
+
+test("manual report APIs strip internal analysis telemetry before browser responses", () => {
+  const sessionsApi = fs.readFileSync(path.join(ROOT, "api", "manual-qa", "sessions.js"), "utf8");
+  const analysisApi = fs.readFileSync(path.join(ROOT, "api", "manual-qa", "analyze-recording.js"), "utf8");
+
+  assert.match(sessionsApi, /session: buildManualQaReportSessionView\(loaded\.session\)/);
+  assert.match(sessionsApi, /items: listed\.items\.map\(buildManualQaReportSessionView\)/);
+  assert.match(analysisApi, /analysis: stripManualQaAnalysisInternals\(result\.analysis\)/);
+  assert.match(analysisApi, /session: buildManualQaReportSessionView\(result\.session\)/);
 });
 
 test("trial recorder requires one mixed microphone track and resumes after the highest saved part", () => {

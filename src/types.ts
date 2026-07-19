@@ -320,9 +320,26 @@ export interface ManualQaRecordingFinding {
   category?: ManualQaFindingCategory | string | null;
   title?: string | null;
   summary?: string | null;
+  suggested_fix?: string | null;
   confidence?: string | number | null;
+  support_verified?: boolean | null;
   evidence_anchor?: ManualQaEvidenceAnchor | null;
   evidence_anchors?: ManualQaEvidenceAnchor[];
+}
+
+export interface ManualQaAiUsage {
+  provider?: string | null;
+  currency?: "USD" | string | null;
+  tracking_available?: boolean;
+  cost_complete?: boolean;
+  total_cost_usd?: number | null;
+  request_count?: number | null;
+  priced_request_count?: number | null;
+  unpriced_response_count?: number | null;
+  uncertain_request_count?: number | null;
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
+  total_tokens?: number | null;
 }
 
 export interface ManualQaRecordingAnalysisClip {
@@ -367,6 +384,10 @@ export interface ManualQaFindingsAnalysis {
   attempt_count?: number | null;
   recording_fingerprint?: string | null;
   model?: string | null;
+  aggregation_model?: string | null;
+  verification_model?: string | null;
+  semantic_verification_version?: number | null;
+  ai_usage?: ManualQaAiUsage | null;
   clip_results?: ManualQaRecordingAnalysisClip[];
   findings?: ManualQaRecordingFinding[];
 }
@@ -395,6 +416,7 @@ export interface ManualQaWorkPacket {
   category?: ManualQaFindingCategory | string | null;
   title?: string | null;
   summary?: string | null;
+  suggested_fix?: string | null;
   item_id?: string | null;
   item_title?: string | null;
   source_kind?: "recording_transcript" | "topic" | "drawing" | "technical" | "feedback" | string;

@@ -1,6 +1,9 @@
 const { parseRequestBody, sanitizeString } = require("../../lib/qa-core");
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
-const { recordManualQaPostFixReview } = require("../../lib/manual-qa");
+const {
+  buildManualQaReportSessionView,
+  recordManualQaPostFixReview
+} = require("../../lib/manual-qa");
 
 function setCors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -81,6 +84,6 @@ module.exports = async (req, res) => {
     session_id: sessionId,
     post_fix_review: recorded.post_fix_review,
     may_mark_done: recorded.may_mark_done === true,
-    session: recorded.session
+    session: buildManualQaReportSessionView(recorded.session)
   });
 };

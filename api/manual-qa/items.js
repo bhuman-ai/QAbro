@@ -1,6 +1,9 @@
 const { parseRequestBody, sanitizeString } = require("../../lib/qa-core");
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
-const { updateManualQaItem } = require("../../lib/manual-qa");
+const {
+  buildManualQaReportSessionView,
+  updateManualQaItem
+} = require("../../lib/manual-qa");
 
 function resolveOwner(auth, req) {
   return {
@@ -57,7 +60,7 @@ module.exports = async (req, res) => {
 
   return res.status(200).json({
     ok: true,
-    session: updated.session,
+    session: buildManualQaReportSessionView(updated.session),
     item: updated.item
   });
 };

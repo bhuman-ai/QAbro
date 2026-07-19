@@ -602,16 +602,33 @@ test("partial batches are bounded, durable, retry-neutral, and fully lease fence
           ["video-1", "video-2"]
         );
         assert.deepEqual(await options.aggregateFindings({}), { findings: [] });
+        assert.equal(options.verifyFindings, null);
         const batchClips = [completeClip(recordings[0]), completeClip(recordings[1])];
+        const aiUsage = {
+          provider: "openrouter",
+          currency: "USD",
+          tracking_available: true,
+          cost_complete: true,
+          total_cost_usd: 0.02,
+          request_count: 2,
+          priced_request_count: 2,
+          unpriced_response_count: 0,
+          uncertain_request_count: 0,
+          prompt_tokens: 120,
+          completion_tokens: 40,
+          total_tokens: 160
+        };
         await options.persistAnalysis({
           status: "processing",
           clip_results: batchClips,
-          findings: []
+          findings: [],
+          ai_usage: aiUsage
         });
         await options.persistAnalysis({
           status: "complete",
           clip_results: batchClips,
-          findings: [{ title: "must not publish before clip three" }]
+          findings: [{ title: "must not publish before clip three" }],
+          ai_usage: aiUsage
         });
       }
     }
@@ -623,6 +640,8 @@ test("partial batches are bounded, durable, retry-neutral, and fully lease fence
   assert.equal(result.analysis.attempt_count, 0);
   assert.equal(result.analysis.processed_media_count, 2);
   assert.deepEqual(result.analysis.findings, []);
+  assert.equal(result.analysis.ai_usage.total_cost_usd, 0.02);
+  assert.equal(result.analysis.ai_usage.request_count, 2);
   assert.equal(result.batch_size, 2);
   assert.equal(result.remaining_media_count, 1);
 
@@ -646,6 +665,100 @@ test("partial batches are bounded, durable, retry-neutral, and fully lease fence
     assert.equal(write.options.expectedRecordingFingerprint, fingerprint);
     assert.equal(write.options.allowAttemptChange, true);
   }
+});
+
+test("a failed progress write keeps newly incurred AI cost in the fallback state", async () => {
+  const initialSession = currentSession(
+    { status: "not_started", analysis_id: null, attempt_count: 0, retryable: true },
+    { sessionId: "persisted-cost-fallback" }
+  );
+  const recordings = collectManualQaRecordingMedia(initialSession);
+  const queuedAnalysis = {
+    ...initialSession.findings_analysis,
+    analysis_id: "analysis-cost-fallback",
+    status: "queued",
+    media_count: 1,
+    attempt_count: 0,
+    clip_results: []
+  };
+  const claimedAnalysis = {
+    ...queuedAnalysis,
+    status: "processing",
+    attempt_count: 1,
+    lease_id: "lease-cost-fallback"
+  };
+  const writes = [];
+
+  const result = await processManualQaRecordingAnalysis(
+    "persisted-cost-fallback",
+    {},
+    {
+      loadSession: async () => ({
+        ok: true,
+        status: 200,
+        session: initialSession,
+        row: { delivered_at: "delivered-0" }
+      }),
+      queueAnalysis: async () => ({
+        ok: true,
+        status: 200,
+        analysis: queuedAnalysis,
+        session: currentSession(queuedAnalysis, { sessionId: "persisted-cost-fallback" }),
+        row: { delivered_at: "delivered-1" }
+      }),
+      claimAnalysis: async () => ({
+        ok: true,
+        status: 200,
+        claimed: true,
+        analysis: claimedAnalysis,
+        recordings,
+        session: currentSession(claimedAnalysis, { sessionId: "persisted-cost-fallback" }),
+        row: { delivered_at: "delivered-2" }
+      }),
+      updateAnalysis: async (_sessionId, analysis) => {
+        writes.push(analysis);
+        if (writes.length === 1) {
+          return { ok: false, status: 503, error: "Temporary persistence failure" };
+        }
+        return {
+          ok: true,
+          status: 200,
+          analysis,
+          session: currentSession(analysis, { sessionId: "persisted-cost-fallback" }),
+          row: { delivered_at: "delivered-3" }
+        };
+      },
+      runAnalysis: async (_input, options) => {
+        await options.persistAnalysis({
+          status: "processing",
+          clip_results: [completeClip(recordings[0])],
+          findings: [],
+          ai_usage: {
+            provider: "openrouter",
+            currency: "USD",
+            tracking_available: true,
+            cost_complete: true,
+            total_cost_usd: 0.03,
+            request_count: 1,
+            priced_request_count: 1,
+            unpriced_response_count: 0,
+            uncertain_request_count: 0,
+            prompt_tokens: 80,
+            completion_tokens: 20,
+            total_tokens: 100
+          }
+        });
+      }
+    }
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 503);
+  assert.equal(writes.length, 2);
+  assert.equal(writes[1].status, "failed");
+  assert.equal(writes[1].ai_usage.total_cost_usd, 0.03);
+  assert.equal(writes[1].ai_usage.request_count, 1);
+  assert.equal(result.analysis.ai_usage.total_cost_usd, 0.03);
 });
 
 test("a persisted analyzer failure is returned as a failed job instead of HTTP success", async () => {

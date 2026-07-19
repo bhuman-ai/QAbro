@@ -3,12 +3,14 @@ const crypto = require("crypto");
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
 const { parseRequestBody, sanitizeString } = require("../../lib/qa-core");
 const {
+  buildManualQaReportSessionView,
   buildManualQaRecordingSetFingerprint,
   claimManualQaFindingsAnalysis,
   collectManualQaRecordingMedia,
   getManualQaSession,
   normalizeManualQaSessionRow,
   queueManualQaFindingsAnalysis,
+  stripManualQaAnalysisInternals,
   updateManualQaFindingsAnalysis
 } = require("../../lib/manual-qa");
 const { runManualQaRecordingAnalysis } = require("../../lib/manual-qa-recording-analysis");
@@ -19,6 +21,7 @@ const DEFAULT_BATCH_SIZE = 4;
 const MAX_BATCH_SIZE = 8;
 const MAX_ANALYSIS_ATTEMPTS = 3;
 const LEASE_DURATION_MS = 20 * 60 * 1000;
+const SAFE_PROCESSING_DEADLINE_MS = 4 * 60 * 1000;
 
 function resolveOwner(auth, req) {
   return {
@@ -389,6 +392,7 @@ async function terminalizeRetryExhausted(sessionId, loaded, options, dependencie
 }
 
 async function processManualQaRecordingAnalysis(sessionId, options = {}, dependencies = {}) {
+  const processingDeadlineAtMs = Date.now() + SAFE_PROCESSING_DEADLINE_MS;
   const baseOptions = operationOptions(options);
   const queueAnalysis = dependencies.queueAnalysis || queueManualQaFindingsAnalysis;
   const claimAnalysis = dependencies.claimAnalysis || claimManualQaFindingsAnalysis;
@@ -531,9 +535,11 @@ async function processManualQaRecordingAnalysis(sessionId, options = {}, depende
   const runAnalysis = dependencies.runAnalysis || runManualQaRecordingAnalysis;
   let lastDeliveredAt = deliveredAtFromResult(claimed, deliveredAtFromResult(queued));
   let lastPersistedAnalysis = claimed.analysis;
+  let lastAttemptedAnalysis = claimed.analysis;
   let lastPersistedSession = claimed.session || null;
   const persistAnalysis = async (state) => {
     const nextState = transformBatchAnalysisState(state, claimed.analysis, recordings);
+    lastAttemptedAnalysis = nextState;
     const persisted = await updateAnalysis(
       sessionId,
       nextState,
@@ -565,14 +571,17 @@ async function processManualQaRecordingAnalysis(sessionId, options = {}, depende
         baseUrl: options.recordingAnalyzerBaseUrl,
         analyzerModel: options.recordingAnalyzerModel,
         aggregatorModel: options.recordingAggregatorModel,
+        verifierModel: options.recordingVerifierModel,
         concurrency: options.recordingAnalyzerConcurrency,
         timeoutMs: options.recordingAnalyzerTimeoutMs,
+        deadlineAtMs: processingDeadlineAtMs,
         aiFetchImpl: options.aiFetchImpl,
         fetchEvidenceObject: dependencies.fetchEvidenceObject,
         analyzeClip: dependencies.analyzeClip,
         aggregateFindings: finalBatch
           ? dependencies.aggregateFindings
           : async () => ({ findings: [] }),
+        verifyFindings: finalBatch ? dependencies.verifyFindings : null,
         evidenceStorageOptions: {
           supabaseUrl: options.supabaseUrl,
           serviceKey: options.serviceKey,
@@ -619,7 +628,7 @@ async function processManualQaRecordingAnalysis(sessionId, options = {}, depende
     const exhausted = analysisAttemptCount(claimed.analysis) >= MAX_ANALYSIS_ATTEMPTS;
     const failedState = persistedAnalysisState(
       {
-        ...lastPersistedAnalysis,
+        ...lastAttemptedAnalysis,
         status: "failed",
         attempt_count: analysisAttemptCount(claimed.analysis),
         error_code: exhausted ? "retry_exhausted" : "analysis_runtime_failed",
@@ -735,8 +744,8 @@ function createHandler(dependencies = {}) {
     return res.status(result.status || (result.ok ? 200 : 500)).json({
       ok: result.ok,
       processed: result.processed === true,
-      analysis: result.analysis,
-      session: result.session,
+      analysis: stripManualQaAnalysisInternals(result.analysis),
+      session: buildManualQaReportSessionView(result.session),
       error: result.ok ? undefined : result.error
     });
   };
