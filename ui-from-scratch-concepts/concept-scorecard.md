@@ -2,7 +2,7 @@
 
 ## Source Of Truth
 - Primary archetype reused: guided triage inbox from `/Users/don/BHuman/QAbro/UI_ARCHETYPE.md`
-- Brand system reused: `Space Grotesk`, semantic colors, `.btn`, `.card-surface`, `.status-pill`, existing auth and modal shells
+- Brand system reused: `Bricolage Grotesque`, `Plus Jakarta Sans`, semantic colors, `.btn`, `.card-surface`, `.status-pill`, existing auth and modal shells
 - Kid-simple pressure held constant: one obvious action, one dominant work area, advanced items hidden until asked for
 
 ## Concept Thumbnails
@@ -150,3 +150,7 @@ Scale: `1` poor to `5` excellent
 - Why it won: it is the only concept that keeps retrieval, launch, live progress, and report reading all obvious without looking like a metrics dashboard
 - What it risks: left-rail bloat, over-padded empty states, and too many secondary actions leaking back into the main frame
 - What gets coded next: homepage and dashboard should both collapse into the same grammar, with a tight launch pad on home and an inbox-reader shell in app
+
+## Completed Human-Test Report Addendum
+
+The global shell winner remains Concept A. Inside its selected-reader area, the completed human-test report uses the report-specific `R1 — Recording-First Story` winner documented in `manual-report-concepts.md`. This preserves the guided-triage shell while giving raw human evidence a truthful, focused reading mode.

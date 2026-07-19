@@ -313,11 +313,15 @@ export interface ManualQaItem {
   note?: string | null;
   evidence_urls?: string[];
   evidence_media?: Array<{
+    evidence_id?: string | null;
     kind?: string | null;
     label?: string | null;
     content_type?: string | null;
     url?: string | null;
     byte_length?: number | null;
+    storage_bucket?: string | null;
+    storage_path?: string | null;
+    created_at?: string | null;
   }>;
   widget_context?: {
     page_url?: string | null;
@@ -378,6 +382,29 @@ export interface ManualQaSession {
     [key: string]: unknown;
   } | null;
   requested_by?: Record<string, unknown> | null;
+  qualification_trial?: {
+    kind?: "tester_qualification" | "paid_assignment" | string;
+    status?: string | null;
+    product_name?: string | null;
+    test_focus?: string | null;
+    submitted_at?: string | null;
+    assignment?: {
+      type?: "qualification" | "paid" | string;
+      payout_status?: string | null;
+    } | null;
+    qualification?: {
+      label?: string | null;
+      status?: string | null;
+      score?: number | null;
+      reviewer_note?: string | null;
+      scored_at?: string | null;
+    } | null;
+    lead_rating?: {
+      score?: number | null;
+      note?: string | null;
+      rated_at?: string | null;
+    } | null;
+  } | null;
 }
 
 export interface QaTrialEvidence {

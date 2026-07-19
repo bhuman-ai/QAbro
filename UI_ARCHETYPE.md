@@ -218,6 +218,8 @@ Use the guided handoff pattern, not a marketplace dashboard.
 - The tester sees one primary action: `Start test`.
 - Screen and voice evidence save in short segments throughout the test.
 - The customer sees the submitted report and one primary action: `Rate this test`.
+- The dashboard version of a submitted human test becomes a read-only, recording-first report; short recording segments play as one ordered sequence.
+- Widget setup, checklist editing, raw evidence links, and capture diagnostics stay out of the completed report's default view.
 - Private benchmark issues are visible only to the BUD operator.
 - A tester receives the `BUD Verified Trial` label only after an operator scores the submitted evidence.
 - Keep the BUD score and the customer rating separate.

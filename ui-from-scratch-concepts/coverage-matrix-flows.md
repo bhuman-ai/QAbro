@@ -28,3 +28,5 @@
 | FL09 | P1 | H | H | H | D | M | H | E drops engineer follow-through. |
 | FL10 | P2 | H | H | H | D | M | S | Better as a utilities area than main nav. |
 | FL11 | P2 | H | H | H | D | M | S | Operator workflow should not shape the main product. |
+| FL12 | P0 | D | D | D | P | D | P | Reader concepts can make the recording dominant; board and command concepts dilute it. |
+| FL13 | P1 | H | H | H | D | H | H | Existing operator review opens only after the evidence is understood. |
