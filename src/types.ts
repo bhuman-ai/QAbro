@@ -301,6 +301,44 @@ export interface WorkerInfo {
   [key: string]: unknown;
 }
 
+export type ManualQaFindingCategory = "bug" | "frustration_point" | "aha_moment" | "observation";
+
+export interface ManualQaWorkPacket {
+  packet_id: string;
+  status?: "open" | "needs_question" | "in_progress" | "done" | "dismissed" | string;
+  category?: ManualQaFindingCategory | string | null;
+  title?: string | null;
+  summary?: string | null;
+  item_id?: string | null;
+  item_title?: string | null;
+  source_kind?: "topic" | "drawing" | "technical" | "feedback" | string;
+  confidence?: string | number | null;
+  page_anchor?: {
+    url?: string | null;
+    title?: string | null;
+    viewport?: Record<string, number | null> | null;
+    bounds?: Record<string, number | null> | null;
+  } | null;
+  evidence_urls?: string[];
+  evidence_media?: Array<{
+    evidence_id?: string | null;
+    kind?: string | null;
+    label?: string | null;
+    content_type?: string | null;
+    byte_length?: number | null;
+    url?: string | null;
+    created_at?: string | null;
+  }>;
+  transcript_snippets?: string[];
+  technical_signals?: Array<{
+    type?: string | null;
+    message?: string | null;
+    url?: string | null;
+    status?: number | null;
+    at?: string | null;
+  }>;
+}
+
 export interface ManualQaItem {
   id: string;
   title: string;
@@ -368,6 +406,7 @@ export interface ManualQaSession {
     note?: string | null;
   } | null;
   checklist?: ManualQaItem[];
+  work_packets?: ManualQaWorkPacket[];
   context?: {
     work_summary?: string | null;
     feature_name?: string | null;

@@ -92,8 +92,10 @@ import type {
   AlertItem,
   AuthUser,
   LaunchDraft,
+  ManualQaFindingCategory,
   ManualQaItem,
   ManualQaSession,
+  ManualQaWorkPacket,
   McpTokenSummary,
   ProjectSummary,
   QaReport,
@@ -3789,8 +3791,15 @@ function WorkspacePage({
       return;
     }
     try {
+      const trialStatus = String(manualQaSession?.qualification_trial?.status || "").toLowerCase();
+      const submittedHumanTest = Boolean(
+        manualQaSession?.qualification_trial?.submitted_at || ["submitted", "verified", "completed"].includes(trialStatus)
+      );
       const response = await apiFetch<{ markdown: string }>("/api/manual-qa/export", {
-        params: { session_id: requestedManualSessionId }
+        params: {
+          session_id: requestedManualSessionId,
+          ...(submittedHumanTest ? { view: "customer" } : {})
+        }
       });
       await copyText(response.markdown || "");
       setManualQaCopyFeedback("Copied report");
@@ -6462,6 +6471,126 @@ function formatManualQaEvidenceSize(value?: number | null) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const MANUAL_QA_FINDING_GROUPS: Array<{
+  category: ManualQaFindingCategory;
+  label: string;
+  empty: string;
+  reviewedEmpty: string;
+  tone: string;
+}> = [
+  {
+    category: "bug",
+    label: "Bugs",
+    empty: "No product bugs captured yet.",
+    reviewedEmpty: "No product bugs were captured.",
+    tone: "text-brand-danger"
+  },
+  {
+    category: "frustration_point",
+    label: "Frustrations",
+    empty: "No frustration points captured yet.",
+    reviewedEmpty: "No frustration points were captured.",
+    tone: "text-brand-warning"
+  },
+  {
+    category: "aha_moment",
+    label: "Aha moments",
+    empty: "No aha moments captured yet.",
+    reviewedEmpty: "No aha moments were captured.",
+    tone: "text-brand-success"
+  }
+];
+
+function getManualQaFindingCategory(packet: ManualQaWorkPacket): ManualQaFindingCategory {
+  const category = String(packet.category || "").toLowerCase().replace(/[\s-]+/g, "_");
+  if (["bug", "frustration_point", "aha_moment", "observation"].includes(category)) {
+    return category as ManualQaFindingCategory;
+  }
+  return "observation";
+}
+
+function getManualQaFindingSummary(packet: ManualQaWorkPacket) {
+  const title = String(packet.title || "").trim();
+  const summary = String(packet.summary || "").replace(/^Typed note:\s*/i, "").trim();
+  if (!summary || summary === title) return "";
+  if (title && summary.toLowerCase().startsWith(title.toLowerCase())) {
+    return summary.slice(title.length).trim();
+  }
+  return summary;
+}
+
+function getManualQaFindingSource(packet: ManualQaWorkPacket) {
+  const source = packet.source_kind === "technical"
+    ? "Technical evidence"
+    : packet.source_kind === "topic"
+      ? "Tester transcript"
+      : packet.source_kind === "drawing"
+        ? "Tester annotation"
+        : "Tester note";
+  const page = packet.source_kind === "feedback" ? "" : String(packet.page_anchor?.title || "").trim();
+  return page ? `${source} · ${page}` : source;
+}
+
+function ManualQaFindings({ session, reviewed }: { session: ManualQaSession; reviewed: boolean }) {
+  const packets = (session.work_packets || []).filter((packet) =>
+    packet.status !== "dismissed" && Boolean(String(packet.title || packet.summary || "").trim())
+  );
+  const observations = packets.filter((packet) => getManualQaFindingCategory(packet) === "observation");
+
+  function renderFinding(packet: ManualQaWorkPacket) {
+    const summary = getManualQaFindingSummary(packet);
+    return (
+      <li key={packet.packet_id} className="py-5 first:pt-0 last:pb-0">
+        <h4 className="text-lg font-semibold leading-7 text-brand-ink">{packet.title || "Captured point"}</h4>
+        {summary ? <p className="mt-2 max-w-3xl text-base leading-7 text-brand-muted">{summary}</p> : null}
+        <p className="mt-3 text-xs font-semibold uppercase tracking-[0.12em] text-brand-muted">
+          {getManualQaFindingSource(packet)}
+        </p>
+      </li>
+    );
+  }
+
+  return (
+    <section className="mt-12 border-t border-brand-line pt-9" aria-labelledby="manual-qa-findings-title">
+      <h2 id="manual-qa-findings-title" className="font-display text-2xl font-bold tracking-tight text-brand-ink">
+        What the tester found
+      </h2>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-brand-muted">
+        {reviewed
+          ? "Captured from the tester's note and evidence. Open the recording above when you need the full context."
+          : "Draft findings from the captured note and evidence. Review them before sharing this report."}
+      </p>
+
+      <div className="mt-8 divide-y divide-brand-line border-y border-brand-line">
+        {MANUAL_QA_FINDING_GROUPS.map((group) => {
+          const groupPackets = packets.filter((packet) => getManualQaFindingCategory(packet) === group.category);
+          return (
+            <section key={group.category} className="py-7" aria-labelledby={`manual-qa-${group.category}-title`}>
+              <h3 id={`manual-qa-${group.category}-title`} className={`text-sm font-bold uppercase tracking-[0.14em] ${group.tone}`}>
+                {group.label}
+              </h3>
+              {groupPackets.length ? (
+                <ol className="mt-5 divide-y divide-brand-line">{groupPackets.map(renderFinding)}</ol>
+              ) : (
+                <p className="mt-3 text-sm text-brand-muted">{reviewed ? group.reviewedEmpty : group.empty}</p>
+              )}
+            </section>
+          );
+        })}
+
+        {observations.length ? (
+          <section className="py-7" aria-labelledby="manual-qa-observations-title">
+            <h3 id="manual-qa-observations-title" className="text-sm font-bold uppercase tracking-[0.14em] text-brand-muted">
+              Other observations
+            </h3>
+            <ol className="mt-5 divide-y divide-brand-line">{observations.map(renderFinding)}</ol>
+          </section>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function ManualQaRecordingPlayer({ recordings, sessionId }: { recordings: ManualQaRecording[]; sessionId: string }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const continuePlaybackRef = useRef(false);
@@ -6702,6 +6831,8 @@ function ManualQaCompletedReport({
         </div>
 
         <ManualQaRecordingPlayer recordings={recordings} sessionId={session.session_id} />
+
+        <ManualQaFindings session={session} reviewed={reviewed} />
 
         <section className="mt-12 border-t border-brand-line pt-9" aria-labelledby="manual-qa-note-title">
           <div className="flex items-center gap-2 text-brand-muted">
