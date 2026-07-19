@@ -41,6 +41,7 @@ module.exports = async (req, res) => {
   }
 
   const owner = resolveOwner(auth, req);
+  const reportAdmin = auth.user?.report_admin === true;
   const ownerError = requireServiceOwner(auth, owner);
   if (ownerError) {
     return res.status(400).json({ ok: false, error: ownerError });
@@ -51,7 +52,8 @@ module.exports = async (req, res) => {
     if (sessionId) {
       const loaded = await getManualQaSession(sessionId, {
         authOk: true,
-        ownerUserId: owner.ownerUserId,
+        adminOk: reportAdmin,
+        ownerUserId: reportAdmin ? "" : owner.ownerUserId,
         ownerEmail: owner.ownerEmail,
         request: req
       });
@@ -62,7 +64,7 @@ module.exports = async (req, res) => {
     }
 
     const listed = await listManualQaSessions({
-      ownerUserId: owner.ownerUserId,
+      ownerUserId: reportAdmin ? "" : owner.ownerUserId,
       ownerEmail: owner.ownerEmail,
       limit: req.query?.limit
     });

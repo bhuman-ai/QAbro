@@ -24,6 +24,7 @@ module.exports = async (req, res) => {
 
   const loaded = await getQaRunStatus(runId, {
     authOk: auth.ok,
+    adminOk: auth.user?.report_admin === true,
     ownerUserId: sanitizeString(auth.user?.id, 128),
     shareKey: readQaShareKey(req),
     request: req
@@ -34,6 +35,7 @@ module.exports = async (req, res) => {
 
   const access = resolveQaReportReadAccess(loaded.row, {
     authOk: auth.ok,
+    adminOk: auth.user?.report_admin === true,
     ownerUserId: sanitizeString(auth.user?.id, 128),
     shareKey: readQaShareKey(req),
     request: req
@@ -70,7 +72,7 @@ module.exports = async (req, res) => {
   );
   const reportReady = Boolean(payload.report_json) && !["queued", "processing", "retryable"].includes(queueStatus);
   const repoTriage =
-    access.access_type === "owner"
+    ["owner", "admin"].includes(access.access_type)
       ? sanitizeRepoTriageState(
           payload.repo_triage,
           payload.report_json?.metadata?.repo_triage || payload.run_request?.metadata?.repo_triage

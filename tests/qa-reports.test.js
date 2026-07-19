@@ -5,9 +5,29 @@ const {
   extractBrandKey,
   extractOwnerUserId,
   getQaRunStatus,
+  resolveQaReportReadAccess,
   summarizeReportRow,
   listQaReports
 } = require("../lib/qa-queue");
+
+test("report admins can read reports owned by another user", () => {
+  const access = resolveQaReportReadAccess(
+    {
+      owner_user_id: "customer_owner"
+    },
+    {
+      authOk: true,
+      adminOk: true,
+      ownerUserId: "report_admin"
+    }
+  );
+
+  assert.deepEqual(access, {
+    ok: true,
+    status: 200,
+    access_type: "admin"
+  });
+});
 
 test("extractBrandKey prefers run_request metadata", () => {
   const row = {

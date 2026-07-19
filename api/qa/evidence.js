@@ -377,6 +377,7 @@ async function handler(req, res) {
 
   const access = resolveQaReportReadAccess(loaded.row, {
     authOk: auth.ok,
+    adminOk: auth.user?.report_admin === true,
     ownerUserId: sanitizeString(auth.user?.id, 128),
     shareKey: readQaShareKey(req),
     request: req

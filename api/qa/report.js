@@ -160,6 +160,7 @@ module.exports = async (req, res) => {
   const row = loaded.row;
   const access = resolveQaReportReadAccess(row, {
     authOk: auth.ok,
+    adminOk: auth.user?.report_admin === true,
     ownerUserId: sanitizeString(auth.user?.id, 128),
     shareKey: readQaShareKey(req),
     request: req
@@ -227,7 +228,7 @@ module.exports = async (req, res) => {
             ? payload.report_json.failure_diagnostics
             : null
     });
-    if (access.access_type !== "owner") {
+    if (!["owner", "admin"].includes(access.access_type)) {
       reportJson = redactEngineeringTriage(reportJson);
     }
   }

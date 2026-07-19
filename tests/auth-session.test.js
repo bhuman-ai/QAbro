@@ -95,6 +95,9 @@ test("session handler returns user payload for valid access-token cookies", asyn
           id: "user_123",
           email: "owner@example.com",
           created_at: "2026-03-16T10:20:00.000Z",
+          app_metadata: {
+            report_admin: true
+          },
           user_metadata: {
             swarm_onboarding_seen: true
           }
@@ -131,6 +134,7 @@ test("session handler returns user payload for valid access-token cookies", asyn
         email: "owner@example.com",
         created_at: "2026-03-16T10:20:00.000Z",
         onboarding_seen: true,
+        report_admin: true,
         pending_offer_code: null,
         redeemed_offers: []
       }
