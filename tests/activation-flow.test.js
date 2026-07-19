@@ -61,7 +61,8 @@ test("completed human reports wait for recording analysis and link findings to e
   assert.doesNotMatch(app, /Draft findings from the captured note and evidence/);
   assert.doesNotMatch(app, /const packets = \(session\.work_packets \|\| \[\]\)/);
   assert.match(app, /retryExhausted/);
-  assert.match(app, /error_code !== "recording_analysis_consent_required"/);
+  assert.match(app, /Preparing the report…/);
+  assert.doesNotMatch(report, /Waiting for the tester’s permission|Analyze video/);
 });
 
 test("trial recorder requires one mixed microphone track and resumes after the highest saved part", () => {
@@ -69,11 +70,11 @@ test("trial recorder requires one mixed microphone track and resumes after the h
   const uploadEndpoint = fs.readFileSync(path.join(ROOT, "api", "manual-qa", "widget-evidence-chunks.js"), "utf8");
 
   assert.match(portal, /duration_ms: durationMs/);
-  assert.match(portal, /third-party AI provider for transient transcription and visual analysis/);
-  assert.match(portal, /required not to retain or collect the AI request/);
+  assert.match(portal, /use AI to make a transcript and report/);
+  assert.match(portal, /the AI provider does not keep them/);
   assert.match(portal, /recordingExtension\(contentType\)/);
-  assert.match(portal, /performAction\("accept_analysis"\)/);
-  assert.match(portal, /This will not record a new test/);
+  assert.match(portal, /The report is created automatically/);
+  assert.doesNotMatch(portal, /accept_analysis|One permission needed|Allow analysis of my recording/);
   assert.match(portal, /recorder\.start\(\);/);
   assert.doesNotMatch(portal, /recorder\.start\(1000\)/);
   assert.doesNotMatch(portal, /private to this trial/);

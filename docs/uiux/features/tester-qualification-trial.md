@@ -75,12 +75,11 @@ A submitted recording is raw evidence. A tester note or an unfinished analysis m
 
 ### Recording-analysis states
 
-- `not_started`: `This recording hasn't been analyzed yet.` Show one `Analyze video` action. Hide findings categories and disable `Copy report`.
-- `queued`: `Video analysis is waiting to start.` Keep the recording playable. Hide findings categories and disable `Copy report`.
+- `not_started`: `Preparing the report…` Queue automatically. Keep the recording playable, hide findings categories, and disable `Copy report`.
+- `queued`: `Preparing the report…` Keep the recording playable. Hide findings categories and disable `Copy report`.
 - `processing`: `Analyzing the recording and speech… N of M parts.` Keep the recording playable. Hide findings categories and disable `Copy report`.
 - `complete`: show recording-derived findings and enable `Copy report`. Category-empty conclusions are allowed only in this state.
 - `failed`: `We couldn't analyze the recording.` Keep the recording playable, hide findings categories, and disable `Copy report`. Show `Try again` only when the backend marks the job retryable and its retry cap is not exhausted.
-- `consent-required`: show `Waiting for the tester's permission.` The tester can approve from the existing private trial link without recording a new test. Hide findings and all owner retry controls.
 
 ### Evidence and failure states
 
@@ -98,8 +97,8 @@ A submitted recording is raw evidence. A tester note or an unfinished analysis m
 - The tester note, requested flow, private benchmark, and existing note-derived work packets never enter the recording findings input.
 - Retries may reuse already completed clip analyses, but a changed recording fingerprint requires a fresh analysis before findings can be published.
 - Analyze bounded durable batches and publish only after the complete fingerprinted recording set succeeds. Exhausted retries stay terminal until support intervenes.
-- Recording bytes sent for transcription and visual analysis use a third-party AI route configured for zero retention and denied data collection. Consent names that processing and the product-owner audience before capture starts.
-- Persist a versioned tester consent timestamp. Recordings captured before this disclosure must never be auto-enrolled or sent for analysis; their tester must explicitly approve from the existing private link first. The cron processes only explicitly queued, consented jobs.
+- Recording bytes sent for transcription and visual analysis use a third-party AI route configured for zero retention and denied data collection. A plain disclosure names that processing and the product-owner audience before capture starts.
+- Starting the test acknowledges the recording disclosure. Every submitted trial with a complete trusted recording is automatically eligible for analysis, including legacy submissions; no second post-submission permission step exists.
 
 ## Score Contract
 
@@ -112,4 +111,4 @@ Private benchmark issues, access-token hashes, and encrypted credential envelope
 
 ## Reuse Boundary
 
-Paid assignments reuse the same consent, recording, evidence, submission, and customer-rating machinery. They do not create a qualification score, change an approved tester back to `Qualification sent`, or describe the work as unpaid. Their displayed pay is copied into the private trial when claimed and cannot change for that claimed assignment.
+Paid assignments reuse the same recording disclosure, evidence, submission, analysis, and customer-rating machinery. They do not create a qualification score, change an approved tester back to `Qualification sent`, or describe the work as unpaid. Their displayed pay is copied into the private trial when claimed and cannot change for that claimed assignment.

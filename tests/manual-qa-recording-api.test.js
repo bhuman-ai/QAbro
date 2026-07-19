@@ -3,7 +3,8 @@ const test = require("node:test");
 
 const {
   buildManualQaRecordingFingerprint,
-  collectManualQaRecordingMedia
+  collectManualQaRecordingMedia,
+  normalizeManualQaSessionRow
 } = require("../lib/manual-qa");
 const {
   analysisIsEligible,
@@ -241,7 +242,7 @@ test("cron selection paginates past ineligible sessions without starving later w
 });
 
 test("recording analysis eligibility respects fingerprints, retries, and leases", () => {
-  assert.equal(analysisIsEligible(currentSession({ status: "not_started" })), false);
+  assert.equal(analysisIsEligible(currentSession({ status: "not_started" })), true);
   assert.equal(analysisIsEligible(currentSession({ status: "queued", retryable: true })), true);
   assert.equal(analysisIsEligible(currentSession({ status: "complete" })), false);
   assert.equal(
@@ -280,17 +281,21 @@ test("recording analysis eligibility respects fingerprints, retries, and leases"
   const noConsent = currentSession({ status: "queued", retryable: true });
   delete noConsent.qualification_trial.tester.recording_analysis_consent_version;
   delete noConsent.qualification_trial.tester.recording_analysis_consent_at;
-  assert.equal(analysisIsEligible(noConsent), false);
+  assert.equal(analysisIsEligible(noConsent), true);
 
-  assert.equal(
-    analysisIsEligible(currentSession({
+  const legacyConsentError = currentSession({
       status: "failed",
       retryable: false,
       attempt_count: 0,
       error_code: "recording_analysis_consent_required"
-    })),
-    true
-  );
+  });
+  const normalizedLegacy = normalizeManualQaSessionRow({
+    run_id: legacyConsentError.session_id,
+    source: "manual_qa",
+    payload: { manual_qa: legacyConsentError }
+  });
+  assert.equal(normalizedLegacy.findings_analysis.status, "not_started");
+  assert.equal(analysisIsEligible(normalizedLegacy), true);
 
   assert.equal(
     analysisNeedsTerminalization(
@@ -317,7 +322,7 @@ test("recording analysis eligibility respects fingerprints, retries, and leases"
   );
 });
 
-test("owner POST processing cannot bypass submitted-trial consent and can recover after consent", async () => {
+test("owner processing blocks non-trials but accepts submitted legacy recordings", async () => {
   const nonTrial = currentSession({ status: "not_started", retryable: true });
   delete nonTrial.qualification_trial;
   let nonTrialQueueCalls = 0;
@@ -330,41 +335,55 @@ test("owner POST processing cannot bypass submitted-trial consent and can recove
   });
   assert.equal(blocked.ok, false);
   assert.equal(blocked.status, 409);
-  assert.equal(blocked.error_code, "recording_analysis_consent_unavailable");
+  assert.equal(blocked.error_code, "recording_analysis_unavailable");
   assert.equal(nonTrialQueueCalls, 0);
 
   const missingConsent = currentSession({ status: "not_started", retryable: true });
   delete missingConsent.qualification_trial.tester.recording_analysis_consent_version;
   delete missingConsent.qualification_trial.tester.recording_analysis_consent_at;
-  let missingConsentClaims = 0;
-  const consentState = await processManualQaRecordingAnalysis("missing-consent", {}, {
+  let queueCalls = 0;
+  let claimCalls = 0;
+  const queuedAnalysis = {
+    ...missingConsent.findings_analysis,
+    analysis_id: "legacy-analysis",
+    status: "queued",
+    retryable: true
+  };
+  const queuedSession = { ...missingConsent, findings_analysis: queuedAnalysis };
+  const processed = await processManualQaRecordingAnalysis("missing-consent", {}, {
     loadSession: async () => ({
       ok: true,
       status: 200,
       session: missingConsent,
       row: { delivered_at: "d1" }
     }),
-    queueAnalysis: async () => ({
-      ok: true,
-      status: 200,
-      analysis: {
-        ...missingConsent.findings_analysis,
-        status: "failed",
-        error_code: "recording_analysis_consent_required",
-        retryable: false
-      },
-      session: missingConsent,
-      row: { delivered_at: "d2" }
-    }),
+    queueAnalysis: async () => {
+      queueCalls += 1;
+      return {
+        ok: true,
+        status: 200,
+        analysis: queuedAnalysis,
+        session: queuedSession,
+        row: { delivered_at: "d2" }
+      };
+    },
     claimAnalysis: async () => {
-      missingConsentClaims += 1;
-      throw new Error("missing consent must never claim work");
+      claimCalls += 1;
+      return {
+        ok: true,
+        status: 202,
+        claimed: false,
+        analysis: queuedAnalysis,
+        session: queuedSession,
+        recordings: collectManualQaRecordingMedia(queuedSession),
+        row: { delivered_at: "d2" }
+      };
     }
   });
-  assert.equal(consentState.ok, true);
-  assert.equal(consentState.processed, false);
-  assert.equal(consentState.analysis.error_code, "recording_analysis_consent_required");
-  assert.equal(missingConsentClaims, 0);
+  assert.equal(processed.ok, true);
+  assert.equal(processed.processed, false);
+  assert.equal(queueCalls, 1);
+  assert.equal(claimCalls, 1);
 
   const recovered = currentSession({
     status: "failed",
@@ -373,7 +392,7 @@ test("owner POST processing cannot bypass submitted-trial consent and can recove
     error_code: "recording_analysis_consent_required"
   });
   let recoveredQueueCalls = 0;
-  const retried = await processManualQaRecordingAnalysis("recovered-consent", {}, {
+  const retried = await processManualQaRecordingAnalysis("legacy-consent-error", {}, {
     loadSession: async () => ({ ok: true, status: 200, session: recovered, row: { delivered_at: "d3" } }),
     queueAnalysis: async () => {
       recoveredQueueCalls += 1;

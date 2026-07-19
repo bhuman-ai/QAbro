@@ -55,16 +55,15 @@ WHAT THEY WERE ASKED TO DO
 ### R1 analysis states
 
 ```text
-not_started  This recording hasn't been analyzed yet. [Analyze video]
-queued       Video analysis is waiting to start.
+not_started  Preparing the report… [automatic]
+queued       Preparing the report…
 processing   Analyzing the recording and speech… 23 of 82 parts.
 complete     Recording-derived digest + timestamp evidence + [Copy report]
 failed       We couldn't analyze the recording. [Try again, only when retryable]
-consent      Waiting for the tester's permission. [No owner action]
 ```
 
 Category headings and empty-category claims stay hidden in `not_started`, `queued`, `processing`, and `failed`. `Copy report` stays disabled in those states. The recording remains playable whenever media is available. The raw transcript appears only inside collapsed `Technical details`.
-Historical recordings captured before the third-party AI disclosure stay blocked until the tester approves from the existing private link; this does not require a new recording.
+Submitted legacy recordings enter the same automatic analysis queue without a second tester action.
 
 ## R2 — Proof And Takeaway Split
 

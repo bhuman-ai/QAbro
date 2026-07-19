@@ -3,9 +3,9 @@ const assert = require("node:assert/strict");
 
 const {
   acceptQaTrial,
-  acceptQaTrialRecordingAnalysis,
   createQaTrial,
   issueQaTrialTesterLink,
+  queueQaTrialRecordingAnalysis,
   rateQaTrial,
   scoreQaTrial,
   startQaTrial,
@@ -458,56 +458,14 @@ test("paired qualification trial completes consent, submission, scoring, and rat
     }]
   };
   const legacyView = await verifyQaTrialAccess(sessionId, testerToken, options);
-  assert.equal(legacyView.view.consent.recording_analysis_accepted, false);
-  const reconsented = await acceptQaTrialRecordingAnalysis(sessionId, testerToken, {
-    ...options,
-    queueManualQaFindingsAnalysis: async () => ({ ok: false, status: 500 })
-  });
-  assert.equal(reconsented.ok, true);
-  assert.equal(reconsented.status, 202);
-  assert.equal(reconsented.queue_pending, true);
-  assert.equal(reconsented.error_code, "recording_analysis_queue_pending");
-  assert.equal(reconsented.view.consent.recording_analysis_accepted, true);
-  const scrubbed = mock.rows.get(sessionId).payload.manual_qa;
-  assert.notEqual(scrubbed.findings_analysis.status, "complete");
-  assert.deepEqual(scrubbed.findings_analysis.clip_results, []);
+  assert.equal(legacyView.view.consent.recording_analysis_accepted, true);
+  const scrubbed = normalizeManualQaSessionRow(submittedRow);
+  assert.equal(scrubbed.findings_analysis.status, "not_started");
   assert.deepEqual(scrubbed.findings_analysis.findings, []);
   assert.deepEqual(scrubbed.work_packets, []);
   assert.equal(
     JSON.stringify(scrubbed.checklist).includes("Unauthorized historical transcript"),
     false
-  );
-
-  scrubbed.findings_analysis = {
-    ...scrubbed.findings_analysis,
-    analysis_id: "processing-must-survive-idempotent-consent",
-    status: "processing"
-  };
-  const consentAt = scrubbed.qualification_trial.tester.recording_analysis_consent_at;
-  const patchCountBefore = mock.calls.filter((call) => call.options?.method === "PATCH").length;
-  let idempotentQueueOptions = null;
-  const idempotentConsent = await acceptQaTrialRecordingAnalysis(sessionId, testerToken, {
-    ...options,
-    queueManualQaFindingsAnalysis: async (_queuedSessionId, queueOptions) => {
-      idempotentQueueOptions = queueOptions;
-      const row = mock.rows.get(sessionId);
-      return { ok: true, status: 200, row, session: normalizeManualQaSessionRow(row) };
-    }
-  });
-  assert.equal(idempotentConsent.ok, true);
-  assert.equal(idempotentConsent.status, 200);
-  assert.equal(idempotentQueueOptions.force, undefined);
-  assert.equal(
-    mock.calls.filter((call) => call.options?.method === "PATCH").length,
-    patchCountBefore
-  );
-  assert.equal(
-    mock.rows.get(sessionId).payload.manual_qa.findings_analysis.analysis_id,
-    "processing-must-survive-idempotent-consent"
-  );
-  assert.equal(
-    mock.rows.get(sessionId).payload.manual_qa.qualification_trial.tester.recording_analysis_consent_at,
-    consentAt
   );
 
   const scored = await scoreQaTrial(
@@ -537,7 +495,7 @@ test("paired qualification trial completes consent, submission, scoring, and rat
   assert.equal(rated.view.lead_rating.score, 5);
 });
 
-test("generic re-accept cannot grant historical recording analysis consent", async () => {
+test("legacy analysis action queues without requiring a post-submit permission", async () => {
   const mock = createSupabaseFetchMock();
   const options = optionsFor(mock);
   const created = await createQaTrial(
@@ -564,21 +522,25 @@ test("generic re-accept cannot grant historical recording analysis consent", asy
 
   const reaccepted = await acceptQaTrial(created.session_id, testerToken, options);
   assert.equal(reaccepted.ok, true, reaccepted.error);
-  assert.equal(reaccepted.view.consent.recording_analysis_accepted, false);
+  assert.equal(reaccepted.view.consent.recording_analysis_accepted, true);
   const afterReaccept = mock.rows.get(created.session_id).payload.manual_qa.qualification_trial;
   assert.equal(Number(afterReaccept.tester.recording_analysis_consent_version || 0), 0);
   assert.equal(afterReaccept.tester.recording_analysis_consent_at || null, null);
 
-  const explicitlyAccepted = await acceptQaTrialRecordingAnalysis(
-    created.session_id,
-    testerToken,
-    {
-      ...options,
-      queueManualQaFindingsAnalysis: async () => ({ ok: false, status: 500 })
+  let queueCalls = 0;
+  const queued = await queueQaTrialRecordingAnalysis(created.session_id, testerToken, {
+    ...options,
+    queueManualQaFindingsAnalysis: async () => {
+      queueCalls += 1;
+      const row = mock.rows.get(created.session_id);
+      return { ok: true, status: 200, row, session: normalizeManualQaSessionRow(row) };
     }
-  );
-  assert.equal(explicitlyAccepted.ok, true, explicitlyAccepted.error);
-  assert.equal(explicitlyAccepted.view.consent.recording_analysis_accepted, true);
+  });
+  assert.equal(queued.ok, true, queued.error);
+  assert.equal(queueCalls, 1);
+  assert.equal(queued.view.consent.recording_analysis_accepted, true);
+  assert.equal(Number(afterReaccept.tester.recording_analysis_consent_version || 0), 0);
+  assert.equal(afterReaccept.tester.recording_analysis_consent_at || null, null);
 });
 
 test("qualification trials require a real private benchmark", async () => {
