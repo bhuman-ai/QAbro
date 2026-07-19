@@ -2071,6 +2071,45 @@ test("retry cap becomes a persisted nonretryable terminal state", async () => {
   );
 });
 
+test("an active third analysis attempt remains processing until its lease is handled", () => {
+  const sessionId = "manual-active-third-attempt";
+  const session = {
+    session_id: sessionId,
+    checklist: [{ id: "freestyle", evidence_media: [makeFinalRecording(sessionId, 1)] }]
+  };
+  const fingerprint = buildManualQaRecordingSetFingerprint(session);
+  const active = resolveCurrentManualQaFindingsAnalysis(session, {
+    analysis_id: "recording_active_third_attempt",
+    status: "processing",
+    source: "recording_transcript",
+    media_count: 1,
+    processed_media_count: 0,
+    transcript_event_count: 0,
+    attempt_count: 3,
+    recording_fingerprint: fingerprint,
+    lease_id: "lease_active_third_attempt",
+    lease_expires_at: "2099-07-19T06:20:00.000Z",
+    retryable: true,
+    clip_results: [],
+    findings: []
+  });
+  assert.equal(active.status, "processing");
+  assert.equal(active.lease_id, "lease_active_third_attempt");
+  assert.equal(active.error_code, null);
+  assert.equal(active.retryable, true);
+
+  const failed = resolveCurrentManualQaFindingsAnalysis(session, {
+    ...active,
+    status: "failed",
+    lease_id: null,
+    lease_expires_at: null,
+    error_code: "clip_analysis_failed"
+  });
+  assert.equal(failed.status, "failed");
+  assert.equal(failed.error_code, "retry_limit_exceeded");
+  assert.equal(failed.retryable, false);
+});
+
 test("qualification submission locks new recording evidence", async () => {
   const mock = createSupabaseFetchMock();
   const options = {

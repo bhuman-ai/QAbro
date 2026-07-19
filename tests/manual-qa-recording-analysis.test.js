@@ -411,6 +411,28 @@ test("clip response schema rejects malformed objects and ignores model duration"
   assert.equal(valid.duration_ms, 1500);
   assert.equal(valid.speech_segments[0].end_ms, 1500);
   assert.equal(valid.visual_events[0].end_ms, 1500);
+
+  const providerAliases = normalizeClipAnalysisResult(
+    {
+      speech_segments: [{ startMs: 0, endMs: 1000, transcript: "Exact spoken words" }],
+      visual_events: [{ startMs: 500, endMs: 1500, text: "Button becomes disabled" }],
+      summary: "Direct clip evidence only",
+      confidence: 0.8
+    },
+    normalizedRecording,
+    { trustedDurationMs: 1500 }
+  );
+  assert.equal(providerAliases.status, "complete");
+  assert.deepEqual(providerAliases.speech_segments[0], {
+    start_ms: 0,
+    end_ms: 1000,
+    text: "Exact spoken words"
+  });
+  assert.deepEqual(providerAliases.visual_events[0], {
+    start_ms: 500,
+    end_ms: 1500,
+    description: "Button becomes disabled"
+  });
 });
 
 test("findings require exact meaningful full-event evidence and allowed categories", () => {
