@@ -19,6 +19,7 @@ type TesterStatus = "applied" | "invited" | "qualified" | "approved" | "declined
 type TesterApplication = {
   id: string;
   name: string;
+  public_name?: string | null;
   owner_email: string;
   devices: Array<"computer" | "ios" | "android">;
   status: TesterStatus;

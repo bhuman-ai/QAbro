@@ -8,7 +8,7 @@ Bootstrap both sides of human QA: a customer receives one useful test for free w
 
 1. A customer request arrives through `qa_request_human_test`, or a BUD operator starts a pairing directly.
 2. The operator adds private review points and publishes the request to eligible testers.
-3. A tester claims it from `/testers/jobs`, or an operator sends it directly to an interested tester. BUD creates and emails separate private role links.
+3. A tester claims it from `/testers/jobs`, or an operator sends it directly to an interested tester. The tester application or operator supplies one explicit first name that may be shown to customers. BUD snapshots that public name, creates the trial, and emails separate private role links.
 4. Direct MCP requests preapprove the customer; directly paired trials still ask both people to accept.
 5. The tester opens the private link and uses one `Start test` action. That action accepts the trial, opens the product, and starts screen-and-voice recording. Evidence uploads in short segments.
 6. The tester submits the test.
@@ -38,7 +38,8 @@ New qualification requests default to 15 minutes. Explicit paid-test durations r
 - Submitted recording and supplemental tester note
 - Recording-analysis status
 - Problems, what worked, suggested fixes, and optional observations derived from the recording's speech and visible activity
-- Customer rating action
+- Privacy-safe tester identity: first name, initials fallback, and trial context
+- Private customer rating action about that tester's test
 
 ### BUD Operator
 
@@ -68,10 +69,13 @@ A submitted recording is raw evidence. A tester note or an unfinished analysis m
 - Treat the tester note as supplemental context below the digest. Never use the note, private benchmark data, requested flow, or unsupported assumptions to generate findings.
 - While analysis is `not_started`, `queued`, or `processing`, replace the digest with one plain status line. Do not show category headings or claim that a category is empty.
 - When analysis is `complete`, show one vertical `What the tester found` digest. Merge bugs and frustrations under `Problems` with a plain `Bug` or `Friction` label, rename aha moments to `What worked`, show verified AI recommendations under `Suggested fixes`, and collapse neutral items under `More observations`.
+- On the completed customer report, show one compact tester identity row before the digest. Return only the explicitly confirmed `tester.public_name` in the buyer-safe API view and use `Your tester` with a `T` initial when it is missing; never infer it from the private full-name field or return the stored full name, email, contact details, or a fake/generated profile photo.
+- New applications ask for one `First name shown to customers` and store it separately from private identity data. Direct operator invites supply the same explicit field. Legacy trials remain generic until a tester operator or report admin confirms a public name through the guarded backfill action.
 - Hide empty sections. If the entire digest is empty, show only `No clear findings were identified in the recording.`
 - Each finding links to its supporting moment with a plain action such as `Watch part 23 at 0:06`. The action selects the referenced clip and seeks to the clip-relative timestamp.
 - Keep the requested flow out of the primary completed view. Put the raw tester note in one collapsed supplemental section after the digest.
-- Do not show the customer rating action until recording analysis is `complete`.
+- Do not show the customer rating action until recording analysis is `complete`. Put one `Leave a review` block directly under the tester identity and before the findings digest so it is not missed; keep the five stars visible, then reveal the optional private note and `Send review` action only after a star is chosen. Show submission errors inside that block and announce the compact sent state there. Do not repeat the prompt below the report. Keep the tester identity visible after rating, and omit the rating score, note, and timestamp from the tester-token response.
+- Treat the customer rating and `tester.public_name` as protected fields. Ordinary consent, scoring, link, payout, and delivery updates must preserve their newest values; only explicit field-scoped mutations with an expected-value fence may change them, and nonconflicting concurrent updates must merge through the row CAS retry.
 - Keep operator scoring in the existing guarded operator workspace; the report shows whether that review is still pending.
 - Hide widget installation, checklist metrics, note editors, status buttons, raw evidence URLs, agent context, and capture diagnostics from the default report view.
 - Keep the raw transcript, raw links, expected behavior, widget context, and diagnostics under collapsed `Technical details`.

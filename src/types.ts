@@ -647,6 +647,7 @@ export interface QaTrialView {
   };
   tester: {
     name?: string | null;
+    public_name?: string | null;
     email?: string | null;
     accepted_at?: string | null;
   };

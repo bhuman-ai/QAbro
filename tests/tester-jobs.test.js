@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const { __private } = require("../api/tester-jobs");
 
@@ -80,4 +82,10 @@ test("approved testers see paid work while applicants see only qualifications", 
   assert.equal(approved.available[0].tester_pay_cents, 3000);
   assert.equal(approved.can_claim_paid, true);
   assert.equal(approved.can_claim_qualification, false);
+});
+
+test("claiming a job passes only the explicitly confirmed public name", () => {
+  const apiSource = fs.readFileSync(path.resolve(__dirname, "../api/tester-jobs.js"), "utf8");
+  assert.match(apiSource, /public_name: application\.public_name/);
+  assert.doesNotMatch(apiSource, /public_name: application\.name/);
 });

@@ -9,6 +9,7 @@ const {
   queueQaTrialRecordingAnalysis,
   rateQaTrial,
   scoreQaTrial,
+  setQaTrialTesterPublicName,
   startQaTrial,
   submitQaTrial,
   verifyQaTrialAccess
@@ -67,6 +68,14 @@ function shouldMarkTesterQualified(trial, owner = {}) {
   return (
     trial?.assignment?.type !== "paid" &&
     (owner.is_service_token === true || isTesterOperatorEmail(owner.ownerEmail))
+  );
+}
+
+function canManageTesterPublicName(owner = {}) {
+  return (
+    owner.is_service_token === true ||
+    owner.user?.report_admin === true ||
+    isTesterOperatorEmail(owner.ownerEmail)
   );
 }
 
@@ -177,6 +186,20 @@ module.exports = async (req, res) => {
     });
   }
 
+  if (action === "set_tester_public_name") {
+    if (!bodySessionId) return res.status(400).json({ ok: false, error: "session_id is required" });
+    if (!canManageTesterPublicName(owner)) {
+      return res.status(403).json({ ok: false, error: "Tester operator access required" });
+    }
+    const updated = await setQaTrialTesterPublicName(bodySessionId, body || {}, {
+      ...options,
+      adminOk: true,
+      allowTesterPublicNameUpdate: true
+    });
+    if (!updated.ok) return res.status(updated.status || 500).json({ ok: false, error: updated.error });
+    return res.status(200).json({ ok: true, trial: updated.trial });
+  }
+
   if (action === "score") {
     if (!bodySessionId) return res.status(400).json({ ok: false, error: "session_id is required" });
     const scored = await scoreQaTrial(bodySessionId, body || {}, options);
@@ -195,6 +218,7 @@ module.exports = async (req, res) => {
 };
 
 module.exports.__private = {
+  canManageTesterPublicName,
   resolveOwner,
   setPrivateTrialResponseHeaders,
   shouldMarkTesterQualified,
