@@ -937,6 +937,58 @@ export default function QaTrialPortal({ search }: { search: string }) {
                       </div>
                     </div>
                   </div>
+                  {trial.role === "lead" && reportComplete && !trial.lead_rating.score ? (
+                    <section
+                      className="mb-8 rounded-2xl border border-brand-accent/20 bg-brand-accent/5 p-5"
+                      aria-labelledby="buyer-review-title"
+                    >
+                      <h2 id="buyer-review-title" className="text-xl font-black">Leave a review</h2>
+                      <p className="mt-1 text-sm font-semibold text-brand-muted">
+                        {`How useful was ${testerPossessive} test? Private to Before Users Do.`}
+                      </p>
+                      <div className="mt-4 flex gap-2" role="group" aria-label={`Rate ${testerPossessive} test`}>
+                        {[1, 2, 3, 4, 5].map((value) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setRating(value)}
+                            className={`flex h-12 w-12 items-center justify-center rounded-xl border bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent ${
+                              rating === value ? "border-brand-warning" : "border-brand-line"
+                            }`}
+                            aria-label={`${value} star${value === 1 ? "" : "s"}`}
+                            aria-pressed={rating === value}
+                          >
+                            <Star className={`h-6 w-6 ${value <= rating ? "fill-brand-warning text-brand-warning" : "text-slate-300"}`} />
+                          </button>
+                        ))}
+                      </div>
+                      {rating ? (
+                        <div className="mt-4">
+                          <textarea
+                            value={ratingNote}
+                            onChange={(event) => setRatingNote(event.target.value)}
+                            aria-label="Private feedback note"
+                            placeholder="What was useful or missing? (optional)"
+                            className="min-h-24 w-full rounded-xl border border-brand-line bg-white px-4 py-3 text-sm font-semibold outline-none focus:border-brand-accent"
+                          />
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void submitRating()}
+                            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-ink px-5 py-3 font-black text-white disabled:opacity-40"
+                          >
+                            {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                            Send review
+                          </button>
+                        </div>
+                      ) : null}
+                    </section>
+                  ) : trial.role === "lead" && reportComplete && trial.lead_rating.score ? (
+                    <div className="mb-8 flex items-center gap-3 rounded-2xl bg-brand-success/10 p-5">
+                      <Check className="h-6 w-6 text-brand-success" />
+                      <span className="font-black">{`Review sent · ${trial.lead_rating.score}/5`}</span>
+                    </div>
+                  ) : null}
                   <BuyerReport trial={trial} recordings={videoEvidence} token={token} />
                 </>
               ) : (
@@ -1009,47 +1061,6 @@ export default function QaTrialPortal({ search }: { search: string }) {
                 <p className="mt-5 text-sm font-semibold text-brand-muted">BUD is reviewing your evidence for your first score.</p>
               ) : null}
 
-              {trial.role === "lead" && reportComplete && !trial.lead_rating.score ? (
-                <div className="mt-8 rounded-2xl bg-brand-bg p-6">
-                  <h2 className="text-xl font-black">{`How useful was ${testerPossessive} test?`}</h2>
-                  <p className="mt-2 text-sm font-semibold text-brand-muted">Private feedback for Before Users Do.</p>
-                  <div className="mt-4 flex gap-2" role="group" aria-label={`Rate ${testerPossessive} test`}>
-                    {[1, 2, 3, 4, 5].map((value) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => setRating(value)}
-                        className="flex h-12 w-12 items-center justify-center rounded-xl border border-brand-line bg-white"
-                        aria-label={`${value} star${value === 1 ? "" : "s"}`}
-                        aria-pressed={rating === value}
-                      >
-                        <Star className={`h-6 w-6 ${value <= rating ? "fill-brand-warning text-brand-warning" : "text-slate-300"}`} />
-                      </button>
-                    ))}
-                  </div>
-                  <textarea
-                    value={ratingNote}
-                    onChange={(event) => setRatingNote(event.target.value)}
-                    aria-label="Private feedback note"
-                    placeholder="What was useful or missing? (optional)"
-                    className="mt-4 min-h-24 w-full rounded-xl border border-brand-line bg-white px-4 py-3 text-sm font-semibold outline-none focus:border-brand-accent"
-                  />
-                  <button
-                    type="button"
-                    disabled={!rating || busy}
-                    onClick={() => void submitRating()}
-                    className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-ink px-5 py-3 font-black text-white disabled:opacity-40"
-                  >
-                    {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                    Send feedback
-                  </button>
-                </div>
-              ) : trial.role === "lead" && reportComplete && trial.lead_rating.score ? (
-                <div className="mt-6 flex items-center gap-3 rounded-2xl bg-brand-bg p-5">
-                  <Star className="h-6 w-6 fill-brand-warning text-brand-warning" />
-                  <span className="font-black">{`You rated ${testerPossessive} test ${trial.lead_rating.score}/5`}</span>
-                </div>
-              ) : null}
             </div>
           )}
 

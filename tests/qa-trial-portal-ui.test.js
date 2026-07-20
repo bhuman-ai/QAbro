@@ -43,17 +43,23 @@ test("buyer waits for analysis and secondary raw material stays collapsed", () =
 });
 
 test("completed buyer report identifies the tester safely and rates their test", () => {
+  const completedView = portal.slice(portal.indexOf("{showBuyerReport ?"), portal.indexOf("{trial.submission.note ?"));
+
   assert.match(portal, /buyerSafeTesterFirstName\(trial\.tester\.public_name\)/);
   assert.match(portal, /`Tested by \$\{testerFirstName\}`/);
   assert.match(portal, /testerFirstName === "your tester" \? "Your tester"/);
   assert.match(portal, /New tester · first trial/);
+  assert.match(completedView, />Leave a review</);
   assert.match(portal, /How useful was \$\{testerPossessive\} test\?/);
-  assert.match(portal, /Private feedback for Before Users Do\./);
+  assert.match(portal, /Private to Before Users Do\./);
   assert.match(portal, /aria-pressed=\{rating === value\}/);
   assert.match(portal, /aria-label="Private feedback note"/);
   assert.match(portal, /What was useful or missing\? \(optional\)/);
-  assert.match(portal, /Send feedback/);
-  assert.match(portal, /You rated \$\{testerPossessive\} test/);
+  assert.match(portal, /Send review/);
+  assert.match(portal, /Review sent · \$\{trial\.lead_rating\.score\}\/5/);
+  assert.ok(completedView.indexOf("Leave a review") < completedView.indexOf("<BuyerReport"));
+  assert.match(completedView, /\{rating \? \([\s\S]*aria-label="Private feedback note"/);
+  assert.equal((completedView.match(/Leave a review/g) || []).length, 1);
   assert.doesNotMatch(portal, /buyerSafeTesterFirstName\(trial\.tester\.name\)/);
   assert.doesNotMatch(portal, /trial\.tester\.email/);
 });

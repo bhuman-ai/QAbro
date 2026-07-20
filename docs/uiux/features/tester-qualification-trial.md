@@ -74,7 +74,7 @@ A submitted recording is raw evidence. A tester note or an unfinished analysis m
 - Hide empty sections. If the entire digest is empty, show only `No clear findings were identified in the recording.`
 - Each finding links to its supporting moment with a plain action such as `Watch part 23 at 0:06`. The action selects the referenced clip and seeks to the clip-relative timestamp.
 - Keep the requested flow out of the primary completed view. Put the raw tester note in one collapsed supplemental section after the digest.
-- Do not show the customer rating action until recording analysis is `complete`. Ask how useful the named tester's test was, label the optional note as private feedback, keep the tester identity visible after rating, and omit the rating score, note, and timestamp from the tester-token response.
+- Do not show the customer rating action until recording analysis is `complete`. Put one `Leave a review` block directly under the tester identity and before the findings digest so it is not missed; keep the five stars visible, then reveal the optional private note and `Send review` action only after a star is chosen. Do not repeat the prompt below the report. Keep the tester identity visible after rating, and omit the rating score, note, and timestamp from the tester-token response.
 - Keep operator scoring in the existing guarded operator workspace; the report shows whether that review is still pending.
 - Hide widget installation, checklist metrics, note editors, status buttons, raw evidence URLs, agent context, and capture diagnostics from the default report view.
 - Keep the raw transcript, raw links, expected behavior, widget context, and diagnostics under collapsed `Technical details`.
