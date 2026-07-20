@@ -149,6 +149,7 @@ export default function QaTrialAdmin({ search }: { search: string }) {
               action: "assign",
               request_id: humanRequestId,
               tester_name: form.testerName,
+              tester_public_name: form.testerName,
               tester_email: invitedEmail
             }
           });
@@ -196,6 +197,7 @@ export default function QaTrialAdmin({ search }: { search: string }) {
           target_url: form.targetUrl,
           lead_email: form.leadEmail,
           tester_name: form.testerName,
+          tester_public_name: form.testerName,
           tester_email: form.testerEmail,
           test_focus: form.testFocus,
           known_issues: form.knownIssues,
@@ -508,13 +510,14 @@ export default function QaTrialAdmin({ search }: { search: string }) {
                 ) : (
                   <div className="grid gap-5 sm:grid-cols-2">
                     <label className="grid gap-2 text-sm font-black">
-                      Tester name
+                      First name shown to customer
                       <input
+                        required
                         value={form.testerName}
                         onChange={(event) => setForm((current) => ({ ...current, testerName: event.target.value }))}
                         className="rounded-xl border border-brand-line px-4 py-3 font-semibold outline-none focus:border-brand-accent"
-                        placeholder="Haley Birch"
-                        autoComplete="name"
+                        placeholder="Haley"
+                        autoComplete="given-name"
                       />
                     </label>
                     <label className="grid gap-2 text-sm font-black">
@@ -546,6 +549,10 @@ export default function QaTrialAdmin({ search }: { search: string }) {
               <label className="grid gap-2 text-sm font-black">
                 Customer email
                 <input required type="email" value={form.leadEmail} onChange={(event) => setForm((current) => ({ ...current, leadEmail: event.target.value }))} className="rounded-xl border border-brand-line px-4 py-3 font-semibold outline-none focus:border-brand-accent" placeholder="founder@example.com" />
+              </label>
+              <label className="grid gap-2 text-sm font-black">
+                First name shown to customer
+                <input required value={form.testerName} onChange={(event) => setForm((current) => ({ ...current, testerName: event.target.value }))} className="rounded-xl border border-brand-line px-4 py-3 font-semibold outline-none focus:border-brand-accent" placeholder="Haley" autoComplete="given-name" />
               </label>
               <label className="grid gap-2 text-sm font-black">
                 Tester email

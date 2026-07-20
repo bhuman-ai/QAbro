@@ -29,6 +29,7 @@ type Device = "computer" | "ios" | "android";
 type TesterApplication = {
   id: string;
   name: string;
+  public_name?: string | null;
   country: string;
   experience_level: ExperienceLevel;
   devices: Device[];
@@ -130,7 +131,7 @@ export default function TesterApplicationPage({
   const [socialLoading, setSocialLoading] = useState<SocialProvider | "">("");
   const [applicationLoading, setApplicationLoading] = useState(false);
   const [application, setApplication] = useState<TesterApplication | null>(null);
-  const [name, setName] = useState("");
+  const [publicName, setPublicName] = useState("");
   const [country, setCountry] = useState("");
   const [devices, setDevices] = useState<Device[]>([]);
   const [experience, setExperience] = useState<ExperienceLevel>("");
@@ -200,8 +201,8 @@ export default function TesterApplicationPage({
     event.preventDefault();
     setError("");
 
-    if (name.trim().length < 2) {
-      setError("Enter your name.");
+    if (publicName.trim().length < 2) {
+      setError("Enter the first name customers should see.");
       return;
     }
     if (country.trim().length < 2) {
@@ -233,7 +234,8 @@ export default function TesterApplicationPage({
         {
           method: "POST",
           body: {
-            name,
+            public_name: publicName,
+            name: publicName,
             country,
             devices,
             experience_level: experience,
@@ -357,15 +359,15 @@ export default function TesterApplicationPage({
             <form onSubmit={submitApplication} className="space-y-8" noValidate>
               <div className="grid gap-5 sm:grid-cols-2">
                 <label className="block">
-                  <span className="mb-2 block text-sm font-black">Your name</span>
+                  <span className="mb-2 block text-sm font-black">First name shown to customers</span>
                   <span className="flex min-h-14 items-center gap-3 rounded-lg border-2 border-brand-line bg-white px-4 focus-within:border-brand-accent">
                     <UserRound className="h-5 w-5 shrink-0 text-slate-400" />
                     <input
                       type="text"
-                      value={name}
-                      onChange={(event) => setName(event.target.value)}
-                      placeholder="Alex Smith"
-                      autoComplete="name"
+                      value={publicName}
+                      onChange={(event) => setPublicName(event.target.value)}
+                      placeholder="Haley"
+                      autoComplete="given-name"
                       className="w-full bg-transparent py-3 font-bold outline-none"
                       required
                     />

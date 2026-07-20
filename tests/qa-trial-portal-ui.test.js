@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 
 const ROOT = path.resolve(__dirname, "..");
 const portal = fs.readFileSync(path.join(ROOT, "src", "QaTrialPortal.tsx"), "utf8");
+const admin = fs.readFileSync(path.join(ROOT, "src", "QaTrialAdmin.tsx"), "utf8");
 const types = fs.readFileSync(path.join(ROOT, "src", "types.ts"), "utf8");
 const vercel = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8"));
 
@@ -39,6 +40,27 @@ test("buyer waits for analysis and secondary raw material stays collapsed", () =
   assert.match(portal, /trial\.role === "lead" && reportComplete && !trial\.lead_rating\.score/);
   assert.match(portal, /!showBuyerReport \? \(/);
   assert.doesNotMatch(portal, /<h2 className="text-xl font-black">Recordings<\/h2>/);
+});
+
+test("completed buyer report identifies the tester safely and rates their test", () => {
+  assert.match(portal, /buyerSafeTesterFirstName\(trial\.tester\.public_name\)/);
+  assert.match(portal, /`Tested by \$\{testerFirstName\}`/);
+  assert.match(portal, /testerFirstName === "your tester" \? "Your tester"/);
+  assert.match(portal, /New tester · first trial/);
+  assert.match(portal, /How useful was \$\{testerPossessive\} test\?/);
+  assert.match(portal, /Private feedback for Before Users Do\./);
+  assert.match(portal, /aria-pressed=\{rating === value\}/);
+  assert.match(portal, /aria-label="Private feedback note"/);
+  assert.match(portal, /What was useful or missing\? \(optional\)/);
+  assert.match(portal, /Send feedback/);
+  assert.match(portal, /You rated \$\{testerPossessive\} test/);
+  assert.doesNotMatch(portal, /buyerSafeTesterFirstName\(trial\.tester\.name\)/);
+  assert.doesNotMatch(portal, /trial\.tester\.email/);
+});
+
+test("every operator pairing path captures the tester's customer-facing first name", () => {
+  assert.equal((admin.match(/First name shown to customer/g) || []).length, 2);
+  assert.equal((admin.match(/tester_public_name: form\.testerName/g) || []).length, 2);
 });
 
 test("private buyer report links do not leak through caches, referrers, or search indexing", () => {

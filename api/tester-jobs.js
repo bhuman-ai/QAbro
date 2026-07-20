@@ -147,6 +147,7 @@ module.exports = async (req, res) => {
       {
         application_id: application.id,
         name: application.name,
+        public_name: application.public_name,
         email: ownerEmail
       },
       requestOptions(req)

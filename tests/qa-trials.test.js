@@ -11,6 +11,7 @@ const {
   queueQaTrialRecordingAnalysis,
   rateQaTrial,
   scoreQaTrial,
+  setQaTrialTesterPublicName,
   startQaTrial,
   submitQaTrial,
   verifyQaTrialAccess,
@@ -388,6 +389,18 @@ test("report admins list every owner's trial while regular users stay owner-scop
   assert.equal(admin.ok, true, admin.error);
   assert.equal(adminOptions.ownerUserId, "");
   assert.equal(admin.items.length, 2);
+});
+
+test("only service or report-admin identities can backfill a tester public name", () => {
+  assert.equal(qaTrialsApiPrivate.canManageTesterPublicName({ is_service_token: true }), true);
+  assert.equal(
+    qaTrialsApiPrivate.canManageTesterPublicName({ user: { report_admin: true }, ownerEmail: "admin@example.com" }),
+    true
+  );
+  assert.equal(
+    qaTrialsApiPrivate.canManageTesterPublicName({ user: { report_admin: false }, ownerEmail: "buyer@example.com" }),
+    false
+  );
 });
 
 test("completed analysis emails a fresh private report link and persists provider acceptance once", async () => {
@@ -971,6 +984,8 @@ test("paired qualification trial completes consent, submission, scoring, and rat
       target_url: "https://example.com/signup",
       lead_email: "founder@example.com",
       tester_email: "tester@example.com",
+      tester_name: "Haley Birch",
+      tester_public_name: "Haley",
       test_focus: "Try signup and reach the dashboard.",
       known_issues: ["Phone field is easy to miss", "Password error is unclear"]
     },
@@ -994,8 +1009,45 @@ test("paired qualification trial completes consent, submission, scoring, and rat
   assert.equal(testerView.role, "tester");
   assert.equal(testerView.view.duration_minutes, 15);
   assert.equal(leadView.view.benchmark, undefined);
+  assert.equal(leadView.view.tester.public_name, "Haley");
+  assert.equal(leadView.view.tester.name, undefined);
+  assert.equal(testerView.view.tester.name, "Haley Birch");
   assert.equal(leadView.view.tester.email, undefined);
   assert.equal(testerView.view.lead.email, undefined);
+
+  const storedTrial = mock.rows.get(sessionId).payload.manual_qa.qualification_trial;
+  storedTrial.tester.public_name = null;
+  storedTrial.tester.name = "Birch Haley";
+  const legacyLeadView = await verifyQaTrialAccess(sessionId, leadToken, options);
+  assert.equal(legacyLeadView.view.tester.public_name, null);
+  assert.equal(legacyLeadView.view.tester.name, undefined);
+  assert.equal(legacyLeadView.view.tester.email, undefined);
+
+  const forbiddenBackfill = await setQaTrialTesterPublicName(
+    sessionId,
+    { public_name: "Haley" },
+    options
+  );
+  assert.equal(forbiddenBackfill.status, 403);
+  for (const unsafeName of ["Li Wei", "haley@example.com", "+1-555-123-4567", "Birch, Haley"]) {
+    const invalidBackfill = await setQaTrialTesterPublicName(
+      sessionId,
+      { public_name: unsafeName },
+      { ...options, allowTesterPublicNameUpdate: true }
+    );
+    assert.equal(invalidBackfill.status, 400);
+  }
+  storedTrial.tester.name = "Haley Birch";
+  const backfilled = await setQaTrialTesterPublicName(
+    sessionId,
+    { public_name: "Haley" },
+    { ...options, allowTesterPublicNameUpdate: true }
+  );
+  assert.equal(backfilled.ok, true, backfilled.error);
+  assert.equal(backfilled.trial.tester.public_name, "Haley");
+  const backfilledLeadView = await verifyQaTrialAccess(sessionId, leadToken, options);
+  assert.equal(backfilledLeadView.view.tester.public_name, "Haley");
+  assert.equal(backfilledLeadView.view.tester.name, undefined);
 
   const leadAccepted = await acceptQaTrial(sessionId, leadToken, options);
   assert.equal(leadAccepted.ok, true);
@@ -1100,6 +1152,11 @@ test("paired qualification trial completes consent, submission, scoring, and rat
   assert.equal(rated.ok, true);
   assert.equal(rated.view.status, "completed");
   assert.equal(rated.view.lead_rating.score, 5);
+
+  const testerViewAfterRating = await verifyQaTrialAccess(sessionId, testerToken, options);
+  assert.equal(testerViewAfterRating.view.lead_rating.score, null);
+  assert.equal(testerViewAfterRating.view.lead_rating.note, null);
+  assert.equal(testerViewAfterRating.view.lead_rating.rated_at, null);
 });
 
 test("legacy analysis action queues without requiring a post-submit permission", async () => {
@@ -1270,4 +1327,68 @@ test("MCP-requested trials preapprove the owner and reveal test credentials only
 
   const accepted = await acceptQaTrial(created.session_id, testerToken, options);
   assert.equal(accepted.view.status, "ready");
+});
+
+test("tester operators can backfill a public name on a customer-owned trial", async () => {
+  const apiPath = require.resolve("../api/qa-trials");
+  const authModule = require("../lib/auth");
+  const qaTrialsModule = require("../lib/qa-trials");
+  const testerApplicationsModule = require("../lib/tester-applications");
+  const originalRequireAuth = authModule.requireDashboardOrServiceAuth;
+  const originalSetPublicName = qaTrialsModule.setQaTrialTesterPublicName;
+  const originalIsTesterOperator = testerApplicationsModule.isTesterOperatorEmail;
+  let captured = null;
+
+  try {
+    authModule.requireDashboardOrServiceAuth = async () => ({
+      ok: true,
+      is_service_token: false,
+      user: {
+        id: "operator_1",
+        email: "operator@example.com",
+        report_admin: false
+      }
+    });
+    testerApplicationsModule.isTesterOperatorEmail = (email) => email === "operator@example.com";
+    qaTrialsModule.setQaTrialTesterPublicName = async (sessionId, input, options) => {
+      captured = { sessionId, input, options };
+      return {
+        ok: true,
+        trial: {
+          session_id: sessionId,
+          tester: { public_name: input.public_name }
+        }
+      };
+    };
+
+    delete require.cache[apiPath];
+    const qaTrialsHandler = require(apiPath);
+    const req = {
+      method: "POST",
+      query: {},
+      headers: {},
+      body: {
+        action: "set_tester_public_name",
+        session_id: "trial_customer_owned",
+        public_name: "Haley"
+      }
+    };
+    const res = createRes();
+
+    await qaTrialsHandler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.ok, true);
+    assert.equal(captured.sessionId, "trial_customer_owned");
+    assert.equal(captured.input.public_name, "Haley");
+    assert.equal(captured.options.ownerUserId, "operator_1");
+    assert.equal(captured.options.adminOk, true);
+    assert.equal(captured.options.allowTesterPublicNameUpdate, true);
+  } finally {
+    authModule.requireDashboardOrServiceAuth = originalRequireAuth;
+    qaTrialsModule.setQaTrialTesterPublicName = originalSetPublicName;
+    testerApplicationsModule.isTesterOperatorEmail = originalIsTesterOperator;
+    delete require.cache[apiPath];
+    require(apiPath);
+  }
 });

@@ -9,6 +9,7 @@ const {
   listTesterApplications,
   markTesterApplicationQualifiedBySession,
   normalizeTesterApplicationPayload,
+  normalizeTesterPublicName,
   updateTesterApplication,
   upsertTesterApplication
 } = require("../lib/tester-applications");
@@ -71,6 +72,7 @@ test("tester application payload keeps only supported choices", () => {
     owner_user_id: " user-123 ",
     owner_email: " Tester@Example.com ",
     name: "  Maya Tester  ",
+    public_name: " Maya ",
     country: " Canada ",
     experience_level: "SOME",
     devices: ["ios", "computer", "ios", "browser-extension"],
@@ -84,6 +86,7 @@ test("tester application payload keeps only supported choices", () => {
     owner_user_id: "user-123",
     owner_email: "tester@example.com",
     name: "Maya Tester",
+    metadata: { public_name: "Maya" },
     country: "Canada",
     experience_level: "some",
     devices: ["ios", "computer"],
@@ -91,6 +94,36 @@ test("tester application payload keeps only supported choices", () => {
     can_record: true,
     source: "homepage_hero"
   });
+});
+
+test("tester public name is explicit, first-name-only, and safe to show customers", () => {
+  assert.equal(normalizeTesterPublicName(" Haley "), "Haley");
+  assert.equal(normalizeTesterPublicName("Mary-Jane"), "Mary-Jane");
+  assert.equal(normalizeTesterPublicName("O’Connor"), "O’Connor");
+  assert.equal(normalizeTesterPublicName("Haley Birch"), null);
+  assert.equal(normalizeTesterPublicName("<script>"), null);
+
+  const legacy = normalizeTesterApplicationPayload({
+    owner_user_id: "user-123",
+    owner_email: "tester@example.com",
+    name: "Maya Tester",
+    country: "Canada",
+    experience_level: "new",
+    devices: ["computer"],
+    availability: "weekdays",
+    can_record: true,
+    metadata: { public_name: "Injected" }
+  });
+
+  assert.equal(legacy.ok, true);
+  assert.equal(legacy.payload.metadata, undefined);
+
+  const invalidExplicitName = normalizeTesterApplicationPayload({
+    ...legacy.payload,
+    public_name: "Maya Tester"
+  });
+  assert.equal(invalidExplicitName.ok, false);
+  assert.equal(invalidExplicitName.error, "Enter a first name using letters only");
 });
 
 test("tester application requires a device and recording consent", () => {
@@ -125,6 +158,7 @@ test("tester application lookup is scoped to the signed-in user", async () => {
           {
             id: "application-1",
             name: "Maya Tester",
+            metadata: { public_name: " Maya " },
             country: "Canada",
             experience_level: "some",
             devices: ["computer", "ios"],
@@ -141,10 +175,12 @@ test("tester application lookup is scoped to the signed-in user", async () => {
 
   assert.equal(result.ok, true);
   assert.equal(result.application.id, "application-1");
+  assert.equal(result.application.public_name, "Maya");
   const requestUrl = new URL(capturedUrl);
   assert.equal(requestUrl.pathname, "/rest/v1/swarmtest_tester_applications");
   assert.equal(requestUrl.searchParams.get("owner_user_id"), "eq.user-123");
   assert.equal(requestUrl.searchParams.get("limit"), "1");
+  assert.match(requestUrl.searchParams.get("select"), /(?:^|,)metadata(?:,|$)/);
 });
 
 test("tester operator list returns newest applications first", async () => {
@@ -176,6 +212,7 @@ test("tester operator list returns newest applications first", async () => {
 
   assert.equal(result.ok, true);
   assert.equal(result.items[0].owner_email, "tester@example.com");
+  assert.equal(result.items[0].public_name, null);
   const requestUrl = new URL(capturedUrl);
   assert.equal(requestUrl.searchParams.get("order"), "created_at.desc");
   assert.equal(requestUrl.searchParams.get("status"), "eq.applied");
@@ -280,6 +317,7 @@ test("tester application upsert preserves server-managed status", async () => {
       owner_user_id: "user-123",
       owner_email: "tester@example.com",
       name: "Maya Tester",
+      public_name: "Maya",
       country: "Canada",
       experience_level: "professional",
       devices: ["computer"],
@@ -297,6 +335,7 @@ test("tester application upsert preserves server-managed status", async () => {
           {
             id: "application-1",
             name: "Maya Tester",
+            metadata: { public_name: "Maya" },
             country: "Canada",
             experience_level: "professional",
             devices: ["computer"],
@@ -311,11 +350,13 @@ test("tester application upsert preserves server-managed status", async () => {
 
   assert.equal(result.ok, true);
   assert.equal(result.application.status, "qualified");
+  assert.equal(result.application.public_name, "Maya");
   assert.equal(new URL(capturedUrl).searchParams.get("on_conflict"), "owner_user_id");
   assert.equal(capturedInit.method, "POST");
   assert.equal(capturedInit.headers.Prefer, "resolution=merge-duplicates,return=representation");
   const payload = JSON.parse(capturedInit.body);
   assert.equal(payload.owner_user_id, "user-123");
+  assert.deepEqual(payload.metadata, { public_name: "Maya" });
   assert.equal(payload.status, undefined);
   assert.equal(payload.qualification_session_id, undefined);
 });
@@ -346,7 +387,8 @@ test("tester application endpoint ignores owner fields from the browser", async 
     body: {
       owner_user_id: "attacker-user",
       owner_email: "attacker@example.com",
-      name: "Maya Tester"
+      name: "Maya",
+      public_name: "Maya"
     }
   };
   const res = createRes();
@@ -356,5 +398,6 @@ test("tester application endpoint ignores owner fields from the browser", async 
   assert.equal(res.statusCode, 201);
   assert.equal(capturedInput.owner_user_id, "real-user");
   assert.equal(capturedInput.owner_email, "real@example.com");
-  assert.equal(capturedInput.name, "Maya Tester");
+  assert.equal(capturedInput.name, "Maya");
+  assert.equal(capturedInput.public_name, "Maya");
 });

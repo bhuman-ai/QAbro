@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const {
   assignHumanTestRequest,
+  claimHumanTestRequest,
   normalizeHumanTestRequestPayload,
   normalizeHumanTestRequestRow,
   markHumanTestRequestPaid,
@@ -303,7 +304,7 @@ test("operator can send a published test directly to an invited tester", async (
   let finalPatch = null;
   const result = await assignHumanTestRequest(
     "request-1",
-    { tester_name: "Haley", tester_email: "haley@example.com" },
+    { tester_name: "Haley", tester_public_name: "Haley", tester_email: "haley@example.com" },
     {
       supabaseUrl: "https://supabase.example",
       serviceKey: "service-key",
@@ -356,14 +357,73 @@ test("operator can send a published test directly to an invited tester", async (
   assert.equal(finalPatch.trial_session_id, "trial-1");
   assert.equal(trialInputs.length, 1);
   assert.equal(trialInputs[0].duration_minutes, 15);
+  assert.equal(trialInputs[0].tester_public_name, "Haley");
   assert.deepEqual(trialInputs[0].known_issues, ["The main action is hard to find"]);
+});
+
+test("self-claim snapshots only the tester's explicit public name", async () => {
+  let trialInput = null;
+  const result = await claimHumanTestRequest(
+    "request-1",
+    {
+      application_id: "application-1",
+      name: "Maya Tester",
+      public_name: "Maya",
+      email: "maya@example.com"
+    },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      publicBaseUrl: "https://beforeusersdo.com",
+      createQaTrialImpl: async (input) => {
+        trialInput = input;
+        return {
+          ok: true,
+          status: 201,
+          session_id: "trial-1",
+          tester_url: "https://beforeusersdo.com/trial?tester=1",
+          lead_url: "https://beforeusersdo.com/trial?lead=1"
+        };
+      },
+      fetchImpl: async (url, init = {}) => {
+        const requestUrl = new URL(String(url));
+        if (!init.method) return jsonResponse([]);
+        if (requestUrl.searchParams.get("status") === "eq.available") {
+          const body = JSON.parse(init.body);
+          return jsonResponse([
+            requestRow({
+              ...body,
+              status: "assigned",
+              assignment_type: "paid",
+              tester_pay_cents: 2500,
+              tester_pay_currency: "USD",
+              private_benchmark: ["The main action is hard to find"],
+              assigned_tester_email: "maya@example.com"
+            })
+          ]);
+        }
+        return jsonResponse([
+          requestRow({
+            ...JSON.parse(init.body),
+            status: "assigned",
+            assignment_type: "paid",
+            assigned_tester_email: "maya@example.com"
+          })
+        ]);
+      }
+    }
+  );
+
+  assert.equal(result.ok, true, result.error);
+  assert.equal(trialInput.tester_name, "Maya Tester");
+  assert.equal(trialInput.tester_public_name, "Maya");
 });
 
 test("direct invite does not create a trial after another tester takes the request", async () => {
   let created = false;
   const result = await assignHumanTestRequest(
     "request-1",
-    { tester_name: "Haley", tester_email: "haley@example.com" },
+    { tester_name: "Haley", tester_public_name: "Haley", tester_email: "haley@example.com" },
     {
       supabaseUrl: "https://supabase.example",
       serviceKey: "service-key",
@@ -384,7 +444,7 @@ test("failed direct invite releases the request back to the tester pool", async 
   const patches = [];
   const result = await assignHumanTestRequest(
     "request-1",
-    { tester_name: "Haley", tester_email: "haley@example.com" },
+    { tester_name: "Haley", tester_public_name: "Haley", tester_email: "haley@example.com" },
     {
       supabaseUrl: "https://supabase.example",
       serviceKey: "service-key",
