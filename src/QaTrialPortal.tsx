@@ -307,6 +307,7 @@ export default function QaTrialPortal({ search }: { search: string }) {
   const [note, setNote] = useState("");
   const [rating, setRating] = useState(0);
   const [ratingNote, setRatingNote] = useState("");
+  const [ratingError, setRatingError] = useState("");
   const [recording, setRecording] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedSegments, setSavedSegments] = useState(0);
@@ -411,6 +412,7 @@ export default function QaTrialPortal({ search }: { search: string }) {
   async function performAction(action: "accept" | "start" | "submit" | "rate", body: Record<string, unknown> = {}) {
     setBusy(true);
     setError("");
+    if (action === "rate") setRatingError("");
     try {
       const response = await apiFetch<{ trial: QaTrialView }>("/api/qa-trials", {
         method: "POST",
@@ -419,7 +421,9 @@ export default function QaTrialPortal({ search }: { search: string }) {
       setTrial(response.trial);
       return response.trial;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not update this trial.");
+      const message = caught instanceof Error ? caught.message : "Could not update this trial.";
+      if (action === "rate") setRatingError(message);
+      else setError(message);
       return null;
     } finally {
       setBusy(false);
@@ -946,13 +950,20 @@ export default function QaTrialPortal({ search }: { search: string }) {
                       <p className="mt-1 text-sm font-semibold text-brand-muted">
                         {`How useful was ${testerPossessive} test? Private to Before Users Do.`}
                       </p>
-                      <div className="mt-4 flex gap-2" role="group" aria-label={`Rate ${testerPossessive} test`}>
+                      <div
+                        className="mt-4 grid max-w-72 grid-cols-3 gap-2 min-[375px]:grid-cols-5"
+                        role="group"
+                        aria-label={`Rate ${testerPossessive} test`}
+                      >
                         {[1, 2, 3, 4, 5].map((value) => (
                           <button
                             key={value}
                             type="button"
-                            onClick={() => setRating(value)}
-                            className={`flex h-12 w-12 items-center justify-center rounded-xl border bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent ${
+                            onClick={() => {
+                              setRating(value);
+                              setRatingError("");
+                            }}
+                            className={`flex h-12 min-w-0 w-full items-center justify-center rounded-xl border bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent ${
                               rating === value ? "border-brand-warning" : "border-brand-line"
                             }`}
                             aria-label={`${value} star${value === 1 ? "" : "s"}`}
@@ -980,11 +991,20 @@ export default function QaTrialPortal({ search }: { search: string }) {
                             {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                             Send review
                           </button>
+                          {ratingError ? (
+                            <p role="alert" className="mt-3 text-sm font-semibold text-brand-danger">
+                              {ratingError}
+                            </p>
+                          ) : null}
                         </div>
                       ) : null}
                     </section>
                   ) : trial.role === "lead" && reportComplete && trial.lead_rating.score ? (
-                    <div className="mb-8 flex items-center gap-3 rounded-2xl bg-brand-success/10 p-5">
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="mb-8 flex items-center gap-3 rounded-2xl bg-brand-success/10 p-5"
+                    >
                       <Check className="h-6 w-6 text-brand-success" />
                       <span className="font-black">{`Review sent · ${trial.lead_rating.score}/5`}</span>
                     </div>

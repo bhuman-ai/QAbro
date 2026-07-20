@@ -86,6 +86,21 @@ function createSupabaseFetchMock() {
     if (options.method === "PATCH") {
       const body = JSON.parse(options.body || "{}");
       const current = rows.get(runId);
+      const deliveredAtFilter = parsed.searchParams.get("delivered_at");
+      if (deliveredAtFilter) {
+        const matchesDeliveredAt = deliveredAtFilter === "is.null"
+          ? !current?.delivered_at
+          : deliveredAtFilter.startsWith("eq.") && current?.delivered_at === deliveredAtFilter.slice(3);
+        if (!matchesDeliveredAt) {
+          return {
+            ok: true,
+            status: 200,
+            async json() {
+              return [];
+            }
+          };
+        }
+      }
       const next = { ...current, ...body, updated_at: "2026-07-14T00:01:00.000Z" };
       rows.set(runId, next);
       return {
@@ -107,6 +122,48 @@ function createSupabaseFetchMock() {
   }
 
   return { fetchImpl, rows, events, calls };
+}
+
+function createQualificationPatchRace(baseFetchImpl) {
+  let patchCount = 0;
+  let markFirstPatchReached;
+  let releaseFirstPatch;
+  const firstPatchReached = new Promise((resolve) => {
+    markFirstPatchReached = resolve;
+  });
+  const firstPatchReleased = new Promise((resolve) => {
+    releaseFirstPatch = resolve;
+  });
+
+  return {
+    firstPatchReached,
+    get patchCount() {
+      return patchCount;
+    },
+    async fetchImpl(url, options = {}) {
+      const parsed = new URL(url);
+      const isQualificationPatch =
+        options.method === "PATCH" &&
+        parsed.pathname === "/rest/v1/swarmtest_reports" &&
+        parsed.searchParams.has("delivered_at");
+      if (!isQualificationPatch) return baseFetchImpl(url, options);
+
+      patchCount += 1;
+      if (patchCount === 1) {
+        markFirstPatchReached();
+        await firstPatchReleased;
+        return baseFetchImpl(url, options);
+      }
+      if (patchCount === 2) {
+        try {
+          return await baseFetchImpl(url, options);
+        } finally {
+          releaseFirstPatch();
+        }
+      }
+      return baseFetchImpl(url, options);
+    }
+  };
 }
 
 function optionsFor(mock) {
@@ -593,12 +650,20 @@ test("a stale buyer rating cannot erase an accepted delivery or invalidate its r
         rated_at: "2026-07-19T01:21:00.000Z"
       }
     },
-    options
+    {
+      ...options,
+      allowLeadRatingMutation: true,
+      leadRatingOnlyMutation: true,
+      expectedLeadRatingScore: staleTrial.lead_rating?.score ?? null,
+      expectedLeadRatingNote: staleTrial.lead_rating?.note ?? null,
+      expectedLeadRatingRatedAt: staleTrial.lead_rating?.rated_at ?? null
+    }
   );
   assert.equal(staleRatingUpdate.ok, true, staleRatingUpdate.error);
   const storedTrial = mock.rows.get(created.session_id).payload.manual_qa.qualification_trial;
   assert.equal(storedTrial.report_delivery.status, "accepted");
   assert.deepEqual(storedTrial.access.lead_report_token_hashes, acceptedHashes);
+  assert.equal(storedTrial.lead_rating.score, 5);
   assert.equal((await verifyQaTrialAccess(created.session_id, reportToken, options)).role, "lead");
 
   const repeated = await deliverQaTrialReport(created.session_id, deliveryOptions);
@@ -693,6 +758,95 @@ test("email acceptance persistence keeps a buyer rating saved while SMTP is in f
   assert.equal(storedTrial.report_delivery.status, "accepted");
   assert.equal(storedTrial.lead_rating.score, 5);
   assert.equal(storedTrial.lead_rating.note, "This was useful.");
+});
+
+test("concurrent buyer rating and tester-name backfill preserve both fields", async () => {
+  async function runRace(firstOperation) {
+    const mock = createSupabaseFetchMock();
+    const { created, leadToken, options } = await createSubmittedTrialForReportDelivery(mock);
+    const race = createQualificationPatchRace(mock.fetchImpl);
+    const raceOptions = { ...options, fetchImpl: race.fetchImpl };
+    const rate = () => rateQaTrial(
+      created.session_id,
+      leadToken,
+      { score: 5, note: `Useful during ${firstOperation}` },
+      raceOptions
+    );
+    const backfill = () => setQaTrialTesterPublicName(
+      created.session_id,
+      { public_name: "Haley" },
+      { ...raceOptions, allowTesterPublicNameUpdate: true }
+    );
+    const firstPromise = firstOperation === "rating" ? rate() : backfill();
+    await race.firstPatchReached;
+    const second = await (firstOperation === "rating" ? backfill() : rate());
+    const first = await firstPromise;
+
+    assert.equal(first.ok, true, first.error);
+    assert.equal(second.ok, true, second.error);
+    assert.equal(race.patchCount >= 3, true);
+    const storedTrial = mock.rows.get(created.session_id).payload.manual_qa.qualification_trial;
+    assert.equal(storedTrial.tester.public_name, "Haley");
+    assert.equal(storedTrial.lead_rating.score, 5);
+    assert.equal(storedTrial.lead_rating.note, `Useful during ${firstOperation}`);
+  }
+
+  await runRace("rating");
+  await runRace("public-name backfill");
+});
+
+test("concurrent operator scoring cannot erase a buyer rating", async () => {
+  const mock = createSupabaseFetchMock();
+  const { created, leadToken, options } = await createSubmittedTrialForReportDelivery(mock);
+  const race = createQualificationPatchRace(mock.fetchImpl);
+  const raceOptions = { ...options, fetchImpl: race.fetchImpl };
+  const scoringPromise = scoreQaTrial(
+    created.session_id,
+    { caught_issue_ids: ["issue_1"], clarity: "good" },
+    raceOptions
+  );
+  await race.firstPatchReached;
+  const rated = await rateQaTrial(
+    created.session_id,
+    leadToken,
+    { score: 4, note: "Keep this review." },
+    raceOptions
+  );
+  const scored = await scoringPromise;
+
+  assert.equal(rated.ok, true, rated.error);
+  assert.equal(scored.ok, true, scored.error);
+  assert.equal(race.patchCount >= 3, true);
+  const storedTrial = mock.rows.get(created.session_id).payload.manual_qa.qualification_trial;
+  assert.equal(storedTrial.qualification.status, "verified");
+  assert.equal(storedTrial.lead_rating.score, 4);
+  assert.equal(storedTrial.lead_rating.note, "Keep this review.");
+});
+
+test("concurrent operator scoring cannot erase a tester public name", async () => {
+  const mock = createSupabaseFetchMock();
+  const { created, options } = await createSubmittedTrialForReportDelivery(mock);
+  const race = createQualificationPatchRace(mock.fetchImpl);
+  const raceOptions = { ...options, fetchImpl: race.fetchImpl };
+  const scoringPromise = scoreQaTrial(
+    created.session_id,
+    { caught_issue_ids: ["issue_1"], clarity: "good" },
+    raceOptions
+  );
+  await race.firstPatchReached;
+  const backfilled = await setQaTrialTesterPublicName(
+    created.session_id,
+    { public_name: "Haley" },
+    { ...raceOptions, allowTesterPublicNameUpdate: true }
+  );
+  const scored = await scoringPromise;
+
+  assert.equal(backfilled.ok, true, backfilled.error);
+  assert.equal(scored.ok, true, scored.error);
+  assert.equal(race.patchCount >= 3, true);
+  const storedTrial = mock.rows.get(created.session_id).payload.manual_qa.qualification_trial;
+  assert.equal(storedTrial.qualification.status, "verified");
+  assert.equal(storedTrial.tester.public_name, "Haley");
 });
 
 test("legacy report delivery stays disabled unless an operator force-enables it", async () => {

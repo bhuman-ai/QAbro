@@ -53,9 +53,14 @@ test("completed buyer report identifies the tester safely and rates their test",
   assert.match(portal, /How useful was \$\{testerPossessive\} test\?/);
   assert.match(portal, /Private to Before Users Do\./);
   assert.match(portal, /aria-pressed=\{rating === value\}/);
+  assert.match(portal, /grid-cols-3 gap-2 min-\[375px\]:grid-cols-5/);
+  assert.match(portal, /h-12 min-w-0 w-full/);
   assert.match(portal, /aria-label="Private feedback note"/);
   assert.match(portal, /What was useful or missing\? \(optional\)/);
   assert.match(portal, /Send review/);
+  assert.match(completedView, /role="alert"[\s\S]*\{ratingError\}/);
+  assert.match(completedView, /role="status"/);
+  assert.match(completedView, /aria-live="polite"/);
   assert.match(portal, /Review sent · \$\{trial\.lead_rating\.score\}\/5/);
   assert.ok(completedView.indexOf("Leave a review") < completedView.indexOf("<BuyerReport"));
   assert.match(completedView, /\{rating \? \([\s\S]*aria-label="Private feedback note"/);

@@ -2477,7 +2477,12 @@ test("qualification updates retry on delivered-at conflicts without erasing anal
       adminOk: true,
       fetchImpl: interleavingFetch,
       supabaseUrl: "https://supabase.example.com",
-      serviceKey: "service"
+      serviceKey: "service",
+      allowLeadRatingMutation: true,
+      leadRatingOnlyMutation: true,
+      expectedLeadRatingScore: null,
+      expectedLeadRatingNote: null,
+      expectedLeadRatingRatedAt: null
     }
   );
 
