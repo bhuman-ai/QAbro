@@ -6,6 +6,7 @@ const {
   listHumanTestRequests
 } = require("../lib/human-test-requests");
 const { issueQaTrialTesterLink } = require("../lib/qa-trials");
+const { getQaCreditBalance } = require("../lib/qa-credits");
 const { getTesterApplication } = require("../lib/tester-applications");
 
 function testerJobView(request, options = {}) {
@@ -24,6 +25,7 @@ function testerJobView(request, options = {}) {
     payout_status: ["not_applicable", "pending", "approved", "paid"].includes(safe.payout_status)
       ? safe.payout_status
       : "not_applicable",
+    tester_reward_type: safe.tester_reward_type === "qa_credit" ? "qa_credit" : "cash",
     access_mode: ["public_only", "signup_allowed", "test_account"].includes(safe.access_mode)
       ? safe.access_mode
       : "public_only",
@@ -88,20 +90,25 @@ module.exports = async (req, res) => {
         history: [],
         can_claim_qualification: false,
         can_claim_paid: false,
-        desktop_ready: false
+        desktop_ready: false,
+        credit_balance_cents: 0,
+        credit_currency: "USD"
       });
     }
-    const [availableResult, ownResult] = await Promise.all([
+    const [availableResult, ownResult, creditResult] = await Promise.all([
       listHumanTestRequests({ status: "available", limit: 100 }),
-      listHumanTestRequests({ assigned_tester_email: ownerEmail, limit: 100 })
+      listHumanTestRequests({ assigned_tester_email: ownerEmail, limit: 100 }),
+      getQaCreditBalance(ownerUserId)
     ]);
-    if (!availableResult.ok || !ownResult.ok) {
-      const failed = !availableResult.ok ? availableResult : ownResult;
+    if (!availableResult.ok || !ownResult.ok || !creditResult.ok) {
+      const failed = !availableResult.ok ? availableResult : !ownResult.ok ? ownResult : creditResult;
       return res.status(failed.status || 500).json({ ok: false, error: failed.error });
     }
     return res.status(200).json({
       ok: true,
       application,
+      credit_balance_cents: creditResult.balance_cents,
+      credit_currency: creditResult.currency,
       ...splitTesterJobs(application, availableResult.items, ownResult.items)
     });
   }
@@ -136,6 +143,10 @@ module.exports = async (req, res) => {
       return res.status(loaded.status || 500).json({ ok: false, error: loaded.error });
     }
     const paidAssignment = loaded.request.assignment_type === "paid";
+    const rewardType =
+      sanitizeString(body?.reward_type || body?.rewardType, 40).toLowerCase() === "qa_credit"
+        ? "qa_credit"
+        : "cash";
     if (paidAssignment && application.status !== "approved") {
       return res.status(403).json({ ok: false, error: "Paid tests are available after your qualification is approved" });
     }
@@ -146,9 +157,11 @@ module.exports = async (req, res) => {
       requestId,
       {
         application_id: application.id,
+        owner_user_id: ownerUserId,
         name: application.name,
         public_name: application.public_name,
-        email: ownerEmail
+        email: ownerEmail,
+        reward_type: paidAssignment ? rewardType : "cash"
       },
       requestOptions(req)
     );

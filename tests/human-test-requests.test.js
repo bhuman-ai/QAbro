@@ -33,6 +33,30 @@ test("human test requests default to a safe first-time-user review", () => {
   assert.match(result.payload.access_details.prohibited_actions.join(" "), /real purchase/i);
 });
 
+test("QA credit creates an optional paid request without changing the default flow", () => {
+  const creditRequest = normalizeHumanTestRequestPayload(
+    {
+      target_url: "https://preview.example.com",
+      test_focus: "Create the first project.",
+      funding_type: "qa_credit",
+      qa_credit_amount_cents: 2500
+    },
+    OWNER
+  );
+  const normalRequest = normalizeHumanTestRequestPayload(
+    { target_url: "https://preview.example.com" },
+    OWNER
+  );
+
+  assert.equal(creditRequest.ok, true);
+  assert.equal(creditRequest.payload.funding_type, "qa_credit");
+  assert.equal(creditRequest.payload.assignment_type, "paid");
+  assert.equal(creditRequest.payload.tester_pay_cents, 2500);
+  assert.equal(creditRequest.payload.payout_status, "pending");
+  assert.equal(normalRequest.payload.funding_type, "cash");
+  assert.equal(normalRequest.payload.assignment_type, "qualification");
+});
+
 test("explicit public-only access cannot inherit a stale signup permission", () => {
   const result = normalizeHumanTestRequestPayload(
     {
@@ -215,6 +239,34 @@ test("operator publishing a paid assignment requires and stores the exact tester
   assert.equal(published.request.tester_pay_currency, "USD");
   assert.equal(published.request.payout_status, "pending");
   assert.equal(patchBody.payout_paid_at, null);
+});
+
+test("operator cannot change the tester reward on a credit-funded request", async () => {
+  const result = await publishHumanTestRequest(
+    "request-1",
+    {
+      assignment_type: "paid",
+      tester_pay_cents: 3000,
+      known_issues: ["The main action is hard to find"]
+    },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async () =>
+        jsonResponse([
+          requestRow({
+            assignment_type: "paid",
+            tester_pay_cents: 2500,
+            payout_status: "pending",
+            funding_type: "qa_credit",
+            qa_credit_spent_cents: 2500
+          })
+        ])
+    }
+  );
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /original tester pay/i);
 });
 
 test("a completed approved payout can be recorded as paid", async () => {

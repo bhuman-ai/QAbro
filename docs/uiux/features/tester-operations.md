@@ -2,13 +2,13 @@
 
 ## User Job
 
-Let a Before Users Do operator publish either a qualification or a paid customer assignment, review the submitted work, and record payment without maintaining a spreadsheet.
+Let a Before Users Do operator publish either a qualification or a paid customer assignment, review the submitted work, and settle the tester's chosen cash or QA-credit reward without maintaining a spreadsheet.
 
 ## Primary Action
 
 `Publish test`
 
-After a paid report passes review, the primary action becomes `Mark paid`.
+After a paid report passes review, the primary action becomes `Mark paid` for cash or `Add QA credit` for credit.
 
 ## Concept Packet
 
@@ -26,9 +26,10 @@ After a paid report passes review, the primary action becomes `Mark paid`.
 3. The operator chooses `Qualification` or `Paid`, adds private review points, and sets exact tester pay for paid work.
 4. An eligible tester claims it from `/testers/jobs`.
 5. A qualification claim creates the existing trial, links it to the application, and marks the application `Qualification sent`.
-6. A paid claim keeps the tester approved and creates the same private recording experience with paid-work copy.
+6. A paid claim keeps the tester approved, locks the tester's cash-or-credit choice, and creates the same private recording experience with paid-work copy.
 7. Publishing a qualification score marks the linked application `Passed qualification`.
-8. Reviewing paid work marks its payment `Approved`; the operator records `Paid` after sending payment.
+8. Reviewing paid work marks its reward `Approved`; the operator records cash as paid or adds the same value to the tester's QA-credit balance.
+9. A credit-funded owner request arrives in the same preparation queue with its exact tester reward already reserved and locked.
 
 ## Information Budget
 

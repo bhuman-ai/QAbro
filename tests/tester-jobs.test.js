@@ -80,6 +80,7 @@ test("approved testers see paid work while applicants see only qualifications", 
   assert.deepEqual(applicant.available.map((item) => item.id), ["qualification"]);
   assert.deepEqual(approved.available.map((item) => item.id), ["paid"]);
   assert.equal(approved.available[0].tester_pay_cents, 3000);
+  assert.equal(approved.available[0].tester_reward_type, "cash");
   assert.equal(approved.can_claim_paid, true);
   assert.equal(approved.can_claim_qualification, false);
 });
@@ -88,4 +89,18 @@ test("claiming a job passes only the explicitly confirmed public name", () => {
   const apiSource = fs.readFileSync(path.resolve(__dirname, "../api/tester-jobs.js"), "utf8");
   assert.match(apiSource, /public_name: application\.public_name/);
   assert.doesNotMatch(apiSource, /public_name: application\.name/);
+});
+
+test("tester job view preserves the tester's QA credit choice", () => {
+  const view = __private.testerJobView(
+    request({
+      assignment_type: "paid",
+      tester_pay_cents: 2500,
+      payout_status: "approved",
+      tester_reward_type: "qa_credit"
+    })
+  );
+
+  assert.equal(view.tester_reward_type, "qa_credit");
+  assert.equal(view.tester_pay_cents, 2500);
 });

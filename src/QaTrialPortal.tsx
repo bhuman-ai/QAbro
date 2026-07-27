@@ -1055,19 +1055,29 @@ export default function QaTrialPortal({ search }: { search: string }) {
 
               {paidAssignment && trial.role === "tester" ? (
                 <div className="mt-6 rounded-2xl border border-brand-success/30 bg-brand-success/10 p-5">
-                  <div className="text-xs font-black uppercase tracking-widest text-brand-success">{formatTesterPay(trial)}</div>
+                  <div className="text-xs font-black uppercase tracking-widest text-brand-success">
+                    {formatTesterPay(trial)} {trial.assignment.tester_reward_type === "qa_credit" ? "QA credit" : "cash"}
+                  </div>
                   <div className="mt-2 text-xl font-black">
                     {trial.assignment.payout_status === "paid"
-                      ? "Paid"
+                      ? trial.assignment.tester_reward_type === "qa_credit"
+                        ? "Credit added"
+                        : "Paid"
                       : trial.assignment.payout_status === "approved"
-                        ? "Payment approved"
+                        ? trial.assignment.tester_reward_type === "qa_credit"
+                          ? "Credit approved"
+                          : "Payment approved"
                         : "Report under review"}
                   </div>
                   <p className="mt-2 text-sm font-semibold text-brand-muted">
                     {trial.assignment.payout_status === "paid"
-                      ? "Before Users Do recorded this payment as sent."
+                      ? trial.assignment.tester_reward_type === "qa_credit"
+                        ? "This credit is ready to spend on QA for your own product."
+                        : "Before Users Do recorded this payment as sent."
                       : trial.assignment.payout_status === "approved"
-                        ? "Your report passed review and is ready for payment."
+                        ? trial.assignment.tester_reward_type === "qa_credit"
+                          ? "Your report passed review and the credit is ready to be added."
+                          : "Your report passed review and is ready for payment."
                         : "Before Users Do will review the report before approving payment."}
                   </p>
                 </div>
