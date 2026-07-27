@@ -236,14 +236,18 @@ If the user says “have a real person test this,” “send this to a QA profes
 2. Infer `specific_flow` when the request is about current work. Use `general_first_time_user` when the user wants broad product feedback.
 3. Choose the safest access mode that permits the flow: `public_only`, `signup_allowed`, or `test_account`.
 4. Never infer permission for a real purchase or irreversible action.
-5. Call `qa_request_human_test`. Do not send the user to an intake form.
-6. Ask the user only if the target URL, an explicitly requested flow, or selected test-account login is missing.
-7. BUD prepares the private review points and publishes the request either as a new-tester qualification or as a paid assignment for approved testers. Paid work shows the exact tester pay before it can be claimed.
-8. Return the request id and use `qa_get_human_test_status` later for assignment, report, and paid-assignment payout state.
+5. Ask whether to fund the test with `cash` or `qa_credit`, and ask for the exact `budget_usd`. Never infer a zero-dollar budget.
+6. Use `qualification_trial` only when the user explicitly asks for the free tester-and-buyer trial.
+7. Call `qa_request_human_test`. Do not send the user to an intake form.
+8. A newly created `queued` request is awaiting BUD preparation and publication; it is not matching a tester yet.
+9. BUD prepares the private review points and publishes the request. The customer-confirmed tester budget cannot be changed during publication.
+10. Return the request id and use `qa_get_human_test_status` later for publication, assignment, report, and paid-assignment payout state.
 
 ```json
 {
   "target_url": "https://preview.example.com/signup",
+  "payment_method": "cash",
+  "budget_usd": 25,
   "work_summary": "Added phone and password validation to signup",
   "acceptance_criteria": [
     "A valid signup reaches OTP",

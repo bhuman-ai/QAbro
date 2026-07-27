@@ -6,10 +6,12 @@ const {
   getHumanTestRequest,
   listHumanTestRequests,
   markHumanTestRequestPaid,
+  patchHumanTestRequest,
   publishHumanTestRequest
 } = require("../lib/human-test-requests");
 const { isTesterOperatorEmail } = require("../lib/tester-applications");
 const { notifyEligibleTestersAboutJob } = require("../lib/tester-job-notifications");
+const { spendQaCredit } = require("../lib/qa-credits");
 
 function resolveOwner(auth, req) {
   return {
@@ -99,6 +101,31 @@ module.exports = async (req, res) => {
         ok: false,
         error: created.error,
         needs_input: created.needs_input === true
+      });
+    }
+    if (created.request?.funding_type === "qa_credit") {
+      const amountCents = Math.max(0, Math.round(Number(created.request.tester_pay_cents) || 0));
+      const spent = await spendQaCredit(
+        {
+          owner_user_id: owner.owner_user_id,
+          owner_email: owner.owner_email,
+          request_id: created.request.id,
+          amount_cents: amountCents,
+          currency: created.request.tester_pay_currency || "USD"
+        },
+        options
+      );
+      if (!spent.ok) {
+        await patchHumanTestRequest(created.request.id, { status: "cancelled" }, options);
+        return res.status(spent.status || 409).json({ ok: false, error: spent.error });
+      }
+      return res.status(created.status || 201).json({
+        ...created,
+        request: {
+          ...created.request,
+          qa_credit_spent_cents: amountCents
+        },
+        credit_balance_cents: spent.balance_cents
       });
     }
     return res.status(created.status || 201).json(created);

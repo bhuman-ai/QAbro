@@ -17,9 +17,9 @@ const OWNER = {
   owner_email: "owner@example.com"
 };
 
-test("human test requests default to a safe first-time-user review", () => {
+test("explicit qualification trials default to a safe first-time-user review", () => {
   const result = normalizeHumanTestRequestPayload(
-    { target_url: "https://preview.example.com" },
+    { target_url: "https://preview.example.com", assignment_type: "qualification" },
     OWNER
   );
 
@@ -33,18 +33,28 @@ test("human test requests default to a safe first-time-user review", () => {
   assert.match(result.payload.access_details.prohibited_actions.join(" "), /real purchase/i);
 });
 
-test("QA credit creates an optional paid request without changing the default flow", () => {
+test("human test requests require funding and preserve explicit paid budgets", () => {
   const creditRequest = normalizeHumanTestRequestPayload(
     {
       target_url: "https://preview.example.com",
       test_focus: "Create the first project.",
+      assignment_type: "paid",
       funding_type: "qa_credit",
       qa_credit_amount_cents: 2500
     },
     OWNER
   );
-  const normalRequest = normalizeHumanTestRequestPayload(
+  const missingFunding = normalizeHumanTestRequestPayload(
     { target_url: "https://preview.example.com" },
+    OWNER
+  );
+  const cashRequest = normalizeHumanTestRequestPayload(
+    {
+      target_url: "https://preview.example.com",
+      assignment_type: "paid",
+      funding_type: "cash",
+      tester_pay_cents: 3000
+    },
     OWNER
   );
 
@@ -53,14 +63,21 @@ test("QA credit creates an optional paid request without changing the default fl
   assert.equal(creditRequest.payload.assignment_type, "paid");
   assert.equal(creditRequest.payload.tester_pay_cents, 2500);
   assert.equal(creditRequest.payload.payout_status, "pending");
-  assert.equal(normalRequest.payload.funding_type, "cash");
-  assert.equal(normalRequest.payload.assignment_type, "qualification");
+  assert.equal(missingFunding.ok, false);
+  assert.equal(missingFunding.needs_input, true);
+  assert.match(missingFunding.error, /cash, QA credit, or an explicit qualification trial/i);
+  assert.equal(cashRequest.ok, true);
+  assert.equal(cashRequest.payload.funding_type, "cash");
+  assert.equal(cashRequest.payload.assignment_type, "paid");
+  assert.equal(cashRequest.payload.tester_pay_cents, 3000);
+  assert.equal(cashRequest.payload.context.customer_budget_cents, 3000);
 });
 
 test("explicit public-only access cannot inherit a stale signup permission", () => {
   const result = normalizeHumanTestRequestPayload(
     {
       target_url: "https://preview.example.com",
+      assignment_type: "qualification",
       access_mode: "public_only",
       account_creation_allowed: true
     },
@@ -76,6 +93,7 @@ test("human test requests infer a specific flow from coding-agent context", () =
   const result = normalizeHumanTestRequestPayload(
     {
       target_url: "https://preview.example.com/signup",
+      assignment_type: "qualification",
       work_summary: "Added signup password validation",
       acceptance_criteria: ["A valid password reaches the OTP screen"]
     },
@@ -92,6 +110,7 @@ test("a specific human test asks only for its missing flow", () => {
   const result = normalizeHumanTestRequestPayload(
     {
       target_url: "https://preview.example.com",
+      assignment_type: "qualification",
       review_type: "specific_flow"
     },
     OWNER
@@ -107,6 +126,7 @@ test("test-account credentials are encrypted and omitted from public request row
   const result = normalizeHumanTestRequestPayload(
     {
       target_url: "https://preview.example.com/account",
+      assignment_type: "qualification",
       test_focus: "Open account settings",
       access_mode: "test_account",
       credentials: {
@@ -267,6 +287,38 @@ test("operator cannot change the tester reward on a credit-funded request", asyn
 
   assert.equal(result.ok, false);
   assert.match(result.error, /original tester pay/i);
+});
+
+test("operator cannot change a customer-confirmed cash tester budget", async () => {
+  const result = await publishHumanTestRequest(
+    "request-1",
+    {
+      assignment_type: "paid",
+      tester_pay_cents: 3000,
+      known_issues: ["The main action is hard to find"]
+    },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async () =>
+        jsonResponse([
+          requestRow({
+            assignment_type: "paid",
+            tester_pay_cents: 2500,
+            payout_status: "pending",
+            funding_type: "cash",
+            context: {
+              payment_method: "cash",
+              funding_confirmed: true,
+              customer_budget_cents: 2500
+            }
+          })
+        ])
+    }
+  );
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /customer-confirmed/i);
 });
 
 test("a completed approved payout can be recorded as paid", async () => {
