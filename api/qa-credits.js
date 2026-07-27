@@ -49,6 +49,7 @@ module.exports = async (req, res) => {
   const created = await createHumanTestRequest(
     {
       ...body,
+      assignment_type: "paid",
       funding_type: "qa_credit",
       qa_credit_amount_cents: amountCents,
       source: "qa_credit_trade"

@@ -548,6 +548,29 @@ function hasHumanTestSpecificContext(input = {}) {
   );
 }
 
+function normalizeHumanTestFundingInput(input = {}) {
+  const paymentMethod = safeText(input.payment_method || input.paymentMethod, 40).toLowerCase();
+  const budgetUsd = Number(input.budget_usd ?? input.budgetUsd);
+  const budgetCents = Number.isFinite(budgetUsd) ? Math.round(budgetUsd * 100) : 0;
+  if (paymentMethod === "qualification_trial") {
+    return {
+      ...input,
+      payment_method: paymentMethod,
+      assignment_type: "qualification",
+      funding_type: "cash",
+      tester_pay_cents: 0
+    };
+  }
+  return {
+    ...input,
+    payment_method: paymentMethod,
+    assignment_type: "paid",
+    funding_type: paymentMethod === "qa_credit" ? "qa_credit" : "cash",
+    tester_pay_cents: budgetCents,
+    ...(paymentMethod === "qa_credit" ? { qa_credit_amount_cents: budgetCents } : {})
+  };
+}
+
 function buildHumanTestNeedsInputResult(input = {}) {
   const targetUrl = safeText(input.target_url || input.targetUrl, 4096);
   if (!targetUrl) {
@@ -559,6 +582,34 @@ function buildHumanTestNeedsInputResult(input = {}) {
       recommended_tool: "qa_request_human_test"
     };
     return makeToolResult(buildText(["A real human tester needs a reachable URL.", result.prompt]), result);
+  }
+
+  const paymentMethod = safeText(input.payment_method || input.paymentMethod, 40).toLowerCase();
+  if (!["cash", "qa_credit", "qualification_trial"].includes(paymentMethod)) {
+    const result = {
+      ok: false,
+      needs_input: true,
+      missing_fields: ["payment_method"],
+      prompt:
+        "How should this real-person QA be funded: dollars or QA credit? If dollars, also tell me the tester budget. Use a qualification trial only when you explicitly want the free tester-and-buyer trial.",
+      recommended_tool: "qa_request_human_test"
+    };
+    return makeToolResult(buildText(["Human QA needs an explicit funding choice.", result.prompt]), result);
+  }
+
+  const budgetUsd = Number(input.budget_usd ?? input.budgetUsd);
+  if (paymentMethod !== "qualification_trial" && (!Number.isFinite(budgetUsd) || budgetUsd < 1)) {
+    const result = {
+      ok: false,
+      needs_input: true,
+      missing_fields: ["budget_usd"],
+      prompt:
+        paymentMethod === "qa_credit"
+          ? "How much QA credit should this test use? Enter a dollar-equivalent amount of at least $1."
+          : "What tester budget should I use in dollars? Enter at least $1.",
+      recommended_tool: "qa_request_human_test"
+    };
+    return makeToolResult(buildText(["Paid human QA needs an exact budget before it can be requested.", result.prompt]), result);
   }
 
   const reviewType = safeText(input.review_type || input.reviewType, 60).toLowerCase();
@@ -592,13 +643,23 @@ function buildHumanTestNeedsInputResult(input = {}) {
 function buildHumanTestRequestText(payload = {}) {
   const request = payload.request && typeof payload.request === "object" ? payload.request : {};
   const reviewLabel = request.review_type === "specific_flow" ? "Specific flow" : "General first-time-user review";
+  const payCents = Math.max(0, Math.round(Number(request.tester_pay_cents) || 0));
+  const payLabel = `$${(payCents / 100).toFixed(2).replace(/\.00$/, "")}`;
   return buildText([
     `Human test request ${request.id || "created"} is ${request.status || "queued"}.`,
     request.target_url ? `Target: ${request.target_url}` : "",
     `Scope: ${reviewLabel}.`,
     request.test_focus ? `Tester brief: ${request.test_focus}` : "",
     request.access_mode ? `Access: ${request.access_mode}.` : "",
-    "No customer form is required. Before Users Do will prepare the request, match an eligible tester, and email the private tracking link.",
+    request.assignment_type === "paid"
+      ? request.funding_type === "qa_credit"
+        ? `Funding confirmed: ${payLabel} QA credit reserved.`
+        : `Funding confirmed: ${payLabel} cash tester budget.`
+      : "Funding confirmed: explicit free qualification trial.",
+    request.status === "queued"
+      ? "This request is awaiting Before Users Do preparation and publication. No tester is matching yet."
+      : "",
+    "No customer form is required. Before Users Do will email the private tracking link after the request is published.",
     request.id ? `Check later with qa_get_human_test_status using request_id ${request.id}.` : ""
   ]);
 }
@@ -613,7 +674,9 @@ function buildHumanTestStatusText(payload = {}) {
     `Human test request ${request.id || "unknown"}: ${request.status || "unknown"}.`,
     request.assigned_tester_name ? `Tester: ${request.assigned_tester_name}.` : "",
     request.assignment_type === "paid" ? `Paid assignment: ${payLabel}. Payout: ${request.payout_status || "pending"}.` : "",
-    request.status === "queued" ? "Before Users Do is still matching a tester." : "",
+    request.status === "queued"
+      ? "The request is awaiting Before Users Do preparation and publication. No tester is matching yet."
+      : "",
     request.status === "available" ? "The test is available for an eligible tester to claim." : "",
     request.status === "assigned" ? "A tester has been assigned and received the private test link." : "",
     request.status === "in_progress" ? "The tester is working now." : "",
@@ -882,6 +945,18 @@ function buildHumanTestInputSchema(options = {}) {
   return {
     target_url: options.targetRequired === false ? targetUrlSchema.optional() : targetUrlSchema,
     product_name: z.string().max(180).optional().describe("Product name. Defaults to the target hostname."),
+    payment_method: z
+      .enum(["cash", "qa_credit", "qualification_trial"])
+      .optional()
+      .describe(
+        "Required funding choice. Ask the user when missing. cash and qa_credit require budget_usd. qualification_trial is only for an explicitly requested free tester-and-buyer trial."
+      ),
+    budget_usd: z
+      .number()
+      .min(1)
+      .max(10000)
+      .optional()
+      .describe("Required exact tester budget for cash or QA credit. Never infer $0."),
     review_type: z
       .enum(["specific_flow", "general_first_time_user"])
       .optional()
@@ -1343,15 +1418,20 @@ function createQaMcpServer(options = {}) {
     {
       title: "Request a Real Human Tester",
       description:
-        "Use when the user asks for a real person, hired human, QA professional, or someone else to test the product. The coding agent should infer the URL, changed feature, test scope, success criteria, and safe access policy from its current work, then ask only for genuinely missing information. This creates the request directly; never send the customer to a separate intake form. Use qa_start_manual_review instead when the user wants to perform the review themselves.",
+        "Use when the user asks for a real person, hired human, QA professional, or someone else to test the product. Infer the URL, scope, success criteria, and safe access policy, but never infer funding or a zero-dollar cost. Ask whether to use cash or QA credit and ask for an exact budget. Use qualification_trial only when the user explicitly wants the free tester-and-buyer trial. This creates the request directly; never send the customer to a separate intake form. Use qa_start_manual_review instead when the user wants to perform the review themselves.",
       inputSchema: buildHumanTestInputSchema({ targetRequired: false })
     },
     async (input) => {
       try {
         const needsInput = buildHumanTestNeedsInputResult(input);
         if (needsInput) return needsInput;
-        const response = await apiClient.requestHumanTest(input);
-        return makeToolResult(buildHumanTestRequestText(response), response);
+        const response = await apiClient.requestHumanTest(normalizeHumanTestFundingInput(input));
+        const structured = {
+          ...response,
+          matching_started: response.request?.status !== "queued",
+          funding_confirmed: true
+        };
+        return makeToolResult(buildHumanTestRequestText(structured), structured);
       } catch (error) {
         return makeToolError(error);
       }
@@ -2054,6 +2134,7 @@ module.exports = {
   buildHumanTestNeedsInputResult,
   buildHumanTestRequestText,
   buildHumanTestStatusText,
+  normalizeHumanTestFundingInput,
   buildRunPollingHandoff,
   buildManualReviewNeedsInputResult,
   buildManualReviewWorkflowText,

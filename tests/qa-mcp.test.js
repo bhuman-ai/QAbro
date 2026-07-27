@@ -23,9 +23,12 @@ const {
   buildManualFeedbackActionText,
   buildManualFeedbackRequiredAction,
   buildHumanTestNeedsInputResult,
+  buildHumanTestRequestText,
+  buildHumanTestStatusText,
   buildRunPollingHandoff,
   buildManualReviewNeedsInputResult,
   buildManualReviewWorkflowText,
+  normalizeHumanTestFundingInput,
   resolveMcpWaitSliceSeconds,
   shouldReturnQaAction
 } = require("../scripts/qa-mcp-server");
@@ -243,7 +246,10 @@ test("qa MCP client creates and reads human tester requests without a form", asy
 
   const created = await client.requestHumanTest({
     target_url: "https://preview.example.com",
-    review_type: "general_first_time_user"
+    review_type: "general_first_time_user",
+    assignment_type: "paid",
+    funding_type: "cash",
+    tester_pay_cents: 2500
   });
   const loaded = await client.getHumanTestRequest(created.request.id);
 
@@ -254,21 +260,76 @@ test("qa MCP client creates and reads human tester requests without a form", asy
   assert.equal(new URL(calls[1].url).searchParams.get("request_id"), "request_123");
 });
 
-test("human tester MCP preflight asks only for genuinely missing information", () => {
+test("human tester MCP preflight requires explicit funding and paid budget", () => {
   const missingUrl = buildHumanTestNeedsInputResult({});
   assert.equal(missingUrl.structuredContent.needs_input, true);
   assert.deepEqual(missingUrl.structuredContent.missing_fields, ["target_url"]);
 
-  const generalReview = buildHumanTestNeedsInputResult({
+  const missingPayment = buildHumanTestNeedsInputResult({
     target_url: "https://preview.example.com"
   });
-  assert.equal(generalReview, null);
+  assert.deepEqual(missingPayment.structuredContent.missing_fields, ["payment_method"]);
+
+  const missingBudget = buildHumanTestNeedsInputResult({
+    target_url: "https://preview.example.com",
+    payment_method: "cash"
+  });
+  assert.deepEqual(missingBudget.structuredContent.missing_fields, ["budget_usd"]);
+
+  const fundedReview = buildHumanTestNeedsInputResult({
+    target_url: "https://preview.example.com",
+    payment_method: "cash",
+    budget_usd: 25
+  });
+  assert.equal(fundedReview, null);
+
+  const qualificationTrial = buildHumanTestNeedsInputResult({
+    target_url: "https://preview.example.com",
+    payment_method: "qualification_trial"
+  });
+  assert.equal(qualificationTrial, null);
 
   const missingFlow = buildHumanTestNeedsInputResult({
     target_url: "https://preview.example.com",
+    payment_method: "qa_credit",
+    budget_usd: 20,
     review_type: "specific_flow"
   });
   assert.deepEqual(missingFlow.structuredContent.missing_fields, ["test_focus"]);
+});
+
+test("human tester MCP maps funding without inventing a zero-dollar paid request", () => {
+  const cash = normalizeHumanTestFundingInput({ payment_method: "cash", budget_usd: 25 });
+  const credit = normalizeHumanTestFundingInput({ payment_method: "qa_credit", budget_usd: 15.5 });
+  const qualification = normalizeHumanTestFundingInput({ payment_method: "qualification_trial" });
+
+  assert.equal(cash.assignment_type, "paid");
+  assert.equal(cash.funding_type, "cash");
+  assert.equal(cash.tester_pay_cents, 2500);
+  assert.equal(credit.assignment_type, "paid");
+  assert.equal(credit.funding_type, "qa_credit");
+  assert.equal(credit.tester_pay_cents, 1550);
+  assert.equal(credit.qa_credit_amount_cents, 1550);
+  assert.equal(qualification.assignment_type, "qualification");
+  assert.equal(qualification.tester_pay_cents, 0);
+});
+
+test("queued human tester copy says preparation, not tester matching", () => {
+  const request = {
+    id: "request_123",
+    status: "queued",
+    target_url: "https://preview.example.com",
+    assignment_type: "paid",
+    funding_type: "cash",
+    tester_pay_cents: 2500
+  };
+  const createdText = buildHumanTestRequestText({ request });
+  const statusText = buildHumanTestStatusText({ request });
+
+  assert.match(createdText, /awaiting Before Users Do preparation and publication/i);
+  assert.match(createdText, /\$25 cash tester budget/i);
+  assert.match(statusText, /No tester is matching yet/i);
+  assert.doesNotMatch(`${createdText} ${statusText}`, /still matching/i);
 });
 
 test("qa MCP client waitForRun polls until the report is ready and emits onPoll", async () => {
