@@ -124,6 +124,7 @@ import BrandLogo from "./BrandLogo";
 import PublicDocsPage from "./PublicDocsPage";
 import QaTrialAdmin from "./QaTrialAdmin";
 import QaTrialPortal from "./QaTrialPortal";
+import QaCreditsPage from "./QaCreditsPage";
 import TesterApplicationPage from "./TesterApplicationPage";
 import TesterApplicationsAdmin from "./TesterApplicationsAdmin";
 import TesterJobsPage from "./TesterJobsPage";
@@ -2258,7 +2259,9 @@ function App() {
   const isTesterApplyRoute = pathname === "/testers/apply";
   const isTesterAdminRoute = pathname === "/testers/admin";
   const isTesterJobsRoute = pathname === "/testers/jobs";
-  const isProtectedRoute = isWorkspaceRoute || isTrialAdminRoute || isTesterAdminRoute || isTesterJobsRoute;
+  const isQaCreditsRoute = pathname === "/qa-credits";
+  const isProtectedRoute =
+    isWorkspaceRoute || isTrialAdminRoute || isTesterAdminRoute || isTesterJobsRoute || isQaCreditsRoute;
 
   useEffect(() => {
     installBudWidgetFromUrl(route.search);
@@ -2442,6 +2445,20 @@ function App() {
       );
     }
     return <TesterJobsPage user={authState.user} onSignOut={handleSignOut} />;
+  }
+
+  if (isQaCreditsRoute) {
+    if (!authState.authorized) {
+      return (
+        <AuthGate
+          message={authState.message}
+          tone={authState.tone}
+          onSubmit={handleRequestMagicLink}
+          onSocialSignIn={handleSocialSignIn}
+        />
+      );
+    }
+    return <QaCreditsPage />;
   }
 
   if (isTesterApplyRoute) {

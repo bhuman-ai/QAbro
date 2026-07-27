@@ -367,7 +367,12 @@ export default function QaTrialAdmin({ search }: { search: string }) {
                     </div>
                     <p className="mt-2 line-clamp-2 text-sm font-semibold text-brand-muted">{request.test_focus}</p>
                     <p className="mt-2 text-xs font-bold text-brand-muted">
-                      {request.review_type === "specific_flow" ? "Specific flow" : "First-time review"} · {request.access_mode.replaceAll("_", " ")}
+                      {request.review_type === "specific_flow" ? "Specific flow" : "First-time review"}
+                      {" · "}
+                      {request.access_mode.replaceAll("_", " ")}
+                      {request.funding_type === "qa_credit"
+                        ? ` · ${formatPay(request.qa_credit_spent_cents, request.tester_pay_currency)} QA credit reserved`
+                        : ""}
                     </p>
                   </div>
                   <button
@@ -495,6 +500,9 @@ export default function QaTrialAdmin({ search }: { search: string }) {
                             step="0.01"
                             type="number"
                             inputMode="decimal"
+                            readOnly={
+                              requests.find((request) => request.id === humanRequestId)?.funding_type === "qa_credit"
+                            }
                             value={form.testerPay}
                             onChange={(event) => setForm((current) => ({ ...current, testerPay: event.target.value }))}
                             className="min-h-12 w-full px-2 font-semibold outline-none"
@@ -502,7 +510,9 @@ export default function QaTrialAdmin({ search }: { search: string }) {
                           />
                         </div>
                         <span className="text-xs font-semibold text-brand-muted">
-                          This exact amount is shown before the tester claims the job.
+                          {requests.find((request) => request.id === humanRequestId)?.funding_type === "qa_credit"
+                            ? "The product owner already reserved this exact amount in QA credit."
+                            : "This exact amount is shown before the tester claims the job."}
                         </span>
                       </label>
                     ) : null}
@@ -605,7 +615,11 @@ export default function QaTrialAdmin({ search }: { search: string }) {
                 <p className="mt-1 text-sm font-semibold text-brand-muted">{selected.tester.email} testing for {selected.lead.email}</p>
                 {selected.assignment.type === "paid" ? (
                   <p className="mt-2 text-lg font-black text-brand-success">
-                    {formatPay(selected.assignment.tester_pay_cents, selected.assignment.tester_pay_currency)} · {selected.assignment.payout_status.replaceAll("_", " ")}
+                    {formatPay(selected.assignment.tester_pay_cents, selected.assignment.tester_pay_currency)}
+                    {" · "}
+                    {selected.assignment.tester_reward_type === "qa_credit" ? "QA credit" : "cash"}
+                    {" · "}
+                    {selected.assignment.payout_status.replaceAll("_", " ")}
                   </p>
                 ) : null}
               </div>
@@ -655,7 +669,9 @@ export default function QaTrialAdmin({ search }: { search: string }) {
               </div>
             ) : selected.assignment.type === "paid" && selected.assignment.payout_status === "approved" ? (
               <div className="mt-8 rounded-2xl bg-brand-success/10 p-6">
-                <div className="text-xs font-black uppercase tracking-widest text-brand-success">Payment approved</div>
+                <div className="text-xs font-black uppercase tracking-widest text-brand-success">
+                  {selected.assignment.tester_reward_type === "qa_credit" ? "Credit approved" : "Payment approved"}
+                </div>
                 <div className="mt-2 text-3xl font-black">
                   {formatPay(selected.assignment.tester_pay_cents, selected.assignment.tester_pay_currency)}
                 </div>
@@ -666,13 +682,14 @@ export default function QaTrialAdmin({ search }: { search: string }) {
                   className="mt-5 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-brand-ink px-5 py-3 font-black text-white hover:bg-brand-accent disabled:opacity-50"
                 >
                   {busy ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
-                  Mark paid
+                  {selected.assignment.tester_reward_type === "qa_credit" ? "Add QA credit" : "Mark paid"}
                 </button>
               </div>
             ) : selected.assignment.type === "paid" && selected.assignment.payout_status === "paid" ? (
               <div className="mt-8 flex items-center gap-3 rounded-2xl bg-brand-success/10 p-6 font-black">
                 <Check className="h-6 w-6 text-brand-success" />
-                {formatPay(selected.assignment.tester_pay_cents, selected.assignment.tester_pay_currency)} paid
+                {formatPay(selected.assignment.tester_pay_cents, selected.assignment.tester_pay_currency)}
+                {selected.assignment.tester_reward_type === "qa_credit" ? " QA credit added" : " paid"}
               </div>
             ) : selected.qualification.status === "verified" ? (
               <div className="mt-8 rounded-2xl bg-brand-accent/5 p-6">

@@ -586,6 +586,11 @@ export interface HumanTestRequest {
   tester_pay_cents: number;
   tester_pay_currency: string;
   payout_status: "not_applicable" | "pending" | "approved" | "paid";
+  tester_reward_type: "cash" | "qa_credit";
+  qa_credit_awarded_at?: string | null;
+  funding_type: "cash" | "qa_credit";
+  qa_credit_spent_cents: number;
+  qa_credit_spent_at?: string | null;
   payout_approved_at?: string | null;
   payout_paid_at?: string | null;
   access_mode: "public_only" | "signup_allowed" | "test_account";
@@ -622,6 +627,7 @@ export interface QaTrialView {
     type: "qualification" | "paid";
     tester_pay_cents?: number;
     tester_pay_currency?: string;
+    tester_reward_type: "cash" | "qa_credit";
     payout_status: "not_applicable" | "pending" | "approved" | "paid";
   };
   access: {
@@ -700,6 +706,7 @@ export interface QaTrialSummary {
   assignment_type?: "qualification" | "paid";
   tester_pay_cents?: number;
   tester_pay_currency?: string;
+  tester_reward_type?: "cash" | "qa_credit";
   payout_status?: "not_applicable" | "pending" | "approved" | "paid";
   created_at?: string | null;
 }

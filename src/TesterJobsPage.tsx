@@ -8,7 +8,8 @@ import {
   LogOut,
   MonitorUp,
   ShieldCheck,
-  Star
+  Star,
+  WalletCards
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import type { AuthUser } from "@/types";
@@ -36,6 +37,7 @@ type TesterJob = {
   tester_pay_cents: number;
   tester_pay_currency: string;
   payout_status: "not_applicable" | "pending" | "approved" | "paid";
+  tester_reward_type: "cash" | "qa_credit";
   access_mode: "public_only" | "signup_allowed" | "test_account";
   status: "available" | "assigned" | "in_progress" | "submitted" | "completed";
   can_open: boolean;
@@ -53,6 +55,8 @@ type JobsResponse = {
   can_claim_qualification: boolean;
   can_claim_paid: boolean;
   desktop_ready: boolean;
+  credit_balance_cents: number;
+  credit_currency: string;
 };
 
 function formatPay(job: TesterJob) {
@@ -63,10 +67,22 @@ function formatPay(job: TesterJob) {
   }).format(job.tester_pay_cents / 100);
 }
 
+function formatCredit(cents: number, currency = "USD") {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: cents % 100 ? 2 : 0
+  }).format(cents / 100);
+}
+
 function payoutLabel(status: TesterJob["payout_status"]) {
   if (status === "paid") return "Paid";
   if (status === "approved") return "Payment approved";
   return "Payment after review";
+}
+
+function rewardLabel(job: TesterJob) {
+  return job.tester_reward_type === "qa_credit" ? "QA credit" : "Cash";
 }
 
 function accessLabel(mode: TesterJob["access_mode"]) {
@@ -91,6 +107,7 @@ export default function TesterJobsPage({
   const [data, setData] = useState<JobsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
+  const [choosingRewardId, setChoosingRewardId] = useState("");
   const [error, setError] = useState("");
 
   async function loadJobs() {
@@ -112,13 +129,17 @@ export default function TesterJobsPage({
     };
   }, []);
 
-  async function runJobAction(job: TesterJob, action: "claim" | "open") {
+  async function runJobAction(
+    job: TesterJob,
+    action: "claim" | "open",
+    rewardType: "cash" | "qa_credit" = "cash"
+  ) {
     setBusyId(job.id);
     setError("");
     try {
       const response = await apiFetch<{ ok: boolean; open_url: string }>("/api/tester-jobs", {
         method: "POST",
-        body: { action, request_id: job.id }
+        body: { action, request_id: job.id, reward_type: rewardType }
       });
       window.location.assign(response.open_url);
     } catch (caught) {
@@ -185,7 +206,13 @@ export default function TesterJobsPage({
                       : "Choose a test"}
                 </h1>
               </div>
-              <p className="text-sm font-semibold text-brand-muted">{user?.email}</p>
+              <div className="text-left sm:text-right">
+                <p className="text-sm font-semibold text-brand-muted">{user?.email}</p>
+                <a href="/qa-credits" className="mt-2 inline-flex items-center gap-2 text-sm font-black text-brand-accent hover:text-brand-ink">
+                  <WalletCards className="h-4 w-4" />
+                  {formatCredit(data?.credit_balance_cents || 0, data?.credit_currency || "USD")} QA credit
+                </a>
+              </div>
             </div>
 
             {error ? (
@@ -203,8 +230,12 @@ export default function TesterJobsPage({
                   </div>
                   {currentJob.assignment_type === "paid" ? (
                     <div className="mt-5 flex items-center gap-2 text-2xl font-black text-brand-ink">
-                      <Banknote className="h-6 w-6 text-brand-success" />
-                      {formatPay(currentJob)}
+                      {currentJob.tester_reward_type === "qa_credit" ? (
+                        <WalletCards className="h-6 w-6 text-brand-success" />
+                      ) : (
+                        <Banknote className="h-6 w-6 text-brand-success" />
+                      )}
+                      {formatPay(currentJob)} {rewardLabel(currentJob)}
                     </div>
                   ) : null}
                   <h2 className="mt-4 text-3xl font-black">{currentJob.product_name}</h2>
@@ -256,20 +287,44 @@ export default function TesterJobsPage({
                           <span>{accessLabel(job.access_mode)}</span>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        disabled={Boolean(busyId)}
-                        onClick={() => void runJobAction(job, "claim")}
-                        className="inline-flex min-h-14 shrink-0 items-center justify-center gap-2 rounded-lg bg-brand-accent px-6 py-4 font-black text-white shadow-shell hover:bg-brand-ink disabled:cursor-wait disabled:opacity-50"
-                      >
-                        {busyId === job.id ? <LoaderCircle className="h-5 w-5 animate-spin" /> : null}
-                        {busyId === job.id
-                          ? "Claiming..."
-                          : job.assignment_type === "paid"
-                            ? "Claim paid test"
-                            : "Take test"}
-                        {busyId !== job.id ? <ArrowRight className="h-5 w-5" /> : null}
-                      </button>
+                      {job.assignment_type === "paid" && choosingRewardId === job.id ? (
+                        <div className="grid shrink-0 gap-2" aria-label="Choose your reward">
+                          <div className="text-sm font-black">Choose your reward</div>
+                          <button
+                            type="button"
+                            disabled={Boolean(busyId)}
+                            onClick={() => void runJobAction(job, "claim", "cash")}
+                            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-brand-accent px-5 py-3 font-black text-white hover:bg-brand-ink disabled:opacity-50"
+                          >
+                            <Banknote className="h-5 w-5" />
+                            {busyId === job.id ? "Claiming..." : `${formatPay(job)} cash`}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={Boolean(busyId)}
+                            onClick={() => void runJobAction(job, "claim", "qa_credit")}
+                            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border-2 border-brand-ink bg-white px-5 py-3 font-black hover:border-brand-accent hover:text-brand-accent disabled:opacity-50"
+                          >
+                            <WalletCards className="h-5 w-5" />
+                            {formatPay(job)} QA credit
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={Boolean(busyId)}
+                          onClick={() =>
+                            job.assignment_type === "paid"
+                              ? setChoosingRewardId(job.id)
+                              : void runJobAction(job, "claim")
+                          }
+                          className="inline-flex min-h-14 shrink-0 items-center justify-center gap-2 rounded-lg bg-brand-accent px-6 py-4 font-black text-white shadow-shell hover:bg-brand-ink disabled:cursor-wait disabled:opacity-50"
+                        >
+                          {busyId === job.id ? <LoaderCircle className="h-5 w-5 animate-spin" /> : null}
+                          {busyId === job.id ? "Claiming..." : job.assignment_type === "paid" ? "Claim test" : "Take test"}
+                          {busyId !== job.id ? <ArrowRight className="h-5 w-5" /> : null}
+                        </button>
+                      )}
                     </div>
                   </article>
                 ))}
@@ -317,7 +372,13 @@ export default function TesterJobsPage({
                         <div className="font-black">{job.product_name}</div>
                         <div className="mt-1 flex items-center gap-2 text-xs font-bold text-brand-success">
                           <Check className="h-4 w-4" />
-                          {job.assignment_type === "paid" ? `${formatPay(job)} · ${payoutLabel(job.payout_status)}` : "Qualification complete"}
+                          {job.assignment_type === "paid"
+                            ? `${formatPay(job)} ${rewardLabel(job)} · ${
+                                job.tester_reward_type === "qa_credit" && job.payout_status === "paid"
+                                  ? "Credit added"
+                                  : payoutLabel(job.payout_status)
+                              }`
+                            : "Qualification complete"}
                         </div>
                       </div>
                       <button
