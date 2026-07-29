@@ -196,13 +196,20 @@ test("buildPortableEvidenceMedia uploads proof assets to storage when configured
       serviceKey: "service-key",
       fetchImpl: async (url, init = {}) => {
         fetchCalls.push({ url, method: init.method || "GET" });
+        const isVerificationRead = !init.method && url.includes("/storage/v1/object/");
         return {
           ok: true,
           status: 200,
           headers: {
-            get() {
+            get(name) {
+              if (isVerificationRead && String(name).toLowerCase() === "content-length") {
+                return String(Buffer.byteLength("proof-image"));
+              }
               return "";
             }
+          },
+          async arrayBuffer() {
+            return Buffer.from("proof-image");
           },
           async json() {
             return {};
@@ -212,9 +219,10 @@ test("buildPortableEvidenceMedia uploads proof assets to storage when configured
     }
   );
 
-  assert.equal(fetchCalls.length, 2);
+  assert.equal(fetchCalls.length, 3);
   assert.match(fetchCalls[0].url, /storage\/v1\/bucket$/);
   assert.match(fetchCalls[1].url, /storage\/v1\/object\/qa-evidence\/run_storage\/screenshots\//);
+  assert.equal(fetchCalls[2].method, "GET");
   assert.deepEqual(
     evidenceMedia,
     {
@@ -252,13 +260,19 @@ test("buildPortableEvidenceMedia includes local video URL aliases for storage-ba
       maxVideos: 1,
       supabaseUrl: "https://supabase.example",
       serviceKey: "service-key",
-      fetchImpl: async () => ({
+      fetchImpl: async (_url, init = {}) => ({
         ok: true,
         status: 200,
         headers: {
-          get() {
+          get(name) {
+            if (!init.method && String(name).toLowerCase() === "content-length") {
+              return String(Buffer.byteLength("proof-video"));
+            }
             return "";
           }
+        },
+        async arrayBuffer() {
+          return Buffer.from("proof-video");
         },
         async json() {
           return {};
@@ -330,6 +344,38 @@ test("cleanupPublishedLocalArtifacts removes local run directories after storage
   assert.equal(cleanup.ok, true);
   assert.equal(cleanup.skipped, false);
   assert.equal(fs.existsSync(tempDir), false);
+});
+
+test("portable evidence coverage fails when a captured recording was not stored", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-local-publish-coverage-"));
+  const screenshotPath = path.join(tempDir, "proof.png");
+  const videoPath = path.join(tempDir, "full.webm");
+  fs.writeFileSync(screenshotPath, Buffer.from("proof-image"));
+  fs.writeFileSync(videoPath, Buffer.from("proof-video"));
+
+  const coverage = __private.assessPortableEvidenceCoverage(
+    {
+      evidence_gallery: {
+        screenshots: [screenshotPath],
+        videos: [videoPath]
+      }
+    },
+    {},
+    {
+      screenshots: [
+        {
+          source: screenshotPath,
+          storage_bucket: "qa-evidence",
+          storage_path: "run_coverage/screenshots/proof.png"
+        }
+      ]
+    }
+  );
+
+  assert.equal(coverage.ok, false);
+  assert.equal(coverage.required_count, 2);
+  assert.equal(coverage.portable_count, 1);
+  assert.deepEqual(coverage.missing_video_sources, [videoPath.replaceAll("\\", "/")]);
 });
 
 test("attachStepVideoClipsToReport derives and stores real step clip refs", async () => {

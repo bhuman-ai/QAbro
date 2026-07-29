@@ -12,6 +12,7 @@ const {
   readQaShareKey
 } = require("../../lib/qa-queue");
 const { buildLiveStreamArtifacts } = require("../../lib/qa-live-stream");
+const { buildQaEvidenceManifest } = require("../../lib/qa-report-media");
 const { requireDashboardOrServiceAuth } = require("../../lib/auth");
 
 const FALLBACK_BRAND_PERSONA =
@@ -231,6 +232,13 @@ module.exports = async (req, res) => {
     if (!["owner", "admin"].includes(access.access_type)) {
       reportJson = redactEngineeringTriage(reportJson);
     }
+    reportJson = {
+      ...reportJson,
+      evidence_manifest: buildQaEvidenceManifest(reportJson, payload, {
+        runId,
+        shareKey: access.access_type === "shared_link" ? access.share_key : ""
+      })
+    };
   }
 
   let markdown = null;

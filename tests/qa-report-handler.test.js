@@ -335,7 +335,34 @@ test("report handler allows shared-link access by run_id", async () => {
               summary: {
                 note: "Shared report row"
               },
-              findings: []
+              findings: [],
+              evidence_gallery: {
+                videos: [
+                  "/opt/qabro/output/run_shared_1/video/blocker.mp4",
+                  "/opt/qabro/output/run_shared_1/video/full.webm"
+                ]
+              }
+            },
+            artifacts: {
+              local_video_path: "/opt/qabro/output/run_shared_1/video/full.webm"
+            },
+            evidence_media: {
+              videos: [
+                {
+                  source: "/opt/qabro/output/run_shared_1/video/blocker.mp4",
+                  content_type: "video/mp4",
+                  storage_bucket: "qa-evidence",
+                  storage_path: "run_shared_1/videos/blocker.mp4",
+                  byte_length: 32000
+                },
+                {
+                  source: "/opt/qabro/output/run_shared_1/video/full.webm",
+                  content_type: "video/webm",
+                  storage_bucket: "qa-evidence",
+                  storage_path: "run_shared_1/videos/full.webm",
+                  byte_length: 9000000
+                }
+              ]
             }
           }
         }
@@ -368,6 +395,9 @@ test("report handler allows shared-link access by run_id", async () => {
         assert.equal(res.body.ok, true);
         assert.equal(res.body.run_id, "run_shared_1");
         assert.match(res.body.ui_report_url, /share_key=share_abc123/);
+        assert.equal(res.body.report.evidence_manifest.recording.index, 1);
+        assert.match(res.body.report.evidence_manifest.recording.url, /share_key=share_abc123/);
+        assert.doesNotMatch(JSON.stringify(res.body.report.evidence_manifest), /storage_path|storage_bucket|\/opt\/qabro/);
       }
     );
   } finally {

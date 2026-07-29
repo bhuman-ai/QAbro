@@ -8484,12 +8484,41 @@ function SharedReportPage({
   runId: string;
   shareKey: string;
 }) {
+  const [replayOpen, setReplayOpen] = useState(false);
   const primaryFinding = getPrimaryFinding(report);
   const evidenceMap = buildEvidenceIndexMap(report, "screenshot");
   const firstEvidence = Array.from(evidenceMap.entries()).sort((left, right) => left[1] - right[1])[0];
+  const videoEvidence = collectEvidenceValues(report, "video");
+  const fallbackVideoIndex = (() => {
+    const fullRecordingIndex = videoEvidence.findIndex(
+      (value) => !/(?:blocker|step[-_ ]?clip|clip)/i.test(String(value || ""))
+    );
+    return fullRecordingIndex >= 0 ? fullRecordingIndex : 0;
+  })();
+  const replayVideoUrl =
+    String(report?.evidence_manifest?.recording?.url || "").trim() ||
+    (videoEvidence[fallbackVideoIndex]
+      ? buildEvidenceAssetUrl(runId || report?.run_id || "", "video", fallbackVideoIndex, shareKey)
+      : "");
+  const replayPosterUrl = firstEvidence
+    ? buildEvidenceAssetUrl(runId || report?.run_id || "", "screenshot", firstEvidence[1], shareKey)
+    : "";
 
   return (
     <div className="min-h-screen bg-brand-bg text-brand-ink" data-app-shell="shared-report">
+      <AnimatePresence>
+        {replayOpen && replayVideoUrl ? (
+          <StarterSessionReplayModal
+            title="Watch recording"
+            videoUrl={replayVideoUrl}
+            posterUrl={replayPosterUrl}
+            sessionUrl=""
+            thoughtCues={[]}
+            cursorCues={[]}
+            onClose={() => setReplayOpen(false)}
+          />
+        ) : null}
+      </AnimatePresence>
       <header className="border-b border-brand-line bg-brand-shell/95 backdrop-blur">
         <div className="mx-auto flex max-w-[1440px] items-center justify-between px-6 py-4">
           <BrandMark />
@@ -8524,6 +8553,20 @@ function SharedReportPage({
               <p className="mt-3 max-w-3xl text-sm leading-7 text-brand-muted">
                 {primaryFinding?.observed_behavior || report?.summary?.note || "Read the main problem and the proof below."}
               </p>
+              {replayVideoUrl ? (
+                <button
+                  type="button"
+                  onClick={() => setReplayOpen(true)}
+                  className="mt-5 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-brand-ink px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-brand-accent"
+                >
+                  <Play className="h-5 w-5 fill-current" />
+                  Watch recording
+                </button>
+              ) : (
+                <div className="mt-5 inline-flex rounded-xl border border-brand-warning/30 bg-brand-warning/10 px-4 py-3 text-sm font-black text-brand-warning">
+                  Recording unavailable
+                </div>
+              )}
 
               {firstEvidence ? (
                 <img
@@ -11038,9 +11081,10 @@ function StarterReportPage({
   const effectiveStatus = String(status?.queue?.queue_status || status?.report_status || report?.status || run?.status || "completed").toLowerCase();
   const score = deriveScoreFromReport(report, run);
   const replayVideoUrl =
-    firstVideoValue && (report?.run_id || run?.run_id)
+    String(report?.evidence_manifest?.recording?.url || "").trim() ||
+    (firstVideoValue && (report?.run_id || run?.run_id)
       ? buildEvidenceAssetUrl(report?.run_id || run?.run_id || "", "video", preferredVideoIndex, shareKey)
-      : "";
+      : "");
   const replaySessionUrl =
     String(
       report?.evidence_gallery?.session_url ||
@@ -11422,13 +11466,37 @@ function StarterReportPage({
 
             <div className="lg:col-span-3 space-y-12">
               <section className="dash-card p-10 bg-white">
-                <div className="flex items-center gap-3 mb-6">
-                  <Sparkles className="w-6 h-6 text-brand-accent" />
-                  <h3 className="text-xl font-black tracking-tight">Executive Summary</h3>
+                <div className="flex flex-wrap items-start justify-between gap-6">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-3 mb-6">
+                      <Sparkles className="w-6 h-6 text-brand-accent" />
+                      <h3 className="text-xl font-black tracking-tight">Executive Summary</h3>
+                    </div>
+                    <p className="text-2xl font-bold text-brand-ink leading-relaxed">
+                      {report?.summary?.note || run?.summary_note || getReportSubhead(run, report)}
+                    </p>
+                  </div>
+                  {hasReplay ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!replayVideoUrl && replaySessionUrl) {
+                          window.open(replaySessionUrl, "_blank", "noopener,noreferrer");
+                          return;
+                        }
+                        setReplayOpen(true);
+                      }}
+                      className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-brand-ink px-6 py-3 text-sm font-black text-white shadow-sm transition-all hover:bg-brand-accent"
+                    >
+                      <Play className="h-5 w-5 fill-current" />
+                      Watch recording
+                    </button>
+                  ) : (
+                    <div className="shrink-0 rounded-xl border border-brand-warning/30 bg-brand-warning/10 px-4 py-3 text-sm font-black text-brand-warning">
+                      Recording unavailable
+                    </div>
+                  )}
                 </div>
-                <p className="text-2xl font-bold text-brand-ink leading-relaxed">
-                  {report?.summary?.note || run?.summary_note || getReportSubhead(run, report)}
-                </p>
               </section>
 
               <section className="dash-card p-8 bg-white">
@@ -11558,44 +11626,6 @@ function StarterReportPage({
                     </div>
                   )}
                 </div>
-              </section>
-
-              <section className="space-y-6">
-                <h3 className="text-xl font-black tracking-tight">Session Replay</h3>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!hasReplay) {
-                      return;
-                    }
-                    if (!replayVideoUrl && replaySessionUrl) {
-                      window.open(replaySessionUrl, "_blank", "noopener,noreferrer");
-                      return;
-                    }
-                    setReplayOpen(true);
-                  }}
-                  disabled={!hasReplay}
-                  className={`aspect-video w-full bg-brand-ink rounded-[3rem] flex items-center justify-center relative group overflow-hidden shadow-2xl border-8 border-white text-left ${
-                    hasReplay ? "cursor-pointer" : "cursor-not-allowed opacity-80"
-                  }`}
-                >
-                  {firstEvidence ? (
-                    <img className="absolute inset-0 h-full w-full object-cover opacity-80" src={replayPosterUrl} alt="Session replay" />
-                  ) : null}
-                  <div className="absolute inset-0 bg-gradient-to-t from-brand-ink/90 via-brand-ink/20 to-transparent" />
-                  <div className="relative z-10 text-center">
-                    <div className="w-24 h-24 bg-white/10 backdrop-blur-xl rounded-full flex items-center justify-center mx-auto mb-6 border border-white/20 shadow-2xl group-hover:scale-105 transition-transform">
-                      <Play className="w-10 h-10 text-white fill-white ml-1.5" />
-                    </div>
-                    <p className="text-white font-black uppercase tracking-widest text-lg">Watch {persona.name}&apos;s Session</p>
-                    <p className="text-white/40 text-sm mt-2 font-bold tracking-tight">
-                      {run?.target_url || run?.target || report?.target || "Real session proof"} • {frictionPoints.length} friction points
-                    </p>
-                    <p className="mt-4 text-xs font-black uppercase tracking-widest text-white/70">
-                      {replayVideoUrl ? "Click to play replay" : replaySessionUrl ? "Click to open session" : "Replay not available yet"}
-                    </p>
-                  </div>
-                </button>
               </section>
 
               {replayOverlay.thoughts.length ? (

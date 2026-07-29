@@ -172,6 +172,26 @@ export interface QaReport {
     debug_url?: string | null;
     [key: string]: unknown;
   } | null;
+  evidence_manifest?: {
+    recording?: {
+      index: number;
+      url: string;
+      content_type?: string | null;
+      byte_length?: number | null;
+    } | null;
+    videos?: Array<{
+      index: number;
+      url: string;
+      content_type?: string | null;
+      byte_length?: number | null;
+    }>;
+    screenshots?: Array<{
+      index: number;
+      url: string;
+      content_type?: string | null;
+      byte_length?: number | null;
+    }>;
+  } | null;
   artifacts?: {
     started_at?: string | null;
     finished_at?: string | null;

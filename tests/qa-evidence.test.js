@@ -5,7 +5,8 @@ const evidenceHandler = require("../api/qa/evidence");
 const {
   ensureEvidenceStorageBucket,
   fetchStoredEvidenceObject,
-  measureStoredEvidenceForRun
+  measureStoredEvidenceForRun,
+  verifyStoredEvidenceObject
 } = require("../lib/qa-evidence-storage");
 
 function createRes() {
@@ -180,6 +181,43 @@ test("fetchStoredEvidenceObject streams media from Supabase storage", async () =
 
   assert.equal(result.contentType, "image/png");
   assert.equal(result.data.toString(), "proof-bytes");
+});
+
+test("verifyStoredEvidenceObject confirms the uploaded bytes can be read back", async () => {
+  const expected = Buffer.from("proof-video");
+  const verified = await verifyStoredEvidenceObject(
+    {
+      storage_bucket: "qa-evidence",
+      storage_path: "run_1/videos/proof.webm",
+      byte_length: expected.length
+    },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      expectedByteLength: expected.length,
+      expectedPrefix: expected,
+      fetchImpl: async (_url, init) => {
+        assert.equal(init.headers.Range, `bytes=0-${expected.length - 1}`);
+        return {
+          ok: true,
+          status: 206,
+          headers: {
+            get(name) {
+              if (String(name).toLowerCase() === "content-range") {
+                return `bytes 0-${expected.length - 1}/${expected.length}`;
+              }
+              return "";
+            }
+          },
+          async arrayBuffer() {
+            return expected;
+          }
+        };
+      }
+    }
+  );
+
+  assert.equal(verified, true);
 });
 
 test("fetchStoredEvidenceObject rejects oversized declared content before reading", async () => {
