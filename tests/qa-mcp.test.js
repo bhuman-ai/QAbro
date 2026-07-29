@@ -16,6 +16,11 @@ const {
 } = require("../lib/qa-mcp");
 const { readQaMcpStoredAuth, writeQaMcpStoredAuth } = require("../lib/qa-mcp-auth");
 const {
+  buildResumeToken,
+  getHumanReportReadiness,
+  parseResumeToken
+} = require("../lib/qa-mcp-simple");
+const {
   attachPostFixReviewGateToManualPackets,
   buildAutomatedQaActionText,
   buildAutomatedQaRequiredAction,
@@ -28,6 +33,7 @@ const {
   buildRunPollingHandoff,
   buildManualReviewNeedsInputResult,
   buildManualReviewWorkflowText,
+  createQaMcpServer,
   normalizeHumanTestFundingInput,
   resolveMcpWaitSliceSeconds,
   shouldReturnQaAction
@@ -40,6 +46,18 @@ function createJsonResponse(payload, status = 200) {
     async text() {
       return JSON.stringify(payload);
     }
+  };
+}
+
+function createMcpApiStub(overrides = {}) {
+  return {
+    async getRunStatus() {
+      return { ok: true, report_ready: false, report_status: "processing" };
+    },
+    async getRunReport() {
+      return { ok: true, status: "completed", markdown: "# Report" };
+    },
+    ...overrides
   };
 }
 
@@ -330,6 +348,319 @@ test("queued human tester copy says preparation, not tester matching", () => {
   assert.match(createdText, /\$25 cash tester budget/i);
   assert.match(statusText, /No tester is matching yet/i);
   assert.doesNotMatch(`${createdText} ${statusText}`, /still matching/i);
+});
+
+test("simplified MCP exposes the four primary tools before legacy compatibility tools", () => {
+  const apiClient = createMcpApiStub();
+  const { server } = createQaMcpServer({ apiClient });
+  const toolNames = Object.keys(server._registeredTools);
+
+  assert.deepEqual(toolNames.slice(0, 4), [
+    "qa_ai_test",
+    "qa_self_review",
+    "qa_hire_tester",
+    "qa_continue"
+  ]);
+  assert.match(server._registeredTools.qa_ai_test.description, /PRIMARY AI QA TOOL/);
+  assert.match(server._registeredTools.qa_request_run.description, /LEGACY COMPATIBILITY TOOL/);
+});
+
+test("simplified resume tokens preserve routing context without storing credentials", () => {
+  const token = buildResumeToken({
+    flow: "human",
+    input: {
+      target_url: "https://preview.example.com",
+      goal: "Try checkout",
+      payment_method: "cash",
+      credentials: {
+        username: "tester@example.com",
+        password: "secret"
+      }
+    }
+  });
+  const parsed = parseResumeToken(token);
+
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.flow, "human");
+  assert.equal(parsed.input.target_url, "https://preview.example.com");
+  assert.equal(parsed.input.goal, "Try checkout");
+  assert.equal(parsed.input.credentials, undefined);
+  assert.doesNotMatch(token, /secret|tester@example/);
+});
+
+test("qa_hire_tester asks progressive funding questions and never invents a free request", async () => {
+  let requested = null;
+  const apiClient = createMcpApiStub({
+    async requestHumanTest(input) {
+      requested = input;
+      return {
+        ok: true,
+        request: {
+          id: "human_123",
+          status: "queued",
+          target_url: input.target_url,
+          assignment_type: input.assignment_type,
+          funding_type: input.funding_type,
+          tester_pay_cents: input.tester_pay_cents
+        }
+      };
+    }
+  });
+  const { server } = createQaMcpServer({ apiClient });
+  const hire = server._registeredTools.qa_hire_tester.handler;
+  const resume = server._registeredTools.qa_continue.handler;
+
+  const missingPayment = await hire({ target_url: "https://preview.example.com" });
+  assert.equal(missingPayment.structuredContent.state, "needs_input");
+  assert.deepEqual(missingPayment.structuredContent.missing_fields, ["payment_method"]);
+  assert.equal(missingPayment.structuredContent.next_tool.name, "qa_continue");
+  assert.equal(requested, null);
+
+  const missingBudget = await resume({
+    resume_token: missingPayment.structuredContent.resume_token,
+    payment_method: "cash"
+  });
+  assert.equal(missingBudget.structuredContent.state, "needs_input");
+  assert.deepEqual(missingBudget.structuredContent.missing_fields, ["budget_usd"]);
+  assert.equal(requested, null);
+
+  const funded = await resume({
+    resume_token: missingBudget.structuredContent.resume_token,
+    budget_usd: 25
+  });
+  assert.equal(funded.structuredContent.state, "running");
+  assert.equal(funded.structuredContent.request_id, "human_123");
+  assert.equal(requested.assignment_type, "paid");
+  assert.equal(requested.funding_type, "cash");
+  assert.equal(requested.tester_pay_cents, 2500);
+});
+
+test("qa_self_review remains blocked until the server detects the widget", async () => {
+  let widgetInstalled = false;
+  const apiClient = createMcpApiStub({
+    async createManualQaSession(input) {
+      return {
+        ok: true,
+        session: {
+          session_id: "manual_123",
+          target_url: input.target_url,
+          session_url: "https://beforeusersdo.com/report/manual_123",
+          widget: { installed: false }
+        },
+        widget_install: {
+          script_tag: "<script async src=\"https://beforeusersdo.com/widget.js\"></script>",
+          review_url: input.target_url,
+          verify_expression: "window.__beforeUsersDoWidgetLoaded === true",
+          verify_selector: "#beforeusersdo-widget-root"
+        }
+      };
+    },
+    async getManualQaSession() {
+      return {
+        ok: true,
+        session: {
+          session_id: "manual_123",
+          target_url: "https://preview.example.com",
+          session_url: "https://beforeusersdo.com/report/manual_123",
+          widget: { installed: widgetInstalled }
+        }
+      };
+    },
+    async waitForManualFeedback() {
+      return { ok: true, feedback_ready: false, timed_out: true };
+    }
+  });
+  const { server } = createQaMcpServer({ apiClient });
+  const start = await server._registeredTools.qa_self_review.handler({
+    target_url: "https://preview.example.com"
+  });
+  assert.equal(start.structuredContent.state, "needs_setup");
+
+  const stillBlocked = await server._registeredTools.qa_continue.handler({
+    resume_token: start.structuredContent.resume_token,
+    setup_verified: true
+  });
+  assert.equal(stillBlocked.structuredContent.state, "needs_setup");
+  assert.match(stillBlocked.structuredContent.reason, /has not detected the widget/i);
+
+  widgetInstalled = true;
+  const waitingForFeedback = await server._registeredTools.qa_continue.handler({
+    resume_token: start.structuredContent.resume_token,
+    setup_verified: true,
+    wait_seconds: 1
+  });
+  assert.equal(waitingForFeedback.structuredContent.state, "running");
+  assert.match(waitingForFeedback.structuredContent.reason, /waiting for the user to click Send All/i);
+});
+
+test("qa_ai_test defaults to report-only and resumes through qa_continue", async () => {
+  let requested = null;
+  let waitCount = 0;
+  const apiClient = createMcpApiStub({
+    async requestRun(input) {
+      requested = input;
+      return { ok: true, run_id: input.run_id, ui_report_url: "https://beforeusersdo.com/report/ai" };
+    },
+    async waitForRun() {
+      waitCount += 1;
+      if (waitCount === 1) {
+        return {
+          ok: true,
+          timed_out: true,
+          status: { report_ready: false, report_status: "processing" }
+        };
+      }
+      return {
+        ok: true,
+        timed_out: false,
+        status: { report_ready: true, report_status: "completed" }
+      };
+    },
+    async getRunReport() {
+      return {
+        ok: true,
+        status: "completed",
+        summary: { note: "The requested flow passed." },
+        findings: [],
+        markdown: "# AI QA report",
+        ui_report_url: "https://beforeusersdo.com/report/ai"
+      };
+    },
+    async shareRunReport() {
+      return { ok: true, share_url: "https://beforeusersdo.com/share/ai" };
+    }
+  });
+  const { server } = createQaMcpServer({ apiClient });
+  const started = await server._registeredTools.qa_ai_test.handler(
+    {
+      target_url: "https://preview.example.com",
+      goal: "Create a project"
+    },
+    {}
+  );
+  assert.equal(started.structuredContent.state, "running");
+  assert.equal(started.structuredContent.next_tool.name, "qa_continue");
+  assert.equal(requested.feedback_action, "share_feedback");
+
+  const completed = await server._registeredTools.qa_continue.handler(
+    { resume_token: started.structuredContent.resume_token, wait_seconds: 1 },
+    {}
+  );
+  assert.equal(completed.structuredContent.state, "complete");
+  assert.equal(completed.structuredContent.report_url, "https://beforeusersdo.com/share/ai");
+  assert.equal(completed.structuredContent.continue_polling, false);
+});
+
+test("human QA completion requires video and completed transcript analysis", async () => {
+  const report = {
+    markdown: "# Human report",
+    session: {
+      findings_analysis: { status: "processing" },
+      checklist: [
+        {
+          evidence_media: [
+            {
+              kind: "video",
+              content_type: "video/webm",
+              url: "https://beforeusersdo.com/evidence/video"
+            }
+          ]
+        }
+      ]
+    }
+  };
+
+  const processing = getHumanReportReadiness(report);
+  assert.equal(processing.ready, false);
+  assert.equal(processing.state, "processing_report");
+  assert.equal(processing.video_count, 1);
+
+  report.session.findings_analysis.status = "complete";
+  const ready = getHumanReportReadiness(report);
+  assert.equal(ready.ready, true);
+  assert.equal(ready.state, "complete");
+
+  report.session.checklist[0].evidence_media = [];
+  const missingVideo = getHumanReportReadiness(report);
+  assert.equal(missingVideo.ready, false);
+  assert.equal(missingVideo.state, "needs_review");
+  assert.match(missingVideo.reason, /no video evidence/i);
+
+  report.session.checklist[0].evidence_media = [{ kind: "video", content_type: "video/webm" }];
+  report.session.findings_analysis.status = "failed";
+  const failedAnalysis = getHumanReportReadiness(report);
+  assert.equal(failedAnalysis.ready, false);
+  assert.equal(failedAnalysis.state, "needs_review");
+  assert.match(failedAnalysis.reason, /analysis failed/i);
+});
+
+test("qa_continue does not complete human QA before recording analysis is ready", async () => {
+  let analysisStatus = "processing";
+  const apiClient = createMcpApiStub({
+    async requestHumanTest(input) {
+      return {
+        ok: true,
+        request: {
+          id: "human_ready_123",
+          status: "queued",
+          target_url: input.target_url,
+          assignment_type: input.assignment_type,
+          funding_type: input.funding_type,
+          tester_pay_cents: input.tester_pay_cents
+        }
+      };
+    },
+    async getHumanTestRequest() {
+      return {
+        ok: true,
+        request: {
+          id: "human_ready_123",
+          status: "completed",
+          trial_session_id: "manual_human_123"
+        }
+      };
+    },
+    async exportManualQaSession() {
+      return {
+        ok: true,
+        markdown: "# Human QA report",
+        session: {
+          session_url: "https://beforeusersdo.com/report/human_ready_123",
+          findings_analysis: { status: analysisStatus },
+          checklist: [
+            {
+              evidence_media: [
+                {
+                  kind: "video",
+                  content_type: "video/webm",
+                  url: "https://beforeusersdo.com/evidence/human_ready_123"
+                }
+              ]
+            }
+          ]
+        }
+      };
+    }
+  });
+  const { server } = createQaMcpServer({ apiClient });
+  const started = await server._registeredTools.qa_hire_tester.handler({
+    target_url: "https://preview.example.com",
+    payment_method: "cash",
+    budget_usd: 30
+  });
+
+  const processing = await server._registeredTools.qa_continue.handler({
+    resume_token: started.structuredContent.resume_token
+  });
+  assert.equal(processing.structuredContent.state, "processing_report");
+  assert.equal(processing.structuredContent.evidence.video_count, 1);
+
+  analysisStatus = "complete";
+  const complete = await server._registeredTools.qa_continue.handler({
+    resume_token: started.structuredContent.resume_token
+  });
+  assert.equal(complete.structuredContent.state, "complete");
+  assert.equal(complete.structuredContent.report_url, "https://beforeusersdo.com/report/human_ready_123");
 });
 
 test("qa MCP client waitForRun polls until the report is ready and emits onPoll", async () => {
@@ -724,40 +1055,27 @@ test("buildQaResourceUri encodes dynamic run ids", () => {
   assert.equal(buildQaResourceUri("manual_qa_report_markdown", "manual id"), "qa://manual/manual%20id/report.md");
 });
 
-test("manual review workflow tells agents what context to gather", () => {
+test("manual review workflow routes agents through the simplified self-review state machine", () => {
   const text = buildManualReviewWorkflowText({
     target_url: "https://preview.example.com",
     work_summary: "Changed onboarding cards."
   });
 
-  assert.match(text, /manual review/i);
-  assert.match(text, /qa_start_manual_review/);
-  assert.match(text, /changed files/i);
-  assert.match(text, /acceptance criteria/i);
-  assert.match(text, /review_mode: "freestyle"/);
-  assert.match(text, /widget_install\.script_tag/i);
-  assert.match(text, /required, not optional/i);
-  assert.match(text, /Do not tell the user to open the target page until the widget is verified/i);
-  assert.match(text, /widget_install\.review_url/i);
-  assert.match(text, /Do not send the BeforeUsersDo dashboard as the place to start testing/i);
-  assert.match(text, /qa_wait_for_manual_evidence/);
-  assert.match(text, /evidence\.json/);
-  assert.match(text, /qa_wait_for_manual_feedback/);
-  assert.match(text, /wait_forever: true/);
-  assert.match(text, /qa_get_manual_work_packets/);
-  assert.match(text, /without copy\/paste/i);
-  assert.match(text, /keep the agent turn open/i);
-  assert.match(text, /do not stop after giving the link/i);
-  assert.match(text, /Obey the session's `feedback_action`/i);
-  assert.match(text, /`share_feedback_and_start_work`: share feedback with the agent/i);
-  assert.match(text, /fresh contextless reviewer/i);
-  assert.match(text, /continue work/i);
-  assert.match(text, /`preview_fix_first`: share feedback with the agent/i);
-  assert.match(text, /`share_feedback`: share feedback with the agent for summary\/reporting/i);
+  assert.match(text, /self-review workflow/i);
+  assert.match(text, /qa_self_review/);
+  assert.match(text, /qa_hire_tester/);
+  assert.match(text, /qa_ai_test/);
+  assert.match(text, /qa_continue/);
+  assert.match(text, /needs_input/);
+  assert.match(text, /needs_setup/);
+  assert.match(text, /widget\.installed=true/);
+  assert.match(text, /Default after_feedback to report/i);
+  assert.match(text, /do not edit or deploy/i);
+  assert.doesNotMatch(text, /Call `qa_start_manual_review`/i);
   assert.match(text, /https:\/\/preview\.example\.com/);
 });
 
-test("manual feedback action contract defaults to fix-deploy-new-QA loop", () => {
+test("manual feedback action contract defaults to report-only", () => {
   const action = buildManualFeedbackRequiredAction("manual_123", {
     feedback_id: "feedback_123",
     scope: "item",
@@ -770,25 +1088,18 @@ test("manual feedback action contract defaults to fix-deploy-new-QA loop", () =>
   });
 
   assert.equal(action.required, true);
-  assert.equal(action.status, "fix_or_explain_before_done");
-  assert.equal(action.agent_action_mode, "fix_and_retest");
-  assert.equal(action.feedback_action, "share_feedback_and_start_work");
-  assert.equal(action.auto_start_work, true);
+  assert.equal(action.status, "report_only");
+  assert.equal(action.agent_action_mode, "report_only");
+  assert.equal(action.feedback_action, "share_feedback");
+  assert.equal(action.auto_start_work, false);
   assert.equal(action.next_tool_after_fix, "qa_start_manual_review");
-  assert.equal(action.post_fix_review_gate.required, true);
-  assert.equal(action.post_fix_review_gate.reviewer, "fresh_contextless_agent");
+  assert.equal(action.post_fix_review_gate.required, false);
   assert.equal(action.post_fix_review_gate.implementer_may_self_close, false);
-  assert.match(action.post_fix_review_gate.fail_action, /Continue implementation/);
-  assert.match(action.completion_rule, /fresh BeforeUsersDo QA link/);
-  assert.match(action.completion_rule, /fresh contextless reviewer/);
-  assert.match(action.steps.join(" "), /Update the target code\/product instead of only summarizing/);
+  assert.match(action.completion_rule, /Do not start code changes/);
   assert.match(action.steps.join(" "), /qa_get_manual_work_packets/);
-  assert.match(action.steps.join(" "), /Deploy or refresh/);
-  assert.match(action.steps.join(" "), /fresh contextless reviewer agent/);
-  assert.match(action.steps.join(" "), /continue implementation instead of marking done/);
   assert.match(text, /REQUIRED NEXT STEPS FOR THE CODING AGENT/);
-  assert.match(text, /Mode: share feedback and auto-start work/);
-  assert.match(text, /create a fresh BeforeUsersDo QA link or rerun the relevant QA tool/i);
+  assert.match(text, /Mode: share feedback only/);
+  assert.match(text, /Do not edit code/);
 });
 
 test("manual feedback action contract can be report-only", () => {

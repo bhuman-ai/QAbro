@@ -14,6 +14,19 @@ const {
   summarizeReportPayload,
   summarizeStatusPayload
 } = require("../lib/qa-mcp");
+const {
+  SIMPLE_QA_FLOWS,
+  buildAiRunInput,
+  buildHumanTestInput,
+  buildNeedsInputState,
+  buildResumeToken,
+  buildSelfReviewInput,
+  getHumanReportReadiness,
+  mergeResumeInput,
+  normalizeAccess,
+  normalizeAfterFeedback,
+  parseResumeToken
+} = require("../lib/qa-mcp-simple");
 
 function formatJson(value) {
   return JSON.stringify(value, null, 2);
@@ -264,7 +277,7 @@ function buildPostFixReviewRecord(input = {}) {
 
 function attachPostFixReviewGateToManualPackets(response = {}) {
   const session = response.session && typeof response.session === "object" ? response.session : {};
-  const mode = normalizeAgentActionMode(session.context || {}, "fix_and_retest");
+  const mode = normalizeAgentActionMode(session.context || {}, "report_only");
   const baseGate = buildPostFixReviewGate(mode);
   const feedbackId = safeText(session.agent_feedback?.latest?.feedback_id || session.agentFeedback?.latest?.feedback_id, 128) || null;
   const packets = Array.isArray(response.work_packets) ? response.work_packets : [];
@@ -288,58 +301,26 @@ function buildManualReviewWorkflowText(input = {}) {
   const featureName = safeText(input.feature_name || input.featureName || input.title, 240);
 
   return buildText([
-    "# BeforeUsersDo Manual Review Workflow",
+    "# BeforeUsersDo Self-Review Workflow",
     "",
-    "Use this whenever the user says they want to review the product themselves, run manual self-review, do freestyle QA, or use a BeforeUsersDo checklist for work you just changed.",
+    "Use this only when the user will personally review the product. For another real person, use qa_hire_tester. For AI QA, use qa_ai_test.",
     "",
-    "1. Gather the target URL.",
-    "- Prefer the live preview URL the user gave you.",
-    "- If you just deployed a preview, use that preview URL.",
-    "- If no reachable URL exists, ask for one before creating the session.",
+    "1. Call qa_self_review with target_url, a plain-English goal, and style=guided or freestyle.",
+    "- Default after_feedback to report.",
+    "- Do not use qa_start_manual_review or the other legacy manual tools for a new flow.",
     "",
-    "2. Gather implementation context automatically when available.",
-    "- Include what changed in plain English.",
-    "- Include changed files, branch, commit SHA, PR URL, repository, acceptance criteria, and any user instructions.",
-    "- Do not leak tokens, secrets, private cookies, or credentials.",
+    "2. Follow the returned state.",
+    "- needs_input: relay question, then call qa_continue with the resume_token and answer.",
+    "- needs_setup: inject required_action.script_tag, deploy or refresh, and load the target page.",
+    "- Call qa_continue after setup. The server must report widget.installed=true before the review link is ready.",
+    "- running: the widget is ready and waiting for the user to click Send All.",
+    "- complete: share the report and findings.",
     "",
-    "3. Build the manual checklist.",
-    "- Create explicit checklist items for each changed surface and acceptance criterion.",
-    "- If an item starts deep in a flow, set the start URL/path and explain that the human may need to begin earlier if the app blocks deep links.",
-    "- Keep checklist item titles human-readable.",
-    "- If the user wants open-ended recording instead of checklist items, set `review_mode: \"freestyle\"` and skip `test_plan`.",
-    "",
-    "4. Call `qa_start_manual_review`.",
-    "- Use `target_url`, `work_summary`, `changed_files`, `acceptance_criteria`, `scenario_list`, `review_mode`, and `test_plan` when you have them.",
-    "- If the tool says `needs_input`, ask the user only for the missing fields.",
-    "",
-    "5. Install the page widget before you tell the user to open anything.",
-    "- `widget_install.script_tag` is required, not optional.",
-    "- Inject the exact script tag into the preview/dev build.",
-    "- Deploy or refresh the preview, then open the target once yourself.",
-    "- Verify `window.__beforeUsersDoWidgetLoaded === true` or `document.querySelector('#beforeusersdo-widget-root')`.",
-    "- Do not tell the user to open the target page until the widget is verified.",
-    "",
-    "6. Return the result to the user.",
-    "- Give `widget_install.review_url` as the primary link. This should open the preview page itself with the in-page widget.",
-    "- Keep `manual_session_url` secondary as the report/dashboard link only.",
-    "- Do not send the BeforeUsersDo dashboard as the place to start testing.",
-    "- If the widget cannot be injected, stop and explain why. Do not fall back silently.",
-    "- Tell the user to click the widget's Send All control when finished.",
-    "- Optional: call `qa_wait_for_manual_evidence` while the user is still recording to see draft video segments and drawings as they are saved.",
-    "- Then immediately call `qa_wait_for_manual_feedback` with `wait_forever: true` and keep the agent turn open for the user's final feedback package; do not stop after giving the link.",
-    "",
-    "7. After the human finishes.",
-    "- Prefer `qa_wait_for_manual_feedback` with `wait_forever: true` so the user's Send All click returns directly to the agent without copy/paste.",
-    "- If the host/client aborts the wait, call `qa_wait_for_manual_feedback` again with the same `session_id` instead of asking the user to copy/paste.",
-    "- Call `qa_get_manual_work_packets` to split the feedback into focused task packets before summarizing, previewing, or coding.",
-    "- Use `qa_wait_for_manual_evidence` or `qa://manual/{session_id}/evidence.json` for live draft evidence before Send All.",
-    "- Use `qa_get_manual_report` only as a fallback or for historical export.",
-    "- Obey the session's `feedback_action` setting.",
-    "- `share_feedback_and_start_work`: share feedback with the agent, treat it as user instructions, fix the target product/code, run checks, deploy or refresh, then create a fresh QA link.",
-    "- Before the agent marks `share_feedback_and_start_work` as done, it must run a fresh contextless reviewer that compares the original feedback against the fixed/deployed result point-by-point.",
-    "- If that reviewer finds missed or unchanged feedback, continue work. If it passes, share the reviewer verdict and the fresh QA link.",
-    "- `preview_fix_first`: share feedback with the agent, produce a simulated future-state preview/mockup or expected behavior trace first, ask the user to confirm, then code only after confirmation.",
-    "- `share_feedback`: share feedback with the agent for summary/reporting, but do not edit or deploy unless the user explicitly asks you to start work.",
+    "3. Respect authorization.",
+    "- report: summarize the evidence; do not edit or deploy.",
+    "- preview: show a proposed future state before editing.",
+    "- fix_and_retest: implement only when the user explicitly requested it.",
+    "- Never leak credentials, tokens, cookies, or private browser storage.",
     "",
     targetUrl ? `Current target_url: ${targetUrl}` : "",
     featureName ? `Current feature_name: ${featureName}` : "",
@@ -446,7 +427,14 @@ function buildManualFeedbackRequiredAction(sessionId, feedback = {}, options = {
       source: "manual_qa",
       id: safeSessionId,
       feedback,
-      actionMode: options.feedback_action || options.feedbackAction || options.feedback_mode || options.feedbackMode || options.agent_action_mode || options.agentActionMode || "fix_and_retest",
+      actionMode:
+        options.feedback_action ||
+        options.feedbackAction ||
+        options.feedback_mode ||
+        options.feedbackMode ||
+        options.agent_action_mode ||
+        options.agentActionMode ||
+        "report_only",
       autoStartWork: options.auto_start_work ?? options.autoStartWork,
       nextToolAfterFix: "qa_start_manual_review"
     }),
@@ -591,7 +579,7 @@ function buildHumanTestNeedsInputResult(input = {}) {
       needs_input: true,
       missing_fields: ["payment_method"],
       prompt:
-        "How should this real-person QA be funded: dollars or QA credit? If dollars, also tell me the tester budget. Use a qualification trial only when you explicitly want the free tester-and-buyer trial.",
+        "How should this real-person QA be funded: cash or QA credit? For either paid option, include the exact dollar-equivalent budget. Choose a qualification trial only when you explicitly want the free tester-and-buyer trial.",
       recommended_tool: "qa_request_human_test"
     };
     return makeToolResult(buildText(["Human QA needs an explicit funding choice.", result.prompt]), result);
@@ -918,7 +906,7 @@ function buildManualQaSessionInputSchema(options = {}) {
     commit_sha: z.string().max(120).optional(),
     pull_request_url: z.string().url().optional(),
     developer_notes: z.string().max(4000).optional(),
-    feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback_and_start_work for human/manual feedback. Use preview_fix_first when the user wants a simulated fix preview before coding, or share_feedback when they only want a summary."),
+    feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback. Use preview_fix_first when the user wants a simulated fix preview before coding, or share_feedback_and_start_work only when they explicitly ask to start fixes."),
     agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
     auto_start_work: z.boolean().optional().describe("Boolean alias. true means share_feedback_and_start_work; false means share_feedback."),
     entry_path: z.string().max(1000).optional().describe("Optional path to use when generated checklist items need a start URL."),
@@ -997,6 +985,529 @@ function buildHumanTestInputSchema(options = {}) {
   };
 }
 
+function buildSimpleCredentialsSchema() {
+  return z
+    .object({
+      login_url: z.string().url().optional(),
+      username: z.string().max(320),
+      password: z.string().max(320),
+      otp_mode: z.enum(["none", "manual_prompt", "provider_hook"]).optional()
+    })
+    .optional()
+    .describe("Only provide a dedicated test account. Never provide a personal login.");
+}
+
+function buildSimpleAiTestInputSchema() {
+  return {
+    target_url: z.string().url().optional().describe("Reachable preview, staging, or production URL."),
+    goal: z.string().max(2400).optional().describe("What the AI tester should try. Omit for a general first-time-user review."),
+    expected_result: z.string().max(1600).optional().describe("What success should look like."),
+    depth: z.enum(["quick", "deep"]).optional().describe("Defaults to quick."),
+    access: z.enum(["public_only", "signup_allowed", "test_account"]).optional().describe("Defaults to public_only."),
+    credentials: buildSimpleCredentialsSchema(),
+    after_feedback: z
+      .enum(["report", "preview", "fix_and_retest"])
+      .optional()
+      .describe("Defaults to report. Never start fixes unless preview or fix_and_retest was explicitly requested."),
+    idempotency_key: z.string().max(180).optional().describe("Optional stable key for an intentional retry.")
+  };
+}
+
+function buildSimpleSelfReviewInputSchema() {
+  return {
+    target_url: z.string().url().optional().describe("Reachable preview, staging, or production URL."),
+    goal: z.string().max(2400).optional().describe("What the owner wants to review."),
+    style: z.enum(["guided", "freestyle"]).optional().describe("Guided checklist or open-ended recording. Defaults to guided."),
+    after_feedback: z
+      .enum(["report", "preview", "fix_and_retest"])
+      .optional()
+      .describe("Defaults to report. Never start fixes unless preview or fix_and_retest was explicitly requested."),
+    idempotency_key: z.string().max(180).optional().describe("Optional stable key for an intentional retry.")
+  };
+}
+
+function buildSimpleHumanTestInputSchema() {
+  return {
+    target_url: z.string().url().optional().describe("Reachable preview, staging, or production URL."),
+    goal: z.string().max(2400).optional().describe("What the real tester should try. Omit for a general first-time-user review."),
+    expected_result: z.string().max(1600).optional().describe("What success should look like."),
+    product_name: z.string().max(180).optional(),
+    payment_method: z
+      .enum(["cash", "qa_credit", "qualification_trial"])
+      .optional()
+      .describe("Required. Never infer qualification_trial or a zero-dollar test."),
+    budget_usd: z.number().min(1).max(10000).optional().describe("Required exact budget for cash or QA credit."),
+    duration_minutes: z.number().int().min(10).max(60).optional(),
+    access: z.enum(["public_only", "signup_allowed", "test_account"]).optional().describe("Defaults to public_only."),
+    credentials: buildSimpleCredentialsSchema(),
+    purchase_allowed: z.boolean().optional().describe("Defaults to false. Set true only with explicit user permission."),
+    idempotency_key: z.string().max(180).optional().describe("Optional stable key for an intentional retry.")
+  };
+}
+
+function buildSimpleContinueInputSchema() {
+  return {
+    resume_token: z.string().max(16000).describe("Opaque token returned by a primary BeforeUsersDo QA tool."),
+    target_url: z.string().url().optional(),
+    goal: z.string().max(2400).optional(),
+    expected_result: z.string().max(1600).optional(),
+    product_name: z.string().max(180).optional(),
+    payment_method: z.enum(["cash", "qa_credit", "qualification_trial"]).optional(),
+    budget_usd: z.number().min(1).max(10000).optional(),
+    duration_minutes: z.number().int().min(10).max(60).optional(),
+    access: z.enum(["public_only", "signup_allowed", "test_account"]).optional(),
+    style: z.enum(["guided", "freestyle"]).optional(),
+    after_feedback: z.enum(["report", "preview", "fix_and_retest"]).optional(),
+    credentials: buildSimpleCredentialsSchema(),
+    purchase_allowed: z.boolean().optional(),
+    setup_verified: z
+      .boolean()
+      .optional()
+      .describe("For self-review only. The server still confirms that the widget actually loaded."),
+    wait_seconds: z.number().int().min(1).max(MAX_MCP_WAIT_SLICE_SECONDS).optional()
+  };
+}
+
+function buildSimpleNextTool(resumeToken, extraArguments = {}) {
+  return {
+    name: "qa_continue",
+    arguments: {
+      resume_token: resumeToken,
+      ...extraArguments
+    }
+  };
+}
+
+function makeSimpleStateResult(result, lines = []) {
+  const text = buildText([
+    result.question || "",
+    result.reason || "",
+    ...lines,
+    result.state === "running" ? "Use qa_continue with the returned resume_token for the next update." : ""
+  ]);
+  return makeToolResult(text || `BeforeUsersDo state: ${result.state || "unknown"}.`, result);
+}
+
+function buildSimpleNeedsInputToolResult(flow, input, legacyResult) {
+  const legacy = legacyResult?.structuredContent || legacyResult || {};
+  const result = buildNeedsInputState({
+    flow,
+    input,
+    missingFields: Array.isArray(legacy.missing_fields) ? legacy.missing_fields : ["input"],
+    question: legacy.prompt || legacy.question || "BeforeUsersDo needs one more detail."
+  });
+  return makeSimpleStateResult(result);
+}
+
+function buildSimpleAccessNeedsInput(flow, input = {}) {
+  if (normalizeAccess(input.access) !== "test_account") return null;
+  const credentials = input.credentials && typeof input.credentials === "object" ? input.credentials : {};
+  if (safeText(credentials.username, 320) && safeText(credentials.password, 320)) return null;
+  const result = buildNeedsInputState({
+    flow,
+    input,
+    missingFields: ["credentials"],
+    question: "Send a dedicated test-account username and password, or choose public_only or signup_allowed access."
+  });
+  result.choices = [
+    { value: "public_only", label: "Public pages only" },
+    { value: "signup_allowed", label: "Allow a fresh signup" },
+    { value: "test_account", label: "Provide a dedicated test login", requires: ["credentials"] }
+  ];
+  return makeSimpleStateResult(result);
+}
+
+async function finishSimpleAiWait(apiClient, runId, waitResult, input = {}) {
+  const resumeToken = buildResumeToken({ flow: SIMPLE_QA_FLOWS.AI, id: runId, input });
+  if (waitResult.timed_out === true || waitResult.status?.report_ready !== true) {
+    const result = {
+      ok: true,
+      state: "running",
+      flow: SIMPLE_QA_FLOWS.AI,
+      run_id: runId,
+      reason: `AI QA is ${resolveRunDisplayStatus(waitResult.status || {})}.`,
+      resume_token: resumeToken,
+      continue_polling: true,
+      status: waitResult.status || null,
+      report_url: waitResult.status?.ui_report_url || null,
+      next_tool: buildSimpleNextTool(resumeToken)
+    };
+    return makeSimpleStateResult(result);
+  }
+
+  const report = await apiClient.getRunReport(runId);
+  let share = null;
+  try {
+    share = await apiClient.shareRunReport(runId);
+  } catch {
+    share = null;
+  }
+  const outcome = summarizeCodingAgentQaOutcome({ reportPayload: report, waitResult, share });
+  const result = {
+    ok: true,
+    state: "complete",
+    flow: SIMPLE_QA_FLOWS.AI,
+    run_id: runId,
+    verdict: outcome.verdict,
+    pass: outcome.pass,
+    reason: outcome.reason,
+    report,
+    share,
+    report_url: outcome.share_url || outcome.ui_report_url || report?.ui_report_url || null,
+    continue_polling: false
+  };
+  if (shouldReturnQaAction(outcome, { feedback_action: buildAiRunInput(input).feedback_action })) {
+    result.required_agent_action = buildAutomatedQaRequiredAction(runId, outcome, {
+      feedback_action: buildAiRunInput(input).feedback_action
+    });
+  }
+  return makeSimpleStateResult(result, [
+    result.report_url ? `Report: ${result.report_url}` : "",
+    result.required_agent_action ? buildAgentActionText(result.required_agent_action) : ""
+  ]);
+}
+
+async function startSimpleAiTest(apiClient, input = {}, extra = {}) {
+  if (!safeText(input.target_url, 4096)) {
+    return buildSimpleNeedsInputToolResult(SIMPLE_QA_FLOWS.AI, input, {
+      missing_fields: ["target_url"],
+      prompt: "What preview, staging, or production URL should the AI tester open?"
+    });
+  }
+  const accessNeedsInput = buildSimpleAccessNeedsInput(SIMPLE_QA_FLOWS.AI, input);
+  if (accessNeedsInput) return accessNeedsInput;
+
+  const runInput = buildAiRunInput({ ...input, after_feedback: normalizeAfterFeedback(input.after_feedback) });
+  const queued = await apiClient.requestRun(runInput);
+  await maybeSendProgress(extra, 1, 3, `Queued AI QA run ${queued.run_id}`);
+  const waitResult = await apiClient.waitForRun(queued.run_id, {
+    timeout_seconds: resolveMcpWaitSliceSeconds(input),
+    poll_interval_seconds: 5,
+    signal: extra.signal
+  });
+  return finishSimpleAiWait(apiClient, queued.run_id, waitResult, input);
+}
+
+async function startSimpleSelfReview(apiClient, input = {}) {
+  if (!safeText(input.target_url, 4096)) {
+    return buildSimpleNeedsInputToolResult(SIMPLE_QA_FLOWS.SELF, input, {
+      missing_fields: ["target_url"],
+      prompt: "What preview, staging, or production URL do you want to review yourself?"
+    });
+  }
+  const response = await apiClient.createManualQaSession(
+    buildSelfReviewInput({ ...input, after_feedback: normalizeAfterFeedback(input.after_feedback) })
+  );
+  const session = response.session && typeof response.session === "object" ? response.session : {};
+  const widgetInstall = response.widget_install && typeof response.widget_install === "object" ? response.widget_install : {};
+  const resumeToken = buildResumeToken({
+    flow: SIMPLE_QA_FLOWS.SELF,
+    id: session.session_id || response.session_id,
+    input
+  });
+  const result = {
+    ok: true,
+    state: "needs_setup",
+    flow: SIMPLE_QA_FLOWS.SELF,
+    session_id: session.session_id || response.session_id,
+    reason: "Install and verify the in-page review widget before giving the review link to the user.",
+    resume_token: resumeToken,
+    required_action: {
+      type: "install_and_verify_widget",
+      script_tag: widgetInstall.script_tag || null,
+      verify_expression: widgetInstall.verify_expression || "window.__beforeUsersDoWidgetLoaded === true",
+      verify_selector: widgetInstall.verify_selector || "#beforeusersdo-widget-root",
+      review_url: widgetInstall.review_url || response.review_url || session.target_url || null,
+      report_url: response.manual_session_url || session.session_url || null,
+      completion_condition: "The server session reports widget.installed=true."
+    },
+    next_tool: buildSimpleNextTool(resumeToken, { setup_verified: true })
+  };
+  return makeSimpleStateResult(result, [
+    widgetInstall.script_tag ? "Required widget:" : "",
+    widgetInstall.script_tag ? "```html" : "",
+    widgetInstall.script_tag || "",
+    widgetInstall.script_tag ? "```" : "",
+    result.required_action.review_url ? `Review link after verification: ${result.required_action.review_url}` : ""
+  ]);
+}
+
+async function startSimpleHumanTest(apiClient, input = {}) {
+  const normalizedInput = { ...input };
+  const mappedInput = buildHumanTestInput(normalizedInput);
+  const needsInput = buildHumanTestNeedsInputResult(mappedInput);
+  if (needsInput) {
+    return buildSimpleNeedsInputToolResult(SIMPLE_QA_FLOWS.HUMAN, normalizedInput, needsInput);
+  }
+  const response = await apiClient.requestHumanTest(normalizeHumanTestFundingInput(mappedInput));
+  const request = response.request && typeof response.request === "object" ? response.request : {};
+  const resumeToken = buildResumeToken({
+    flow: SIMPLE_QA_FLOWS.HUMAN,
+    id: request.id,
+    input: normalizedInput
+  });
+  const result = {
+    ...response,
+    ok: true,
+    state: "running",
+    flow: SIMPLE_QA_FLOWS.HUMAN,
+    request_id: request.id,
+    reason:
+      request.status === "queued"
+        ? "The funded request is created and awaiting publication; no tester is matching yet."
+        : `Human QA is ${request.status || "starting"}.`,
+    resume_token: resumeToken,
+    continue_polling: false,
+    poll_after_seconds: 300,
+    next_tool: buildSimpleNextTool(resumeToken)
+  };
+  return makeSimpleStateResult(result);
+}
+
+async function continueSimpleAi(apiClient, parsed, input = {}, extra = {}) {
+  const waitResult = await apiClient.waitForRun(parsed.id, {
+    timeout_seconds: Math.min(MAX_MCP_WAIT_SLICE_SECONDS, Number(input.wait_seconds) || DEFAULT_MCP_WAIT_SLICE_SECONDS),
+    poll_interval_seconds: 5,
+    signal: extra.signal
+  });
+  return finishSimpleAiWait(apiClient, parsed.id, waitResult, parsed.input);
+}
+
+async function continueSimpleSelf(apiClient, parsed, input = {}, extra = {}) {
+  const response = await apiClient.getManualQaSession(parsed.id);
+  const session = response.session && typeof response.session === "object" ? response.session : {};
+  const resumeToken = buildResumeToken({ flow: SIMPLE_QA_FLOWS.SELF, id: parsed.id, input: parsed.input });
+  if (session.widget?.installed !== true) {
+    const result = {
+      ok: true,
+      state: "needs_setup",
+      flow: SIMPLE_QA_FLOWS.SELF,
+      session_id: parsed.id,
+      reason: "The BeforeUsersDo server has not detected the widget on the target page yet.",
+      resume_token: resumeToken,
+      required_action: {
+        type: "install_and_verify_widget",
+        completion_condition: "The server session reports widget.installed=true.",
+        report_url: session.session_url || null
+      },
+      next_tool: buildSimpleNextTool(resumeToken, { setup_verified: true })
+    };
+    return makeSimpleStateResult(result);
+  }
+
+  const waitResult = await apiClient.waitForManualFeedback(parsed.id, {
+    scope: "all",
+    wait_forever: false,
+    timeout_seconds: Math.min(MAX_MCP_WAIT_SLICE_SECONDS, Number(input.wait_seconds) || DEFAULT_MCP_WAIT_SLICE_SECONDS),
+    poll_interval_seconds: 5,
+    signal: extra.signal
+  });
+  if (!waitResult.feedback_ready) {
+    const result = {
+      ok: true,
+      state: "running",
+      flow: SIMPLE_QA_FLOWS.SELF,
+      session_id: parsed.id,
+      reason: "The self-review widget is installed and waiting for the user to click Send All.",
+      resume_token: resumeToken,
+      continue_polling: true,
+      review_url: session.target_url || null,
+      report_url: session.session_url || null,
+      next_tool: buildSimpleNextTool(resumeToken)
+    };
+    return makeSimpleStateResult(result);
+  }
+
+  const [report, packets] = await Promise.all([
+    apiClient.exportManualQaSession(parsed.id),
+    apiClient.getManualQaWorkPackets(parsed.id)
+  ]);
+  const requiredAgentAction = buildManualFeedbackRequiredAction(parsed.id, waitResult.feedback, {
+    feedback_action: buildSelfReviewInput(parsed.input).feedback_action
+  });
+  const result = {
+    ok: true,
+    state: "complete",
+    flow: SIMPLE_QA_FLOWS.SELF,
+    session_id: parsed.id,
+    reason: "The self-review feedback and report are ready.",
+    continue_polling: false,
+    feedback: waitResult.feedback,
+    report,
+    work_packets: packets.work_packets || packets.session?.work_packets || [],
+    report_url: report.session?.session_url || session.session_url || null,
+    required_agent_action: requiredAgentAction
+  };
+  return makeSimpleStateResult(result, [
+    result.report_url ? `Report: ${result.report_url}` : "",
+    buildAgentActionText(requiredAgentAction)
+  ]);
+}
+
+async function continueSimpleHuman(apiClient, parsed) {
+  const response = await apiClient.getHumanTestRequest(parsed.id);
+  const request = response.request && typeof response.request === "object" ? response.request : {};
+  const status = safeText(request.status, 40).toLowerCase();
+  const resumeToken = buildResumeToken({ flow: SIMPLE_QA_FLOWS.HUMAN, id: parsed.id, input: parsed.input });
+  if (status === "cancelled") {
+    return makeSimpleStateResult({
+      ...response,
+      ok: false,
+      state: "failed",
+      flow: SIMPLE_QA_FLOWS.HUMAN,
+      request_id: parsed.id,
+      reason: "The human QA request was cancelled.",
+      continue_polling: false
+    });
+  }
+
+  if (!["submitted", "completed"].includes(status) || !request.trial_session_id) {
+    const result = {
+      ...response,
+      ok: true,
+      state: ["submitted", "completed"].includes(status) ? "processing_report" : "running",
+      flow: SIMPLE_QA_FLOWS.HUMAN,
+      request_id: parsed.id,
+      reason:
+        ["submitted", "completed"].includes(status)
+          ? "The tester submitted, but the report session is not ready yet."
+          : `Human QA is ${status || "starting"}.`,
+      resume_token: resumeToken,
+      continue_polling: false,
+      poll_after_seconds: 300,
+      next_tool: buildSimpleNextTool(resumeToken)
+    };
+    return makeSimpleStateResult(result);
+  }
+
+  const report = await apiClient.exportManualQaSession(request.trial_session_id);
+  const readiness = getHumanReportReadiness(report);
+  if (!readiness.ready) {
+    const result = {
+      ...response,
+      ok: readiness.state !== "needs_review",
+      state: readiness.state,
+      flow: SIMPLE_QA_FLOWS.HUMAN,
+      request_id: parsed.id,
+      reason: readiness.reason,
+      report,
+      evidence: {
+        video_count: readiness.video_count,
+        analysis_status: readiness.analysis_status
+      },
+      resume_token: resumeToken,
+      continue_polling: readiness.state === "processing_report",
+      poll_after_seconds: readiness.state === "processing_report" ? 60 : null,
+      next_tool: readiness.state === "processing_report" ? buildSimpleNextTool(resumeToken) : null
+    };
+    return makeSimpleStateResult(result);
+  }
+
+  const result = {
+    ...response,
+    ok: true,
+    state: "complete",
+    flow: SIMPLE_QA_FLOWS.HUMAN,
+    request_id: parsed.id,
+    reason: readiness.reason,
+    continue_polling: false,
+    report,
+    report_url: report.session?.session_url || null,
+    evidence: {
+      video_count: readiness.video_count,
+      analysis_status: readiness.analysis_status
+    }
+  };
+  return makeSimpleStateResult(result, [result.report_url ? `Report: ${result.report_url}` : ""]);
+}
+
+function registerSimplifiedQaTools(server, apiClient) {
+  server.registerTool(
+    "qa_ai_test",
+    {
+      title: "Run AI QA",
+      description:
+        "PRIMARY AI QA TOOL. Use when the user wants BeforeUsersDo or an AI agent to test a site, app, feature, or flow. Defaults to a report only. Follow the returned state and use qa_continue when directed.",
+      inputSchema: buildSimpleAiTestInputSchema()
+    },
+    async (input, extra) => {
+      try {
+        return await startSimpleAiTest(apiClient, input, extra);
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_self_review",
+    {
+      title: "Start My Self-Review",
+      description:
+        "PRIMARY SELF-REVIEW TOOL. Use only when the user wants to personally test or record feedback on their own product. It returns a required widget installation step and does not become ready until the server detects the widget.",
+      inputSchema: buildSimpleSelfReviewInputSchema()
+    },
+    async (input) => {
+      try {
+        return await startSimpleSelfReview(apiClient, input);
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_hire_tester",
+    {
+      title: "Hire a Human Tester",
+      description:
+        "PRIMARY HUMAN QA TOOL. Use when the user asks for someone else, a real person, or a QA professional to test. Funding and an exact paid budget are server-enforced. A free qualification trial is allowed only when explicitly selected. Completion requires video plus transcript-derived analysis.",
+      inputSchema: buildSimpleHumanTestInputSchema()
+    },
+    async (input) => {
+      try {
+        return await startSimpleHumanTest(apiClient, input);
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "qa_continue",
+    {
+      title: "Continue BeforeUsersDo QA",
+      description:
+        "PRIMARY RESUME TOOL. Use the resume_token from qa_ai_test, qa_self_review, or qa_hire_tester. Relay needs_input.question exactly, perform needs_setup.required_action, and do not claim completion until state=complete.",
+      inputSchema: buildSimpleContinueInputSchema()
+    },
+    async (input, extra) => {
+      try {
+        const parsed = parseResumeToken(input.resume_token);
+        if (!parsed.ok) {
+          return makeSimpleStateResult({
+            ok: false,
+            state: "failed",
+            reason: parsed.error,
+            continue_polling: false
+          });
+        }
+        if (!parsed.id) {
+          const mergedInput = mergeResumeInput(parsed.input, input);
+          if (parsed.flow === SIMPLE_QA_FLOWS.AI) return await startSimpleAiTest(apiClient, mergedInput, extra);
+          if (parsed.flow === SIMPLE_QA_FLOWS.SELF) return await startSimpleSelfReview(apiClient, mergedInput);
+          return await startSimpleHumanTest(apiClient, mergedInput);
+        }
+        if (parsed.flow === SIMPLE_QA_FLOWS.AI) return await continueSimpleAi(apiClient, parsed, input, extra);
+        if (parsed.flow === SIMPLE_QA_FLOWS.SELF) return await continueSimpleSelf(apiClient, parsed, input, extra);
+        return await continueSimpleHuman(apiClient, parsed);
+      } catch (error) {
+        return makeToolError(error);
+      }
+    }
+  );
+}
+
 async function createManualSessionToolResult(apiClient, input, options = {}) {
   if (options.allowMissingTargetUrl) {
     const needsInput = buildManualReviewNeedsInputResult(input);
@@ -1005,7 +1516,17 @@ async function createManualSessionToolResult(apiClient, input, options = {}) {
     }
   }
 
-  const response = await apiClient.createManualQaSession(input);
+  const hasExplicitAction = Boolean(
+    input.feedback_action ||
+      input.feedbackAction ||
+      input.agent_action_mode ||
+      input.agentActionMode ||
+      input.auto_start_work !== undefined ||
+      input.autoStartWork !== undefined
+  );
+  const response = await apiClient.createManualQaSession(
+    hasExplicitAction ? input : { ...input, feedback_action: "share_feedback" }
+  );
   return makeToolResult(buildManualSessionText(response), response);
 }
 
@@ -1150,7 +1671,7 @@ function registerQaPrompts(server) {
     {
       title: "BeforeUsersDo Manual Review",
       description:
-        "Use when the user wants to review the product themselves with a checklist, drawing, voice, or screen recording. For a different real person or QA professional, use qa_request_human_test.",
+        "Use when the user wants to review the product themselves with a checklist, drawing, voice, or screen recording. Start with qa_self_review. For another real person, use qa_hire_tester.",
       argsSchema: {
         target_url: z.string().url().optional().describe("Preview, staging, production, or tunnel URL to review."),
         work_summary: z.string().max(4000).optional().describe("Plain-English summary of what changed."),
@@ -1175,13 +1696,15 @@ function registerQaPrompts(server) {
 }
 
 function createQaMcpServer(options = {}) {
-  const apiClient = createQaApiClient(options);
+  const apiClient = options.apiClient || createQaApiClient(options);
   const server = new McpServer(
     {
-      name: "swarmtester-qa",
+      name: "beforeusersdo-qa",
       version: pkg.version || "1.0.0"
     },
     {
+      instructions:
+        "Use the four primary tools: qa_ai_test for AI testing, qa_self_review when the user will test personally, qa_hire_tester for another real person, and qa_continue for every next step. Treat all other qa_* tools as legacy compatibility tools. In a primary flow, relay needs_input.question exactly, obey needs_setup.required_action, and never say a test is complete unless state=complete.",
       capabilities: {
         logging: {}
       }
@@ -1190,12 +1713,14 @@ function createQaMcpServer(options = {}) {
 
   registerQaResources(server, apiClient);
   registerQaPrompts(server);
+  registerSimplifiedQaTools(server, apiClient);
 
   server.registerTool(
     "qa_request_run",
     {
-      title: "Request QA Run",
-      description: "Queue a real SwarmTester QA run for a feature or flow and return the run/report URLs.",
+      title: "Legacy: Request QA Run",
+      description:
+        "LEGACY COMPATIBILITY TOOL. Prefer qa_ai_test, then use qa_continue with its resume_token. This low-level tool remains for existing integrations.",
       inputSchema: buildRunInputSchema()
     },
     async (input) => {
@@ -1221,8 +1746,8 @@ function createQaMcpServer(options = {}) {
   server.registerTool(
     "qa_get_run_status",
     {
-      title: "Get QA Status",
-      description: "Fetch the latest status for a previously queued QA run.",
+      title: "Legacy: Get QA Status",
+      description: "LEGACY COMPATIBILITY TOOL. Prefer qa_continue with the resume_token from qa_ai_test.",
       inputSchema: {
         run_id: z.string().max(128)
       }
@@ -1240,9 +1765,9 @@ function createQaMcpServer(options = {}) {
   server.registerTool(
     "qa_wait_for_run",
     {
-      title: "Wait For QA Run",
+      title: "Legacy: Wait For QA Run",
       description:
-        "Poll a QA run in client-safe slices. Return the final report when ready; otherwise return continue_polling=true and require the agent to call this tool again without ending its turn.",
+        "LEGACY COMPATIBILITY TOOL. Prefer qa_continue. Poll a low-level QA run in client-safe slices for existing integrations.",
       inputSchema: {
         run_id: z.string().max(128),
         timeout_seconds: z.number().int().min(1).max(7200).optional(),
@@ -1352,8 +1877,8 @@ function createQaMcpServer(options = {}) {
   server.registerTool(
     "qa_get_run_report",
     {
-      title: "Get QA Report",
-      description: "Fetch the normalized QA report and Markdown for a completed or in-progress run.",
+      title: "Legacy: Get QA Report",
+      description: "LEGACY COMPATIBILITY TOOL. Prefer qa_continue, which returns the report only when the selected QA flow is ready.",
       inputSchema: {
         run_id: z.string().max(128),
         feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Preferred setting. Defaults to share_feedback. Use preview_fix_first when the user wants a simulated fix preview before coding, or share_feedback_and_start_work when they want fixes to start automatically."),
@@ -1393,8 +1918,8 @@ function createQaMcpServer(options = {}) {
   server.registerTool(
     "qa_share_run_report",
     {
-      title: "Share QA Report",
-      description: "Create or refresh a shareable team link for a QA report.",
+      title: "Legacy: Share QA Report",
+      description: "LEGACY COMPATIBILITY TOOL. Create or refresh a shareable team link for an existing low-level run.",
       inputSchema: {
         run_id: z.string().max(128)
       }
@@ -1416,9 +1941,9 @@ function createQaMcpServer(options = {}) {
   server.registerTool(
     "qa_request_human_test",
     {
-      title: "Request a Real Human Tester",
+      title: "Legacy: Request a Real Human Tester",
       description:
-        "Use when the user asks for a real person, hired human, QA professional, or someone else to test the product. Infer the URL, scope, success criteria, and safe access policy, but never infer funding or a zero-dollar cost. Ask whether to use cash or QA credit and ask for an exact budget. Use qualification_trial only when the user explicitly wants the free tester-and-buyer trial. This creates the request directly; never send the customer to a separate intake form. Use qa_start_manual_review instead when the user wants to perform the review themselves.",
+        "LEGACY COMPATIBILITY TOOL. Prefer qa_hire_tester, which enforces funding and returns a qa_continue resume token. Never infer funding, a zero-dollar cost, or qualification_trial.",
       inputSchema: buildHumanTestInputSchema({ targetRequired: false })
     },
     async (input) => {
@@ -1441,9 +1966,9 @@ function createQaMcpServer(options = {}) {
   server.registerTool(
     "qa_get_human_test_status",
     {
-      title: "Get Human Test Status",
+      title: "Legacy: Get Human Test Status",
       description:
-        "Check whether a requested real human tester is queued, assigned, testing, or finished. When the tester has submitted, this also returns the evidence-backed report when available.",
+        "LEGACY COMPATIBILITY TOOL. Prefer qa_continue, which also verifies that video and transcript-derived analysis are ready.",
       inputSchema: {
         request_id: z.string().max(128)
       }
@@ -1474,9 +1999,9 @@ function createQaMcpServer(options = {}) {
   server.registerTool(
     "qa_create_manual_session",
     {
-      title: "Create Manual QA Session",
+      title: "Legacy: Create Manual QA Session",
       description:
-        "Create a BeforeUsersDo manual QA workspace and return a REQUIRED agent-injectable page widget. Supports checklist mode and freestyle recording mode. The coding agent must inject and verify the widget before telling the user to open the target page.",
+        "LEGACY COMPATIBILITY TOOL. Prefer qa_self_review, which server-checks widget installation and returns a qa_continue resume token.",
       inputSchema: buildManualQaSessionInputSchema()
     },
     async (input) => {
@@ -1491,9 +2016,9 @@ function createQaMcpServer(options = {}) {
   server.registerTool(
     "qa_start_manual_review",
     {
-      title: "Start BeforeUsersDo Manual Review",
+      title: "Legacy: Start BeforeUsersDo Manual Review",
       description:
-        "Use when the user wants to review the product themselves with BeforeUsersDo, including manual QA, freestyle QA, a checklist, drawing, voice, or recording. Returns a REQUIRED widget snippet. Do not use this when the user asks for a different real person or QA professional; use qa_request_human_test instead. The coding agent must inject and verify the widget before sharing the review URL.",
+        "LEGACY COMPATIBILITY TOOL. Prefer qa_self_review. Do not use this for another person; use qa_hire_tester.",
       inputSchema: buildManualQaSessionInputSchema({ targetRequired: false })
     },
     async (input) => {
@@ -1508,9 +2033,9 @@ function createQaMcpServer(options = {}) {
   server.registerTool(
     "qa_manual_review_guide",
     {
-      title: "BeforeUsersDo Manual Review Guide",
+      title: "Legacy: BeforeUsersDo Manual Review Guide",
       description:
-        "Explains self-review setup. If the user wants someone else to test, call qa_request_human_test instead.",
+        "LEGACY COMPATIBILITY TOOL. New flows should call qa_self_review directly. If the user wants someone else to test, call qa_hire_tester.",
       inputSchema: {
         target_url: z.string().url().optional(),
         work_summary: z.string().max(4000).optional(),
@@ -1521,7 +2046,7 @@ function createQaMcpServer(options = {}) {
       const text = buildManualReviewWorkflowText(input);
       return makeToolResult(text, {
         ok: true,
-        recommended_tool: "qa_start_manual_review",
+        recommended_tool: "qa_self_review",
         workflow_prompt: "manual_review_workflow",
         workflow_resource: MCP_QA_RESOURCE_TEMPLATES.manual_review_workflow,
         instructions: text
@@ -1660,7 +2185,7 @@ function createQaMcpServer(options = {}) {
         timeout_seconds: z.number().int().min(1).max(7200).optional(),
         wait_forever: z.boolean().optional().describe("Defaults to true for manual QA. Keep polling until feedback arrives or the MCP client aborts. Set false only if the user explicitly wants a bounded wait."),
         poll_interval_seconds: z.number().min(0.1).max(120).optional(),
-        feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Overrides the session setting. Defaults to the session setting, usually share_feedback_and_start_work for human feedback. Use preview_fix_first to ask the agent for a simulated fix preview before coding."),
+        feedback_action: z.enum(["share_feedback", "preview_fix_first", "share_feedback_and_start_work"]).optional().describe("Overrides the session setting. Defaults to report-only share_feedback. Use preview_fix_first for a simulated fix preview, or share_feedback_and_start_work only with explicit permission."),
         agent_action_mode: z.enum(["report_only", "preview_then_fix", "fix_and_retest"]).optional().describe("Legacy alias for feedback_action."),
         auto_start_work: z.boolean().optional().describe("Boolean alias override.")
       }
@@ -1853,9 +2378,9 @@ function createQaMcpServer(options = {}) {
   server.registerTool(
     "qa_run_feature_check",
     {
-      title: "Run Feature QA",
+      title: "Legacy: Run Feature QA",
       description:
-        "Queue a real QA run and wait in client-safe slices. Returns the final report when ready or a required qa_wait_for_run handoff while the browser continues.",
+        "LEGACY COMPATIBILITY TOOL. Prefer qa_ai_test and qa_continue.",
       inputSchema: {
         ...buildRunInputSchema(),
         timeout_seconds: z.number().int().min(1).max(7200).optional(),
@@ -1943,9 +2468,9 @@ function createQaMcpServer(options = {}) {
   server.registerTool(
     "qa_check_work",
     {
-      title: "QA Check Work",
+      title: "Legacy: QA Check Work",
       description:
-        "Coding-agent QA with client-safe polling: submit a preview plus work context, then return the verdict or require qa_wait_for_run calls until the browser finishes.",
+        "LEGACY COMPATIBILITY TOOL. Prefer qa_ai_test and qa_continue. This tool remains for coding-agent integrations that depend on its older schema.",
       inputSchema: buildCodingAgentCheckInputSchema()
     },
     async (input, extra) => {
@@ -1975,7 +2500,7 @@ function createQaMcpServer(options = {}) {
         if (waitResult.timed_out === true) {
           const handoff = buildRunPollingHandoff(queued.run_id, waitResult.status || {}, {
             ...input,
-            feedback_action: input.feedback_action || "share_feedback_and_start_work"
+            feedback_action: input.feedback_action || "share_feedback"
           });
           return makeToolResult(handoff.text, {
             ...handoff.result,
@@ -2024,7 +2549,7 @@ function createQaMcpServer(options = {}) {
             markdown_resource: markdownResource
           }
         };
-        const qaCheckActionInput = { ...input, feedback_action: input.feedback_action || "share_feedback_and_start_work" };
+        const qaCheckActionInput = { ...input, feedback_action: input.feedback_action || "share_feedback" };
         if (shouldReturnQaAction(outcome, qaCheckActionInput)) {
           result.required_agent_action = buildAutomatedQaRequiredAction(queued.run_id, outcome, qaCheckActionInput);
         }
@@ -2068,7 +2593,13 @@ function printHelp() {
     "- QA_MCP_DEFAULT_EXECUTION_ENGINE: optional default execution engine",
     "- HUMAN_TEST_CREDENTIALS_SECRET: recommended encryption secret for private human-test logins",
     "",
-    "Tools:",
+    "Primary tools:",
+    "- qa_ai_test",
+    "- qa_self_review",
+    "- qa_hire_tester",
+    "- qa_continue",
+    "",
+    "Legacy compatibility tools:",
     "- qa_request_run",
     "- qa_get_run_status",
     "- qa_wait_for_run",
