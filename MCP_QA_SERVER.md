@@ -36,9 +36,13 @@ Use the hosted Streamable HTTP endpoint when you want Codex, Cursor, Claude Desk
 }
 ```
 
-Then ask the coding agent to call `qa_check_work` with the preview URL, changed files, what changed, and the user task it should try.
+Then ask naturally for the kind of QA you want. The agent should use one of the three primary start tools and continue the flow with `qa_continue`.
 
-For a real person, ask the agent to call `qa_request_human_test`. The agent uses the same work context and creates the request directly; there is no separate customer form.
+- AI tests the product: `qa_ai_test`
+- You personally review it with the recording widget: `qa_self_review`
+- Another real person tests it: `qa_hire_tester`
+
+The optional routing skill lives at `skills/beforeusersdo-qa`. It helps agents recognize these intents, but all payment, setup, and completion rules are enforced by the MCP server even without the skill.
 
 ## First-time setup
 
@@ -92,8 +96,19 @@ Optional:
 
 ## Tools
 
+- `qa_ai_test`
+  - Primary AI QA tool. Starts an automated browser test and returns a structured state plus a `qa_continue` resume token.
+- `qa_self_review`
+  - Primary self-review tool. Creates the page widget flow and remains in `needs_setup` until the server detects that the widget loaded.
+- `qa_hire_tester`
+  - Primary real-person QA tool. Requires explicit cash, QA-credit, or qualification-trial funding. Cash and QA credit require an exact budget.
+- `qa_continue`
+  - Primary next-step tool for missing questions, widget verification, progress, evidence processing, and finished reports.
+
+The tools below are legacy compatibility tools. New agents should not select them unless an existing integration explicitly depends on their older schemas:
+
 - `qa_check_work`
-  - Coding-agent default. Pass a preview URL plus implementation context and get a final verdict or a client-safe polling handoff while browser QA continues.
+  - Legacy coding-agent check.
 - `qa_request_run`
   - Queue a QA run for a feature or flow.
 - `qa_get_run_status`
@@ -105,11 +120,11 @@ Optional:
 - `qa_share_run_report`
   - Create a team share link for a report.
 - `qa_request_human_test`
-  - Request a different real person or QA professional. The agent should infer the brief from its current work and ask only for a missing URL, specific flow, or selected test-account login. No separate intake form is used.
+  - Legacy real-person request. Prefer `qa_hire_tester`.
 - `qa_get_human_test_status`
   - Read the request state (`queued`, `assigned`, `in_progress`, `submitted`, or `completed`) and retrieve the report after submission.
 - `qa_start_manual_review`
-  - Self-review tool. Use when the owner wants to test the product themselves with the widget, drawing, voice, recording, freestyle mode, or a checklist. For a different real tester, use `qa_request_human_test`.
+  - Legacy self-review tool. Prefer `qa_self_review`.
 - `qa_create_manual_session`
   - Strict manual QA session creation tool. Use when the agent already has the target URL and context.
 - `qa_manual_review_guide`
@@ -126,7 +141,7 @@ Optional:
 ## Prompts
 
 - `manual_review_workflow`
-  - Agent-facing workflow for “manual review with BeforeUsersDo”. It tells the agent to gather the preview URL, work summary, changed files, acceptance criteria, scenarios, PR/branch/commit metadata, and then call `qa_start_manual_review`.
+  - Agent-facing self-review workflow. It routes new sessions through `qa_self_review` and all subsequent states through `qa_continue`.
 
 ## Resources
 
@@ -143,149 +158,55 @@ Optional:
 
 ## Suggested use
 
-### From a coding agent
+### AI QA
 
-After the agent has a running local tunnel, preview deploy, staging URL, or production URL, it should call `qa_check_work`:
+Call `qa_ai_test` with the reachable URL and a plain-English goal:
 
 ```json
 {
   "target_url": "https://preview.example.com",
-  "work_summary": "Added the checkout discount field and validation states",
-  "changed_files": ["src/Checkout.tsx", "src/api/discounts.ts"],
-  "acceptance_criteria": [
-    "Customer can apply a valid discount",
-    "Invalid codes show a useful error",
-    "Checkout still submits after removing a discount"
-  ],
-  "task_to_try": "Buy a product with and without a discount code",
-  "expected_success": "The order review shows the correct discounted total",
-  "auth_strategy": "signup_if_needed",
-  "timeout_seconds": 1200,
-  "share_after": true
+  "goal": "Buy a product with and without a discount code",
+  "expected_result": "The order review shows the correct discounted total",
+  "access": "signup_allowed",
+  "after_feedback": "report"
 }
 ```
 
-Expected response shape:
-
-```json
-{
-  "ok": true,
-  "run_id": "mcp_preview_example_com_...",
-  "verdict": "needs_fix",
-  "pass": false,
-  "reason": "QA found a likely blocker: Checkout submit does not advance.",
-  "top_finding": {
-    "title": "Checkout submit does not advance",
-    "severity": "high"
-  },
-  "evidence": {
-    "ui_report_url": "https://beforeusersdo.com/...",
-    "share_url": "https://beforeusersdo.com/share/...",
-    "status_resource": "qa://runs/.../status",
-    "report_resource": "qa://runs/.../report",
-    "markdown_resource": "qa://runs/.../report.md"
-  }
-}
-```
-
-Long browser runs may first return a processing handoff instead of the final shape:
-
-```json
-{
-  "ok": true,
-  "run_id": "mcp_preview_example_com_...",
-  "verdict": "processing",
-  "pass": false,
-  "timed_out": false,
-  "continue_polling": true,
-  "next_tool": {
-    "name": "qa_wait_for_run",
-    "arguments": {
-      "run_id": "mcp_preview_example_com_...",
-      "wait_slice_seconds": 35
-    }
-  }
-}
-```
-
-Agent policy:
-
-- Treat `pass: true` as the only automatic green result.
-- When `continue_polling` is true, immediately call the supplied `next_tool` and repeat without ending the agent turn.
-- Treat `needs_fix` as a blocker to repair before merge.
-- Treat `needs_review` as requiring a human or maintainer decision.
-- Treat `timed_out` as inconclusive, not pass.
-- Do not pass API keys, session tokens, private room tokens, or raw browser storage in tool inputs.
-- Pass credentials only through the `credentials` object when the QA service is expected to use them.
-
-For a feature branch or preview:
-
-- `target_url`: preview deployment URL
-- `feature_name`: short feature label
-- `task_to_try`: what the tester should attempt
-- `expected_success`: what successful completion looks like
-- `auth_strategy`: usually `signup_if_needed`
-
-The MCP layer converts that into a `feature_targeted` QA run and attaches brand/auth metadata automatically.
+If it returns `state: "running"`, call `qa_continue` with the returned `resume_token`. Do not use the legacy run/status/report tools for a new flow.
 
 ### Real human tester
 
-If the user says “have a real person test this,” “send this to a QA professional,” or otherwise wants someone else to test:
-
-1. Reuse the URL, work summary, changed files, acceptance criteria, and expected behavior already in the agent's context.
-2. Infer `specific_flow` when the request is about current work. Use `general_first_time_user` when the user wants broad product feedback.
-3. Choose the safest access mode that permits the flow: `public_only`, `signup_allowed`, or `test_account`.
-4. Never infer permission for a real purchase or irreversible action.
-5. Ask whether to fund the test with `cash` or `qa_credit`, and ask for the exact `budget_usd`. Never infer a zero-dollar budget.
-6. Use `qualification_trial` only when the user explicitly asks for the free tester-and-buyer trial.
-7. Call `qa_request_human_test`. Do not send the user to an intake form.
-8. A newly created `queued` request is awaiting BUD preparation and publication; it is not matching a tester yet.
-9. BUD prepares the private review points and publishes the request. The customer-confirmed tester budget cannot be changed during publication.
-10. Return the request id and use `qa_get_human_test_status` later for publication, assignment, report, and paid-assignment payout state.
+Call `qa_hire_tester`. If funding is missing, relay its exact question and resume with `qa_continue`.
 
 ```json
 {
   "target_url": "https://preview.example.com/signup",
+  "goal": "Create an account and reach the dashboard",
   "payment_method": "cash",
   "budget_usd": 25,
-  "work_summary": "Added phone and password validation to signup",
-  "acceptance_criteria": [
-    "A valid signup reaches OTP",
-    "Validation errors explain how to recover"
-  ],
-  "access_mode": "signup_allowed",
+  "access": "signup_allowed",
   "purchase_allowed": false
 }
 ```
 
+Never select `qualification_trial` unless the user explicitly asks for the free tester-and-buyer trial. The flow does not return `state: "complete"` until the report has video evidence and completed transcript-derived analysis.
+
 ### Manual self-review
 
-If the user asks for manual QA or says “I want to do a manual review with BeforeUsersDo,” the agent should:
-
-1. Use the `manual_review_workflow` prompt or read `qa://workflows/manual-review` if supported.
-2. Gather or infer the preview URL. If no reachable URL exists, ask the user for it.
-3. Gather context from its own work: summary, changed files, branch, commit SHA, PR URL, acceptance criteria, and any explicit user instructions.
-4. Call `qa_start_manual_review`.
-5. Inject `widget_install.script_tag` into the preview/dev build. This is required, not optional.
-6. Deploy or refresh the preview, open the target once yourself, and verify `window.__beforeUsersDoWidgetLoaded === true` or `document.querySelector("#beforeusersdo-widget-root")`.
-7. Return `widget_install.review_url` as the primary test link. This opens the preview page itself with the in-page checklist widget.
-8. Keep `manual_session_url` secondary as the report/dashboard link only. Do not send the human to the BeforeUsersDo dashboard as the place to start testing.
-9. Do not send the human to the target page until the widget is verified.
-10. Tell the human to click the floating `Review` button, draw/talk/record there, and mark checklist items.
-11. If widget injection is impossible, stop and explain why. Do not silently fall back.
-12. After the human clicks Send All, call `qa_wait_for_manual_feedback`, then call `qa_get_manual_work_packets`.
-13. Use one work packet per focused task or sub-agent. Keep `packet_id` in your updates so the user can trace each fix back to the evidence.
-14. Use `qa_get_manual_report` as the fallback historical export, not the first choice for active feedback.
+Call `qa_self_review`. Install the exact widget returned in `required_action`, load the target page, and then call `qa_continue`. The server keeps the flow in `needs_setup` until it detects the widget.
 
 Minimal call:
 
 ```json
 {
   "target_url": "https://preview.example.com",
-  "work_summary": "Updated onboarding recommendations and paywall layout",
-  "changed_files": ["src/onboarding/Recommendations.tsx", "src/paywall/PlanModal.tsx"]
+  "goal": "Review the new onboarding recommendations",
+  "style": "guided",
+  "after_feedback": "report"
 }
 ```
+
+For every flow, default to report-only. Use `preview` or `fix_and_retest` only when the user explicitly authorizes that behavior.
 
 ## Agent install examples
 

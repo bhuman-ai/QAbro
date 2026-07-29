@@ -1,0 +1,13 @@
+interface:
+  display_name: "BeforeUsersDo QA"
+  short_description: "Route AI, self-review, and human QA correctly"
+  default_prompt: "Use $beforeusersdo-qa to choose and run the right BeforeUsersDo QA path."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "beforeusersdo-qa"
+      description: "BeforeUsersDo QA orchestration and report tools"
+      transport: "streamable_http"
+      url: "https://mcp.beforeusersdo.com/mcp"
+policy:
+  allow_implicit_invocation: true
