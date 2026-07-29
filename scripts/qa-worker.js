@@ -44,6 +44,7 @@ const {
 const { executeLocalAgentQaRun } = require("../lib/qa-local-agent");
 const repoTriageWorker = require("./qa-repo-triage-worker");
 const {
+  assessPortableEvidenceCoverage,
   buildEmbeddedEvidenceMedia,
   buildPortableEvidenceMedia,
   buildPublishedArtifacts,
@@ -1731,6 +1732,74 @@ async function processOne(workerId, options = {}) {
     evidenceMedia: portableEvidenceMedia,
     publishedArtifacts
   };
+  const portableEvidenceCoverage = assessPortableEvidenceCoverage(
+    finalReport,
+    execution.artifacts || {},
+    portableEvidenceMedia
+  );
+  if (!portableEvidenceCoverage.ok) {
+    const deliveryError = `Evidence delivery incomplete: ${portableEvidenceCoverage.missing_sources.length} captured file(s) were not stored for report playback.`;
+    finalReport = {
+      ...finalReport,
+      status: "failed_validation"
+    };
+    markdown = buildMarkdownReport(finalReport, claimed.runRequest, {
+      generated_at: new Date().toISOString(),
+      raw_agent_message_excerpt: deliveryError
+    });
+    liveProgress.onRunLog({
+      ts: new Date().toISOString(),
+      event: "evidence_delivery_failed",
+      data: {
+        required_count: portableEvidenceCoverage.required_count,
+        portable_count: portableEvidenceCoverage.portable_count,
+        missing_screenshot_count: portableEvidenceCoverage.missing_screenshot_sources.length,
+        missing_video_count: portableEvidenceCoverage.missing_video_sources.length,
+        message: deliveryError
+      }
+    });
+    await liveProgress.flushNow();
+
+    const deliveryFailure = {
+      ok: false,
+      status: 503,
+      attempts: 0,
+      error: deliveryError
+    };
+    const deliveryFailed = await markCallbackFailure(
+      claimed,
+      finalReport,
+      markdown,
+      executionForStorage,
+      deliveryFailure,
+      workerId
+    );
+    await sendWebhook("run.failed", {
+      queue_status: sanitizeString(deliveryFailed.queue?.queue_status, 64) || "failed",
+      report_status: "failed_validation",
+      report_ready: false,
+      findings_count: Array.isArray(finalReport.findings) ? finalReport.findings.length : 0,
+      summary: finalReport.summary || null,
+      report: finalReport,
+      evidence_delivery: {
+        ok: false,
+        required_count: portableEvidenceCoverage.required_count,
+        portable_count: portableEvidenceCoverage.portable_count,
+        missing_screenshot_count: portableEvidenceCoverage.missing_screenshot_sources.length,
+        missing_video_count: portableEvidenceCoverage.missing_video_sources.length
+      },
+      will_retry: sanitizeString(deliveryFailed.queue?.queue_status, 64) === "retryable"
+    });
+    if (heartbeat) {
+      await heartbeat.onCompleted("evidence_delivery_failed");
+    }
+    return {
+      processed: true,
+      run_id: claimed.row.run_id,
+      status: "evidence_delivery_failed",
+      evidence_delivery: portableEvidenceCoverage
+    };
+  }
 
   const callbackUrl =
     process.env.QA_CALLBACK_URL || `${process.env.QA_PUBLIC_APP_URL || DEFAULT_PUBLIC_BASE_URL}/api/qa-report-callback`;
