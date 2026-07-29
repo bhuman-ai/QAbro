@@ -2090,6 +2090,78 @@ test("executeVisionOnlyModeAttempt stops after repeated wait decisions on the sa
   assert.ok(runLog.some((entry) => entry.event === "vision_only_wait_streak_blocked"));
 });
 
+test("executeVisionOnlyModeAttempt stops and deduplicates repeated identical action failures", async () => {
+  let currentUrl = "https://tryseconds.example.com/onboarding";
+  let plannerCalls = 0;
+  const page = {
+    goto: async (url) => {
+      currentUrl = String(url || "");
+    },
+    url: () => currentUrl,
+    screenshot: async () => Buffer.from("vision-action-failure-source"),
+    waitForTimeout: async () => {},
+    mouse: {
+      wheel: async () => {}
+    },
+    keyboard: {
+      press: async () => {}
+    }
+  };
+
+  const runLog = [];
+  const result = await executeVisionOnlyModeAttempt({
+    stagehand: {
+      context: {
+        awaitActivePage: async () => page
+      }
+    },
+    runRequest: {
+      ...createRunRequest(),
+      target_url: currentUrl,
+      metadata: {
+        goal: "Finish onboarding and view the generated ideas."
+      }
+    },
+    options: {
+      visionApiKey: "test-openai-api-key",
+      visionActionDelayMs: 1,
+      visionPlannerClient: async () => {
+        plannerCalls += 1;
+        return {
+          action: "click",
+          target: "See ideas button",
+          reason: "Continue to the generated ideas"
+        };
+      }
+    },
+    runLog,
+    artifacts: {
+      local_video_url: "https://example.com/run.webm",
+      captured_screenshots: [],
+      screenshot_event_count: 0
+    },
+    captureState: {
+      maxCount: 8,
+      maxBytes: 1500000,
+      capturedBytes: 0
+    },
+    coordinateFallbackConfig: {
+      enabled: true,
+      localizeBox: async () => {
+        throw new Error("Coordinate localization point did not match the requested target");
+      }
+    }
+  });
+
+  assert.equal(plannerCalls, 3);
+  assert.equal(result.candidateReport.status, "partial");
+  assert.match(result.candidateReport.summary.note, /failed the same action 3 times/i);
+  assert.equal(result.candidateReport.findings.length, 1);
+  assert.equal(result.candidateReport.findings[0].type, "dead_end");
+  assert.equal(result.candidateReport.findings[0].diagnostic_details.repeated_action_failure_count, 3);
+  assert.ok(runLog.some((entry) => entry.event === "vision_only_repeated_action_blocked"));
+});
+
 test("executeVisionOnlyModeAttempt diagnoses blank screen after OTP with final page state", async () => {
   let currentUrl = "https://app.bhuman.ai/";
   const page = {
