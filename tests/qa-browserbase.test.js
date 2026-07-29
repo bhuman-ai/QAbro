@@ -22,8 +22,100 @@ const {
   chooseOcrCandidateWithJudge,
   clickWithVisionLocalization,
   attachBrowserTelemetry,
-  buildVisionPlannerPrompt
+  buildVisionPlannerPrompt,
+  buildVisionObservationPrompt,
+  normalizeVisionPersonaObservation,
+  buildVisionCopyQualityFindings,
+  buildVisionVisualQualityFindings
 } = __private;
+
+test("vision QA turns obvious weak copy into an evidence-backed copy issue", () => {
+  const prompt = buildVisionObservationPrompt({
+    runRequest: {
+      target_url: "https://example.com",
+      brand_persona: "A skeptical first-time buyer",
+      scenario_list: []
+    },
+    step: 1,
+    currentUrl: "https://example.com",
+    historyText: "- none",
+    observationHistoryText: "- none"
+  });
+  assert.match(prompt, /copy-quality check/i);
+  assert.match(prompt, /Never claim AI wrote the copy/i);
+  assert.match(prompt, /exact problematic visible words/i);
+
+  const observation = normalizeVisionPersonaObservation({
+    observation: "This sounds polished but tells me nothing concrete.",
+    copy_quality: {
+      verdict: "problem",
+      exact_quote: "Unlock limitless possibilities with our revolutionary platform",
+      issue_type: "generic_buzzwords",
+      why_it_fails: "The claim uses interchangeable buzzwords and never says what the product does.",
+      visitor_reaction: "I assume this is generic marketing filler and stop trusting the page.",
+      suggested_direction: "Name the product, target customer, and concrete result."
+    },
+    emotion: "distrust",
+    continue_state: "continue"
+  });
+  const findings = buildVisionCopyQualityFindings([
+    {
+      step: 1,
+      current_url: "https://example.com",
+      evidence_screenshot: "https://cdn.example.com/homepage.png",
+      ...observation
+    },
+    {
+      step: 2,
+      current_url: "https://example.com",
+      evidence_screenshot: "https://cdn.example.com/homepage-duplicate.png",
+      ...observation
+    }
+  ]);
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].type, "copy_issue");
+  assert.equal(findings[0].element.text, "Unlock limitless possibilities with our revolutionary platform");
+  assert.match(findings[0].observed_behavior, /“Unlock limitless possibilities/);
+  assert.match(findings[0].observed_behavior, /generic marketing filler/i);
+  assert.deepEqual(findings[0].evidence.screenshots, ["https://cdn.example.com/homepage.png"]);
+  assert.deepEqual(findings[0].tags, ["copy-quality", "generic_buzzwords"]);
+});
+
+test("vision QA turns obvious bad or AI-template UI into an evidence-backed visual issue", () => {
+  const observation = normalizeVisionPersonaObservation({
+    observation: "Everything competes for attention and I cannot tell what matters.",
+    visual_quality: {
+      verdict: "problem",
+      issue_type: "ai_template",
+      visible_evidence:
+        "The screen repeats six identical rounded cards with icon-above-heading layouts, generic shadows, and equal visual weight around three competing primary buttons.",
+      visitor_impact:
+        "It feels like an interchangeable template, lowers my trust, and makes the intended first action impossible to identify quickly.",
+      suggested_direction:
+        "Choose one primary action, flatten secondary content, and replace the repeated card grid with a hierarchy tied to the product's actual workflow."
+    },
+    emotion: "distrust",
+    continue_state: "continue"
+  });
+  const findings = buildVisionVisualQualityFindings([
+    {
+      step: 1,
+      current_url: "https://example.com/dashboard",
+      evidence_screenshot: "https://cdn.example.com/dashboard.png",
+      ...observation
+    }
+  ]);
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].type, "visual_quality_issue");
+  assert.equal(findings[0].severity, "medium");
+  assert.equal(findings[0].title, "Generic AI-template styling");
+  assert.match(findings[0].observed_behavior, /six identical rounded cards/i);
+  assert.match(findings[0].observed_behavior, /lowers my trust/i);
+  assert.deepEqual(findings[0].evidence.screenshots, ["https://cdn.example.com/dashboard.png"]);
+  assert.deepEqual(findings[0].tags, ["visual-quality", "ai_template"]);
+});
 
 test("local vision screenshots persist as portable evidence files", () => {
   const runDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-vision-screenshot-"));

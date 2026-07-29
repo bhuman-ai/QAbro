@@ -690,7 +690,8 @@ function sanitizeFindingType(value) {
     "dead_end",
     "performance_issue",
     "accessibility_issue",
-    "copy_issue"
+    "copy_issue",
+    "visual_quality_issue"
   ]);
   if (allowed.has(normalized)) {
     return normalized;
@@ -738,7 +739,7 @@ function defaultEmotionForType(type) {
   if (type === "aha_moment") {
     return "delight";
   }
-  if (type === "copy_issue" || type === "accessibility_issue") {
+  if (type === "copy_issue" || type === "accessibility_issue" || type === "visual_quality_issue") {
     return "distrust";
   }
   return "uncertainty";

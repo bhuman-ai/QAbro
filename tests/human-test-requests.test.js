@@ -30,6 +30,12 @@ test("explicit qualification trials default to a safe first-time-user review", (
   assert.equal(result.payload.access_details.purchase_allowed, false);
   assert.equal(result.payload.access_details.irreversible_actions_allowed, false);
   assert.match(result.payload.test_focus, /first-time user/i);
+  assert.match(result.payload.test_focus, /vague, generic, robotic, repetitive/i);
+  assert.match(result.payload.test_focus, /Quote the exact words/i);
+  assert.match(result.payload.test_focus, /do not guess who or what wrote them/i);
+  assert.match(result.payload.test_focus, /cluttered, generic, AI-templated/i);
+  assert.match(result.payload.test_focus, /exact visual pattern/i);
+  assert.match(result.payload.test_focus, /do not report personal taste as a problem/i);
   assert.match(result.payload.access_details.prohibited_actions.join(" "), /real purchase/i);
 });
 

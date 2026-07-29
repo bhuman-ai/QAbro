@@ -26,7 +26,8 @@ const ALLOWED_FINDING_TYPES = new Set([
   "dead_end",
   "performance_issue",
   "accessibility_issue",
-  "copy_issue"
+  "copy_issue",
+  "visual_quality_issue"
 ]);
 
 const ALLOWED_SEVERITIES = new Set(["low", "medium", "high", "critical"]);

@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
   ALLOWED_WEBHOOK_EVENTS,
   buildPrimaryUserGoal,
+  buildSystemPrompt,
   buildTaskPrompt,
   buildMarkdownReport,
   extractAgentSections,
@@ -319,6 +320,35 @@ test("buildTaskPrompt supports creating a fresh account for inside-product runs"
   assert.match(prompt, /Validation target: Inside the product/);
   assert.match(prompt, /Access method: Create a fresh account during the run via https:\/\/example.com\/signup/);
   assert.match(prompt, /No credentials were provided\. If the product is gated, create a fresh test account/);
+});
+
+test("automated QA requires an evidence-backed copy-quality pass without claiming AI authorship", () => {
+  const runRequest = {
+    run_id: "run_copy_quality_1",
+    target_url: "https://example.com",
+    scope_mode: "core_20m",
+    scenario_list: ["Understand the homepage and try the primary CTA"],
+    brand_persona: "A skeptical first-time buyer",
+    source: "qa_bot",
+    metadata: {}
+  };
+
+  const systemPrompt = buildSystemPrompt(runRequest);
+  const taskPrompt = buildTaskPrompt(runRequest);
+
+  assert.match(systemPrompt, /mandatory copy-quality pass/i);
+  assert.match(systemPrompt, /vague buzzwords/i);
+  assert.match(systemPrompt, /quote the exact visible words/i);
+  assert.match(systemPrompt, /Do not claim that AI wrote the copy/i);
+  assert.match(systemPrompt, /mandatory visual-quality pass/i);
+  assert.match(systemPrompt, /AI-slop test/i);
+  assert.match(systemPrompt, /cards nested inside cards/i);
+  assert.match(taskPrompt, /Copy-quality pass/i);
+  assert.match(taskPrompt, /Classify materially weak.*as copy_issue/i);
+  assert.match(taskPrompt, /Never state that copy was AI-generated as a fact/i);
+  assert.match(taskPrompt, /Visual-quality pass/i);
+  assert.match(taskPrompt, /as visual_quality_issue/i);
+  assert.match(taskPrompt, /list the concrete visual tells/i);
 });
 
 test("buildPrimaryUserGoal prefers explicit metadata goal", () => {
