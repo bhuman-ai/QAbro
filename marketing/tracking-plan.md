@@ -83,8 +83,8 @@ At low volume, display the absolute numerator and denominator next to every rate
 
 ## Known gaps
 
-- The three acquisition migrations are live in production Supabase. The web client and serverless API hooks are isolated on `codex/hotfix-launch-funnel`, based directly on the production commit, and remain pending merge plus deployment from `main`.
+- The three acquisition migrations, web client hooks, and serverless event endpoint are live from merged `main` commit `177aab4` in production deployment `dpl_DXSKgE17RdXDWx5tpSbDZUAKM6r8`.
 - Clipboard events can confirm a successful copy action, not that the user completed the external installation.
 - Magic links opened on a different browser or device may lose browser-only attribution unless the pending snapshot is also bound to the auth flow.
 - A complete real-account journey from production landing page through authentication, installation, and first QA report remains unverified.
-- `npm run marketing:report` and `marketing/acquisition-report.sql` are live inspection paths. The default report excluded all synthetic test traffic and showed zero real acquisition events at 2026-07-30T14:47:12Z.
+- `npm run marketing:report` and `marketing/acquisition-report.sql` are live inspection paths. At 2026-07-30T15:13:19Z the default report excluded all synthetic traffic and showed zero real acquisition events; the test-inclusive report retained evidence across every milestone.
