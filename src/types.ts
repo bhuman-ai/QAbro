@@ -178,12 +178,18 @@ export interface QaReport {
       url: string;
       content_type?: string | null;
       byte_length?: number | null;
+      segment_index?: number | null;
+      segment_count?: number | null;
+      segment_label?: string | null;
     } | null;
     videos?: Array<{
       index: number;
       url: string;
       content_type?: string | null;
       byte_length?: number | null;
+      segment_index?: number | null;
+      segment_count?: number | null;
+      segment_label?: string | null;
     }>;
     screenshots?: Array<{
       index: number;

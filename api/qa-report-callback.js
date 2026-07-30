@@ -64,7 +64,7 @@ function sanitizeEvidenceMediaEntries(entries, kind = "image") {
     return [];
   }
 
-  const maxItems = kind === "video" ? 4 : 12;
+  const maxItems = kind === "video" ? 64 : 24;
   const sanitized = [];
   const seen = new Set();
 
@@ -86,6 +86,22 @@ function sanitizeEvidenceMediaEntries(entries, kind = "image") {
       entry.storage_path || entry.storagePath || entry.object_path || entry.objectPath,
       4096
     ).replaceAll("\\", "/");
+    const aliases = Array.from(
+      new Set(
+        (Array.isArray(entry.aliases) ? entry.aliases : [])
+          .map((value) => sanitizeString(value, 4096).replaceAll("\\", "/"))
+          .filter((value) => value && value !== source)
+      )
+    ).slice(0, 12);
+    const segmentIndex = Number(entry.segment_index ?? entry.segmentIndex);
+    const segmentCount = Number(entry.segment_count ?? entry.segmentCount);
+    const hasSegmentMetadata =
+      kind === "video" &&
+      Number.isInteger(segmentIndex) &&
+      segmentIndex >= 0 &&
+      Number.isInteger(segmentCount) &&
+      segmentCount > 1 &&
+      segmentIndex < segmentCount;
     if (!source || seen.has(source) || (!dataUrl && !(storageBucket && storagePath))) {
       continue;
     }
@@ -94,6 +110,16 @@ function sanitizeEvidenceMediaEntries(entries, kind = "image") {
     sanitized.push({
       source,
       content_type: sanitizeString(entry.content_type || entry.contentType, 128) || null,
+      ...(aliases.length ? { aliases } : {}),
+      ...(hasSegmentMetadata
+        ? {
+            segment_index: segmentIndex,
+            segment_count: segmentCount,
+            segment_label:
+              sanitizeString(entry.segment_label || entry.segmentLabel, 128) ||
+              `Part ${segmentIndex + 1} of ${segmentCount}`
+          }
+        : {}),
       ...(dataUrl ? { data_url: dataUrl } : {}),
       ...(storageBucket && storagePath
         ? {
