@@ -34,5 +34,5 @@
 ## Decision
 
 - Interpretation: Not started.
-- Decision: Hold behind the production delivery gate.
-- Next action: Merge the production-derived hotfix, deploy the client/API instrumentation from `main`, and complete one real production test account before contacting the cohort.
+- Decision: Hold behind end-to-end activation QA.
+- Next action: Complete one attributed production test account through the first QA report before contacting the cohort.
