@@ -129,6 +129,7 @@ import mayaTesterPhoto from "./assets/testers/maya.jpg";
 import ninaTesterPhoto from "./assets/testers/nina.jpg";
 import BrandLogo from "./BrandLogo";
 import PublicDocsPage from "./PublicDocsPage";
+import QaMcpPage from "./QaMcpPage";
 import QaTrialAdmin from "./QaTrialAdmin";
 import QaTrialPortal from "./QaTrialPortal";
 import QaCreditsPage from "./QaCreditsPage";
@@ -1457,6 +1458,7 @@ function HomePage({
           <Logo />
         </div>
         <nav className="hidden lg:flex items-center gap-8 font-bold text-sm uppercase tracking-widest">
+          <a href="/qa-mcp" className="hover:text-brand-accent transition-colors">QA MCP</a>
           <a href="/docs" className="hover:text-brand-accent transition-colors">Docs</a>
           <a href="#how-it-works" className="hover:text-brand-accent transition-colors">How it works</a>
           <a href="#testing-modes" className="hover:text-brand-accent transition-colors">Testing modes</a>
@@ -2048,6 +2050,7 @@ function HomePage({
           </span>
         </div>
         <div className="flex gap-8 text-xs font-black uppercase tracking-widest text-slate-400">
+          <a href="/qa-mcp" className="hover:text-brand-ink">QA MCP</a>
           <a href="/docs" className="hover:text-brand-ink">Docs</a>
           <a href="#" className="hover:text-brand-ink">Privacy</a>
           <a href="#" className="hover:text-brand-ink">Terms</a>
@@ -2267,6 +2270,7 @@ function App() {
   const pathname = route.pathname;
   const isWorkspaceRoute = pathname === "/dashboard" || pathname === "/reports";
   const isDocsRoute = pathname === "/docs";
+  const isQaMcpRoute = pathname === "/qa-mcp";
   const isTrialRoute = pathname === "/trial";
   const isTrialAdminRoute = pathname === "/trials";
   const isTesterApplyRoute = pathname === "/testers/apply";
@@ -2502,6 +2506,18 @@ function App() {
           const next = new URLSearchParams();
           next.set("panel", "coding_agents");
           navigate("/dashboard", next);
+        }}
+      />
+    );
+  }
+
+  if (isQaMcpRoute) {
+    return (
+      <QaMcpPage
+        authorized={authState.authorized}
+        onOpenMcpSettings={() => {
+          void trackInstallClicked("qa_mcp");
+          window.location.assign("/dashboard?panel=coding_agents");
         }}
       />
     );

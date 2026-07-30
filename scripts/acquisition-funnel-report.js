@@ -18,6 +18,26 @@ function rate(numerator, denominator) {
   return denominator > 0 ? Number(((100 * numerator) / denominator).toFixed(1)) : null;
 }
 
+function normalizeFilters(filters = {}) {
+  return {
+    source: sanitizeString(filters.source, 120),
+    medium: sanitizeString(filters.medium, 120),
+    campaign: sanitizeString(filters.campaign, 120),
+    path: sanitizeString(filters.path, 512)
+  };
+}
+
+function filterAcquisitionEvents(events = [], filters = {}) {
+  const normalized = normalizeFilters(filters);
+  return (Array.isArray(events) ? events : []).filter((event) => {
+    if (normalized.source && event?.utm_source !== normalized.source) return false;
+    if (normalized.medium && event?.utm_medium !== normalized.medium) return false;
+    if (normalized.campaign && event?.utm_campaign !== normalized.campaign) return false;
+    if (normalized.path && event?.landing_path !== normalized.path) return false;
+    return true;
+  });
+}
+
 function summarizeAcquisitionEvents(events = []) {
   const identitiesByEvent = new Map(FUNNEL_EVENTS.map((name) => [name, new Set()]));
   const activationSeconds = [];
@@ -74,7 +94,7 @@ async function loadAcquisitionEvents(options = {}) {
   const requestUrl = new URL(`${supabaseUrl}/rest/v1/swarmtest_acquisition_events`);
   requestUrl.searchParams.set(
     "select",
-    "event_name,visitor_id,owner_user_id,occurred_at,utm_source,utm_medium,utm_campaign,properties"
+    "event_name,visitor_id,owner_user_id,occurred_at,landing_path,utm_source,utm_medium,utm_campaign,properties"
   );
   requestUrl.searchParams.set("is_test", options.includeTest ? "in.(true,false)" : "eq.false");
   requestUrl.searchParams.set("order", "occurred_at.asc");
@@ -96,11 +116,25 @@ async function loadAcquisitionEvents(options = {}) {
 async function main() {
   const includeTest = process.argv.includes("--include-test");
   const json = process.argv.includes("--json");
+  const readArgument = (name) => {
+    const prefix = `--${name}=`;
+    return process.argv.find((value) => value.startsWith(prefix))?.slice(prefix.length) || "";
+  };
+  const filters = normalizeFilters({
+    source: readArgument("source"),
+    medium: readArgument("medium"),
+    campaign: readArgument("campaign"),
+    path: readArgument("path")
+  });
   const events = await loadAcquisitionEvents({ includeTest });
-  const summary = summarizeAcquisitionEvents(events);
+  const filteredEvents = filterAcquisitionEvents(events, filters);
+  const summary = summarizeAcquisitionEvents(filteredEvents);
   if (json) {
-    console.log(JSON.stringify(summary, null, 2));
+    console.log(JSON.stringify({ filters, event_rows: filteredEvents.length, ...summary }, null, 2));
     return;
+  }
+  if (Object.values(filters).some(Boolean)) {
+    console.log("Filters:", Object.entries(filters).filter(([, value]) => value).map(([key, value]) => `${key}=${value}`).join(", "));
   }
   console.table(
     FUNNEL_EVENTS.map((eventName) => ({
@@ -121,6 +155,8 @@ if (require.main === module) {
 
 module.exports = {
   FUNNEL_EVENTS,
+  filterAcquisitionEvents,
   loadAcquisitionEvents,
+  normalizeFilters,
   summarizeAcquisitionEvents
 };

@@ -10,13 +10,19 @@
 
 ## Primary traffic experiment
 
-- Channel: Official MCP Registry distribution
-- Registry website URL: `https://beforeusersdo.com/docs?utm_source=mcp_registry&utm_medium=marketplace&utm_campaign=official_registry#start`
-- Source: `mcp_registry`
-- Medium: `marketplace`
-- Campaign: `official_registry`
+- Channel: High-intent organic search
+- Landing page: `https://beforeusersdo.com/qa-mcp`
+- Diagnostic key: `landing_path=/qa-mcp`
 - Conversion: The existing `first_qa_report_completed` event, joined through the first-touch snapshot
-- Inspection: Run `npm run marketing:report` and filter the source/campaign rows
+- Inspection: Run `npm run marketing:report -- --path=/qa-mcp`
+- Search page verification: Route-specific HTML title, description, canonical URL, structured data, `robots.txt`, and `sitemap.xml` are checked before launch.
+- Search attribution: The landing path is persisted without storing a full referrer, so organic and cited arrivals remain measurable even when no UTM is present.
+
+## Supporting Registry distribution
+
+- Registry website URL: `https://beforeusersdo.com/docs?utm_source=mcp_registry&utm_medium=marketplace&utm_campaign=official_registry#start`
+- Source / medium / campaign: `mcp_registry / marketplace / official_registry`
+- Inspection: Run `npm run marketing:report -- --source=mcp_registry --medium=marketplace --campaign=official_registry`
 - Publication: Version `1.0.0` was published through GitHub Actions OIDC at 2026-07-30T20:03:36Z.
 - Registry verification: The official API returned the record as `active` and `isLatest: true` with the attributed website URL intact.
 - Browser verification: The Registry URL reached the three-step install section and persisted the exact source, medium, and campaign on 2026-07-30. The event request was blocked during this check so no synthetic production event was written.
@@ -43,7 +49,7 @@ Do not store MCP keys, access tokens, email addresses, target URLs, report conte
 
 | Event | Exact trigger | Required properties | Destination | Implemented | Verified |
 |---|---|---|---|---|---|
-| `offer_viewed` | Once per visitor when `/` or `/docs` becomes visible in the browser. | `surface`, `path` | `swarmtest_acquisition_events` | Client and API wired locally; journal live | Browser-to-production-journal test verified |
+| `offer_viewed` | Once per visitor when `/`, `/docs`, or `/qa-mcp` becomes visible in the browser. | `surface`, `path` | `swarmtest_acquisition_events` | Client and API wired locally; journal live | Browser-to-production-journal test verified for existing public routes |
 | `primary_cta_clicked` | The visitor activates an `Install BeforeUsersDo` control. | `surface`, `cta_label`, `destination_path` | `swarmtest_acquisition_events` | Client and API wired locally; journal live | Browser-to-production-journal test verified |
 | `signup_completed` | A recent account becomes authenticated; requesting a magic link and returning existing users do not count. | `auth_method` | `swarmtest_acquisition_events` | Client and API wired locally; journal live | Controlled production signup verified |
 | `mcp_key_created` | A new MCP token row is persisted. The API hook is a non-blocking duplicate safeguard. | `token_id`, `source` | Event journal plus existing `swarmtest_mcp_tokens.created_at` | Production database trigger live; API safeguard local | Production trigger verified with test row |
@@ -54,7 +60,7 @@ Do not store MCP keys, access tokens, email addresses, target URLs, report conte
 
 ## Attribution
 
-- UTM capture: On the first visit to `/` or `/docs`, accept only `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, and `utm_term`; trim values and cap their length.
+- UTM capture: On the first visit to `/`, `/docs`, or `/qa-mcp`, accept only `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, and `utm_term`; trim values and cap their length.
 - Persistence: Store the first valid attribution snapshot and `visitor_id` in first-party local storage. Do not overwrite it on later visits.
 - Auth association: After authentication, send the current `visitor_id` to the server; the server infers `owner_user_id` from the session and links subsequent events.
 - Conversion record: When `first_qa_report_completed` is written, resolve the earliest attribution snapshot for that owner and copy it onto the conversion event.
@@ -101,4 +107,4 @@ At low volume, display the absolute numerator and denominator next to every rate
 - Magic links opened on a different browser or device may lose browser-only attribution unless the pending snapshot is also bound to the auth flow.
 - A Registry user who already owns an MCP key and never opens the attributed website URL will remain direct/unknown; new users must visit the linked docs to create a key.
 - No real acquisition cohort has entered the funnel yet, so real-world conversion and activation rates remain unknown.
-- `npm run marketing:report` and `marketing/acquisition-report.sql` are live inspection paths. The default report excludes synthetic traffic; the test-inclusive report retains evidence across every milestone.
+- `npm run marketing:report` and `marketing/acquisition-report.sql` are live inspection paths. The CLI supports `--source`, `--medium`, `--campaign`, and `--path` filters; the default report excludes synthetic traffic.

@@ -158,11 +158,14 @@ function readAcquisitionAuthMethod(storage = safeStorage()): AuthMethod {
   }
 }
 
-function trackOfferViewed(surface: "homepage" | "public_docs", path: "/" | "/docs") {
+function trackOfferViewed(
+  surface: "homepage" | "public_docs" | "qa_mcp",
+  path: "/" | "/docs" | "/qa-mcp"
+) {
   return postAcquisitionEvent("offer_viewed", { surface, path });
 }
 
-function trackInstallClicked(surface: "homepage" | "public_docs") {
+function trackInstallClicked(surface: "homepage" | "public_docs" | "qa_mcp") {
   return postAcquisitionEvent(
     "primary_cta_clicked",
     {

@@ -418,6 +418,7 @@ function PublicDocsPage({
           <a href="/" aria-label="Before Users Do home"><BrandLogo /></a>
           <nav className="flex flex-wrap gap-5 text-sm font-black text-brand-muted" aria-label="Footer">
             <a href="/" className="hover:text-brand-ink">Home</a>
+            <a href="/qa-mcp" className="hover:text-brand-ink">QA MCP</a>
             <a href="/docs" aria-current="page" className="text-brand-ink">Docs</a>
             <button type="button" onClick={onOpenMcpSettings} className="hover:text-brand-ink">Dashboard</button>
           </nav>

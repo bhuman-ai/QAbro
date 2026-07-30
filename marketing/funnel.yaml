@@ -52,23 +52,22 @@ funnel:
     - "Ask the coding agent to test one reachable preview."
     - "Receive the first completed QA report."
 channel:
-  primary: "Official MCP Registry distribution"
-  audience_hypothesis: "Builders actively discovering MCP servers have both the tool compatibility and intent required to install Before Users Do."
-  distribution_model: "Marketplace and downstream-aggregator discovery"
-  reusable_unit: "One versioned server.json listing for the hosted Before Users Do MCP server."
-  expansion_lever: "The official registry feeds downstream MCP aggregators and marketplaces without proportional founder labor."
-  manual_dependency: "One-time authenticated publication plus versioned metadata updates."
+  primary: "High-intent organic search for QA MCP and browser-testing MCP queries"
+  audience_hypothesis: "Builders searching for a QA MCP or browser testing for coding agents have an active release-confidence problem and compatible tooling."
+  distribution_model: "Compounding public search content supported by MCP ecosystem citations"
+  reusable_unit: "One crawler-visible /qa-mcp page that explains the QA handoff and routes visitors into the measured install flow."
+  expansion_lever: "Search indexing, internal links, the official Registry record, and future ecosystem citations can grow discovery without proportional founder labor."
+  manual_dependency: "Occasional proof, copy, and technical metadata updates based on observed search and activation data."
   scalability_floor:
     passes: true
-    reason: "One listing can reach many qualified prospects, distribution expands through registry consumers, and attributed activation is measurable."
+    reason: "One public asset can serve many qualified searches, compound through indexing and citations, and be measured through its landing path."
   experiment:
-    source: "mcp_registry"
-    medium: "marketplace"
-    campaign: "official_registry"
+    landing_path: "/qa-mcp"
+    reporting_command: "npm run marketing:report -- --path=/qa-mcp"
     primary_metric: "first_qa_report_completed"
-    observation_window: "30 days after publication or until 30 attributed visitors, whichever is later."
-    continue_if: "The channel produces at least one attributed completed QA report and no material onboarding failure is observed."
-    stop_or_change_if: "Thirty attributed visitors produce no completed QA report, or registry clients cannot complete the token setup."
+    observation_window: "45 days after publication or until 100 qualified page visitors, whichever is later."
+    continue_if: "The page produces at least one completed QA report, or at least five percent of qualified visitors choose the install CTA before the activation sample is large enough."
+    stop_or_change_if: "The page is indexed but 100 qualified visitors produce no install CTA clicks, or clicks consistently fail to reach MCP activation."
   budget:
     currency: USD
     daily_cap: null
@@ -86,9 +85,9 @@ measurement:
     - "mcp_key_first_used"
     - "first_qa_requested"
     - "first_qa_report_completed"
-status: "live"
-current_bottleneck: "insufficient observed Registry traffic and activation data"
-next_action: "Run npm run marketing:report on 2026-08-06 and inspect the mcp_registry / marketplace / official_registry cohort."
+status: "ready-to-launch"
+current_bottleneck: "no active demand-capture page for people already searching for QA MCP and coding-agent browser testing"
+next_action: "Deploy the crawler-visible /qa-mcp acquisition page and verify its production HTML, sitemap, and measured CTA."
 approvals_needed: []
-last_verified_at: "2026-07-30T20:04:04Z"
+last_verified_at: "2026-07-30T20:18:00Z"
 updated_at: "2026-07-30"

@@ -226,6 +226,10 @@
       "destination": "/index.html"
     },
     {
+      "source": "/qa-mcp",
+      "destination": "/qa-mcp.html"
+    },
+    {
       "source": "/trial",
       "destination": "/index.html"
     },
