@@ -3,7 +3,7 @@
 ## Experiment 2
 
 - Name: Official MCP Registry — hosted QA discovery
-- Status: Prepared; external publication pending
+- Status: Live
 - Primary channel: Official MCP Registry distribution
 - Audience: Builders actively discovering MCP servers for coding agents
 - Hypothesis: A registry listing for browser-backed QA will produce qualified installs without proportional founder outreach.
@@ -15,8 +15,12 @@
 - Observation window: 30 days after publication or until 30 attributed visitors, whichever is later
 - Continue if: At least one attributed completed QA report and no material onboarding failure
 - Stop or change if: 30 attributed visitors produce no completed report, or registry clients cannot complete token setup
+- Published at: 2026-07-30T20:03:36Z
+- Publication evidence: GitHub Actions run `30577491029` authenticated with GitHub OIDC and reported `Successfully published` for `io.github.bhuman-ai/beforeusersdo` version `1.0.0`.
+- Registry evidence: The official Registry API returned exactly one matching record with status `active`, `isLatest: true`, version `1.0.0`, the attributed docs URL, and the hosted streamable-HTTP endpoint.
 - Validation: Official 2025-12-11 JSON Schema passed; the hosted health endpoint returned 200; the MCP endpoint returned the expected 401 authentication challenge; the attributed docs URL preserved all campaign fields in a real browser.
-- Next action: Obtain the required immutable-publication approval, then authenticate and publish version 1.0.0.
+- Observed result: Publication is verified; real traffic and activation data have not reached an observation checkpoint yet.
+- Next action: Run `npm run marketing:report` on 2026-08-06 and inspect the `mcp_registry / marketplace / official_registry` cohort.
 
 ## Experiment
 
