@@ -18,8 +18,8 @@ the organic-search loop.
 - **Suggested topics:** Developer Tools, Artificial Intelligence, Testing and QA
 - **Pricing tag:** Confirm from the live commercial offer in the Product Hunt composer before publishing. No public pricing was found in the inspected product path.
 - **Thumbnail:** `marketing/product-hunt/assets/product-hunt-thumbnail.png`
-- **Gallery image 1:** `marketing/product-hunt/assets/product-hunt-gallery-homepage-hero.png`
-- **Gallery image 2:** `marketing/product-hunt/assets/product-hunt-gallery-homepage-proof.png`
+- **Gallery image 1:** `marketing/product-hunt/assets/product-hunt-gallery-imagegen-hero.png`
+- **Gallery image 2:** `marketing/product-hunt/assets/product-hunt-gallery-imagegen-proof.png`
 
 The tagline is 35 characters and the description is 195 characters, keeping
 both within the conservative limits in Product Hunt's current launch guidance.
@@ -27,9 +27,10 @@ Topic names are candidates and must be matched to the current composer options.
 
 ## Gallery order and captions
 
-1. **Homepage hero:** The live homepage shows the actual product promise and
-   app → BUD → happy-customer workflow.
-2. **Fix-ready handoff:** The live homepage shows the real report visual:
+1. **Product promise:** A purpose-built launch graphic uses the homepage's
+   actual promise and app → BUD → happy-customer workflow.
+2. **Fix-ready handoff:** A purpose-built launch graphic uses the real report
+   vocabulary:
    broken screen, expected behavior, reproduction path, console error, network
    request, and suggested fix prompt.
 
@@ -86,10 +87,24 @@ a personal story or post the comment from a company account.
 ## Asset provenance
 
 The thumbnail reuses the existing navy shield and purple zap brand mark. The
-two gallery assets are direct browser captures of the current homepage: its
-hero and its `#proof` section. No generated illustration, new mascot, invented
-UI, customer claim, testimonial, metric, or performance promise remains in the
-launch package.
+two gallery assets were created with the built-in Imagegen tool using direct
+homepage captures as authoritative references. They recompose the site's actual
+copy, BUD pipeline, evidence vocabulary, palette, card shapes, icons, and
+editorial hierarchy into Product Hunt-specific artwork. No new mascot,
+unrelated visual language, customer claim, testimonial, metric, or performance
+promise was introduced.
+
+The final prompt set asked Imagegen to:
+
+- recompose “Catch frustrations before users do.” with the exact supporting
+  copy and `Your vibecoded app → BUD → Happy customers` pipeline;
+- recompose “When something breaks, your AI coder gets the full context.” with
+  the exact broken-screen, expected, repro, console, network, and fix-prompt
+  evidence labels;
+- preserve the site's `#0f172a`, `#8b5cf6`, and `#f8fafc` palette, rounded
+  cards, navy outlines, purple icons, and restrained status colors;
+- exclude navigation, browser chrome, buttons, robots, new mascots, fake
+  dashboards, extra copy, claims, metrics, and watermarks.
 
 ## Platform references
 
