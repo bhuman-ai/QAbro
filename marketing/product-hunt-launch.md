@@ -16,7 +16,8 @@ the organic-search loop.
 - **Status:** Live and usable
 - **Description:** Your AI coder says “done.” Before Users Do checks whether the feature actually works. Connect one MCP to run the live flow, capture the broken screen, console errors, failed requests, and steps to reproduce, then hand the evidence back so the agent can fix it.
 - **Suggested topics:** Developer Tools, Artificial Intelligence, Testing and QA
-- **Pricing tag:** Confirm from the live commercial offer in the Product Hunt composer before publishing. No public pricing was found in the inspected product path.
+- **Pricing tag:** Paid (with a free trial or plan)
+- **Pricing copy:** Free plan available.
 - **Thumbnail:** `marketing/product-hunt/assets/product-hunt-thumbnail.png`
 - **Gallery image 1:** `marketing/product-hunt/assets/product-hunt-gallery-imagegen-hero.png`
 - **Gallery image 2:** `marketing/product-hunt/assets/product-hunt-gallery-imagegen-proof.png`
@@ -47,6 +48,8 @@ Topic names are candidates and must be matched to the current composer options.
 > against a reachable preview, collect screenshots plus console and network
 > evidence, and return a fix-ready report in the same workflow.
 >
+> There is a free plan available.
+>
 > It is live now. I would especially value feedback on the install handoff and
 > whether the first report gives you enough confidence to ship.
 
@@ -60,7 +63,7 @@ a personal story or post the comment from a company account.
 - Confirm that no existing Before Users Do product page owns this launch.
 - Paste the tracked destination exactly as written above.
 - Select the current Product Hunt topic names that best match the candidates.
-- Confirm the truthful pricing tag from the live offer.
+- Select `Paid (with a free trial or plan)` and include `Free plan available.`
 - Upload the 240 × 240 thumbnail and both 1270 × 760 gallery images.
 - Complete the one-sentence maker story and read the full first comment.
 - Preview the listing on desktop and mobile.

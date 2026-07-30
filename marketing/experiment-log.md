@@ -18,7 +18,8 @@
 - Continue if: At least one completed QA report, or at least five percent of attributed visitors choose the install CTA while activation volume is still small
 - Stop or change if: Product Hunt exposure sends no attributable visitors, or 100 attributed visitors produce no install clicks
 - Completed preparation: Listing copy in the homepage's direct voice, plain Product Hunt-compatible homepage destination, first-comment scaffold, referrer attribution, 240 × 240 site-brand thumbnail, and two 1270 × 760 Imagegen launch graphics derived from the homepage's real copy and visual system
-- Approval gate: Confirm a personal maker account, the truthful pricing tag, the honest one-sentence maker story, any required terms, and external publication
+- Pricing: `Paid (with a free trial or plan)`; public copy is `Free plan available.`
+- Approval gate: Confirm a personal maker account, the honest one-sentence maker story, any required terms, and external publication
 - Next action: Obtain explicit approval immediately before Product Hunt submission.
 
 ## Experiment 3
