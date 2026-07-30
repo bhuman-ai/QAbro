@@ -15,6 +15,10 @@ import {
   UserRoundCheck
 } from "lucide-react";
 import BrandLogo from "./BrandLogo";
+import {
+  trackAgentInstallStepCopied,
+  trackOfferViewed
+} from "./lib/acquisition";
 
 const CODEX_CONFIG = `[mcp_servers.beforeusersdo-qa]
 url = "https://mcp.beforeusersdo.com/mcp"
@@ -37,11 +41,22 @@ const PROMPTS = {
   human: "Have a real person test this preview with BeforeUsersDo. Use the work context you already have and ask me only for anything missing."
 };
 
-function CopyButton({ value, label = "Copy" }: { value: string; label?: string }) {
+function CopyButton({
+  value,
+  label = "Copy",
+  trackingStep
+}: {
+  value: string;
+  label?: string;
+  trackingStep?: "mcp_config" | "skill_command";
+}) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
     await navigator.clipboard.writeText(value);
+    if (trackingStep) {
+      void trackAgentInstallStepCopied(trackingStep);
+    }
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
   }
@@ -93,6 +108,7 @@ function PublicDocsPage({
   useEffect(() => {
     const previousTitle = document.title;
     document.title = "Before Users Do Docs | Connect your coding agent";
+    void trackOfferViewed("public_docs", "/docs");
     return () => {
       document.title = previousTitle;
     };
@@ -208,7 +224,7 @@ function PublicDocsPage({
               <div className="mt-4 overflow-hidden rounded-lg bg-brand-ink text-white">
                 <div className="flex items-center justify-between border-b border-white/15 px-4 py-3">
                   <span className="text-sm font-bold text-slate-300">{client === "codex" ? "~/.codex/config.toml" : "MCP configuration"}</span>
-                  <CopyButton value={config} label="Copy config" />
+                  <CopyButton value={config} label="Copy config" trackingStep="mcp_config" />
                 </div>
                 <pre className="overflow-x-auto p-5 text-[13px] leading-6 text-slate-100"><code>{config}</code></pre>
               </div>
