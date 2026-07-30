@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" role="img" aria-labelledby="title">
+  <title id="title">Before Users Do shield and zap mark</title>
+  <rect width="240" height="240" rx="52" fill="#0f172a"/>
+  <path d="M120 48 174 70v44c0 37-22 66-54 79-32-13-54-42-54-79V70l54-22Z"
+        fill="none" stroke="#fff" stroke-width="14" stroke-linejoin="round"/>
+  <rect x="132" y="126" width="62" height="62" rx="18" fill="#8b5cf6" stroke="#fff" stroke-width="8"/>
+  <path d="m165 137-18 25h15l-5 17 23-28h-16l1-14Z" fill="#fff" stroke="#fff" stroke-width="3" stroke-linejoin="round"/>
+</svg>
+
