@@ -17,6 +17,8 @@
 - Campaign: `official_registry`
 - Conversion: The existing `first_qa_report_completed` event, joined through the first-touch snapshot
 - Inspection: Run `npm run marketing:report` and filter the source/campaign rows
+- Publication: Version `1.0.0` was published through GitHub Actions OIDC at 2026-07-30T20:03:36Z.
+- Registry verification: The official API returned the record as `active` and `isLatest: true` with the attributed website URL intact.
 - Browser verification: The Registry URL reached the three-step install section and persisted the exact source, medium, and campaign on 2026-07-30. The event request was blocked during this check so no synthetic production event was written.
 
 The primary event means one authenticated owner has received their first terminal, usable QA report. A page view, signup, MCP key, or queued run is diagnostic—not a conversion.
