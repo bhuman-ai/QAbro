@@ -1,5 +1,7 @@
 # Founder outreach cohort 1
 
+> Archived on 2026-07-30. This cohort may be used for bounded message validation only; it is not the primary acquisition channel and no messages are approved for delivery.
+
 Prepared on 2026-07-30. These are public, same-platform prospects only. No message has been sent.
 
 ## Qualification bar
@@ -92,4 +94,3 @@ Before delivery:
 3. Send no more than five messages in one day.
 4. Personalize only from public facts above; do not infer revenue, team size, or personal details.
 5. Stop on any objection or request not to contact.
-

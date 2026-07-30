@@ -1,0 +1,32 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.bhuman-ai/beforeusersdo",
+  "title": "Before Users Do",
+  "description": "Browser-backed QA with evidence and fix-ready reports for coding agents.",
+  "version": "1.0.0",
+  "websiteUrl": "https://beforeusersdo.com/docs?utm_source=mcp_registry&utm_medium=marketplace&utm_campaign=official_registry#start",
+  "repository": {
+    "url": "https://github.com/bhuman-ai/QAbro",
+    "source": "github"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.beforeusersdo.com/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {mcp_token}",
+          "variables": {
+            "mcp_token": {
+              "description": "Create an MCP key at https://beforeusersdo.com/docs?utm_source=mcp_registry&utm_medium=marketplace&utm_campaign=official_registry#start",
+              "isRequired": true,
+              "isSecret": true,
+              "placeholder": "mcp_..."
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
