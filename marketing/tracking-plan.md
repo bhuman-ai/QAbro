@@ -15,8 +15,9 @@
 - Diagnostic key: `landing_path=/qa-mcp`
 - Conversion: The existing `first_qa_report_completed` event, joined through the first-touch snapshot
 - Inspection: Run `npm run marketing:report -- --path=/qa-mcp`
-- Search page verification: Route-specific HTML title, description, canonical URL, structured data, `robots.txt`, and `sitemap.xml` are checked before launch.
+- Search page verification: Production returns 200 for the route-specific HTML, `robots.txt`, and `sitemap.xml`; the raw page contains the title, description, canonical URL, and structured data.
 - Search attribution: The landing path is persisted without storing a full referrer, so organic and cited arrivals remain measurable even when no UTM is present.
+- Production event verification: The controlled `qa_mcp_search_production` campaign wrote one `offer_viewed` and one `primary_cta_clicked` test event before focused sign-up; all real conversion stages remain unclaimed.
 
 ## Supporting Registry distribution
 
