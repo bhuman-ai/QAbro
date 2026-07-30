@@ -3,8 +3,8 @@
 ## Experiment
 
 - Name: Founder outreach — one newly shipped flow
-- Status: ready for prospect qualification
-- Bottleneck: The production path is verified, but the first qualified recipients and sender identity are not yet locked.
+- Status: ready for founder approval
+- Bottleneck: Five recipients and messages are prepared, but the founder-owned Reddit sender account is not confirmed.
 - Hypothesis: For founders publicly shipping AI-coded web apps, a specific offer to test one newly shipped flow will produce at least three qualified replies and one completed first QA report from 15 personalized contacts because it removes the uncertainty between “the agent says done” and “safe to ship.”
 - Audience: Founders or solo builders who publicly launched or substantially updated a web app built with Codex, Bolt, Lovable, Replit, v0, or another agentic coding workflow within the previous 30 days.
 - Channel: Personalized replies or direct messages on the same public platform where the builder invited product feedback. No scraped emails and no unsolicited follow-up sequence.
@@ -34,5 +34,5 @@
 ## Decision
 
 - Interpretation: The delivery gate passed. A controlled production account completed all eight attributed milestones and received its first report in 96 seconds.
-- Decision: Prepare the first outreach cohort; do not send until the sender identity and each recipient are confirmed.
-- Next action: Qualify five builders from recent public launch posts and draft one specific message per builder.
+- Decision: Keep the five-message cohort staged; do not send until the founder-owned Reddit account is confirmed and the public post checks are refreshed.
+- Next action: Confirm the sender account, re-open the five source profiles, and approve the prepared messages in `marketing/prospect-cohort.md`.
