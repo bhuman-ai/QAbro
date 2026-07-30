@@ -26,6 +26,7 @@
     "qa:local-agent-task": "node scripts/run-local-agent-task.js",
     "qa:export-dev-handoff": "node scripts/export-qa-dev-handoff.js",
     "qa:widget:recovery-smoke": "node scripts/smoke-manual-widget-recovery.js",
+    "marketing:report": "node scripts/acquisition-funnel-report.js",
     "stripe:bootstrap:share-offer": "node scripts/bootstrap-stripe-share-offer.js",
     "dev": "node scripts/dev-server.js",
     "dev:client": "vite --host 0.0.0.0 --port 3000",

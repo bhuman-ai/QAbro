@@ -61,6 +61,13 @@ import {
 } from "recharts";
 import { ApiError, apiFetch } from "@/lib/api";
 import {
+  rememberAcquisitionAuthMethod,
+  trackAgentInstallStepCopied,
+  trackInstallClicked,
+  trackOfferViewed,
+  trackSignupCompleted
+} from "@/lib/acquisition";
+import {
   buildEvidenceAssetUrl,
   collectEvidenceValues,
   buildEvidenceIndexMap,
@@ -1384,6 +1391,10 @@ function HomePage({
 }`;
 
   useEffect(() => {
+    void trackOfferViewed("homepage", "/");
+  }, []);
+
+  useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       return;
     }
@@ -2069,6 +2080,7 @@ function AuthGate({
     event.preventDefault();
     setLoading(true);
     setLocalError("");
+    rememberAcquisitionAuthMethod("email");
     try {
       await onSubmit(email, isLogin ? "" : DEFAULT_SIGNUP_INVITE_CODE);
     } catch (caught) {
@@ -2081,6 +2093,7 @@ function AuthGate({
   async function handleSocialClick(provider: "google" | "github") {
     setSocialLoading(provider);
     setLocalError("");
+    rememberAcquisitionAuthMethod(provider);
     try {
       await onSocialSignIn(provider);
     } catch (caught) {
@@ -2266,6 +2279,12 @@ function App() {
   useEffect(() => {
     installBudWidgetFromUrl(route.search);
   }, [route.search]);
+
+  useEffect(() => {
+    if (authState.ready && authState.authorized && authState.user?.id) {
+      void trackSignupCompleted();
+    }
+  }, [authState.authorized, authState.ready, authState.user?.id]);
 
   async function refreshSession() {
     try {
@@ -2479,6 +2498,7 @@ function App() {
       <PublicDocsPage
         authorized={authState.authorized}
         onOpenMcpSettings={() => {
+          void trackInstallClicked("public_docs");
           const next = new URLSearchParams();
           next.set("panel", "coding_agents");
           navigate("/dashboard", next);
@@ -2492,6 +2512,7 @@ function App() {
       <HomePage
         authorized={authState.authorized}
         onOpenMcpSettings={() => {
+          void trackInstallClicked("homepage");
           const next = new URLSearchParams();
           next.set("panel", "coding_agents");
           navigate("/dashboard", next);
@@ -12698,9 +12719,16 @@ function StarterBrandSettingsPage({
     }
   }
 
-  async function handleCopyMcpValue(value: string, label: string) {
+  async function handleCopyMcpValue(
+    value: string,
+    label: string,
+    trackingStep?: "mcp_config" | "skill_command"
+  ) {
     try {
       await copyText(value);
+      if (trackingStep) {
+        void trackAgentInstallStepCopied(trackingStep);
+      }
       setMcpCopyFeedback(label);
       window.setTimeout(() => setMcpCopyFeedback(""), 1400);
     } catch {
@@ -12820,7 +12848,7 @@ function StarterBrandSettingsPage({
             </div>
             <Button
               type="button"
-              onClick={() => handleCopyMcpValue(mcpConfigSnippet, "Config copied").catch(() => null)}
+              onClick={() => handleCopyMcpValue(mcpConfigSnippet, "Config copied", "mcp_config").catch(() => null)}
               className="rounded-xl px-4 py-2 font-black"
             >
               <Copy className="h-4 w-4" />

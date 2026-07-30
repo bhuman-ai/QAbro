@@ -1,0 +1,77 @@
+schema_version: 1
+product:
+  name: "Before Users Do"
+  url: "https://beforeusersdo.com"
+  repository: "https://github.com/bhuman-ai/QAbro"
+facts:
+  - "Before Users Do is a hosted QA MCP and companion agent skill for coding agents."
+  - "The homepage and public docs use Install BeforeUsersDo as the primary customer CTA."
+  - "The existing self-serve path sends that CTA to /dashboard?panel=coding_agents, then supports sign-in, MCP key creation, MCP configuration, and skill installation."
+  - "The product supports AI testing, owner self-review, team handoff, and human tester requests."
+  - "QA reports can include browser evidence such as screenshots, console errors, network proof, and fix-ready findings."
+  - "https://beforeusersdo.com returned HTTP 200 from the production Vercel deployment on 2026-07-30."
+  - "No dedicated acquisition analytics provider or UTM attribution implementation was found in the inspected product source."
+  - "The acquisition event journal and milestone triggers were applied to production Supabase on 2026-07-30."
+  - "A synthetic test campaign verified browser arrival, CTA, install-copy, MCP key, MCP first-use, QA request, and completed-report events with first-touch attribution."
+hypotheses:
+  - "AI-assisted founders and small product teams are the fastest initial customer segment."
+  - "The strongest trigger is the moment an AI coding agent says a feature is done but the builder lacks trustworthy QA proof."
+  - "Founder-led direct outreach to active AI app builders will produce faster message and activation learning than broad paid traffic."
+  - "Completing a first QA report is a stronger activation signal than account creation or MCP key creation."
+unknowns:
+  - "Current signup-to-install and install-to-first-report conversion rates."
+  - "Which acquisition source, if any, has already produced activated users."
+  - "Current customer, usage, retention, or outcome proof that can be used publicly."
+  - "Whether the homepage live tester availability count is backed by production data."
+  - "The commercial offer or price presented after initial activation."
+audience:
+  segment: "Founders and small product teams shipping AI-coded web apps with Codex or another MCP-capable coding agent."
+  triggering_situation: "A feature or preview looks finished and is about to ship, but the builder does not have trustworthy browser QA evidence."
+  painful_job: "Catch bugs, confusing UI, and broken flows without leaving the coding-agent workflow or manually assembling a QA process."
+offer:
+  promised_outcome: "Catch release-blocking bugs and UX friction before users encounter them, with evidence the coding agent can act on."
+  mechanism: "Install one hosted MCP connection and companion skill so the coding agent can route each feature through AI, self, team, or human QA and return a fix-ready report."
+  proof:
+    - "A production self-serve install path exists for creating an MCP key and copying both setup components."
+    - "The repository implements browser-backed QA runs, evidence capture, reports, tester handoff, and alert delivery."
+    - "Public documentation describes the complete install and first-test workflow."
+  primary_objection: "The setup may feel like extra toolchain work before the user has seen a concrete QA result."
+funnel:
+  archetype: "self-serve signup"
+  primary_cta: "Install BeforeUsersDo"
+  steps:
+    - "Visit the homepage or public docs."
+    - "Choose Install BeforeUsersDo."
+    - "Sign in or create an account."
+    - "Create an MCP key."
+    - "Copy the MCP configuration and install the companion skill."
+    - "Ask the coding agent to test one reachable preview."
+    - "Receive the first completed QA report."
+channel:
+  primary: "Founder-led direct outreach"
+  audience_hypothesis: "Builders publicly shipping AI-coded apps will respond to a specific offer to test one newly shipped flow inside their existing coding-agent workflow."
+  budget:
+    currency: USD
+    daily_cap: null
+    total_cap: null
+measurement:
+  primary_event: "first_qa_report_completed"
+  analytics_destination: "Existing Supabase project with a planned swarmtest_acquisition_events journal joined to swarmtest_mcp_tokens and swarmtest_reports."
+  attribution_model: "First-touch source, medium, and campaign persisted through the first completed QA report."
+  diagnostic_events:
+    - "offer_viewed"
+    - "primary_cta_clicked"
+    - "signup_completed"
+    - "mcp_key_created"
+    - "agent_install_step_copied"
+    - "mcp_key_first_used"
+    - "first_qa_requested"
+    - "first_qa_report_completed"
+status: "path-built"
+current_bottleneck: "production client delivery"
+next_action: "Review and merge codex/hotfix-launch-funnel into main, deploy merged main, then run one complete production test account through install to first report."
+approvals_needed:
+  - "Merge the production-derived hotfix PR before deploying the web and API hooks to the production alias."
+  - "Identify real recipients and the founder account to use before sending outreach or publishing promotional posts."
+last_verified_at: "2026-07-30T14:47:12Z"
+updated_at: "2026-07-30"
