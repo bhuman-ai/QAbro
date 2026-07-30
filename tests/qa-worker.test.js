@@ -235,6 +235,34 @@ test("buildStoredExecutionPayload strips embedded media before persisting final 
   assert.equal(payload.runLog[0].data.note, "ok");
 });
 
+test("buildTerminalProgress replaces stale processing state with a terminal result", () => {
+  const progress = __private.buildTerminalProgress(
+    {
+      progress: {
+        phase: "processing",
+        percent: 92,
+        message: "Draft findings available",
+        event_count: 140
+      }
+    },
+    {
+      now: "2026-07-30T08:57:42.000Z",
+      phase: "failed",
+      message: "Evidence storage failed",
+      terminal: true
+    }
+  );
+
+  assert.deepEqual(progress, {
+    phase: "failed",
+    percent: 100,
+    message: "Evidence storage failed",
+    event_count: 140,
+    updated_at: "2026-07-30T08:57:42.000Z",
+    terminal: true
+  });
+});
+
 test("buildStoredExecutionPayload preserves portable evidence media for local screenshots", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-worker-evidence-"));
   const screenshotPath = path.join(tempDir, "proof.png");

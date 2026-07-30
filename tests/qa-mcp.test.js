@@ -551,6 +551,84 @@ test("qa_ai_test defaults to report-only and resumes through qa_continue", async
   assert.equal(completed.structuredContent.continue_polling, false);
 });
 
+test("qa_ai_test stops polling when the queue failed without a report", async () => {
+  let reportReads = 0;
+  const apiClient = createMcpApiStub({
+    async requestRun(input) {
+      return { ok: true, run_id: input.run_id };
+    },
+    async waitForRun() {
+      return {
+        ok: true,
+        timed_out: false,
+        status: {
+          report_ready: false,
+          report_status: "failed_validation",
+          queue: {
+            status: "failed",
+            last_error: "Evidence storage could not save the recording."
+          }
+        }
+      };
+    },
+    async getRunReport() {
+      reportReads += 1;
+      throw new Error("must not read a missing report");
+    }
+  });
+  const { server } = createQaMcpServer({ apiClient });
+
+  const result = await server._registeredTools.qa_ai_test.handler(
+    { target_url: "https://preview.example.com" },
+    {}
+  );
+
+  assert.equal(result.structuredContent.state, "needs_review");
+  assert.equal(result.structuredContent.continue_polling, false);
+  assert.match(result.structuredContent.reason, /could not save the recording/i);
+  assert.equal(reportReads, 0);
+});
+
+test("qa_ai_test returns needs_review for a failed-validation report", async () => {
+  const apiClient = createMcpApiStub({
+    async requestRun(input) {
+      return { ok: true, run_id: input.run_id };
+    },
+    async waitForRun() {
+      return {
+        ok: true,
+        timed_out: false,
+        status: {
+          report_ready: true,
+          report_status: "failed_validation",
+          queue: { status: "failed" }
+        }
+      };
+    },
+    async getRunReport() {
+      return {
+        ok: true,
+        status: "failed_validation",
+        summary: { note: "Evidence delivery failed." },
+        findings: []
+      };
+    },
+    async shareRunReport() {
+      return { ok: true, share_url: "https://beforeusersdo.com/share/failed" };
+    }
+  });
+  const { server } = createQaMcpServer({ apiClient });
+
+  const result = await server._registeredTools.qa_ai_test.handler(
+    { target_url: "https://preview.example.com" },
+    {}
+  );
+
+  assert.equal(result.structuredContent.state, "needs_review");
+  assert.equal(result.structuredContent.verdict, "needs_review");
+  assert.equal(result.structuredContent.continue_polling, false);
+});
+
 test("human QA completion requires video and completed transcript analysis", async () => {
   const report = {
     markdown: "# Human report",

@@ -780,6 +780,8 @@ function createLiveProgressUpdater(claimed, workerId, options = {}) {
   let lastFlushAt = 0;
   let lastPersistedFingerprint = "";
   let pending = Promise.resolve();
+  let finalized = false;
+  let totalEventCount = 0;
 
   const maybeTrimRunLog = () => {
     if (runLog.length > maxRunLogEntries) {
@@ -1076,6 +1078,9 @@ function createLiveProgressUpdater(claimed, workerId, options = {}) {
   };
 
   const queueFlush = (force = false) => {
+    if (finalized) {
+      return pending;
+    }
     pending = pending
       .then(async () => {
         const nextFingerprint = buildPersistenceFingerprint();
@@ -1114,7 +1119,8 @@ function createLiveProgressUpdater(claimed, workerId, options = {}) {
           percent: clampProgressPercent(progress.percent),
           message: sanitizeString(progress.message, 240) || "Processing run",
           updated_at: now,
-          event_count: runLog.length
+          event_count: totalEventCount,
+          retained_event_count: runLog.length
         };
 
         const updated = await updateQueueRow(claimed.row.run_id, {
@@ -1156,6 +1162,9 @@ function createLiveProgressUpdater(claimed, workerId, options = {}) {
 
   return {
     onRunLog(entry) {
+      if (finalized) {
+        return;
+      }
       const rawData =
         entry?.data && typeof entry.data === "object"
           ? entry.data
@@ -1175,6 +1184,7 @@ function createLiveProgressUpdater(claimed, workerId, options = {}) {
               data: {}
             };
       runLog.push(safeEntry);
+      totalEventCount += 1;
       maybeTrimRunLog();
 
       const eventName = String(safeEntry.event || "").toLowerCase();
@@ -1219,7 +1229,8 @@ function createLiveProgressUpdater(claimed, workerId, options = {}) {
           : clampProgressPercent(progress.percent),
         message: inferProgressMessage(safeEntry),
         updated_at: safeEntry.ts,
-        event_count: runLog.length
+        event_count: totalEventCount,
+        retained_event_count: runLog.length
       };
 
       const provisionalFinding = buildProvisionalFindingFromRunLog(safeEntry);
@@ -1233,6 +1244,9 @@ function createLiveProgressUpdater(claimed, workerId, options = {}) {
       queueFlush(provisionalUpdated);
     },
     onCandidateReport(report) {
+      if (finalized) {
+        return;
+      }
       if (report && typeof report === "object") {
         previewReport = report;
         hasRealCandidatePreview = true;
@@ -1242,12 +1256,17 @@ function createLiveProgressUpdater(claimed, workerId, options = {}) {
         percent: Math.max(clampProgressPercent(progress.percent), 92),
         message: "Draft findings available",
         updated_at: new Date().toISOString(),
-        event_count: runLog.length
+        event_count: totalEventCount,
+        retained_event_count: runLog.length
       };
       queueFlush(true);
     },
     async flushNow() {
       await queueFlush(true);
+    },
+    async finalize() {
+      finalized = true;
+      await pending;
     }
   };
 }
@@ -1359,6 +1378,24 @@ function assessExecutionEvidence(finalReport, execution = {}, options = {}) {
   };
 }
 
+function buildTerminalProgress(existingPayload, options = {}) {
+  const existingProgress = isPlainObject(existingPayload?.progress) ? existingPayload.progress : {};
+  const now = sanitizeString(options.now, 128) || new Date().toISOString();
+  const phase = sanitizeString(options.phase, 64) || "completed";
+  const terminal = options.terminal !== false;
+  return {
+    ...existingProgress,
+    phase,
+    percent: terminal ? 100 : clampProgressPercent(existingProgress.percent),
+    message:
+      sanitizeString(options.message, 240) ||
+      (terminal ? "Run finished" : "Preparing another attempt"),
+    updated_at: now,
+    event_count: Math.max(0, Number(existingProgress.event_count) || 0),
+    terminal
+  };
+}
+
 async function markCallbackFailure(claimed, finalReport, markdown, execution, callbackResult, workerId) {
   const now = new Date().toISOString();
   const existingQueue = sanitizeQueue(claimed.payload?.queue);
@@ -1367,6 +1404,7 @@ async function markCallbackFailure(claimed, finalReport, markdown, execution, ca
   const shouldRetry = nextAttemptCount < maxAttempts;
   const queueStatus = shouldRetry ? getRetryQueueStatus(existingQueue.status) : "failed";
   const storedExecution = buildStoredExecutionPayload(finalReport, markdown, execution);
+  const callbackAttempted = callbackResult?.callback_attempted !== false;
 
   const payload = buildQueuePayload({
     existingPayload: claimed.payload,
@@ -1379,9 +1417,11 @@ async function markCallbackFailure(claimed, finalReport, markdown, execution, ca
       completed_at: shouldRetry ? null : now,
       worker_id: workerId,
       callback_attempts: callbackResult.attempts,
-      callback_ok: false,
-      callback_status: callbackResult.status || null,
-      last_error: callbackResult.error || "Failed to deliver final callback"
+      callback_ok: callbackAttempted ? false : null,
+      callback_status: callbackAttempted ? callbackResult.status || null : null,
+      last_error: callbackResult.error || "Failed to deliver final callback",
+      failure_stage: callbackResult.failure_stage || (callbackAttempted ? "report_callback" : null),
+      failure_code: callbackResult.failure_code || null
     },
     worker: {
       worker_id: workerId,
@@ -1392,6 +1432,14 @@ async function markCallbackFailure(claimed, finalReport, markdown, execution, ca
     artifacts: storedExecution.artifacts,
     runLog: storedExecution.runLog,
     evidenceMedia: storedExecution.evidenceMedia
+  });
+  payload.progress = buildTerminalProgress(claimed.payload, {
+    now,
+    terminal: !shouldRetry,
+    phase: shouldRetry ? "retrying" : "failed",
+    message: shouldRetry
+      ? "Evidence delivery failed; preparing another attempt"
+      : callbackResult.error || "QA run failed"
   });
 
   return updateQueueRow(claimed.row.run_id, {
@@ -1438,6 +1486,18 @@ async function markCallbackSuccess(claimed, finalReport, markdown, execution, ca
     artifacts: storedExecution.artifacts,
     runLog: storedExecution.runLog,
     evidenceMedia: storedExecution.evidenceMedia
+  });
+  const reportStatus = sanitizeString(finalReport?.status, 64).toLowerCase();
+  payload.progress = buildTerminalProgress(claimed.payload, {
+    now,
+    terminal: true,
+    phase: ["failed", "failed_validation"].includes(reportStatus) ? reportStatus : "completed",
+    message:
+      reportStatus === "failed_validation"
+        ? "QA finished but the report needs review"
+        : reportStatus === "failed"
+          ? "QA run failed"
+          : "QA report ready"
   });
 
   return updateQueueRow(claimed.row.run_id, {
@@ -1738,7 +1798,15 @@ async function processOne(workerId, options = {}) {
     portableEvidenceMedia
   );
   if (!portableEvidenceCoverage.ok) {
-    const deliveryError = `Evidence delivery incomplete: ${portableEvidenceCoverage.missing_sources.length} captured file(s) were not stored for report playback.`;
+    const firstUploadError = Array.isArray(portableEvidenceCoverage.upload_errors)
+      ? sanitizeString(portableEvidenceCoverage.upload_errors[0]?.error, 1000)
+      : "";
+    const deliveryError = [
+      `Evidence delivery incomplete: ${portableEvidenceCoverage.missing_sources.length} captured file(s) were not stored for report playback.`,
+      firstUploadError ? `Storage error: ${firstUploadError}` : ""
+    ]
+      .filter(Boolean)
+      .join(" ");
     finalReport = {
       ...finalReport,
       status: "failed_validation"
@@ -1762,10 +1830,14 @@ async function processOne(workerId, options = {}) {
 
     const deliveryFailure = {
       ok: false,
-      status: 503,
+      status: null,
       attempts: 0,
-      error: deliveryError
+      error: deliveryError,
+      callback_attempted: false,
+      failure_stage: "evidence_storage",
+      failure_code: "evidence_storage_incomplete"
     };
+    await liveProgress.finalize();
     const deliveryFailed = await markCallbackFailure(
       claimed,
       finalReport,
@@ -1824,6 +1896,7 @@ async function processOne(workerId, options = {}) {
       }
     }
   });
+  await liveProgress.finalize();
 
   if (!callbackResult.ok) {
     if (shouldFinalizeOnCallbackFailure(callbackResult)) {
@@ -2005,6 +2078,7 @@ module.exports = {
     buildExecutionRunRequest,
     shouldFallbackToNextEngine,
     buildStoredExecutionPayload,
+    buildTerminalProgress,
     collectExecutionScreenshotEvidence,
     collectExecutionVideoEvidence,
     assessExecutionEvidence,

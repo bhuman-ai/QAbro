@@ -295,6 +295,59 @@ test("buildPortableEvidenceMedia includes local video URL aliases for storage-ba
   });
 });
 
+test("buildPortableEvidenceMedia stores videos larger than the former 25 MB cutoff", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-local-publish-large-video-"));
+  const videoPath = path.join(tempDir, "large-proof.webm");
+  const videoBytes = 26 * 1024 * 1024;
+  fs.writeFileSync(videoPath, Buffer.alloc(0));
+  fs.truncateSync(videoPath, videoBytes);
+  let resumableUpload = null;
+
+  const evidenceMedia = await __private.buildPortableEvidenceMedia(
+    {
+      evidence_gallery: {
+        videos: [videoPath]
+      }
+    },
+    {
+      local_video_path: videoPath
+    },
+    {
+      runId: "run_large_video",
+      maxScreenshots: 0,
+      maxVideos: 1,
+      supabaseUrl: "https://large-video.supabase.example",
+      serviceKey: "service-key",
+      resumableThresholdBytes: 1024,
+      async resumableUpload(input) {
+        resumableUpload = input;
+      },
+      fetchImpl: async (_url, init = {}) => ({
+        ok: true,
+        status: init.method === "POST" ? 200 : 206,
+        headers: {
+          get(name) {
+            return String(name).toLowerCase() === "content-range"
+              ? `bytes 0-31/${videoBytes}`
+              : "";
+          }
+        },
+        async arrayBuffer() {
+          return Buffer.alloc(32);
+        },
+        async json() {
+          return {};
+        }
+      })
+    }
+  );
+
+  assert.equal(resumableUpload.byteLength, videoBytes);
+  assert.equal(evidenceMedia.videos.length, 1);
+  assert.equal(evidenceMedia.videos[0].byte_length, videoBytes);
+  assert.equal(evidenceMedia.upload_errors, undefined);
+});
+
 test("cleanupPublishedLocalArtifacts removes local run directories after storage upload", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-local-publish-cleanup-"));
   const screenshotPath = path.join(tempDir, "proof.png");
