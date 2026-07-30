@@ -1962,8 +1962,9 @@ test("executeBrowserbaseQaRun supports vision_only mode with annotation-based cl
   assert.ok(Array.isArray(result.report.summary?.persona_skepticisms));
 });
 
-test("executeVisionOnlyModeAttempt ignores maxSteps and keeps going until the planner says done", async () => {
+test("executeVisionOnlyModeAttempt stops at the configured step limit with a partial report", async () => {
   const plannerCalls = [];
+  const runLog = [];
   let currentUrl = "about:blank";
 
   const page = {
@@ -2011,7 +2012,7 @@ test("executeVisionOnlyModeAttempt ignores maxSteps and keeps going until the pl
         };
       }
     },
-    runLog: [],
+    runLog,
     artifacts: {
       captured_screenshots: [],
       screenshot_event_count: 0
@@ -2031,9 +2032,79 @@ test("executeVisionOnlyModeAttempt ignores maxSteps and keeps going until the pl
     maxSteps: 1
   });
 
-  assert.deepEqual(plannerCalls, [1, 2]);
-  assert.equal(result.candidateReport.status, "completed");
-  assert.match(result.rawAgentMessage, /status: completed/i);
+  assert.deepEqual(plannerCalls, [1]);
+  assert.equal(result.candidateReport.status, "partial");
+  assert.match(result.rawAgentMessage, /step QA limit was reached/i);
+  assert.ok(
+    runLog.some(
+      (entry) =>
+        entry.event === "vision_only_scope_limit_reached" &&
+        entry.details?.reason === "max_steps"
+    )
+  );
+});
+
+test("executeVisionOnlyModeAttempt stops at the configured time budget", async () => {
+  let currentUrl = "about:blank";
+  let nowCalls = 0;
+  let plannerCalls = 0;
+  const runLog = [];
+  const page = {
+    goto: async (url) => {
+      currentUrl = String(url || "");
+    },
+    url: () => currentUrl,
+    screenshot: async () => Buffer.from("vision-time-limit"),
+    waitForTimeout: async () => {},
+    mouse: { wheel: async () => {} },
+    keyboard: { press: async () => {} }
+  };
+
+  const result = await executeVisionOnlyModeAttempt({
+    stagehand: {
+      context: {
+        awaitActivePage: async () => page
+      }
+    },
+    runRequest: createRunRequest(),
+    options: {
+      visionApiKey: "test-openai-api-key",
+      visionTimeBudgetMs: 60_000,
+      visionNow: () => (nowCalls++ === 0 ? 0 : 60_001),
+      visionPlannerClient: async () => {
+        plannerCalls += 1;
+        return { action: "done", reason: "Done." };
+      }
+    },
+    runLog,
+    artifacts: {
+      captured_screenshots: [],
+      screenshot_event_count: 0
+    },
+    captureState: {
+      maxCount: 8,
+      maxBytes: 1500000,
+      capturedBytes: 0
+    },
+    coordinateFallbackConfig: {
+      enabled: true,
+      localizeBox: async () => ({
+        strategy: "mock",
+        box: { center_x: 1, center_y: 1 }
+      })
+    }
+  });
+
+  assert.equal(plannerCalls, 0);
+  assert.equal(result.candidateReport.status, "partial");
+  assert.match(result.rawAgentMessage, /minute QA limit was reached/i);
+  assert.ok(
+    runLog.some(
+      (entry) =>
+        entry.event === "vision_only_scope_limit_reached" &&
+        entry.details?.reason === "time_budget"
+    )
+  );
 });
 
 test("executeVisionOnlyModeAttempt overrides invented placeholder emails with the managed inbox email", async () => {

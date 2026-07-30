@@ -1119,6 +1119,30 @@ function buildSimpleAccessNeedsInput(flow, input = {}) {
 
 async function finishSimpleAiWait(apiClient, runId, waitResult, input = {}) {
   const resumeToken = buildResumeToken({ flow: SIMPLE_QA_FLOWS.AI, id: runId, input });
+  const status = waitResult.status && typeof waitResult.status === "object" ? waitResult.status : {};
+  const queueStatus = safeText(status?.queue?.queue_status || status?.queue?.status, 80).toLowerCase();
+  const reportStatus = safeText(status.report_status, 80).toLowerCase();
+  const terminalWithoutReport =
+    status.report_ready !== true &&
+    (["failed", "cancelled"].includes(queueStatus) ||
+      (!queueStatus && ["failed", "failed_validation"].includes(reportStatus)));
+  if (terminalWithoutReport) {
+    const needsReview = reportStatus === "failed_validation";
+    return makeSimpleStateResult({
+      ok: false,
+      state: needsReview ? "needs_review" : "failed",
+      flow: SIMPLE_QA_FLOWS.AI,
+      run_id: runId,
+      reason:
+        safeText(status?.queue?.last_error, 2000) ||
+        (needsReview
+          ? "AI QA ended without a valid report and needs review."
+          : "AI QA failed before a valid report could be produced."),
+      continue_polling: false,
+      status,
+      report_url: status.ui_report_url || null
+    });
+  }
   if (waitResult.timed_out === true || waitResult.status?.report_ready !== true) {
     const result = {
       ok: true,
@@ -1143,9 +1167,19 @@ async function finishSimpleAiWait(apiClient, runId, waitResult, input = {}) {
     share = null;
   }
   const outcome = summarizeCodingAgentQaOutcome({ reportPayload: report, waitResult, share });
+  const finalReportStatus = safeText(
+    report?.report?.status || report?.status || outcome.report_status,
+    80
+  ).toLowerCase();
+  const state =
+    finalReportStatus === "failed_validation" || finalReportStatus === "partial"
+      ? "needs_review"
+      : finalReportStatus === "failed"
+        ? "failed"
+        : "complete";
   const result = {
-    ok: true,
-    state: "complete",
+    ok: state === "complete",
+    state,
     flow: SIMPLE_QA_FLOWS.AI,
     run_id: runId,
     verdict: outcome.verdict,
@@ -1156,7 +1190,10 @@ async function finishSimpleAiWait(apiClient, runId, waitResult, input = {}) {
     report_url: outcome.share_url || outcome.ui_report_url || report?.ui_report_url || null,
     continue_polling: false
   };
-  if (shouldReturnQaAction(outcome, { feedback_action: buildAiRunInput(input).feedback_action })) {
+  if (
+    state === "complete" &&
+    shouldReturnQaAction(outcome, { feedback_action: buildAiRunInput(input).feedback_action })
+  ) {
     result.required_agent_action = buildAutomatedQaRequiredAction(runId, outcome, {
       feedback_action: buildAiRunInput(input).feedback_action
     });

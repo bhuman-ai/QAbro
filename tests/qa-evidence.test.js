@@ -6,8 +6,12 @@ const {
   ensureEvidenceStorageBucket,
   fetchStoredEvidenceObject,
   measureStoredEvidenceForRun,
+  uploadLocalFileToEvidenceStorage,
   verifyStoredEvidenceObject
 } = require("../lib/qa-evidence-storage");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 
 function createRes() {
   return {
@@ -218,6 +222,59 @@ test("verifyStoredEvidenceObject confirms the uploaded bytes can be read back", 
   );
 
   assert.equal(verified, true);
+});
+
+test("uploadLocalFileToEvidenceStorage uses resumable chunks above the threshold", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-resumable-evidence-"));
+  const videoPath = path.join(tempDir, "proof.webm");
+  const expected = Buffer.from("resumable-proof-video");
+  fs.writeFileSync(videoPath, expected);
+  let resumableInput = null;
+  const standardUploads = [];
+
+  const uploaded = await uploadLocalFileToEvidenceStorage(videoPath, {
+    runId: "run_resumable",
+    kind: "videos",
+    contentType: "video/webm",
+    supabaseUrl: "https://resumable-project.supabase.co",
+    serviceKey: "service-key",
+    resumableThresholdBytes: 4,
+    resumableChunkBytes: 6,
+    async resumableUpload(input) {
+      resumableInput = input;
+    },
+    async fetchImpl(url, init = {}) {
+      if (init.method === "POST") {
+        standardUploads.push(url);
+        return { ok: true, status: 200, async json() { return {}; } };
+      }
+      return {
+        ok: true,
+        status: 206,
+        headers: {
+          get(name) {
+            if (String(name).toLowerCase() === "content-range") {
+              return `bytes 0-${expected.length - 1}/${expected.length}`;
+            }
+            return "";
+          }
+        },
+        async arrayBuffer() {
+          return expected;
+        }
+      };
+    }
+  });
+
+  assert.equal(standardUploads.length, 1, "only the bucket ensure request should use standard POST");
+  assert.equal(resumableInput.byteLength, expected.length);
+  assert.equal(resumableInput.chunkSize, 6);
+  assert.match(
+    resumableInput.endpoint,
+    /^https:\/\/resumable-project\.storage\.supabase\.co\/storage\/v1\/upload\/resumable/
+  );
+  assert.equal(uploaded.byte_length, expected.length);
+  assert.match(uploaded.storage_path, /^run_resumable\/videos\//);
 });
 
 test("fetchStoredEvidenceObject rejects oversized declared content before reading", async () => {
