@@ -348,6 +348,71 @@ test("buildPortableEvidenceMedia stores videos larger than the former 25 MB cuto
   assert.equal(evidenceMedia.upload_errors, undefined);
 });
 
+test("buildPortableEvidenceMedia splits recordings above the storage cap into ordered playable parts", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-local-publish-segmented-video-"));
+  const videoPath = path.join(tempDir, "full-recording.webm");
+  const partOne = path.join(tempDir, "full-recording-part-001.webm");
+  const partTwo = path.join(tempDir, "full-recording-part-002.webm");
+  fs.writeFileSync(videoPath, Buffer.alloc(0));
+  fs.truncateSync(videoPath, 80 * 1024 * 1024);
+  fs.writeFileSync(partOne, Buffer.from("playable-part-one"));
+  fs.writeFileSync(partTwo, Buffer.from("playable-part-two"));
+  const uploadedPaths = [];
+  let cleaned = false;
+
+  const evidenceMedia = await __private.buildPortableEvidenceMedia(
+    {
+      evidence_gallery: {
+        videos: [videoPath]
+      }
+    },
+    {
+      local_video_path: videoPath
+    },
+    {
+      runId: "run_segmented_video",
+      maxScreenshots: 0,
+      maxVideos: 1,
+      videoSegmentBytes: 40 * 1024 * 1024,
+      supabaseUrl: "https://segmented-video.supabase.example",
+      serviceKey: "service-key",
+      async segmentVideo(candidate) {
+        assert.equal(candidate, videoPath);
+        return {
+          segmented: true,
+          parts: [
+            { path: partOne, byte_length: fs.statSync(partOne).size },
+            { path: partTwo, byte_length: fs.statSync(partTwo).size }
+          ],
+          cleanup() {
+            cleaned = true;
+          }
+        };
+      },
+      async uploadLocalFile(candidate) {
+        uploadedPaths.push(candidate);
+        return {
+          storage_bucket: "qa-evidence",
+          storage_path: `run_segmented_video/videos/${path.basename(candidate)}`,
+          byte_length: fs.statSync(candidate).size
+        };
+      }
+    }
+  );
+
+  assert.deepEqual(uploadedPaths, [partOne, partTwo]);
+  assert.equal(cleaned, true);
+  assert.equal(evidenceMedia.videos.length, 2);
+  assert.equal(evidenceMedia.videos[0].source, videoPath.replaceAll("\\", "/"));
+  assert.deepEqual(evidenceMedia.videos[0].aliases, [partOne.replaceAll("\\", "/")]);
+  assert.equal(evidenceMedia.videos[0].segment_index, 0);
+  assert.equal(evidenceMedia.videos[0].segment_count, 2);
+  assert.equal(evidenceMedia.videos[1].source, partTwo.replaceAll("\\", "/"));
+  assert.equal(evidenceMedia.videos[1].segment_index, 1);
+  assert.equal(evidenceMedia.videos[1].segment_label, "Part 2 of 2");
+  assert.equal(evidenceMedia.upload_errors, undefined);
+});
+
 test("cleanupPublishedLocalArtifacts removes local run directories after storage upload", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-local-publish-cleanup-"));
   const screenshotPath = path.join(tempDir, "proof.png");

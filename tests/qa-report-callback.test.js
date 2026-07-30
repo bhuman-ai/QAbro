@@ -214,8 +214,12 @@ test("qa-report-callback sanitizes stored report payloads before upsert", async 
               videos: [
                 {
                   source: "/tmp/run.webm",
+                  aliases: ["/tmp/original-run.webm"],
                   data_url: "data:video/webm;base64,xyz",
-                  content_type: "video/webm"
+                  content_type: "video/webm",
+                  segment_index: 0,
+                  segment_count: 2,
+                  segment_label: "Part 1 of 2"
                 }
               ]
             },
@@ -288,6 +292,10 @@ test("qa-report-callback sanitizes stored report payloads before upsert", async 
       {
         source: "/tmp/run.webm",
         content_type: "video/webm",
+        aliases: ["/tmp/original-run.webm"],
+        segment_index: 0,
+        segment_count: 2,
+        segment_label: "Part 1 of 2",
         data_url: "data:video/webm;base64,xyz"
       }
     ]

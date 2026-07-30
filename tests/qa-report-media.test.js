@@ -69,3 +69,55 @@ test("evidence manifest omits local files that were never published", () => {
   assert.equal(manifest.recording, null);
   assert.deepEqual(manifest.videos, []);
 });
+
+test("evidence manifest exposes oversized recordings as ordered playable parts", () => {
+  const original = "/opt/qabro/output/run/video/page.webm";
+  const partTwo = "/tmp/qabro-video-segments/page-part-002.webm";
+  const manifest = buildQaEvidenceManifest(
+    {
+      run_id: "run_media_segmented",
+      evidence_gallery: {
+        videos: [original]
+      }
+    },
+    {
+      evidence_media: {
+        videos: [
+          {
+            source: original,
+            aliases: ["/tmp/qabro-video-segments/page-part-001.webm"],
+            content_type: "video/webm",
+            storage_bucket: "qa-evidence",
+            storage_path: "run_media_segmented/videos/part-001.webm",
+            byte_length: 30000000,
+            segment_index: 0,
+            segment_count: 2,
+            segment_label: "Part 1 of 2"
+          },
+          {
+            source: partTwo,
+            content_type: "video/webm",
+            storage_bucket: "qa-evidence",
+            storage_path: "run_media_segmented/videos/part-002.webm",
+            byte_length: 28000000,
+            segment_index: 1,
+            segment_count: 2,
+            segment_label: "Part 2 of 2"
+          }
+        ]
+      }
+    },
+    {
+      runId: "run_media_segmented"
+    }
+  );
+
+  assert.equal(manifest.videos.length, 2);
+  assert.equal(manifest.recording.segment_index, 0);
+  assert.equal(manifest.recording.segment_count, 2);
+  assert.equal(manifest.videos[0].segment_label, "Part 1 of 2");
+  assert.equal(manifest.videos[1].segment_label, "Part 2 of 2");
+  assert.match(manifest.videos[0].url, /index=0/);
+  assert.match(manifest.videos[1].url, /index=1/);
+  assert.doesNotMatch(JSON.stringify(manifest), /storage_path|storage_bucket|\/opt\/qabro|\/tmp\//);
+});

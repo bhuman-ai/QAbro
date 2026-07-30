@@ -8500,6 +8500,17 @@ function SharedReportPage({
     (videoEvidence[fallbackVideoIndex]
       ? buildEvidenceAssetUrl(runId || report?.run_id || "", "video", fallbackVideoIndex, shareKey)
       : "");
+  const replayVideoParts = (report?.evidence_manifest?.videos || [])
+    .filter((item) => Number(item.segment_count) > 1 && Number.isInteger(item.segment_index))
+    .slice()
+    .sort((left, right) => Number(left.segment_index) - Number(right.segment_index))
+    .map((item) => String(item.url || "").trim())
+    .filter(Boolean);
+  const replayVideoUrls = replayVideoParts.length
+    ? replayVideoParts
+    : replayVideoUrl
+      ? [replayVideoUrl]
+      : [];
   const replayPosterUrl = firstEvidence
     ? buildEvidenceAssetUrl(runId || report?.run_id || "", "screenshot", firstEvidence[1], shareKey)
     : "";
@@ -8511,6 +8522,7 @@ function SharedReportPage({
           <StarterSessionReplayModal
             title="Watch recording"
             videoUrl={replayVideoUrl}
+            videoUrls={replayVideoUrls}
             posterUrl={replayPosterUrl}
             sessionUrl=""
             thoughtCues={[]}
@@ -10740,15 +10752,21 @@ function getActiveReplayExperienceSegment(segments: ReplayExperienceSegment[], p
 function ReplayVideoWithOverlay({
   title,
   videoUrl,
+  videoUrls = [],
   posterUrl,
   thoughtCues,
-  cursorCues
+  cursorCues,
+  onEnded,
+  showMissingThoughtsNotice = true
 }: {
   title: string;
   videoUrl: string;
+  videoUrls?: string[];
   posterUrl: string;
   thoughtCues: ReplayThoughtCue[];
   cursorCues: ReplayCursorCue[];
+  onEnded?: () => void;
+  showMissingThoughtsNotice?: boolean;
 }) {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -10787,6 +10805,7 @@ function ReplayVideoWithOverlay({
         onSeeked={(event) => {
           setCurrentTime(Number(event.currentTarget.currentTime) || 0);
         }}
+        onEnded={onEnded}
       >
         Your browser could not play this replay.
       </video>
@@ -10891,7 +10910,7 @@ function ReplayVideoWithOverlay({
         ) : null}
       </AnimatePresence>
 
-      {!thoughtCues.length ? (
+      {showMissingThoughtsNotice && !thoughtCues.length ? (
         <div className="pointer-events-none absolute inset-x-6 bottom-6 z-10 rounded-2xl border border-white/10 bg-brand-ink/55 px-4 py-3 text-xs font-bold text-white/75 backdrop-blur">
           This replay has proof, but no structured customer reactions were saved for it yet.
         </div>
@@ -10903,6 +10922,7 @@ function ReplayVideoWithOverlay({
 function StarterSessionReplayModal({
   title,
   videoUrl,
+  videoUrls = [],
   posterUrl,
   sessionUrl,
   thoughtCues,
@@ -10911,12 +10931,24 @@ function StarterSessionReplayModal({
 }: {
   title: string;
   videoUrl: string;
+  videoUrls?: string[];
   posterUrl: string;
   sessionUrl: string;
   thoughtCues: ReplayThoughtCue[];
   cursorCues: ReplayCursorCue[];
   onClose: () => void;
 }) {
+  const replayUrls = Array.from(
+    new Set(
+      [...videoUrls, videoUrl]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )
+  );
+  const [activePartIndex, setActivePartIndex] = useState(0);
+  const activeVideoUrl = replayUrls[activePartIndex] || replayUrls[0] || "";
+  const hasMultipleParts = replayUrls.length > 1;
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -10936,7 +10968,13 @@ function StarterSessionReplayModal({
           <div>
             <h2 className="text-xl font-black tracking-tight text-brand-ink">{title}</h2>
             <p className="mt-1 text-sm font-bold text-slate-500">
-              {videoUrl ? "Replay is ready to watch." : sessionUrl ? "Open the recorded session in a separate tab." : "Replay data is not available for this run yet."}
+              {hasMultipleParts
+                ? "The long recording continues automatically."
+                : activeVideoUrl
+                  ? "Replay is ready to watch."
+                  : sessionUrl
+                    ? "Open the recorded session in a separate tab."
+                    : "Replay data is not available for this run yet."}
             </p>
           </div>
           <button
@@ -10948,14 +10986,48 @@ function StarterSessionReplayModal({
         </div>
 
         <div className="bg-brand-ink p-4 md:p-6">
-          {videoUrl ? (
-            <ReplayVideoWithOverlay
-              title={title}
-              videoUrl={videoUrl}
-              posterUrl={posterUrl}
-              thoughtCues={thoughtCues}
-              cursorCues={cursorCues}
-            />
+          {activeVideoUrl ? (
+            <>
+              <ReplayVideoWithOverlay
+                key={activeVideoUrl}
+                title={title}
+                videoUrl={activeVideoUrl}
+                posterUrl={posterUrl}
+                thoughtCues={hasMultipleParts ? [] : thoughtCues}
+                cursorCues={hasMultipleParts ? [] : cursorCues}
+                showMissingThoughtsNotice={!hasMultipleParts}
+                onEnded={() => {
+                  if (activePartIndex < replayUrls.length - 1) {
+                    setActivePartIndex(activePartIndex + 1);
+                  }
+                }}
+              />
+              {hasMultipleParts ? (
+                <div className="mt-3 flex items-center justify-center gap-3 text-sm font-bold text-white">
+                  <button
+                    type="button"
+                    className="rounded-lg border border-white/20 px-3 py-2 disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={activePartIndex === 0}
+                    onClick={() => setActivePartIndex((current) => Math.max(0, current - 1))}
+                  >
+                    Back
+                  </button>
+                  <span aria-live="polite">
+                    Part {activePartIndex + 1} of {replayUrls.length}
+                  </span>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-white/20 px-3 py-2 disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={activePartIndex >= replayUrls.length - 1}
+                    onClick={() =>
+                      setActivePartIndex((current) => Math.min(replayUrls.length - 1, current + 1))
+                    }
+                  >
+                    Next
+                  </button>
+                </div>
+              ) : null}
+            </>
           ) : posterUrl ? (
             <img
               src={posterUrl}
@@ -11005,8 +11077,10 @@ function StarterSessionReplayModal({
 
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-5 bg-white">
           <div className="text-sm font-bold text-slate-500">
-            {videoUrl
-              ? "Scrub the replay to see customer reactions and cursor markers at each recorded interaction."
+            {hasMultipleParts
+              ? "Parts continue automatically, or use Back and Next."
+              : activeVideoUrl
+                ? "Scrub the replay to see customer reactions and cursor markers at each recorded interaction."
               : "If a hosted session exists, open it from the button on the right."}
           </div>
           <div className="flex flex-wrap gap-3">
@@ -11085,6 +11159,17 @@ function StarterReportPage({
     (firstVideoValue && (report?.run_id || run?.run_id)
       ? buildEvidenceAssetUrl(report?.run_id || run?.run_id || "", "video", preferredVideoIndex, shareKey)
       : "");
+  const replayVideoParts = (report?.evidence_manifest?.videos || [])
+    .filter((item) => Number(item.segment_count) > 1 && Number.isInteger(item.segment_index))
+    .slice()
+    .sort((left, right) => Number(left.segment_index) - Number(right.segment_index))
+    .map((item) => String(item.url || "").trim())
+    .filter(Boolean);
+  const replayVideoUrls = replayVideoParts.length
+    ? replayVideoParts
+    : replayVideoUrl
+      ? [replayVideoUrl]
+      : [];
   const replaySessionUrl =
     String(
       report?.evidence_gallery?.session_url ||
@@ -11202,6 +11287,7 @@ function StarterReportPage({
           <StarterSessionReplayModal
             title={`Watch ${persona.name}'s Session`}
             videoUrl={replayVideoUrl}
+            videoUrls={replayVideoUrls}
             posterUrl={replayPosterUrl}
             sessionUrl={replaySessionUrl}
             thoughtCues={replayOverlay.thoughts}
