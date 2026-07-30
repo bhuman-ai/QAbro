@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /reports
+Disallow: /trial
+Disallow: /trials
+Disallow: /testers/
+Disallow: /qa-credits
+
+Sitemap: https://beforeusersdo.com/sitemap.xml

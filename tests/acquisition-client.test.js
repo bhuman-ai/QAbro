@@ -7,6 +7,7 @@ const ROOT = path.resolve(__dirname, "..");
 const acquisition = fs.readFileSync(path.join(ROOT, "src", "lib", "acquisition.ts"), "utf8");
 const app = fs.readFileSync(path.join(ROOT, "src", "App.tsx"), "utf8");
 const docs = fs.readFileSync(path.join(ROOT, "src", "PublicDocsPage.tsx"), "utf8");
+const qaMcp = fs.readFileSync(path.join(ROOT, "src", "QaMcpPage.tsx"), "utf8");
 
 test("browser acquisition capture is first-party, first-touch, and UTM-limited", () => {
   assert.match(acquisition, /beforeusersdo:first_touch:v1/);
@@ -21,6 +22,8 @@ test("public offer, CTA, signup, and install-copy actions are instrumented", () 
   assert.match(docs, /trackOfferViewed\("public_docs", "\/docs"\)/);
   assert.match(app, /trackInstallClicked\("homepage"\)/);
   assert.match(app, /trackInstallClicked\("public_docs"\)/);
+  assert.match(qaMcp, /trackOfferViewed\("qa_mcp", "\/qa-mcp"\)/);
+  assert.match(app, /trackInstallClicked\("qa_mcp"\)/);
   assert.match(app, /trackSignupCompleted\(\)/);
   assert.match(app, /rememberAcquisitionAuthMethod\("email"\)/);
   assert.match(app, /rememberAcquisitionAuthMethod\(provider\)/);

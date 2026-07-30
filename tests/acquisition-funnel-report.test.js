@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  filterAcquisitionEvents,
   loadAcquisitionEvents,
   summarizeAcquisitionEvents
 } = require("../scripts/acquisition-funnel-report");
@@ -54,4 +55,35 @@ test("event loader excludes test traffic by default", async () => {
   assert.equal(parsed.pathname, "/rest/v1/swarmtest_acquisition_events");
   assert.equal(parsed.searchParams.get("is_test"), "eq.false");
   assert.equal(parsed.searchParams.get("limit"), "10000");
+  assert.match(parsed.searchParams.get("select"), /landing_path/);
+});
+
+test("funnel report isolates one acquisition source or landing path without exposing identities", () => {
+  const events = [
+    {
+      event_name: "offer_viewed",
+      visitor_id: "registry_visitor",
+      landing_path: "/docs",
+      utm_source: "mcp_registry",
+      utm_medium: "marketplace",
+      utm_campaign: "official_registry"
+    },
+    {
+      event_name: "offer_viewed",
+      visitor_id: "search_visitor",
+      landing_path: "/qa-mcp",
+      utm_source: "",
+      utm_medium: "",
+      utm_campaign: ""
+    }
+  ];
+
+  assert.deepEqual(
+    filterAcquisitionEvents(events, { source: "mcp_registry" }),
+    [events[0]]
+  );
+  assert.deepEqual(
+    filterAcquisitionEvents(events, { path: "/qa-mcp" }),
+    [events[1]]
+  );
 });

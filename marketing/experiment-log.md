@@ -1,5 +1,24 @@
 # Experiment log
 
+## Experiment 3
+
+- Name: High-intent search — QA MCP for coding agents
+- Status: Ready to deploy
+- Primary channel: Organic search discovery
+- Audience: Founders and small teams searching for QA MCP, browser-testing MCP, or a way for coding agents to verify finished features
+- Hypothesis: For builders with an active release-confidence problem, an evidence-first QA MCP page will produce install actions because it distinguishes a complete QA handoff from raw browser control.
+- Reusable asset: `/qa-mcp`
+- Expansion lever: Search indexing, internal links, official Registry authority, and future ecosystem citations
+- Manual dependency: Periodic evidence and copy updates from observed search and activation data
+- Destination: `https://beforeusersdo.com/qa-mcp`
+- Primary event: `first_qa_report_completed`
+- Diagnostic key: `landing_path=/qa-mcp`
+- Observation window: 45 days or 100 qualified page visitors, whichever is later
+- Continue if: At least one completed QA report, or at least five percent of qualified visitors choose the install CTA before activation volume is sufficient
+- Stop or change if: 100 qualified visitors produce no install clicks, or install clicks repeatedly fail to reach MCP activation
+- Validation before deploy: Search results show active 2026 content and competing products around browser-testing MCPs; production currently returns 404 for both `robots.txt` and `sitemap.xml`.
+- Next action: Deploy `/qa-mcp`, `robots.txt`, and `sitemap.xml`, then verify the production response and measured CTA.
+
 ## Experiment 2
 
 - Name: Official MCP Registry — hosted QA discovery
@@ -20,7 +39,7 @@
 - Registry evidence: The official Registry API returned exactly one matching record with status `active`, `isLatest: true`, version `1.0.0`, the attributed docs URL, and the hosted streamable-HTTP endpoint.
 - Validation: Official 2025-12-11 JSON Schema passed; the hosted health endpoint returned 200; the MCP endpoint returned the expected 401 authentication challenge; the attributed docs URL preserved all campaign fields in a real browser.
 - Observed result: Publication is verified; real traffic and activation data have not reached an observation checkpoint yet.
-- Next action: Run `npm run marketing:report` on 2026-08-06 and inspect the `mcp_registry / marketplace / official_registry` cohort.
+- Next action: Keep the Registry record active as authority and downstream distribution while Experiment 3 becomes the active traffic engine.
 
 ## Experiment
 

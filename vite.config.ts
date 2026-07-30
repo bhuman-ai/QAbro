@@ -5,6 +5,14 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        qaMcp: path.resolve(__dirname, "qa-mcp.html")
+      }
+    }
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src")
