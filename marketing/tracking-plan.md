@@ -28,6 +28,17 @@
 - Registry verification: The official API returned the record as `active` and `isLatest: true` with the attributed website URL intact.
 - Browser verification: The Registry URL reached the three-step install section and persisted the exact source, medium, and campaign on 2026-07-30. The event request was blocked during this check so no synthetic production event was written.
 
+## Supporting Product Hunt launch
+
+- Product URL: `https://beforeusersdo.com/`
+- Source / medium / campaign: `product_hunt / referral / qa_mcp_launch`
+- Attribution: Product Hunt does not accept tracked links. When the first visit
+  has a `producthunt.com` referrer and no explicit UTM source, the browser maps
+  the referrer host into the existing campaign fields without storing the full
+  referrer URL.
+- Caveat: Browser or privacy settings may suppress the referrer and leave that
+  visitor classified as direct.
+
 The primary event means one authenticated owner has received their first terminal, usable QA report. A page view, signup, MCP key, or queued run is diagnostic—not a conversion.
 
 ## Common event contract
@@ -61,7 +72,7 @@ Do not store MCP keys, access tokens, email addresses, target URLs, report conte
 
 ## Attribution
 
-- UTM capture: On the first visit to `/`, `/docs`, or `/qa-mcp`, accept only `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, and `utm_term`; trim values and cap their length.
+- UTM capture: On the first visit to `/`, `/docs`, or `/qa-mcp`, accept only `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, and `utm_term`; trim values and cap their length. If no UTM source exists and the referrer host is Product Hunt, map it to the documented Product Hunt campaign without storing the full referrer.
 - Persistence: Store the first valid attribution snapshot and `visitor_id` in first-party local storage. Do not overwrite it on later visits.
 - Auth association: After authentication, send the current `visitor_id` to the server; the server infers `owner_user_id` from the session and links subsequent events.
 - Conversion record: When `first_qa_report_completed` is written, resolve the earliest attribution snapshot for that owner and copy it onto the conversion event.
