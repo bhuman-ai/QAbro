@@ -78,7 +78,7 @@ channel:
   launch_seed:
     channel: "Product Hunt"
     role: "One-to-many launch exposure that sends attributable visitors into the measured homepage install path and supports the compounding /qa-mcp search asset."
-    destination: "https://beforeusersdo.com/?utm_source=product_hunt&utm_medium=launch&utm_campaign=qa_mcp_launch"
+    destination: "https://beforeusersdo.com/"
     reusable_unit: "One Product Hunt product launch with a tracked destination, listing copy, maker comment, thumbnail, and two gallery images."
     expansion_lever: "Product Hunt discovery, ecosystem citations, launch feedback, and reusable launch assets can reach many builders without proportional personalized outreach."
     manual_dependency: "One maker-owned submission, honest maker comment, launch-day replies, and occasional listing updates."

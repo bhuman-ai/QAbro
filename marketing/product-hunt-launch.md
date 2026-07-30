@@ -12,16 +12,16 @@ the organic-search loop.
 
 - **Product name:** Before Users Do
 - **Tagline:** Browser-backed QA for coding agents
-- **Destination:** `https://beforeusersdo.com/?utm_source=product_hunt&utm_medium=launch&utm_campaign=qa_mcp_launch`
+- **Destination:** `https://beforeusersdo.com/`
 - **Status:** Live and usable
-- **Description:** Before Users Do is a hosted QA MCP that lets coding agents test a reachable web app, capture screenshots plus console and network evidence, and return a fix-ready report before the feature ships.
+- **Description:** Your AI coder says “done.” Before Users Do checks whether the feature actually works. Connect one MCP to run the live flow, capture the broken screen, console errors, failed requests, and steps to reproduce, then hand the evidence back so the agent can fix it.
 - **Suggested topics:** Developer Tools, Artificial Intelligence, Testing and QA
 - **Pricing tag:** Confirm from the live commercial offer in the Product Hunt composer before publishing. No public pricing was found in the inspected product path.
 - **Thumbnail:** `marketing/product-hunt/assets/product-hunt-thumbnail.png`
 - **Gallery image 1:** `marketing/product-hunt/assets/product-hunt-gallery-imagegen-hero.png`
 - **Gallery image 2:** `marketing/product-hunt/assets/product-hunt-gallery-imagegen-proof.png`
 
-The tagline is 35 characters and the description is 195 characters, keeping
+The tagline is 35 characters and the description is 260 characters, keeping
 both within the conservative limits in Product Hunt's current launch guidance.
 Topic names are candidates and must be matched to the current composer options.
 
@@ -71,7 +71,7 @@ a personal story or post the comment from a company account.
 ## Measurement
 
 - **Primary event:** `first_qa_report_completed`
-- **Diagnostic campaign:** `product_hunt / launch / qa_mcp_launch`
+- **Diagnostic campaign:** `product_hunt / referral / qa_mcp_launch`
 - **Start condition:** The Product Hunt listing is published and can produce
   attributable exposure.
 - **Initial window:** Seven days after publication or 100 attributed landing
@@ -83,6 +83,10 @@ a personal story or post the comment from a company account.
   no attributable visitors.
 - **Change the offer-page handoff if:** 100 attributed visitors produce no
   install clicks, or install clicks repeatedly fail to reach MCP activation.
+- **Attribution note:** Product Hunt does not accept tracked URLs. The browser
+  maps a `producthunt.com` referrer to the campaign fields above without storing
+  the full referrer. Privacy settings that suppress the referrer remain a
+  measurement caveat.
 
 ## Asset provenance
 

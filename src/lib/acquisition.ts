@@ -20,6 +20,11 @@ type AttributionSnapshot = {
 const ATTRIBUTION_STORAGE_KEY = "beforeusersdo:first_touch:v1";
 const AUTH_METHOD_STORAGE_KEY = "beforeusersdo:auth_method:v1";
 const UTM_FIELDS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"] as const;
+const PRODUCT_HUNT_SOURCE = {
+  utm_source: "product_hunt",
+  utm_medium: "referral",
+  utm_campaign: "qa_mcp_launch"
+} as const;
 
 function safeStorage(): Storage | null {
   try {
@@ -51,6 +56,15 @@ function sanitizeLandingPath(value: string) {
   return path.startsWith("/") ? path.slice(0, 512) : "/";
 }
 
+function isProductHuntReferrer(referrerValue: string) {
+  try {
+    const hostname = new URL(referrerValue).hostname.toLowerCase();
+    return hostname === "producthunt.com" || hostname.endsWith(".producthunt.com");
+  } catch {
+    return false;
+  }
+}
+
 function readStoredAttribution(storage = safeStorage()): AttributionSnapshot | null {
   if (!storage) {
     return null;
@@ -68,7 +82,8 @@ function readStoredAttribution(storage = safeStorage()): AttributionSnapshot | n
 
 function captureFirstTouch(
   locationValue: Pick<Location, "pathname" | "search"> = window.location,
-  storage = safeStorage()
+  storage = safeStorage(),
+  referrerValue = typeof document === "undefined" ? "" : document.referrer
 ) {
   const existing = readStoredAttribution(storage);
   if (existing) {
@@ -88,6 +103,11 @@ function captureFirstTouch(
   };
   for (const field of UTM_FIELDS) {
     snapshot[field] = sanitizeAttributionValue(params.get(field));
+  }
+  if (!snapshot.utm_source && isProductHuntReferrer(referrerValue)) {
+    snapshot.utm_source = PRODUCT_HUNT_SOURCE.utm_source;
+    snapshot.utm_medium = PRODUCT_HUNT_SOURCE.utm_medium;
+    snapshot.utm_campaign = PRODUCT_HUNT_SOURCE.utm_campaign;
   }
 
   try {
@@ -193,6 +213,7 @@ export {
   ATTRIBUTION_STORAGE_KEY,
   buildEventKey,
   captureFirstTouch,
+  isProductHuntReferrer,
   readStoredAttribution,
   rememberAcquisitionAuthMethod,
   trackAgentInstallStepCopied,

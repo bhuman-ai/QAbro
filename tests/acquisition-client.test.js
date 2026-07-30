@@ -17,6 +17,15 @@ test("browser acquisition capture is first-party, first-touch, and UTM-limited",
   assert.doesNotMatch(acquisition, /\b(email|access_token|refresh_token|target_url|report_markdown)\s*:/);
 });
 
+test("Product Hunt referrals map to the existing first-touch fields without storing a full referrer", () => {
+  assert.match(acquisition, /hostname === "producthunt\.com"/);
+  assert.match(acquisition, /hostname\.endsWith\("\.producthunt\.com"\)/);
+  assert.match(acquisition, /utm_source: "product_hunt"/);
+  assert.match(acquisition, /utm_medium: "referral"/);
+  assert.match(acquisition, /utm_campaign: "qa_mcp_launch"/);
+  assert.doesNotMatch(acquisition, /referrer:\s*referrerValue/);
+});
+
 test("public offer, CTA, signup, and install-copy actions are instrumented", () => {
   assert.match(app, /trackOfferViewed\("homepage", "\/"\)/);
   assert.match(docs, /trackOfferViewed\("public_docs", "\/docs"\)/);

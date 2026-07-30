@@ -10,14 +10,14 @@
 - Reusable asset: Product Hunt listing package in `marketing/product-hunt-launch.md`
 - Expansion lever: Product Hunt discovery, ecosystem citations, launch feedback, and reuse of the launch creative
 - Manual dependency: One maker-owned submission, an honest maker comment, and launch-day replies
-- Destination: `https://beforeusersdo.com/?utm_source=product_hunt&utm_medium=launch&utm_campaign=qa_mcp_launch`
+- Destination: `https://beforeusersdo.com/`
 - Primary event: `first_qa_report_completed`
-- Diagnostic campaign: `product_hunt / launch / qa_mcp_launch`
+- Diagnostic campaign: `product_hunt / referral / qa_mcp_launch`
 - Start condition: The Product Hunt listing is published and can produce attributable exposure
 - Observation window: Seven days or 100 attributed landing visits, whichever is later
 - Continue if: At least one completed QA report, or at least five percent of attributed visitors choose the install CTA while activation volume is still small
 - Stop or change if: Product Hunt exposure sends no attributable visitors, or 100 attributed visitors produce no install clicks
-- Completed preparation: Listing copy, tracked homepage destination, first-comment scaffold, 240 × 240 site-brand thumbnail, and two 1270 × 760 Imagegen launch graphics derived from the homepage's real copy and visual system
+- Completed preparation: Listing copy in the homepage's direct voice, plain Product Hunt-compatible homepage destination, first-comment scaffold, referrer attribution, 240 × 240 site-brand thumbnail, and two 1270 × 760 Imagegen launch graphics derived from the homepage's real copy and visual system
 - Approval gate: Confirm a personal maker account, the truthful pricing tag, the honest one-sentence maker story, any required terms, and external publication
 - Next action: Obtain explicit approval immediately before Product Hunt submission.
 
