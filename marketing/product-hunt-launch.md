@@ -18,7 +18,7 @@ and language that can improve the organic-search loop.
 - **Pricing tag:** Confirm from the live commercial offer in the Product Hunt composer before publishing. No public pricing was found in the inspected product path.
 - **Thumbnail:** `marketing/product-hunt/assets/product-hunt-thumbnail.png`
 - **Gallery image 1:** `marketing/product-hunt/assets/product-hunt-gallery-live-page.png`
-- **Gallery image 2:** `marketing/product-hunt/assets/product-hunt-gallery-evidence-board.png`
+- **Gallery image 2:** `marketing/product-hunt/assets/product-hunt-gallery-evidence-section.png`
 
 The tagline is 35 characters and the description is 195 characters, keeping
 both within the conservative limits in Product Hunt's current launch guidance.
@@ -28,8 +28,8 @@ Topic names are candidates and must be matched to the current composer options.
 
 1. **Live offer:** The real, live QA MCP page shows the agent-to-browser-to-proof
    handoff and sends builders into the measured install path.
-2. **Evidence board:** Screenshots, console failures, network proof, and a
-   fix-ready verdict come back in one QA report.
+2. **What comes back:** The real site explains the four concrete outputs:
+   screen evidence, runtime failures, network proof, and a usable verdict.
 
 ## Maker first-comment scaffold
 
@@ -84,18 +84,10 @@ a personal story or post the comment from a company account.
 ## Asset provenance
 
 The thumbnail reuses the existing navy shield and purple zap brand mark. The
-first gallery asset is a crop of the verified live `/qa-mcp` page. The second
-was generated with the built-in image-generation tool using only the existing
-navy, purple, warm-white, and restrained warning palette. It depicts the
-observed evidence types without customer claims, testimonials, usage metrics,
-or performance promises.
-
-The final generated-image prompt was: “Create a premium flat vector-like
-evidence board for a developer-tool launch, with one browser screenshot module,
-one console-error module, one failed-network-request module, and one fix-ready
-verdict module; use `#0f172a`, `#8b5cf6`, `#f8fafc`, muted slate, and restrained
-warning accents; no text, logos, people, robots, gradients, fake metrics, or
-watermarks.”
+two gallery assets are direct browser captures of the current `/qa-mcp` page:
+the live hero and the `#evidence` section. No generated illustration, new
+mascot, invented UI, customer claim, testimonial, metric, or performance
+promise remains in the launch package.
 
 ## Platform references
 
