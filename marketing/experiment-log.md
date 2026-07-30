@@ -3,8 +3,8 @@
 ## Experiment
 
 - Name: Founder outreach — one newly shipped flow
-- Status: ready behind production delivery gate
-- Bottleneck: Qualified builders have not yet entered a fully instrumented production activation path.
+- Status: ready for prospect qualification
+- Bottleneck: The production path is verified, but the first qualified recipients and sender identity are not yet locked.
 - Hypothesis: For founders publicly shipping AI-coded web apps, a specific offer to test one newly shipped flow will produce at least three qualified replies and one completed first QA report from 15 personalized contacts because it removes the uncertainty between “the agent says done” and “safe to ship.”
 - Audience: Founders or solo builders who publicly launched or substantially updated a web app built with Codex, Bolt, Lovable, Replit, v0, or another agentic coding workflow within the previous 30 days.
 - Channel: Personalized replies or direct messages on the same public platform where the builder invited product feedback. No scraped emails and no unsolicited follow-up sequence.
@@ -33,6 +33,6 @@
 
 ## Decision
 
-- Interpretation: Not started.
-- Decision: Hold behind end-to-end activation QA.
-- Next action: Complete one attributed production test account through the first QA report before contacting the cohort.
+- Interpretation: The delivery gate passed. A controlled production account completed all eight attributed milestones and received its first report in 96 seconds.
+- Decision: Prepare the first outreach cohort; do not send until the sender identity and each recipient are confirmed.
+- Next action: Qualify five builders from recent public launch posts and draft one specific message per builder.

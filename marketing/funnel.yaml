@@ -13,6 +13,7 @@ facts:
   - "No dedicated acquisition analytics provider or UTM attribution implementation was found in the inspected product source."
   - "The acquisition event journal and milestone triggers were applied to production Supabase on 2026-07-30."
   - "A synthetic test campaign verified browser arrival, CTA, install-copy, MCP key, MCP first-use, QA request, and completed-report events with first-touch attribution."
+  - "A controlled production account completed the real landing-page-to-report journey on 2026-07-30; all eight milestones were stitched to one test visitor and the first report completed in 96 seconds."
 hypotheses:
   - "AI-assisted founders and small product teams are the fastest initial customer segment."
   - "The strongest trigger is the moment an AI coding agent says a feature is done but the builder lacks trustworthy QA proof."
@@ -67,11 +68,10 @@ measurement:
     - "mcp_key_first_used"
     - "first_qa_requested"
     - "first_qa_report_completed"
-status: "instrumented"
-current_bottleneck: "end-to-end activation QA"
-next_action: "Complete one attributed production test account from landing page through first completed QA report."
+status: "ready-to-launch"
+current_bottleneck: "qualified founder outreach supply and sender identity"
+next_action: "Qualify the first five public launch-post recipients and prepare personalized messages for founder approval."
 approvals_needed:
-  - "Approve the specific controlled identity immediately before creating a production test account."
   - "Identify real recipients and the founder account to use before sending outreach or publishing promotional posts."
-last_verified_at: "2026-07-30T15:13:19Z"
+last_verified_at: "2026-07-30T16:59:05Z"
 updated_at: "2026-07-30"

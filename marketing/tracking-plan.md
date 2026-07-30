@@ -32,7 +32,7 @@ Do not store MCP keys, access tokens, email addresses, target URLs, report conte
 |---|---|---|---|---|---|
 | `offer_viewed` | Once per visitor when `/` or `/docs` becomes visible in the browser. | `surface`, `path` | `swarmtest_acquisition_events` | Client and API wired locally; journal live | Browser-to-production-journal test verified |
 | `primary_cta_clicked` | The visitor activates an `Install BeforeUsersDo` control. | `surface`, `cta_label`, `destination_path` | `swarmtest_acquisition_events` | Client and API wired locally; journal live | Browser-to-production-journal test verified |
-| `signup_completed` | A recent account becomes authenticated; requesting a magic link and returning existing users do not count. | `auth_method` | `swarmtest_acquisition_events` | Client and API wired locally; journal live | Unit verified; real auth return pending |
+| `signup_completed` | A recent account becomes authenticated; requesting a magic link and returning existing users do not count. | `auth_method` | `swarmtest_acquisition_events` | Client and API wired locally; journal live | Controlled production signup verified |
 | `mcp_key_created` | A new MCP token row is persisted. The API hook is a non-blocking duplicate safeguard. | `token_id`, `source` | Event journal plus existing `swarmtest_mcp_tokens.created_at` | Production database trigger live; API safeguard local | Production trigger verified with test row |
 | `agent_install_step_copied` | Clipboard write succeeds for the MCP config or skill command. | `step` = `mcp_config` or `skill_command` | `swarmtest_acquisition_events` | Client and API wired locally; journal live | Both copy steps browser-to-production-journal verified |
 | `mcp_key_first_used` | A valid MCP token updates from never used to first used. | `token_id` | Event journal plus existing `swarmtest_mcp_tokens.last_used_at` | Production database trigger live with first-touch attribution | Production trigger verified with test row |
@@ -73,18 +73,18 @@ At low volume, display the absolute numerator and denominator next to every rate
 
 ## End-to-end test
 
-- Test URL: `https://beforeusersdo.com/?utm_source=codex_test&utm_medium=qa&utm_campaign=install_funnel_v1&utm_content=hero`
-- Test identity or record: A designated internal test account with `is_test=true`; do not put its email in this document.
-- Conversion completed: A synthetic report lifecycle reached completed status; a real authenticated browser-to-report journey remains pending.
+- Test URL: `https://beforeusersdo.com/?utm_source=codex_test&utm_medium=qa&utm_campaign=install_funnel_e2e&utm_content=controlled_account`
+- Test identity or record: A controlled production account created with a disposable mailbox; no email or credential is retained in this document.
+- Conversion completed: Yes. The account authenticated by magic link, created and copied an MCP configuration, used the key, requested AI QA, and received a completed report.
 - Primary event observed: Yes, as an `is_test=true` `first_qa_report_completed` event.
-- Attribution observed: Yes. The browser events and database milestones retained the `codex_test` source, `qa` medium, and `install_funnel_v1` campaign.
-- Evidence: Browser-driven offer, CTA, and both install-copy events were observed in production Supabase. Temporary MCP token and report rows produced all four database milestones and were deleted after verification. Their harmless `is_test=true` acquisition evidence remains for audit and is excluded from the normal report.
+- Attribution observed: Yes. All eight milestones were stitched by visitor ID and retained `utm_source=codex_test`, `utm_medium=qa`, `utm_campaign=install_funnel_e2e`, and `utm_content=controlled_account`.
+- Evidence: The production browser and hosted MCP path produced `offer_viewed`, `primary_cta_clicked`, `signup_completed`, `mcp_key_created`, `agent_install_step_copied`, `mcp_key_first_used`, `first_qa_requested`, and `first_qa_report_completed`. The report completed with zero findings 96 seconds after first touch. The MCP key was revoked and the disposable mailbox deleted; the harmless `is_test=true` account, report, and acquisition evidence remain for audit and are excluded from normal reporting.
 - Tested at: 2026-07-30.
 
 ## Known gaps
 
-- The three acquisition migrations, web client hooks, and serverless event endpoint are live from merged `main` commit `177aab4` in production deployment `dpl_DXSKgE17RdXDWx5tpSbDZUAKM6r8`.
+- The three acquisition migrations, web client hooks, and serverless event endpoint are live from merged `main` commit `177aab4`; durable launch state is current through merged commit `deff4b9`.
 - Clipboard events can confirm a successful copy action, not that the user completed the external installation.
 - Magic links opened on a different browser or device may lose browser-only attribution unless the pending snapshot is also bound to the auth flow.
-- A complete real-account journey from production landing page through authentication, installation, and first QA report remains unverified.
-- `npm run marketing:report` and `marketing/acquisition-report.sql` are live inspection paths. At 2026-07-30T15:13:19Z the default report excluded all synthetic traffic and showed zero real acquisition events; the test-inclusive report retained evidence across every milestone.
+- No real acquisition cohort has entered the funnel yet, so real-world conversion and activation rates remain unknown.
+- `npm run marketing:report` and `marketing/acquisition-report.sql` are live inspection paths. The default report excludes synthetic traffic; the test-inclusive report retains evidence across every milestone.
