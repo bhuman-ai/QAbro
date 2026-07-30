@@ -5,6 +5,10 @@ const test = require("node:test");
 
 const ROOT = path.resolve(__dirname, "..");
 const metadata = JSON.parse(fs.readFileSync(path.join(ROOT, "server.json"), "utf8"));
+const publishWorkflow = fs.readFileSync(
+  path.join(ROOT, ".github", "workflows", "publish-mcp-registry.yml"),
+  "utf8"
+);
 
 test("MCP Registry metadata names the public product and hosted transport", () => {
   assert.equal(metadata.$schema, "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json");
@@ -33,4 +37,22 @@ test("MCP Registry discovery hands users to an attributed install path", () => {
   assert.equal(authHeader.variables.mcp_token.isRequired, true);
   assert.equal(authHeader.variables.mcp_token.isSecret, true);
   assert.match(authHeader.variables.mcp_token.description, /utm_source=mcp_registry/);
+});
+
+test("MCP Registry publication is manual, pinned, and uses short-lived OIDC credentials", () => {
+  assert.equal(metadata.version, "1.0.0");
+  assert.match(publishWorkflow, /\bon:\n {2}workflow_dispatch:\n/);
+  assert.doesNotMatch(publishWorkflow, /\n {2}(push|pull_request|schedule):/);
+  assert.match(publishWorkflow, /id-token: write/);
+  assert.match(publishWorkflow, /contents: read/);
+  assert.match(
+    publishWorkflow,
+    /releases\/download\/v1\.7\.9\/mcp-publisher_linux_amd64\.tar\.gz/
+  );
+  assert.match(
+    publishWorkflow,
+    /ab128162b0616090b47cf245afe0a23f3ef08936fdce19074f5ba0a4469281ac/
+  );
+  assert.match(publishWorkflow, /\.\/mcp-publisher login github-oidc/);
+  assert.match(publishWorkflow, /\.\/mcp-publisher publish server\.json/);
 });
