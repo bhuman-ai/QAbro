@@ -11,6 +11,7 @@ facts:
   - "The crawler-visible https://beforeusersdo.com/qa-mcp acquisition page, robots.txt, and sitemap.xml are live from production commit 7f69e358."
   - "A controlled production visit verified the /qa-mcp offer view and install CTA as two stitched is_test=true events before reaching focused sign-up."
   - "The public GitHub repository now links to /qa-mcp and carries QA MCP, browser-testing, and coding-agent discovery topics."
+  - "The user confirmed that Before Users Do has a free plan."
   - "The homepage and public docs use Install BeforeUsersDo as the primary customer CTA."
   - "The existing self-serve path sends that CTA to /dashboard?panel=coding_agents, then supports sign-in, MCP key creation, MCP configuration, and skill installation."
   - "The product supports AI testing, owner self-review, team handoff, and human tester requests."
@@ -30,7 +31,7 @@ unknowns:
   - "Which acquisition source, if any, has already produced activated users."
   - "Current customer, usage, retention, or outcome proof that can be used publicly."
   - "Whether the homepage live tester availability count is backed by production data."
-  - "The commercial offer or price presented after initial activation."
+  - "The exact paid-upgrade pricing presented after initial activation."
 audience:
   segment: "Founders and small product teams shipping AI-coded web apps with Codex or another MCP-capable coding agent."
   triggering_situation: "A feature or preview looks finished and is about to ship, but the builder does not have trustworthy browser QA evidence."
@@ -104,7 +105,6 @@ current_bottleneck: "insufficient qualified search traffic to evaluate message r
 next_action: "Obtain explicit approval to publish the prepared Product Hunt launch from the maker's personal account."
 approvals_needed:
   - "Confirm the maker's personal Product Hunt account and complete the honest one-sentence maker story."
-  - "Confirm the truthful Product Hunt pricing tag from the live commercial offer."
   - "Approve any required Product Hunt terms and external publication immediately before submission."
 last_verified_at: "2026-07-30T20:24:18Z"
 updated_at: "2026-07-30"
