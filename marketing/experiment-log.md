@@ -1,5 +1,26 @@
 # Experiment log
 
+## Experiment 4
+
+- Name: Product Hunt — QA MCP launch seed
+- Status: Package ready; publication approval required
+- Role: One-to-many launch exposure that seeds the live, compounding `/qa-mcp` search asset
+- Audience: Product Hunt builders using coding agents to ship web apps
+- Hypothesis: For builders whose coding agent has declared a feature done, a browser-evidence-first launch will produce install actions because it closes the gap between generated code and release confidence.
+- Reusable asset: Product Hunt listing package in `marketing/product-hunt-launch.md`
+- Expansion lever: Product Hunt discovery, ecosystem citations, launch feedback, and reuse of the launch creative
+- Manual dependency: One maker-owned submission, an honest maker comment, and launch-day replies
+- Destination: `https://beforeusersdo.com/qa-mcp?utm_source=product_hunt&utm_medium=launch&utm_campaign=qa_mcp_launch`
+- Primary event: `first_qa_report_completed`
+- Diagnostic campaign: `product_hunt / launch / qa_mcp_launch`
+- Start condition: The Product Hunt listing is published and can produce attributable exposure
+- Observation window: Seven days or 100 attributed landing visits, whichever is later
+- Continue if: At least one completed QA report, or at least five percent of attributed visitors choose the install CTA while activation volume is still small
+- Stop or change if: Product Hunt exposure sends no attributable visitors, or 100 attributed visitors produce no install clicks
+- Completed preparation: Listing copy, tracked destination, first-comment scaffold, 240 × 240 thumbnail, and two 1270 × 760 gallery assets
+- Approval gate: Confirm a personal maker account, the truthful pricing tag, the honest one-sentence maker story, any required terms, and external publication
+- Next action: Obtain explicit approval immediately before Product Hunt submission.
+
 ## Experiment 3
 
 - Name: High-intent search — QA MCP for coding agents
@@ -21,7 +42,7 @@
 - Measurement evidence: A controlled `codex_test / qa / qa_mcp_search_production` visit produced exactly one offer view and one install click, then reached `/dashboard?panel=coding_agents`. No signup or activation was fabricated.
 - GitHub discovery evidence: The public repository now uses the QA MCP page as its homepage and exposes eight relevant discovery topics.
 - Observed result: The traffic surface and measurement path are live; no real qualified-search cohort exists yet.
-- Next action: Prepare the Product Hunt launch package for the live `/qa-mcp` page.
+- Next action: Use the prepared Product Hunt launch as the active one-to-many seed for this search asset.
 
 ## Experiment 2
 
