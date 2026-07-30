@@ -3,7 +3,7 @@
 ## Experiment 3
 
 - Name: High-intent search — QA MCP for coding agents
-- Status: Ready to deploy
+- Status: Live
 - Primary channel: Organic search discovery
 - Audience: Founders and small teams searching for QA MCP, browser-testing MCP, or a way for coding agents to verify finished features
 - Hypothesis: For builders with an active release-confidence problem, an evidence-first QA MCP page will produce install actions because it distinguishes a complete QA handoff from raw browser control.
@@ -16,8 +16,12 @@
 - Observation window: 45 days or 100 qualified page visitors, whichever is later
 - Continue if: At least one completed QA report, or at least five percent of qualified visitors choose the install CTA before activation volume is sufficient
 - Stop or change if: 100 qualified visitors produce no install clicks, or install clicks repeatedly fail to reach MCP activation
-- Validation before deploy: Search results show active 2026 content and competing products around browser-testing MCPs; production currently returns 404 for both `robots.txt` and `sitemap.xml`.
-- Next action: Deploy `/qa-mcp`, `robots.txt`, and `sitemap.xml`, then verify the production response and measured CTA.
+- Launched at: 2026-07-30T20:21:39Z
+- Production evidence: Vercel completed deployment of merge commit `7f69e358`; `/qa-mcp`, `/robots.txt`, and `/sitemap.xml` return 200, and the raw page HTML contains the route title, description, canonical URL, and `SoftwareApplication` structured data before JavaScript runs.
+- Measurement evidence: A controlled `codex_test / qa / qa_mcp_search_production` visit produced exactly one offer view and one install click, then reached `/dashboard?panel=coding_agents`. No signup or activation was fabricated.
+- GitHub discovery evidence: The public repository now uses the QA MCP page as its homepage and exposes eight relevant discovery topics.
+- Observed result: The traffic surface and measurement path are live; no real qualified-search cohort exists yet.
+- Next action: Prepare the Product Hunt launch package for the live `/qa-mcp` page.
 
 ## Experiment 2
 
