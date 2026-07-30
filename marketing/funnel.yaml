@@ -104,7 +104,7 @@ status: "learning"
 current_bottleneck: "insufficient qualified search traffic to evaluate message response or activation"
 next_action: "Obtain explicit approval to publish the prepared Product Hunt launch from the maker's personal account."
 approvals_needed:
-  - "Confirm the maker's personal Product Hunt account and complete the honest one-sentence maker story."
+  - "Confirm the maker's personal Product Hunt account."
   - "Approve any required Product Hunt terms and external publication immediately before submission."
 last_verified_at: "2026-07-30T20:24:18Z"
 updated_at: "2026-07-30"

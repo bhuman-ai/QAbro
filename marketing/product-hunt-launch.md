@@ -41,8 +41,8 @@ Topic names are candidates and must be matched to the current composer options.
 > a coding agent says a feature is finished, but you still do not know whether
 > the real user flow works.
 >
-> [Maker: add one honest sentence about the specific experience that made you
-> build this.]
+> The gap is simple: AI can write the feature, but “done” is not trustworthy
+> until the customer flow has actually run.
 >
 > Before Users Do is a hosted MCP that lets a coding agent run browser-backed QA
 > against a reachable preview, collect screenshots plus console and network
@@ -53,8 +53,8 @@ Topic names are candidates and must be matched to the current composer options.
 > It is live now. I would especially value feedback on the install handoff and
 > whether the first report gives you enough confidence to ship.
 
-The bracketed maker sentence must be completed by the maker. Do not fabricate
-a personal story or post the comment from a company account.
+This comment uses the product's observed thesis instead of inventing a personal
+anecdote. Post it from the maker's personal account, not a company account.
 
 ## Publish-time checklist
 
@@ -65,7 +65,7 @@ a personal story or post the comment from a company account.
 - Select the current Product Hunt topic names that best match the candidates.
 - Select `Paid (with a free trial or plan)` and include `Free plan available.`
 - Upload the 240 × 240 thumbnail and both 1270 × 760 gallery images.
-- Complete the one-sentence maker story and read the full first comment.
+- Read the completed first comment from the maker's perspective.
 - Preview the listing on desktop and mobile.
 - Ask for feedback, not upvotes.
 - Obtain explicit approval immediately before accepting any new terms or
