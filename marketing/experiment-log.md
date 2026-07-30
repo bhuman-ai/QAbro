@@ -1,9 +1,27 @@
 # Experiment log
 
+## Experiment 2
+
+- Name: Official MCP Registry — hosted QA discovery
+- Status: Prepared; external publication pending
+- Primary channel: Official MCP Registry distribution
+- Audience: Builders actively discovering MCP servers for coding agents
+- Hypothesis: A registry listing for browser-backed QA will produce qualified installs without proportional founder outreach.
+- Reusable asset: `server.json`
+- Expansion lever: Downstream MCP aggregators and marketplaces that consume the official registry
+- Manual dependency: One authenticated publication and occasional versioned metadata updates
+- Destination: `https://beforeusersdo.com/docs?utm_source=mcp_registry&utm_medium=marketplace&utm_campaign=official_registry#start`
+- Primary event: `first_qa_report_completed`
+- Observation window: 30 days after publication or until 30 attributed visitors, whichever is later
+- Continue if: At least one attributed completed QA report and no material onboarding failure
+- Stop or change if: 30 attributed visitors produce no completed report, or registry clients cannot complete token setup
+- Validation: Official 2025-12-11 JSON Schema passed; the hosted health endpoint returned 200; the MCP endpoint returned the expected 401 authentication challenge; the attributed docs URL preserved all campaign fields in a real browser.
+- Next action: Obtain the required immutable-publication approval, then authenticate and publish version 1.0.0.
+
 ## Experiment
 
 - Name: Founder outreach — one newly shipped flow
-- Status: ready for founder approval
+- Status: Archived as optional validation; not the acquisition engine
 - Bottleneck: Five recipients and messages are prepared, but the founder-owned Reddit sender account is not confirmed.
 - Hypothesis: For founders publicly shipping AI-coded web apps, a specific offer to test one newly shipped flow will produce at least three qualified replies and one completed first QA report from 15 personalized contacts because it removes the uncertainty between “the agent says done” and “safe to ship.”
 - Audience: Founders or solo builders who publicly launched or substantially updated a web app built with Codex, Bolt, Lovable, Replit, v0, or another agentic coding workflow within the previous 30 days.
@@ -34,5 +52,5 @@
 ## Decision
 
 - Interpretation: The delivery gate passed. A controlled production account completed all eight attributed milestones and received its first report in 96 seconds.
-- Decision: Keep the five-message cohort staged; do not send until the founder-owned Reddit account is confirmed and the public post checks are refreshed.
-- Next action: Confirm the sender account, re-open the five source profiles, and approve the prepared messages in `marketing/prospect-cohort.md`.
+- Decision: Archive the five-message cohort as optional message validation. Do not use it as the acquisition engine.
+- Next action: None unless a later Registry experiment needs qualitative message research.

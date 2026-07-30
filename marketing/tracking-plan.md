@@ -8,6 +8,17 @@
 - Reporting location: A read-only Supabase SQL view or saved query grouped by UTC day, source, medium, and campaign.
 - Test traffic: Every event supports `is_test`; test campaigns use `utm_source=codex_test` and are excluded from normal reporting.
 
+## Primary traffic experiment
+
+- Channel: Official MCP Registry distribution
+- Registry website URL: `https://beforeusersdo.com/docs?utm_source=mcp_registry&utm_medium=marketplace&utm_campaign=official_registry#start`
+- Source: `mcp_registry`
+- Medium: `marketplace`
+- Campaign: `official_registry`
+- Conversion: The existing `first_qa_report_completed` event, joined through the first-touch snapshot
+- Inspection: Run `npm run marketing:report` and filter the source/campaign rows
+- Browser verification: The Registry URL reached the three-step install section and persisted the exact source, medium, and campaign on 2026-07-30. The event request was blocked during this check so no synthetic production event was written.
+
 The primary event means one authenticated owner has received their first terminal, usable QA report. A page view, signup, MCP key, or queued run is diagnostic—not a conversion.
 
 ## Common event contract
@@ -86,5 +97,6 @@ At low volume, display the absolute numerator and denominator next to every rate
 - The three acquisition migrations, web client hooks, and serverless event endpoint are live from merged `main` commit `177aab4`; durable launch state is current through merged commit `deff4b9`.
 - Clipboard events can confirm a successful copy action, not that the user completed the external installation.
 - Magic links opened on a different browser or device may lose browser-only attribution unless the pending snapshot is also bound to the auth flow.
+- A Registry user who already owns an MCP key and never opens the attributed website URL will remain direct/unknown; new users must visit the linked docs to create a key.
 - No real acquisition cohort has entered the funnel yet, so real-world conversion and activation rates remain unknown.
 - `npm run marketing:report` and `marketing/acquisition-report.sql` are live inspection paths. The default report excludes synthetic traffic; the test-inclusive report retains evidence across every milestone.

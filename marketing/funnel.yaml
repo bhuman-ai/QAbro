@@ -5,6 +5,9 @@ product:
   repository: "https://github.com/bhuman-ai/QAbro"
 facts:
   - "Before Users Do is a hosted QA MCP and companion agent skill for coding agents."
+  - "The hosted MCP endpoint at https://mcp.beforeusersdo.com/mcp is publicly reachable and correctly requires authentication."
+  - "A schema-valid server.json now describes the hosted MCP server for official Registry publication."
+  - "No io.github.bhuman-ai/beforeusersdo record existed in the official MCP Registry when checked on 2026-07-30."
   - "The homepage and public docs use Install BeforeUsersDo as the primary customer CTA."
   - "The existing self-serve path sends that CTA to /dashboard?panel=coding_agents, then supports sign-in, MCP key creation, MCP configuration, and skill installation."
   - "The product supports AI testing, owner self-review, team handoff, and human tester requests."
@@ -17,7 +20,7 @@ facts:
 hypotheses:
   - "AI-assisted founders and small product teams are the fastest initial customer segment."
   - "The strongest trigger is the moment an AI coding agent says a feature is done but the builder lacks trustworthy QA proof."
-  - "Founder-led direct outreach to active AI app builders will produce faster message and activation learning than broad paid traffic."
+  - "Official MCP Registry distribution will reach qualified builders at the moment they are looking for new coding-agent capabilities."
   - "Completing a first QA report is a stronger activation signal than account creation or MCP key creation."
 unknowns:
   - "Current signup-to-install and install-to-first-report conversion rates."
@@ -49,8 +52,23 @@ funnel:
     - "Ask the coding agent to test one reachable preview."
     - "Receive the first completed QA report."
 channel:
-  primary: "Founder-led direct outreach"
-  audience_hypothesis: "Builders publicly shipping AI-coded apps will respond to a specific offer to test one newly shipped flow inside their existing coding-agent workflow."
+  primary: "Official MCP Registry distribution"
+  audience_hypothesis: "Builders actively discovering MCP servers have both the tool compatibility and intent required to install Before Users Do."
+  distribution_model: "Marketplace and downstream-aggregator discovery"
+  reusable_unit: "One versioned server.json listing for the hosted Before Users Do MCP server."
+  expansion_lever: "The official registry feeds downstream MCP aggregators and marketplaces without proportional founder labor."
+  manual_dependency: "One-time authenticated publication plus versioned metadata updates."
+  scalability_floor:
+    passes: true
+    reason: "One listing can reach many qualified prospects, distribution expands through registry consumers, and attributed activation is measurable."
+  experiment:
+    source: "mcp_registry"
+    medium: "marketplace"
+    campaign: "official_registry"
+    primary_metric: "first_qa_report_completed"
+    observation_window: "30 days after publication or until 30 attributed visitors, whichever is later."
+    continue_if: "The channel produces at least one attributed completed QA report and no material onboarding failure is observed."
+    stop_or_change_if: "Thirty attributed visitors produce no completed QA report, or registry clients cannot complete the token setup."
   budget:
     currency: USD
     daily_cap: null
@@ -69,9 +87,9 @@ measurement:
     - "first_qa_requested"
     - "first_qa_report_completed"
 status: "ready-to-launch"
-current_bottleneck: "sender identity and first-message approval"
-next_action: "Confirm the founder-owned Reddit account and approve the five prepared same-platform messages for delivery."
+current_bottleneck: "publish the validated hosted server metadata to the official MCP Registry"
+next_action: "Authenticate the official MCP publisher and publish server.json version 1.0.0."
 approvals_needed:
-  - "Confirm the founder-owned Reddit account before sending any prepared outreach."
-last_verified_at: "2026-07-30T17:07:58Z"
+  - "Approve the immutable external registry publication and acceptance of the MCP Registry terms."
+last_verified_at: "2026-07-30T19:34:18Z"
 updated_at: "2026-07-30"
