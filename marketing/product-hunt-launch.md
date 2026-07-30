@@ -2,23 +2,24 @@
 
 ## Role in the acquisition system
 
-Product Hunt is a one-to-many launch seed for the live, compounding `/qa-mcp`
-search asset. It is not the long-term acquisition engine by itself. The launch
-should create attributable visits, activation evidence, ecosystem citations,
-and language that can improve the organic-search loop.
+Product Hunt is a one-to-many launch seed for the measured self-serve funnel
+and supports the live, compounding `/qa-mcp` search asset. It is not the
+long-term acquisition engine by itself. The launch should create attributable
+visits, activation evidence, ecosystem citations, and language that can improve
+the organic-search loop.
 
 ## Listing fields
 
 - **Product name:** Before Users Do
 - **Tagline:** Browser-backed QA for coding agents
-- **Destination:** `https://beforeusersdo.com/qa-mcp?utm_source=product_hunt&utm_medium=launch&utm_campaign=qa_mcp_launch`
+- **Destination:** `https://beforeusersdo.com/?utm_source=product_hunt&utm_medium=launch&utm_campaign=qa_mcp_launch`
 - **Status:** Live and usable
 - **Description:** Before Users Do is a hosted QA MCP that lets coding agents test a reachable web app, capture screenshots plus console and network evidence, and return a fix-ready report before the feature ships.
 - **Suggested topics:** Developer Tools, Artificial Intelligence, Testing and QA
 - **Pricing tag:** Confirm from the live commercial offer in the Product Hunt composer before publishing. No public pricing was found in the inspected product path.
 - **Thumbnail:** `marketing/product-hunt/assets/product-hunt-thumbnail.png`
-- **Gallery image 1:** `marketing/product-hunt/assets/product-hunt-gallery-live-page.png`
-- **Gallery image 2:** `marketing/product-hunt/assets/product-hunt-gallery-evidence-section.png`
+- **Gallery image 1:** `marketing/product-hunt/assets/product-hunt-gallery-homepage-hero.png`
+- **Gallery image 2:** `marketing/product-hunt/assets/product-hunt-gallery-homepage-proof.png`
 
 The tagline is 35 characters and the description is 195 characters, keeping
 both within the conservative limits in Product Hunt's current launch guidance.
@@ -26,10 +27,11 @@ Topic names are candidates and must be matched to the current composer options.
 
 ## Gallery order and captions
 
-1. **Live offer:** The real, live QA MCP page shows the agent-to-browser-to-proof
-   handoff and sends builders into the measured install path.
-2. **What comes back:** The real site explains the four concrete outputs:
-   screen evidence, runtime failures, network proof, and a usable verdict.
+1. **Homepage hero:** The live homepage shows the actual product promise and
+   app → BUD → happy-customer workflow.
+2. **Fix-ready handoff:** The live homepage shows the real report visual:
+   broken screen, expected behavior, reproduction path, console error, network
+   request, and suggested fix prompt.
 
 ## Maker first-comment scaffold
 
@@ -84,10 +86,10 @@ a personal story or post the comment from a company account.
 ## Asset provenance
 
 The thumbnail reuses the existing navy shield and purple zap brand mark. The
-two gallery assets are direct browser captures of the current `/qa-mcp` page:
-the live hero and the `#evidence` section. No generated illustration, new
-mascot, invented UI, customer claim, testimonial, metric, or performance
-promise remains in the launch package.
+two gallery assets are direct browser captures of the current homepage: its
+hero and its `#proof` section. No generated illustration, new mascot, invented
+UI, customer claim, testimonial, metric, or performance promise remains in the
+launch package.
 
 ## Platform references
 
