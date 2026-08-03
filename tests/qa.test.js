@@ -823,7 +823,11 @@ test("normalizeReport preserves journey step clip metadata", () => {
               clip_start_ms: 48000,
               clip_end_ms: 68000,
               video: "/tmp/run-step-01.mp4",
-              content_type: "video/mp4"
+              content_type: "video/mp4",
+              finding_id: "finding_start_failed",
+              finding_title: "Start button failed",
+              finding_type: "bug",
+              level: "blocker"
             }
           ],
           evidence: {
@@ -852,7 +856,11 @@ test("normalizeReport preserves journey step clip metadata", () => {
       clip_start_ms: 48000,
       clip_end_ms: 68000,
       video: "/tmp/run-step-01.mp4",
-      content_type: "video/mp4"
+      content_type: "video/mp4",
+      finding_id: "finding_start_failed",
+      finding_title: "Start button failed",
+      finding_type: "bug",
+      level: "blocker"
     }
   ]);
 });
@@ -2586,4 +2594,51 @@ test("normalizeReport builds experience timeline spans for blocked runs and pres
   });
   assert.match(markdown, /## Experience Timeline/);
   assert.match(markdown, /Generate presenter stalled/);
+});
+
+test("normalizeReport builds timestamped experience spans for every finding", () => {
+  const report = normalizeReport({
+    candidateReport: {
+      status: "completed",
+      findings: [
+        {
+          id: "finding_bug",
+          type: "bug",
+          severity: "high",
+          title: "Save failed",
+          diagnostic_details: {
+            attempted_actions: [
+              { step: 1, action: "click", target: "Save", outcome: "Nothing changed", ts: "2026-03-25T12:00:05.000Z" }
+            ]
+          }
+        },
+        {
+          id: "finding_aha",
+          type: "aha_moment",
+          severity: "low",
+          title: "Preview made the result clear",
+          diagnostic_details: {
+            attempted_actions: [
+              { step: 1, action: "inspect", target: "Preview", outcome: "The result became clear", ts: "2026-03-25T12:00:20.000Z" }
+            ]
+          }
+        }
+      ]
+    },
+    runRequest: {
+      run_id: "run_every_finding_timeline",
+      target_url: "https://example.com",
+      scope_mode: "core_20m",
+      brand_persona: "A first-time buyer",
+      source: "qa_bot"
+    },
+    artifacts: { local_video_url: "https://cdn.example.com/run.webm" },
+    actions: { visited_pages: ["https://example.com"], flows_tested: 1, flows_blocked: 1 }
+  });
+
+  const linkedFindingIds = new Set(
+    report.experience_timeline.spans.flatMap((span) => span.linked_finding_ids || [])
+  );
+  assert.equal(linkedFindingIds.has("finding_bug"), true);
+  assert.equal(linkedFindingIds.has("finding_aha"), true);
 });

@@ -414,6 +414,98 @@ export function getFindingSummary(finding?: ReportFinding | null) {
   return finding.observed_behavior || finding.expected_behavior || finding.title || "";
 }
 
+export type FindingEvidenceMoment = {
+  videoSource: string;
+  sourceKind: "finding_clip" | "timeline";
+  startMs: number;
+  endMs: number;
+  level: string;
+};
+
+function getEvidenceLevelPriority(value?: string | null) {
+  const safe = String(value || "").trim().toLowerCase();
+  if (safe === "blocker") return 3;
+  if (safe === "friction") return 2;
+  return 1;
+}
+
+export function getFindingEvidenceMoment(
+  report: QaReport | null | undefined,
+  finding: ReportFinding | null | undefined
+): FindingEvidenceMoment | null {
+  const findingId = String(finding?.id || "").trim();
+  if (!report || !finding || !findingId) {
+    return null;
+  }
+
+  const taggedClips = (report.tested_journeys || [])
+    .flatMap((journey) => journey.step_video_clips || [])
+    .filter((clip) => String(clip.finding_id || "").trim() === findingId && String(clip.video || "").trim())
+    .sort((left, right) => {
+      const levelDelta = getEvidenceLevelPriority(right.level) - getEvidenceLevelPriority(left.level);
+      if (levelDelta) return levelDelta;
+      return Number(right.step || 0) - Number(left.step || 0);
+    });
+  const bestClip = taggedClips[0];
+  if (bestClip?.video) {
+    return {
+      videoSource: String(bestClip.video).trim(),
+      sourceKind: "finding_clip",
+      startMs: Math.max(0, Number(bestClip.clip_start_ms || 0) || 0),
+      endMs: Math.max(0, Number(bestClip.clip_end_ms || 0) || 0),
+      level: String(bestClip.level || "").trim().toLowerCase()
+    };
+  }
+
+  const directBlockerClip = (finding.evidence?.videos || []).find((value) =>
+    /(?:blocker|finding[-_ ]?clip|step[-_ ]?clip)/i.test(String(value || ""))
+  );
+  if (directBlockerClip && ["critical", "high"].includes(String(finding.severity || "").toLowerCase())) {
+    return {
+      videoSource: String(directBlockerClip).trim(),
+      sourceKind: "finding_clip",
+      startMs: 0,
+      endMs: 0,
+      level: "blocker"
+    };
+  }
+
+  const matchingSpans = (report.experience_timeline?.spans || [])
+    .filter((span) => (span.linked_finding_ids || []).some((id) => String(id || "").trim() === findingId))
+    .sort((left, right) => {
+      const levelDelta = getEvidenceLevelPriority(right.level) - getEvidenceLevelPriority(left.level);
+      if (levelDelta) return levelDelta;
+      return Number(right.start_ms || 0) - Number(left.start_ms || 0);
+    });
+  const bestSpan = matchingSpans[0];
+  if (!bestSpan) {
+    return null;
+  }
+
+  const startMs = Math.max(0, Number(bestSpan.jump_ts_ms ?? bestSpan.start_ms ?? 0) || 0);
+  const endMs = Math.max(startMs, Number(bestSpan.end_ms || startMs) || startMs);
+  return {
+    videoSource: "",
+    sourceKind: "timeline",
+    startMs,
+    endMs,
+    level: String(bestSpan.level || "").trim().toLowerCase()
+  };
+}
+
+export function formatEvidenceMomentRange(startMs: number, endMs: number) {
+  const formatTime = (value: number) => {
+    const totalSeconds = Math.max(0, Math.floor(Number(value || 0) / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  };
+  if (!Number.isFinite(endMs) || endMs <= startMs) {
+    return startMs > 0 ? `at ${formatTime(startMs)}` : "exact clip";
+  }
+  return `${formatTime(startMs)}–${formatTime(endMs)}`;
+}
+
 export function collectEvidenceValues(report: QaReport | null | undefined, kind: "screenshot" | "video") {
   const safeReport = report || ({} as QaReport);
   const gallery = safeReport.evidence_gallery || {};

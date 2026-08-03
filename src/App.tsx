@@ -76,9 +76,11 @@ import {
   DEFAULT_GOALS,
   DEFAULT_PERSONA,
   deriveBrandKeyFromUrl,
+  formatEvidenceMomentRange,
   formatDateTime,
   formatRelativeTime,
   formatStatusLabel,
+  getFindingEvidenceMoment,
   getFindingSummary,
   getPrimaryFinding,
   getReportHeadline,
@@ -8521,9 +8523,18 @@ function SharedReportPage({
   runId: string;
   shareKey: string;
 }) {
-  const [replayOpen, setReplayOpen] = useState(false);
+  const [replayTarget, setReplayTarget] = useState<{
+    title: string;
+    videoUrl: string;
+    videoUrls?: string[];
+    posterUrl: string;
+    startSeconds: number;
+    endSeconds: number;
+    evidenceMode: "session" | "finding";
+  } | null>(null);
   const primaryFinding = getPrimaryFinding(report);
   const evidenceMap = buildEvidenceIndexMap(report, "screenshot");
+  const videoEvidenceMap = buildEvidenceIndexMap(report, "video");
   const firstEvidence = Array.from(evidenceMap.entries()).sort((left, right) => left[1] - right[1])[0];
   const videoEvidence = collectEvidenceValues(report, "video");
   const fallbackVideoIndex = (() => {
@@ -8551,20 +8562,53 @@ function SharedReportPage({
   const replayPosterUrl = firstEvidence
     ? buildEvidenceAssetUrl(runId || report?.run_id || "", "screenshot", firstEvidence[1], shareKey)
     : "";
+  const buildFindingReplayTarget = (finding: ReportFinding, index: number) => {
+    const moment = getFindingEvidenceMoment(report, finding);
+    if (!moment) {
+      return null;
+    }
+    const videoUrl = moment.videoSource
+      ? (() => {
+          const evidenceIndex = videoEvidenceMap.get(moment.videoSource);
+          return Number.isInteger(evidenceIndex)
+            ? buildEvidenceAssetUrl(runId || report?.run_id || "", "video", evidenceIndex as number, shareKey)
+            : "";
+        })()
+      : replayVideoUrl;
+    if (!videoUrl) {
+      return null;
+    }
+    const screenshotSource = finding.evidence?.screenshots?.[0] || "";
+    const screenshotIndex = screenshotSource ? evidenceMap.get(screenshotSource) : undefined;
+    return {
+      title: finding.title || `Finding ${index + 1}`,
+      videoUrl,
+      posterUrl: Number.isInteger(screenshotIndex)
+        ? buildEvidenceAssetUrl(runId || report?.run_id || "", "screenshot", screenshotIndex as number, shareKey)
+        : replayPosterUrl,
+      startSeconds: moment.sourceKind === "timeline" ? moment.startMs / 1000 : 0,
+      endSeconds: moment.sourceKind === "timeline" ? moment.endMs / 1000 : 0,
+      evidenceMode: "finding" as const,
+      timeLabel: formatEvidenceMomentRange(moment.startMs, moment.endMs)
+    };
+  };
 
   return (
     <div className="min-h-screen bg-brand-bg text-brand-ink" data-app-shell="shared-report">
       <AnimatePresence>
-        {replayOpen && replayVideoUrl ? (
+        {replayTarget ? (
           <StarterSessionReplayModal
-            title="Watch recording"
-            videoUrl={replayVideoUrl}
-            videoUrls={replayVideoUrls}
-            posterUrl={replayPosterUrl}
+            title={replayTarget.title}
+            videoUrl={replayTarget.videoUrl}
+            videoUrls={replayTarget.videoUrls || []}
+            posterUrl={replayTarget.posterUrl}
             sessionUrl=""
             thoughtCues={[]}
             cursorCues={[]}
-            onClose={() => setReplayOpen(false)}
+            initialTimeSeconds={replayTarget.startSeconds}
+            endTimeSeconds={replayTarget.endSeconds}
+            evidenceMode={replayTarget.evidenceMode}
+            onClose={() => setReplayTarget(null)}
           />
         ) : null}
       </AnimatePresence>
@@ -8602,20 +8646,7 @@ function SharedReportPage({
               <p className="mt-3 max-w-3xl text-sm leading-7 text-brand-muted">
                 {primaryFinding?.observed_behavior || report?.summary?.note || "Read the main problem and the proof below."}
               </p>
-              {replayVideoUrl ? (
-                <button
-                  type="button"
-                  onClick={() => setReplayOpen(true)}
-                  className="mt-5 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-brand-ink px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-brand-accent"
-                >
-                  <Play className="h-5 w-5 fill-current" />
-                  Watch recording
-                </button>
-              ) : (
-                <div className="mt-5 inline-flex rounded-xl border border-brand-warning/30 bg-brand-warning/10 px-4 py-3 text-sm font-black text-brand-warning">
-                  Recording unavailable
-                </div>
-              )}
+              <p className="mt-4 text-sm font-semibold text-brand-ink">Open any finding to watch the exact recorded moment.</p>
 
               {firstEvidence ? (
                 <img
@@ -8628,15 +8659,53 @@ function SharedReportPage({
               {report?.findings?.length ? (
                 <div className="mt-6 space-y-3">
                   {report.findings.slice(0, 5).map((finding, index) => (
-                    <div key={finding.id || index} className="rounded-xl border border-brand-line bg-brand-panel px-4 py-4">
+                    <div key={finding.id || index} className="min-w-0 rounded-xl border border-brand-line bg-brand-panel px-4 py-4">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-brand-ink">{finding.title || `Finding ${index + 1}`}</div>
+                        <div className="min-w-0 text-sm font-semibold text-brand-ink">{finding.title || `Finding ${index + 1}`}</div>
                         <StatusPill label={formatStatusLabel(finding.severity || "medium")} tone={getSeverityTone(finding.severity || "medium")} />
                       </div>
-                      <div className="mt-2 text-sm leading-6 text-brand-muted">{finding.observed_behavior || finding.expected_behavior}</div>
+                      <div className="mt-2 min-w-0 break-words text-sm leading-6 text-brand-muted">{finding.observed_behavior || finding.expected_behavior}</div>
+                      {(() => {
+                        const findingReplay = buildFindingReplayTarget(finding, index);
+                        return findingReplay ? (
+                          <button
+                            type="button"
+                            onClick={() => setReplayTarget(findingReplay)}
+                            className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-brand-ink px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-accent"
+                          >
+                            <Play className="h-4 w-4 fill-current" />
+                            Watch this moment
+                            <span className="text-xs font-medium text-white/65">{findingReplay.timeLabel}</span>
+                          </button>
+                        ) : (
+                          <div className="mt-4 text-xs font-semibold text-brand-muted">Video proof unavailable for this finding</div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
+              ) : null}
+
+              {replayVideoUrl ? (
+                <details className="mt-6 border-t border-brand-line pt-5">
+                  <summary className="cursor-pointer text-sm font-semibold text-brand-muted">Full session recording</summary>
+                  <button
+                    type="button"
+                    onClick={() => setReplayTarget({
+                      title: "Full session recording",
+                      videoUrl: replayVideoUrl,
+                      videoUrls: replayVideoUrls,
+                      posterUrl: replayPosterUrl,
+                      startSeconds: 0,
+                      endSeconds: 0,
+                      evidenceMode: "session"
+                    })}
+                    className="mt-3 inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-brand-line bg-brand-shell px-4 py-2.5 text-sm font-semibold text-brand-ink transition hover:bg-brand-bg"
+                  >
+                    <Play className="h-4 w-4" />
+                    Watch full recording
+                  </button>
+                </details>
               ) : null}
             </>
           )}
@@ -10707,14 +10776,7 @@ function buildReplayExperienceSegments(thoughtCues: ReplayThoughtCue[]) {
     .sort((left, right) => left.progress - right.progress);
 
   if (!sorted.length) {
-    return [
-      {
-        id: "experience-neutral",
-        start: 0,
-        end: 1,
-        tone: "neutral" as ReplayExperienceTone
-      }
-    ];
+    return [];
   }
 
   const segments = sorted.map((cue, index) => {
@@ -10794,7 +10856,8 @@ function ReplayVideoWithOverlay({
   thoughtCues,
   cursorCues,
   onEnded,
-  showMissingThoughtsNotice = true
+  initialTimeSeconds = 0,
+  endTimeSeconds = 0
 }: {
   title: string;
   videoUrl: string;
@@ -10803,7 +10866,8 @@ function ReplayVideoWithOverlay({
   thoughtCues: ReplayThoughtCue[];
   cursorCues: ReplayCursorCue[];
   onEnded?: () => void;
-  showMissingThoughtsNotice?: boolean;
+  initialTimeSeconds?: number;
+  endTimeSeconds?: number;
 }) {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -10833,11 +10897,21 @@ function ReplayVideoWithOverlay({
         src={videoUrl}
         aria-label={title}
         onLoadedMetadata={(event) => {
-          setDuration(Number(event.currentTarget.duration) || 0);
-          setCurrentTime(Number(event.currentTarget.currentTime) || 0);
+          const videoDuration = Number(event.currentTarget.duration) || 0;
+          const requestedStart = Math.max(0, Number(initialTimeSeconds) || 0);
+          const safeStart = videoDuration > 0 ? Math.min(requestedStart, Math.max(0, videoDuration - 0.1)) : requestedStart;
+          if (safeStart > 0) {
+            event.currentTarget.currentTime = safeStart;
+          }
+          setDuration(videoDuration);
+          setCurrentTime(safeStart || Number(event.currentTarget.currentTime) || 0);
         }}
         onTimeUpdate={(event) => {
-          setCurrentTime(Number(event.currentTarget.currentTime) || 0);
+          const nextTime = Number(event.currentTarget.currentTime) || 0;
+          setCurrentTime(nextTime);
+          if (endTimeSeconds > initialTimeSeconds && nextTime >= endTimeSeconds) {
+            event.currentTarget.pause();
+          }
         }}
         onSeeked={(event) => {
           setCurrentTime(Number(event.currentTarget.currentTime) || 0);
@@ -10847,7 +10921,7 @@ function ReplayVideoWithOverlay({
         Your browser could not play this replay.
       </video>
 
-      <div className="pointer-events-none absolute inset-x-4 bottom-[3.1rem] z-20 md:inset-x-6 md:bottom-[3.35rem]">
+      {thoughtCues.length ? <div className="pointer-events-none absolute inset-x-4 bottom-[3.1rem] z-20 md:inset-x-6 md:bottom-[3.35rem]">
         <div className="rounded-[1.25rem] border border-white/12 bg-brand-ink/68 px-3 py-2.5 shadow-[0_16px_40px_rgba(15,23,42,0.28)] backdrop-blur-md">
           <div className="flex items-center justify-between gap-3">
             <div className="text-[10px] font-black uppercase tracking-[0.22em] text-white/65">User experience</div>
@@ -10889,7 +10963,7 @@ function ReplayVideoWithOverlay({
             />
           </div>
         </div>
-      </div>
+      </div> : null}
 
       <AnimatePresence>
         {activeCursor ? (
@@ -10947,11 +11021,6 @@ function ReplayVideoWithOverlay({
         ) : null}
       </AnimatePresence>
 
-      {showMissingThoughtsNotice && !thoughtCues.length ? (
-        <div className="pointer-events-none absolute inset-x-6 bottom-6 z-10 rounded-2xl border border-white/10 bg-brand-ink/55 px-4 py-3 text-xs font-bold text-white/75 backdrop-blur">
-          This replay has proof, but no structured customer reactions were saved for it yet.
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -10964,6 +11033,9 @@ function StarterSessionReplayModal({
   sessionUrl,
   thoughtCues,
   cursorCues,
+  initialTimeSeconds = 0,
+  endTimeSeconds = 0,
+  evidenceMode = "session",
   onClose
 }: {
   title: string;
@@ -10973,6 +11045,9 @@ function StarterSessionReplayModal({
   sessionUrl: string;
   thoughtCues: ReplayThoughtCue[];
   cursorCues: ReplayCursorCue[];
+  initialTimeSeconds?: number;
+  endTimeSeconds?: number;
+  evidenceMode?: "session" | "finding";
   onClose: () => void;
 }) {
   const replayUrls = Array.from(
@@ -11032,7 +11107,8 @@ function StarterSessionReplayModal({
                 posterUrl={posterUrl}
                 thoughtCues={hasMultipleParts ? [] : thoughtCues}
                 cursorCues={hasMultipleParts ? [] : cursorCues}
-                showMissingThoughtsNotice={!hasMultipleParts}
+                initialTimeSeconds={activePartIndex === 0 ? initialTimeSeconds : 0}
+                endTimeSeconds={activePartIndex === 0 ? endTimeSeconds : 0}
                 onEnded={() => {
                   if (activePartIndex < replayUrls.length - 1) {
                     setActivePartIndex(activePartIndex + 1);
@@ -11114,11 +11190,15 @@ function StarterSessionReplayModal({
 
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-5 bg-white">
           <div className="text-sm font-bold text-slate-500">
-            {hasMultipleParts
-              ? "Parts continue automatically, or use Back and Next."
-              : activeVideoUrl
-                ? "Scrub the replay to see customer reactions and cursor markers at each recorded interaction."
-              : "If a hosted session exists, open it from the button on the right."}
+            {evidenceMode === "finding"
+              ? "This clip is the recorded proof for this finding."
+              : hasMultipleParts
+                ? "Parts continue automatically, or use Back and Next."
+                : activeVideoUrl
+                  ? thoughtCues.length
+                    ? "Scrub the replay to see customer reactions and cursor markers at each recorded interaction."
+                    : "This is the full session recording. No reaction label is shown without timestamped reaction evidence."
+                  : "If a hosted session exists, open it from the button on the right."}
           </div>
           <div className="flex flex-wrap gap-3">
             {sessionUrl ? (
