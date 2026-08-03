@@ -1137,7 +1137,9 @@ function readProjectTeamMembers(project?: ProjectSummary | null) {
 }
 
 function deriveScoreFromReport(report?: QaReport | null, run?: RunSummary | null) {
-  const findings = Array.isArray(report?.findings) ? report!.findings! : [];
+  const findings = (Array.isArray(report?.findings) ? report!.findings! : []).filter(
+    (finding) => String(finding?.type || "").toLowerCase() !== "test_inconclusive"
+  );
   const riskScore = Number(report?.summary?.risk_score ?? run?.risk_score ?? NaN);
   if (Number.isFinite(riskScore)) {
     return Math.max(0, Math.min(100, Math.round(100 - riskScore)));
@@ -1209,7 +1211,9 @@ function buildStarterHistoryRows(runs: RunSummary[]) {
 }
 
 function buildStarterFrictionRows(report?: QaReport | null, runs: RunSummary[] = []) {
-  const findings = Array.isArray(report?.findings) ? report.findings : [];
+  const findings = (Array.isArray(report?.findings) ? report.findings : []).filter(
+    (finding) => String(finding?.type || "").toLowerCase() !== "test_inconclusive"
+  );
   if (findings.length) {
     return findings.slice(0, 4).map((finding, index) => ({
       id: finding.id || `finding-${index}`,
@@ -8195,6 +8199,13 @@ function ReportReader({
   const evidenceIndexMap = buildEvidenceIndexMap(report, "screenshot");
   const primaryFinding = getPrimaryFinding(report);
   const findings = report?.findings || [];
+  const productFindings = findings.filter(
+    (finding) => String(finding?.type || "").toLowerCase() !== "test_inconclusive"
+  );
+  const inconclusiveFindings = findings.filter(
+    (finding) => String(finding?.type || "").toLowerCase() === "test_inconclusive"
+  );
+  const primaryIsInconclusive = String(primaryFinding?.type || "").toLowerCase() === "test_inconclusive";
   const journeys = report?.tested_journeys || [];
   const screenshotValues = Array.from(evidenceIndexMap.entries())
     .sort((left, right) => left[1] - right[1])
@@ -8355,22 +8366,27 @@ function ReportReader({
             {primaryFinding ? (
               <div className="rounded-xl border border-brand-line bg-brand-panel p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-brand-ink">Next fix</div>
-                  <StatusPill label={formatStatusLabel(primaryFinding.severity || "medium")} tone={getSeverityTone(primaryFinding.severity || "medium")} />
+                  <div className="text-sm font-semibold text-brand-ink">{primaryIsInconclusive ? "Needs a rerun" : "Next fix"}</div>
+                  <StatusPill
+                    label={primaryIsInconclusive ? "Inconclusive" : formatStatusLabel(primaryFinding.severity || "medium")}
+                    tone={primaryIsInconclusive ? "neutral" : getSeverityTone(primaryFinding.severity || "medium")}
+                  />
                 </div>
                 <div className="mt-3 text-sm leading-7 text-brand-muted">
-                  {primaryFinding.recommended_fix || primaryFinding.expected_behavior || primaryFinding.observed_behavior}
+                  {primaryIsInconclusive
+                    ? primaryFinding.fix_hint || primaryFinding.observed_behavior
+                    : primaryFinding.recommended_fix || primaryFinding.fix_hint || primaryFinding.expected_behavior || primaryFinding.observed_behavior}
                 </div>
               </div>
             ) : null}
 
             <div className="rounded-xl border border-brand-line bg-brand-panel p-4">
               <div className="text-sm font-semibold text-brand-ink">Problems</div>
-              {!findings.length ? (
-                <div className="mt-3 text-sm text-brand-muted">No structured problems were recorded for this run.</div>
+              {!productFindings.length ? (
+                <div className="mt-3 text-sm text-brand-muted">No proven product problems were recorded.</div>
               ) : (
                 <div className="mt-3 space-y-3">
-                  {findings.map((finding, index) => {
+                  {productFindings.map((finding, index) => {
                     const findingId = finding.id || `finding-${index}`;
                     const active = selectedFindingId ? selectedFindingId === findingId : index === 0;
                     const screenshotSource = finding.evidence?.screenshots?.[0];
@@ -8429,6 +8445,61 @@ function ReportReader({
                 </div>
               )}
             </div>
+
+            {inconclusiveFindings.length ? (
+              <div className="rounded-xl border border-brand-line bg-brand-panel p-4">
+                <div className="text-sm font-semibold text-brand-ink">Needs a rerun</div>
+                <div className="mt-1 text-sm leading-6 text-brand-muted">
+                  The tester could not prove these interactions reached the intended control. They are not product bugs.
+                </div>
+                <div className="mt-3 space-y-3">
+                  {inconclusiveFindings.map((finding, index) => {
+                    const findingId = finding.id || `inconclusive-${index}`;
+                    const active = selectedFindingId === findingId;
+                    const screenshotSource = finding.evidence?.screenshots?.[0];
+                    const screenshotIndex = screenshotSource ? evidenceIndexMap.get(screenshotSource) : undefined;
+                    return (
+                      <div key={findingId} className="rounded-xl border border-brand-line">
+                        <button
+                          className="flex w-full items-start justify-between gap-3 px-4 py-4 text-left"
+                          type="button"
+                          onClick={() => onSelectFinding(active ? "" : findingId)}
+                        >
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-brand-ink">{finding.title || `Check ${index + 1}`}</div>
+                            <div className="mt-1 text-sm leading-6 text-brand-muted">{finding.observed_behavior}</div>
+                          </div>
+                          <StatusPill label="Rerun" tone="neutral" />
+                        </button>
+                        {active ? (
+                          <div className="grid gap-4 border-t border-brand-line px-4 py-4 lg:grid-cols-[1.1fr_0.9fr]">
+                            <div className="space-y-3 text-sm">
+                              <div>
+                                <div className="font-medium text-brand-ink">Next step</div>
+                                <div className="mt-1 leading-6 text-brand-muted">
+                                  {finding.fix_hint || "Rerun this check or verify it manually. Do not change the product from this evidence."}
+                                </div>
+                              </div>
+                            </div>
+                            {typeof screenshotIndex === "number" ? (
+                              <img
+                                className="w-full rounded-lg border border-brand-line object-cover"
+                                src={buildEvidenceAssetUrl(report?.run_id || run?.run_id || "", "screenshot", screenshotIndex, shareKey)}
+                                alt={finding.title || "Inconclusive test evidence"}
+                              />
+                            ) : (
+                              <div className="flex min-h-32 items-center justify-center rounded-lg border border-dashed border-brand-line text-sm text-brand-muted">
+                                No screenshot attached.
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
 
             {journeys.length ? (
               <div className="rounded-xl border border-brand-line bg-brand-panel p-4">
@@ -8531,6 +8602,7 @@ function SharedReportPage({
     cursorCues: ReplayCursorCue[];
   } | null>(null);
   const primaryFinding = getPrimaryFinding(report);
+  const primaryIsInconclusive = String(primaryFinding?.type || "").toLowerCase() === "test_inconclusive";
   const evidenceMap = buildEvidenceIndexMap(report, "screenshot");
   const videoEvidenceMap = buildEvidenceIndexMap(report, "video");
   const firstEvidence = Array.from(evidenceMap.entries()).sort((left, right) => left[1] - right[1])[0];
@@ -8646,7 +8718,11 @@ function SharedReportPage({
               <p className="mt-3 max-w-3xl text-sm leading-7 text-brand-muted">
                 {primaryFinding?.observed_behavior || report?.summary?.note || "Read the main problem and the proof below."}
               </p>
-              <p className="mt-4 text-sm font-semibold text-brand-ink">Open any finding to watch the exact recorded moment.</p>
+              <p className="mt-4 text-sm font-semibold text-brand-ink">
+                {primaryIsInconclusive
+                  ? "This is not a product bug. Rerun the check or verify it manually."
+                  : "Open any finding to watch the exact recorded moment."}
+              </p>
 
               {firstEvidence ? (
                 <img
@@ -8662,7 +8738,10 @@ function SharedReportPage({
                     <div key={finding.id || index} className="min-w-0 rounded-xl border border-brand-line bg-brand-panel px-4 py-4">
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0 text-sm font-semibold text-brand-ink">{finding.title || `Finding ${index + 1}`}</div>
-                        <StatusPill label={formatStatusLabel(finding.severity || "medium")} tone={getSeverityTone(finding.severity || "medium")} />
+                        <StatusPill
+                          label={String(finding.type || "").toLowerCase() === "test_inconclusive" ? "Rerun" : formatStatusLabel(finding.severity || "medium")}
+                          tone={String(finding.type || "").toLowerCase() === "test_inconclusive" ? "neutral" : getSeverityTone(finding.severity || "medium")}
+                        />
                       </div>
                       <div className="mt-2 min-w-0 break-words text-sm leading-6 text-brand-muted">{finding.observed_behavior || finding.expected_behavior}</div>
                       {(() => {

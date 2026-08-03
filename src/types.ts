@@ -104,6 +104,7 @@ export interface ReportFinding {
   expected_behavior?: string | null;
   observed_behavior?: string | null;
   recommended_fix?: string | null;
+  fix_hint?: string | null;
   confidence?: number | null;
   evidence?: ReportEvidence;
   diagnostic_details?: FindingDetails;

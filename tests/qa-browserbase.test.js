@@ -1235,12 +1235,21 @@ test("clickWithVisionLocalization retries next strategy when UI-TARS points at w
   const clicks = [];
   const page = {
     screenshot: async () => Buffer.from("not-a-real-png"),
-    evaluate: async () => ({
-      valid: false,
-      reason: "non_interactive_element_at_point",
-      tag: "main",
-      text: ""
-    }),
+    evaluate: async (_fn, point) =>
+      point.pointX === 435
+        ? {
+            valid: true,
+            reason: "interactive_element_at_point",
+            tag: "button",
+            role: "button",
+            text: "Start QA"
+          }
+        : {
+            valid: false,
+            reason: "non_interactive_element_at_point",
+            tag: "main",
+            text: ""
+          },
     mouse: {
       move: async () => {},
       click: async (x, y) => {
@@ -1294,6 +1303,7 @@ test("clickWithVisionLocalization retries next strategy when UI-TARS points at w
   assert.deepEqual(clicks, [{ x: 435, y: 460 }]);
   assert.equal(result.x, 435);
   assert.equal(result.y, 460);
+  assert.equal(result.interactionVerification.target_hit_verified, true);
   assert.ok(
     runLog.some(
       (entry) =>
@@ -1304,6 +1314,7 @@ test("clickWithVisionLocalization retries next strategy when UI-TARS points at w
   );
   const successEvent = runLog.find((entry) => entry.event === "agent_click_coordinate_fallback_succeeded");
   assert.equal(successEvent.details.strategy, "ocr_qwen");
+  assert.equal(successEvent.details.target_hit_verified, true);
 });
 
 test("clickWithVisionLocalization rejects input hits for button targets", async () => {
@@ -1391,6 +1402,7 @@ test("clickWithVisionLocalization rejects input hits for button targets", async 
 
   assert.deepEqual(clicks, [{ x: 760, y: 215 }]);
   assert.equal(result.x, 760);
+  assert.equal(result.interactionVerification.target_hit_verified, true);
   assert.ok(
     runLog.some(
       (entry) =>
@@ -1402,6 +1414,53 @@ test("clickWithVisionLocalization rejects input hits for button targets", async 
   );
   const successEvent = runLog.find((entry) => entry.event === "agent_click_coordinate_fallback_succeeded");
   assert.equal(successEvent.details.strategy, "vision_llm");
+});
+
+test("clickWithVisionLocalization validates retry coordinates before clicking", async () => {
+  let clickCount = 0;
+  const page = {
+    screenshot: async () => Buffer.from("not-a-real-png"),
+    evaluate: async () => ({
+      valid: false,
+      reason: "non_interactive_element_at_point",
+      tag: "div",
+      text: ""
+    }),
+    mouse: {
+      move: async () => {},
+      click: async () => {
+        clickCount += 1;
+      }
+    }
+  };
+
+  await assert.rejects(
+    () =>
+      clickWithVisionLocalization({
+        page,
+        targetDescription: "Continue button",
+        coordinateFallbackConfig: {
+          enabled: true,
+          localizationOrder: ["ui_tars", "vision_llm"],
+          uiTars: {
+            localize: async () => ({
+              box: { center_x: 100, center_y: 100 }
+            })
+          },
+          visionLlm: {
+            localize: async () => ({
+              box: { center_x: 200, center_y: 200 }
+            })
+          }
+        },
+        artifacts: {},
+        runLog: [],
+        actionDelayMs: 0
+      }),
+    /point did not match the requested target/i
+  );
+
+  assert.equal(clickCount, 0);
 });
 
 test("clickWithVisionLocalization does not use yellow-box annotation when it is excluded", async () => {
@@ -2264,7 +2323,7 @@ test("executeVisionOnlyModeAttempt stops after repeated wait decisions on the sa
   assert.ok(runLog.some((entry) => entry.event === "vision_only_wait_streak_blocked"));
 });
 
-test("executeVisionOnlyModeAttempt stops and deduplicates repeated identical action failures", async () => {
+test("executeVisionOnlyModeAttempt reports repeated uncertain clicks as inconclusive, not product bugs", async () => {
   let currentUrl = "https://tryseconds.example.com/onboarding";
   let plannerCalls = 0;
   const page = {
@@ -2329,11 +2388,76 @@ test("executeVisionOnlyModeAttempt stops and deduplicates repeated identical act
 
   assert.equal(plannerCalls, 3);
   assert.equal(result.candidateReport.status, "partial");
-  assert.match(result.candidateReport.summary.note, /failed the same action 3 times/i);
+  assert.match(result.candidateReport.summary.note, /inconclusive and does not prove a product bug/i);
+  assert.equal(result.candidateReport.summary.coverage.flows_blocked, 0);
+  assert.equal(result.candidateReport.summary.coverage.flows_inconclusive, 1);
   assert.equal(result.candidateReport.findings.length, 1);
-  assert.equal(result.candidateReport.findings[0].type, "dead_end");
+  assert.equal(result.candidateReport.findings[0].type, "test_inconclusive");
+  assert.equal(result.candidateReport.findings[0].severity, "medium");
+  assert.match(result.candidateReport.findings[0].observed_behavior, /not proof of a product bug/i);
   assert.equal(result.candidateReport.findings[0].diagnostic_details.repeated_action_failure_count, 3);
-  assert.ok(runLog.some((entry) => entry.event === "vision_only_repeated_action_blocked"));
+  assert.equal(
+    result.candidateReport.findings[0].diagnostic_details.interaction_verification.target_hit_verified,
+    false
+  );
+  assert.ok(runLog.some((entry) => entry.event === "vision_only_repeated_action_inconclusive"));
+  assert.ok(!runLog.some((entry) => entry.event === "vision_only_repeated_action_blocked"));
+});
+
+test("executeVisionOnlyModeAttempt does not accept a product blocker after an unverified click", async () => {
+  let currentUrl = "https://example.com/form";
+  const decisions = [
+    { action: "click", target: "Continue button" },
+    { action: "wait", target: "next screen", amount: 1 },
+    { action: "fail", reason: "Continue did not work." }
+  ];
+  let decisionIndex = 0;
+  const page = {
+    goto: async (url) => {
+      currentUrl = String(url || "");
+    },
+    url: () => currentUrl,
+    screenshot: async () => Buffer.from("unverified-click-source"),
+    waitForTimeout: async () => {},
+    mouse: {
+      move: async () => {},
+      click: async () => {},
+      wheel: async () => {}
+    },
+    keyboard: { press: async () => {} }
+  };
+
+  const result = await executeVisionOnlyModeAttempt({
+    stagehand: { context: { awaitActivePage: async () => page } },
+    runRequest: { ...createRunRequest(), target_url: currentUrl },
+    options: {
+      visionApiKey: "test-openai-api-key",
+      visionActionDelayMs: 1,
+      visionPlannerClient: async () => decisions[decisionIndex++] || decisions[decisions.length - 1]
+    },
+    runLog: [],
+    artifacts: {
+      local_video_url: "https://example.com/run.webm",
+      captured_screenshots: [],
+      screenshot_event_count: 0
+    },
+    captureState: { maxCount: 8, maxBytes: 1500000, capturedBytes: 0 },
+    coordinateFallbackConfig: {
+      enabled: true,
+      localizeBox: async () => ({ strategy: "mock", box: { center_x: 10, center_y: 10 } })
+    }
+  });
+
+  assert.equal(result.candidateReport.status, "partial");
+  assert.match(result.candidateReport.summary.note, /inconclusive and does not prove a product bug/i);
+  assert.equal(result.candidateReport.summary.coverage.flows_blocked, 0);
+  assert.equal(result.candidateReport.summary.coverage.flows_inconclusive, 1);
+  assert.equal(result.candidateReport.findings.some((finding) => finding.type === "dead_end"), false);
+  assert.equal(result.candidateReport.findings[0].type, "test_inconclusive");
+  assert.equal(
+    result.candidateReport.findings[0].diagnostic_details.interaction_verification.target_hit_verified,
+    false
+  );
 });
 
 test("executeVisionOnlyModeAttempt diagnoses blank screen after OTP with final page state", async () => {
@@ -2471,6 +2595,13 @@ test("executeVisionOnlyModeAttempt builds a partial blocked report from real vis
     },
     url: () => currentUrl,
     screenshot: async () => Buffer.from("vision-confusion-source"),
+    evaluate: async () => ({
+      valid: true,
+      reason: "interactive_element_at_point",
+      tag: "button",
+      role: "button",
+      text: "Visible target"
+    }),
     waitForTimeout: async () => {},
     mouse: {
       wheel: async () => {},
