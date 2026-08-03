@@ -33,7 +33,7 @@ Finding-owned proof moment. It matches the buyer's immediate decision, reuses th
 - Every generated finding receives timestamped experience spans.
 - Stored step clips retain finding ID, title, type, severity level, and clip timing.
 - Shared reports resolve finding-tagged clips first, then verified timeline spans.
-- Replay seeks to the finding start and pauses at the end of the proof window.
+- Replay seeks to the finding start, highlights that proof context, and then allows uninterrupted playback or scrubbing through the full recording.
 - No reaction label renders when timestamped reaction data is absent.
 - Long full-session recordings retain their existing multi-part playback.
 
