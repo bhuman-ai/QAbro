@@ -382,7 +382,7 @@ export function getRunTitle(run?: RunSummary | null) {
 
 export function getPrimaryFinding(report?: QaReport | null) {
   const findings = Array.isArray(report?.findings) ? report!.findings! : [];
-  return findings[0] || null;
+  return findings.find((finding) => String(finding?.type || "").toLowerCase() !== "test_inconclusive") || findings[0] || null;
 }
 
 export function getReportHeadline(run?: RunSummary | null, report?: QaReport | null) {

@@ -446,6 +446,64 @@ test("normalizeReport produces callback-valid findings with evidence fallback", 
   assert.equal(validateReport(report).ok, true);
 });
 
+test("normalizeReport downgrades explicitly unverified interaction bugs to test inconclusive", () => {
+  const report = normalizeReport({
+    candidateReport: {
+      status: "partial",
+      summary: { note: "The automated tester could not finish the click." },
+      findings: [
+        {
+          id: "f_unverified_click",
+          type: "dead_end",
+          severity: "high",
+          title: "Continue button was not clickable",
+          expected_behavior: "Continue should open the next step.",
+          observed_behavior: "The agent clicked coordinates and nothing happened.",
+          emotional_reaction: { primary: "frustration", intensity: 3 },
+          repro_steps: ["Open the form.", "Click Continue."],
+          page: { url: "https://example.com/form" },
+          evidence: { screenshots: ["https://cdn.example.com/form.png"] },
+          diagnostic_details: {
+            page_loaded: true,
+            current_url: "https://example.com/form",
+            current_state: "The form stayed visible.",
+            last_successful_step: "Opened the form.",
+            failure_reason: "Coordinate localization did not match the requested target.",
+            attempted_actions: [
+              { action: "click", target: "Continue button", outcome: "Target could not be verified." }
+            ],
+            interaction_verification: {
+              status: "unverified",
+              target_hit_verified: false,
+              target: "Continue button",
+              reason: "The localized point landed on a non-interactive element."
+            }
+          }
+        }
+      ]
+    },
+    runRequest: {
+      run_id: "run_unverified_click",
+      target_url: "https://example.com/form",
+      source: "qa_bot"
+    },
+    artifacts: { local_video_url: "https://cdn.example.com/run.webm" },
+    actions: { visited_pages: ["https://example.com/form"], flows_tested: 1, flows_blocked: 0 }
+  });
+
+  const finding = report.findings[0];
+  assert.equal(finding.type, "test_inconclusive");
+  assert.equal(finding.severity, "medium");
+  assert.match(finding.title, /tester could not verify continue button/i);
+  assert.match(finding.observed_behavior, /not proof of a product bug/i);
+  assert.match(finding.fix_hint, /do not change the product/i);
+  assert.equal(finding.diagnostic_details.interaction_verification.target_hit_verified, false);
+  assert.equal(report.summary.risk_score, 0);
+  assert.deepEqual(report.summary.top_issues, []);
+  assert.equal(validateReport(report).ok, true);
+  assert.equal(sanitizeReportForCallback(report).findings[0].type, "test_inconclusive");
+});
+
 test("normalizeReport preserves explicit inline screenshot proof on findings", () => {
   const inlineScreenshot = `data:image/png;base64,${"a".repeat(6000)}`;
   const report = normalizeReport({
