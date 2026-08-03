@@ -145,6 +145,16 @@ export interface ReportExperienceSpan {
   linked_finding_ids?: string[];
 }
 
+export interface ReportReplayInteraction {
+  id?: string | null;
+  kind?: "click" | string | null;
+  ts?: string | null;
+  target?: string | null;
+  x?: number | null;
+  y?: number | null;
+  source?: string | null;
+}
+
 export interface EngineeringPerFinding {
   finding_id?: string | null;
   finding_title?: string | null;
@@ -187,6 +197,7 @@ export interface QaReport {
     spans?: ReportExperienceSpan[];
     [key: string]: unknown;
   } | null;
+  replay_interactions?: ReportReplayInteraction[];
   recommendations?: string[];
   feature_inventory?: Record<string, unknown> | null;
   evidence_gallery?: {

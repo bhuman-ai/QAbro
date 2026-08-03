@@ -15,6 +15,7 @@ import {
   Video
 } from "lucide-react";
 import { apiFetch } from "./lib/api";
+import { getDisplayMediaWithCursor } from "./lib/screen-capture";
 import type {
   ManualQaEvidenceAnchor,
   ManualQaRecordingFinding,
@@ -593,7 +594,7 @@ export default function QaTrialPortal({ search }: { search: string }) {
     }
     const targetWindow = window.open(trial?.target_url || "about:blank", "beforeusersdo-test-target");
     try {
-      const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      const display = await getDisplayMediaWithCursor();
       sourceStreamsRef.current = [display];
       const displayVideoTracks = display.getVideoTracks().filter((track) => track.readyState === "live");
       if (!displayVideoTracks.length) throw new Error("Choose a screen or tab to share, then try again.");

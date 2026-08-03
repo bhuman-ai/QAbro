@@ -507,6 +507,10 @@ test("createCoordinateAwareClickTool falls back to yellow-box coordinates after 
   assert.equal(artifacts.coordinate_click_fallback.invoked, 1);
   assert.equal(artifacts.coordinate_click_fallback.resolved, 1);
   assert.equal(artifacts.coordinate_click_fallback.failed, 0);
+  const clickAttempts = runLog.filter((entry) => entry.event === "agent_click_attempted");
+  assert.equal(clickAttempts.length, 2);
+  assert.deepEqual(clickAttempts.map((entry) => entry.details.coordinates), [[12, 14], [54, 25]]);
+  assert.ok(clickAttempts.every((entry) => entry.details.describe === "New Workflow button"));
   assert.ok(
     runLog.some((entry) => entry.event === "agent_click_coordinate_fallback_succeeded")
   );
@@ -1218,6 +1222,10 @@ test("clickWithVisionLocalization retries with yellow-box annotation after OCR c
   ]);
   assert.equal(result.x, 79);
   assert.equal(result.y, 34);
+  assert.deepEqual(
+    runLog.filter((entry) => entry.event === "agent_click_attempted").map((entry) => entry.details.coordinates),
+    [[30, 28], [79, 34]]
+  );
   assert.ok(runLog.some((entry) => entry.event === "agent_click_coordinate_fallback_retrying"));
   const successEvent = runLog.find((entry) => entry.event === "agent_click_coordinate_fallback_succeeded");
   assert.equal(successEvent.details.strategy, "yellow_box_diff");
@@ -1948,6 +1956,9 @@ test("executeBrowserbaseQaRun supports vision_only mode with annotation-based cl
   assert.equal(result.report.artifacts.coordinate_click_fallback.invoked, 1);
   assert.equal(result.report.artifacts.coordinate_click_fallback.resolved, 1);
   assert.equal(result.report.artifacts.coordinate_click_fallback.failed, 0);
+  const recordedClick = result.runLog.find((entry) => entry.event === "agent_click_attempted");
+  assert.deepEqual(recordedClick.details.coordinates, [73, 40]);
+  assert.equal(recordedClick.details.describe, "Start Here");
   assert.ok(
     result.runLog.some((entry) => entry.event === "vision_only_step_decision")
   );
