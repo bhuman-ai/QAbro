@@ -123,7 +123,26 @@ export interface ReportJourney {
   step_video_clips?: Array<{
     step?: number | null;
     video?: string | null;
+    clip_start_ms?: number | null;
+    clip_end_ms?: number | null;
+    content_type?: string | null;
+    title?: string | null;
+    finding_id?: string | null;
+    finding_title?: string | null;
+    finding_type?: string | null;
+    level?: string | null;
   }>;
+}
+
+export interface ReportExperienceSpan {
+  id?: string | null;
+  start_ms?: number | null;
+  end_ms?: number | null;
+  jump_ts_ms?: number | null;
+  level?: string | null;
+  label?: string | null;
+  summary?: string | null;
+  linked_finding_ids?: string[];
 }
 
 export interface EngineeringPerFinding {
@@ -163,6 +182,11 @@ export interface QaReport {
   } | null;
   findings?: ReportFinding[];
   tested_journeys?: ReportJourney[];
+  experience_timeline?: {
+    video_duration_ms?: number | null;
+    spans?: ReportExperienceSpan[];
+    [key: string]: unknown;
+  } | null;
   recommendations?: string[];
   feature_inventory?: Record<string, unknown> | null;
   evidence_gallery?: {

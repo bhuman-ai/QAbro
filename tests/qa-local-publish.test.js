@@ -555,11 +555,62 @@ test("attachStepVideoClipsToReport derives and stores real step clip refs", asyn
   );
 
   assert.equal(clipCalls.length, 2);
-  assert.match(clipCalls[0].outputPath, /step-clips\/run-step-clips-journey-generated-video-step-01\.mp4$/);
-  assert.match(clipCalls[1].outputPath, /step-clips\/run-step-clips-journey-generated-video-step-02\.mp4$/);
+  assert.match(clipCalls[0].outputPath, /step-clips\/run-step-clips-journey-generated-video-finding-generate-presenter-stalled-step-01\.mp4$/);
+  assert.match(clipCalls[1].outputPath, /step-clips\/run-step-clips-journey-generated-video-finding-generate-presenter-stalled-step-02\.mp4$/);
   assert.ok(clipCalls[0].startMs >= 48000);
   assert.ok(clipCalls[1].endMs <= 150000);
   assert.equal(reportWithClips.tested_journeys[0].step_video_clips.length, 2);
   assert.equal(reportWithClips.tested_journeys[0].step_video_clips[0].step, 1);
+  assert.equal(reportWithClips.tested_journeys[0].step_video_clips[0].finding_id, "finding_generate_presenter_stalled");
   assert.match(reportWithClips.tested_journeys[0].step_video_clips[0].video, /step-01\.mp4$/);
+});
+
+test("attachStepVideoClipsToReport keeps an exact clip mapping for every finding", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-local-finding-clips-"));
+  const masterVideoPath = path.join(tempDir, "full.webm");
+  fs.writeFileSync(masterVideoPath, Buffer.from("master-video"));
+
+  const reportWithClips = await __private.attachStepVideoClipsToReport(
+    {
+      run_id: "run_finding_clips",
+      findings: [
+        {
+          id: "finding_bug",
+          type: "bug",
+          title: "Checkout button failed",
+          journey_id: "journey_checkout",
+          diagnostic_details: {
+            attempted_actions: [{ step: 1, action: "click", target: "Checkout", outcome: "blocked" }]
+          }
+        },
+        {
+          id: "finding_aha",
+          type: "aha_moment",
+          title: "Price became clear",
+          journey_id: "journey_checkout",
+          diagnostic_details: {
+            attempted_actions: [{ step: 1, action: "inspect", target: "Price", outcome: "understood" }]
+          }
+        }
+      ],
+      tested_journeys: [{ id: "journey_checkout", pages: ["https://example.com/checkout"] }],
+      experience_timeline: {
+        video_duration_ms: 30000,
+        spans: [
+          { start_ms: 5000, end_ms: 10000, level: "blocker", linked_finding_ids: ["finding_bug"], evidence: { action_steps: [1] } },
+          { start_ms: 18000, end_ms: 23000, level: "good", linked_finding_ids: ["finding_aha"], evidence: { action_steps: [1] } }
+        ]
+      }
+    },
+    { local_video_path: masterVideoPath },
+    {
+      probeVideoDurationSecondsImpl: async () => 30,
+      createStepVideoClipImpl: async (_videoPath, options = {}) => ({ path: options.outputPath })
+    }
+  );
+
+  const clips = reportWithClips.tested_journeys[0].step_video_clips;
+  assert.equal(clips.length, 2);
+  assert.deepEqual(clips.map((clip) => clip.finding_id), ["finding_bug", "finding_aha"]);
+  assert.deepEqual(clips.map((clip) => clip.level), ["blocker", "good"]);
 });
