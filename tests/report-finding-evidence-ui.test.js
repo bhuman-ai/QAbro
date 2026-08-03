@@ -24,3 +24,10 @@ test("finding evidence resolution prefers clips linked by finding id", () => {
   assert.match(formatSource, /clip\.finding_id/);
   assert.match(formatSource, /linked_finding_ids/);
 });
+
+test("finding replay starts at proof without trapping full-session playback", () => {
+  assert.match(appSource, /initialTimeSeconds=\{replayTarget\.startSeconds\}/);
+  assert.match(appSource, /Playback starts at this finding\. Keep watching or scrub anywhere\./);
+  assert.doesNotMatch(appSource, /endTimeSeconds/);
+  assert.doesNotMatch(appSource, /nextTime >= endTimeSeconds/);
+});

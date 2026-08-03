@@ -8527,7 +8527,6 @@ function SharedReportPage({
     videoUrls?: string[];
     posterUrl: string;
     startSeconds: number;
-    endSeconds: number;
     evidenceMode: "session" | "finding";
     cursorCues: ReplayCursorCue[];
   } | null>(null);
@@ -8587,7 +8586,6 @@ function SharedReportPage({
         ? buildEvidenceAssetUrl(runId || report?.run_id || "", "screenshot", screenshotIndex as number, shareKey)
         : replayPosterUrl,
       startSeconds: moment.sourceKind === "timeline" ? moment.startMs / 1000 : 0,
-      endSeconds: moment.sourceKind === "timeline" ? moment.endMs / 1000 : 0,
       evidenceMode: "finding" as const,
       cursorCues: moment.sourceKind === "finding_clip"
         ? rebaseReplayCursorCues(replayOverlay.cursors, moment.startMs, moment.endMs)
@@ -8609,7 +8607,6 @@ function SharedReportPage({
             thoughtCues={[]}
             cursorCues={replayTarget.cursorCues}
             initialTimeSeconds={replayTarget.startSeconds}
-            endTimeSeconds={replayTarget.endSeconds}
             evidenceMode={replayTarget.evidenceMode}
             onClose={() => setReplayTarget(null)}
           />
@@ -8700,7 +8697,6 @@ function SharedReportPage({
                       videoUrls: replayVideoUrls,
                       posterUrl: replayPosterUrl,
                       startSeconds: 0,
-                      endSeconds: 0,
                       evidenceMode: "session",
                       cursorCues: replayOverlay.cursors
                     })}
@@ -10912,8 +10908,7 @@ function ReplayVideoWithOverlay({
   thoughtCues,
   cursorCues,
   onEnded,
-  initialTimeSeconds = 0,
-  endTimeSeconds = 0
+  initialTimeSeconds = 0
 }: {
   title: string;
   videoUrl: string;
@@ -10923,7 +10918,6 @@ function ReplayVideoWithOverlay({
   cursorCues: ReplayCursorCue[];
   onEnded?: () => void;
   initialTimeSeconds?: number;
-  endTimeSeconds?: number;
 }) {
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -10965,9 +10959,6 @@ function ReplayVideoWithOverlay({
         onTimeUpdate={(event) => {
           const nextTime = Number(event.currentTarget.currentTime) || 0;
           setCurrentTime(nextTime);
-          if (endTimeSeconds > initialTimeSeconds && nextTime >= endTimeSeconds) {
-            event.currentTarget.pause();
-          }
         }}
         onSeeked={(event) => {
           setCurrentTime(Number(event.currentTarget.currentTime) || 0);
@@ -11106,7 +11097,6 @@ function StarterSessionReplayModal({
   thoughtCues,
   cursorCues,
   initialTimeSeconds = 0,
-  endTimeSeconds = 0,
   evidenceMode = "session",
   onClose
 }: {
@@ -11118,7 +11108,6 @@ function StarterSessionReplayModal({
   thoughtCues: ReplayThoughtCue[];
   cursorCues: ReplayCursorCue[];
   initialTimeSeconds?: number;
-  endTimeSeconds?: number;
   evidenceMode?: "session" | "finding";
   onClose: () => void;
 }) {
@@ -11180,7 +11169,6 @@ function StarterSessionReplayModal({
                 thoughtCues={hasMultipleParts ? [] : thoughtCues}
                 cursorCues={hasMultipleParts ? [] : cursorCues}
                 initialTimeSeconds={activePartIndex === 0 ? initialTimeSeconds : 0}
-                endTimeSeconds={activePartIndex === 0 ? endTimeSeconds : 0}
                 onEnded={() => {
                   if (activePartIndex < replayUrls.length - 1) {
                     setActivePartIndex(activePartIndex + 1);
@@ -11263,7 +11251,7 @@ function StarterSessionReplayModal({
         <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-5 bg-white">
           <div className="text-sm font-bold text-slate-500">
             {evidenceMode === "finding"
-              ? "This clip is the recorded proof for this finding."
+              ? "Playback starts at this finding. Keep watching or scrub anywhere."
               : hasMultipleParts
                 ? "Parts continue automatically, or use Back and Next."
                 : activeVideoUrl
