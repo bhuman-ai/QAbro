@@ -13,8 +13,18 @@ test("shared replays show one plain-language click intent overlay", () => {
   assert.match(appSource, /border-brand-accent bg-brand-accent\/20/);
 });
 
+test("replay cursor remains visible between click moments", () => {
+  assert.match(appSource, /function getVisibleReplayCursorCue/);
+  assert.match(appSource, /const visibleCursor = getVisibleReplayCursorCue/);
+  assert.match(appSource, /\{visibleCursor \? \(/);
+  assert.match(appSource, /key="replay-cursor"/);
+  assert.match(appSource, /data-replay-cursor="persistent"/);
+  assert.match(appSource, /data-replay-click-active=\{activeCursor \? "true" : "false"\}/);
+  assert.match(appSource, /left: `\$\{visibleCursor\.left\}%`/);
+  assert.match(appSource, /\{activeCursor \? \(/);
+});
+
 test("finding clips receive their rebased cursor cues", () => {
   assert.match(appSource, /moment\.sourceKind === "finding_clip"/);
   assert.match(appSource, /cursorCues=\{replayTarget\.cursorCues\}/);
 });
-
