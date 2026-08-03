@@ -60,6 +60,7 @@ import {
   YAxis
 } from "recharts";
 import { ApiError, apiFetch } from "@/lib/api";
+import { getDisplayMediaWithCursor } from "@/lib/screen-capture";
 import {
   rememberAcquisitionAuthMethod,
   trackAgentInstallStepCopied,
@@ -7581,10 +7582,7 @@ function ManualQaReviewRecorder({
     }
 
     try {
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: true
-      });
+      const displayStream = await getDisplayMediaWithCursor();
       let micStream: MediaStream | null = null;
       try {
         micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -8531,6 +8529,7 @@ function SharedReportPage({
     startSeconds: number;
     endSeconds: number;
     evidenceMode: "session" | "finding";
+    cursorCues: ReplayCursorCue[];
   } | null>(null);
   const primaryFinding = getPrimaryFinding(report);
   const evidenceMap = buildEvidenceIndexMap(report, "screenshot");
@@ -8562,6 +8561,7 @@ function SharedReportPage({
   const replayPosterUrl = firstEvidence
     ? buildEvidenceAssetUrl(runId || report?.run_id || "", "screenshot", firstEvidence[1], shareKey)
     : "";
+  const replayOverlay = buildReplayOverlayData(status?.run_log, report, status?.artifacts);
   const buildFindingReplayTarget = (finding: ReportFinding, index: number) => {
     const moment = getFindingEvidenceMoment(report, finding);
     if (!moment) {
@@ -8589,6 +8589,9 @@ function SharedReportPage({
       startSeconds: moment.sourceKind === "timeline" ? moment.startMs / 1000 : 0,
       endSeconds: moment.sourceKind === "timeline" ? moment.endMs / 1000 : 0,
       evidenceMode: "finding" as const,
+      cursorCues: moment.sourceKind === "finding_clip"
+        ? rebaseReplayCursorCues(replayOverlay.cursors, moment.startMs, moment.endMs)
+        : replayOverlay.cursors,
       timeLabel: formatEvidenceMomentRange(moment.startMs, moment.endMs)
     };
   };
@@ -8604,7 +8607,7 @@ function SharedReportPage({
             posterUrl={replayTarget.posterUrl}
             sessionUrl=""
             thoughtCues={[]}
-            cursorCues={[]}
+            cursorCues={replayTarget.cursorCues}
             initialTimeSeconds={replayTarget.startSeconds}
             endTimeSeconds={replayTarget.endSeconds}
             evidenceMode={replayTarget.evidenceMode}
@@ -8698,7 +8701,8 @@ function SharedReportPage({
                       posterUrl: replayPosterUrl,
                       startSeconds: 0,
                       endSeconds: 0,
-                      evidenceMode: "session"
+                      evidenceMode: "session",
+                      cursorCues: replayOverlay.cursors
                     })}
                     className="mt-3 inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-brand-line bg-brand-shell px-4 py-2.5 text-sm font-semibold text-brand-ink transition hover:bg-brand-bg"
                   >
@@ -10143,6 +10147,7 @@ type ReplayCursorCue = {
   progress: number;
   left: number;
   top: number;
+  offsetMs: number;
 };
 
 type ReplayExperienceTone = "positive" | "warning" | "negative" | "neutral";
@@ -10207,7 +10212,11 @@ function resolveReplayCoordinates(payload: Record<string, unknown>) {
     return { x: directX, y: directY };
   }
 
-  const pair = Array.isArray(payload.fallback_coordinates) ? payload.fallback_coordinates : [];
+  const pair = Array.isArray(payload.coordinates)
+    ? payload.coordinates
+    : Array.isArray(payload.fallback_coordinates)
+      ? payload.fallback_coordinates
+      : [];
   const pairX = Number(pair[0]);
   const pairY = Number(pair[1]);
   if (Number.isFinite(pairX) && Number.isFinite(pairY)) {
@@ -10399,8 +10408,11 @@ function buildReplayOverlayData(
   statusArtifacts?: StatusResponse["artifacts"] | null
 ) {
   const safeRunLog = Array.isArray(runLog) ? runLog : [];
-  const timestamps = safeRunLog
-    .map((entry) => getRunLogTimestampMs(entry))
+  const storedInteractions = Array.isArray(report?.replay_interactions) ? report.replay_interactions : [];
+  const timestamps = [
+    ...safeRunLog.map((entry) => getRunLogTimestampMs(entry)),
+    ...storedInteractions.map((interaction) => Date.parse(String(interaction?.ts || "")))
+  ]
     .filter((value) => Number.isFinite(value));
   const startedAtMs = Date.parse(String(report?.artifacts?.started_at || statusArtifacts?.started_at || ""));
   const finishedAtMs = Date.parse(String(report?.artifacts?.finished_at || statusArtifacts?.finished_at || ""));
@@ -10422,6 +10434,40 @@ function buildReplayOverlayData(
     Omit<ReplayThoughtCue, "left" | "top" | "align"> & { atMs: number }
   > = [];
 
+  const appendCursorCue = (
+    payload: Record<string, unknown>,
+    atMs: number,
+    index: number,
+    idPrefix = "cursor"
+  ) => {
+    const coordinates = resolveReplayCoordinates(payload);
+    if (!coordinates || !Number.isFinite(atMs)) {
+      return;
+    }
+    const normalizedProgress = hasWindow
+      ? clampReplayPercent((atMs - startMs) / totalMs, 0, 1)
+      : 0;
+    cursorCues.push({
+      id: `${idPrefix}-${index}`,
+      label:
+        String(payload.target || payload.describe || payload.label || "click target")
+          .trim()
+          .slice(0, 120) || "click target",
+      progress: normalizedProgress,
+      left: clampReplayPercent((coordinates.x / viewportWidth) * 100, 2, 98),
+      top: clampReplayPercent((coordinates.y / viewportHeight) * 100, 4, 96),
+      offsetMs: Math.max(0, hasWindow ? atMs - startMs : 0),
+      atMs
+    });
+  };
+
+  storedInteractions.forEach((interaction, index) => {
+    const atMs = Date.parse(String(interaction?.ts || ""));
+    appendCursorCue(interaction as unknown as Record<string, unknown>, atMs, index, "stored-cursor");
+  });
+  const hasStoredInteractions = cursorCues.length > 0;
+  const hasExplicitRunLogClicks = safeRunLog.some((entry) => getRunLogEvent(entry) === "agent_click_attempted");
+
   safeRunLog.forEach((entry, index) => {
     const event = getRunLogEvent(entry);
     const payload = getRunLogPayload(entry);
@@ -10429,17 +10475,11 @@ function buildReplayOverlayData(
     const normalizedProgress =
       hasWindow && Number.isFinite(atMs) ? clampReplayPercent((atMs - startMs) / totalMs, 0, 1) : 0;
 
-    if (event === "agent_click_coordinate_fallback_succeeded") {
-      const coordinates = resolveReplayCoordinates(payload);
-      if (coordinates) {
-        cursorCues.push({
-          id: `cursor-${index}`,
-          label: String(payload.describe || payload.reason || "interaction").trim() || "interaction",
-          progress: normalizedProgress,
-          left: clampReplayPercent((coordinates.x / viewportWidth) * 100, 2, 98),
-          top: clampReplayPercent((coordinates.y / viewportHeight) * 100, 4, 96),
-          atMs: Number.isFinite(atMs) ? atMs : startMs || 0
-        });
+    if (!hasStoredInteractions) {
+      const isExplicitClick = event === "agent_click_attempted";
+      const isHistoricalClick = !hasExplicitRunLogClicks && event === "agent_click_coordinate_fallback_succeeded";
+      if (isExplicitClick || isHistoricalClick) {
+        appendCursorCue(payload, Number.isFinite(atMs) ? atMs : startMs || 0, index);
       }
     }
 
@@ -10501,6 +10541,22 @@ function buildReplayOverlayData(
     viewportWidth,
     viewportHeight
   };
+}
+
+function rebaseReplayCursorCues(cues: ReplayCursorCue[], startMs: number, endMs: number) {
+  const safeStart = Math.max(0, Number(startMs) || 0);
+  const safeEnd = Math.max(safeStart, Number(endMs) || safeStart);
+  const duration = safeEnd - safeStart;
+  if (!Array.isArray(cues) || !cues.length || duration <= 0) {
+    return [];
+  }
+  return cues
+    .filter((cue) => Number.isFinite(cue.offsetMs) && cue.offsetMs >= safeStart && cue.offsetMs <= safeEnd)
+    .map((cue) => ({
+      ...cue,
+      progress: clampReplayPercent((cue.offsetMs - safeStart) / duration, 0, 1),
+      offsetMs: Math.max(0, cue.offsetMs - safeStart)
+    }));
 }
 
 function uniqueReadoutItems(values: unknown[], limit = 3) {
@@ -10981,7 +11037,23 @@ function ReplayVideoWithOverlay({
           >
             <div className="relative">
               <div className="absolute inset-0 rounded-full bg-white/35 blur-md" />
+              <motion.div
+                aria-hidden="true"
+                className="absolute -left-3 -top-3 h-12 w-12 rounded-full border-2 border-brand-accent bg-brand-accent/20"
+                initial={{ opacity: 0.9, scale: 0.55 }}
+                animate={{ opacity: 0, scale: 1.45 }}
+                transition={{ duration: 0.8, ease: "easeOut" }}
+              />
               <MousePointer2 className="relative h-8 w-8 fill-white text-brand-ink drop-shadow-[0_10px_25px_rgba(15,23,42,0.45)]" />
+              <div
+                className={`absolute max-w-[min(18rem,64vw)] truncate whitespace-nowrap rounded-lg border border-white/15 bg-brand-ink/90 px-3 py-2 text-xs font-black text-white shadow-xl backdrop-blur ${
+                  activeCursor.top > 72 ? "bottom-7" : "top-8"
+                } ${
+                  activeCursor.left > 68 ? "right-3" : "left-7"
+                }`}
+              >
+                Trying to click: {activeCursor.label}
+              </div>
             </div>
           </motion.div>
         ) : null}

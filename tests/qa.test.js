@@ -2642,3 +2642,48 @@ test("normalizeReport builds timestamped experience spans for every finding", ()
   assert.equal(linkedFindingIds.has("finding_bug"), true);
   assert.equal(linkedFindingIds.has("finding_aha"), true);
 });
+
+test("normalizeReport preserves timestamped click intent for replay", () => {
+  const report = normalizeReport({
+    candidateReport: {
+      status: "completed",
+      findings: [],
+      recommendations: []
+    },
+    runRequest: {
+      run_id: "run_replay_clicks",
+      target_url: "https://example.com",
+      source: "qa_bot"
+    },
+    artifacts: {
+      started_at: "2026-03-25T12:00:00.000Z",
+      finished_at: "2026-03-25T12:00:30.000Z",
+      viewport_width: 1440,
+      viewport_height: 900
+    },
+    runLog: [
+      {
+        timestamp: "2026-03-25T12:00:05.000Z",
+        event: "agent_click_attempted",
+        details: {
+          describe: "Generate button",
+          coordinates: [720, 450],
+          source: "vision_only_click"
+        }
+      }
+    ]
+  });
+
+  assert.deepEqual(report.replay_interactions, [
+    {
+      id: "click-1",
+      kind: "click",
+      ts: "2026-03-25T12:00:05.000Z",
+      target: "Generate button",
+      x: 720,
+      y: 450,
+      source: "vision_only_click"
+    }
+  ]);
+  assert.deepEqual(sanitizeReportForCallback(report).replay_interactions, report.replay_interactions);
+});
