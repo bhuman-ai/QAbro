@@ -10786,6 +10786,34 @@ function getActiveReplayCue<T extends { progress: number }>(cues: T[], duration:
   return active;
 }
 
+function getVisibleReplayCursorCue<T extends { progress: number }>(
+  cues: T[],
+  duration: number,
+  currentTime: number
+) {
+  if (!Array.isArray(cues) || !cues.length || !Number.isFinite(duration) || duration <= 0) {
+    return null;
+  }
+  let earliestCue: T | null = null;
+  let earliestCueTime = Number.POSITIVE_INFINITY;
+  let latestReachedCue: T | null = null;
+  let latestReachedCueTime = Number.NEGATIVE_INFINITY;
+
+  cues.forEach((cue) => {
+    const cueTime = clampReplayPercent(cue.progress, 0, 1) * duration;
+    if (cueTime < earliestCueTime) {
+      earliestCue = cue;
+      earliestCueTime = cueTime;
+    }
+    if (cueTime <= currentTime && cueTime >= latestReachedCueTime) {
+      latestReachedCue = cue;
+      latestReachedCueTime = cueTime;
+    }
+  });
+
+  return latestReachedCue || earliestCue;
+}
+
 function getReplayExperienceTone(thought: Pick<ReplayThoughtCue, "emotion" | "continueState" | "skepticism" | "missingInformation"> | null | undefined): ReplayExperienceTone {
   const emotion = String(thought?.emotion || "").trim().toLowerCase();
   const continueState = String(thought?.continueState || "").trim().toLowerCase();
@@ -10923,6 +10951,7 @@ function ReplayVideoWithOverlay({
   const [currentTime, setCurrentTime] = useState(0);
   const activeThought = getActiveReplayCue(thoughtCues, duration, currentTime, 4200);
   const activeCursor = getActiveReplayCue(cursorCues, duration, currentTime, 2200);
+  const visibleCursor = getVisibleReplayCursorCue(cursorCues, duration, currentTime);
   const experienceSegments = buildReplayExperienceSegments(thoughtCues);
   const currentProgress =
     Number.isFinite(duration) && duration > 0
@@ -11013,38 +11042,64 @@ function ReplayVideoWithOverlay({
       </div> : null}
 
       <AnimatePresence>
-        {activeCursor ? (
+        {visibleCursor ? (
           <motion.div
-            key={activeCursor.id}
+            key="replay-cursor"
+            aria-hidden="true"
+            data-replay-cursor="persistent"
+            data-replay-click-active={activeCursor ? "true" : "false"}
             initial={{ opacity: 0, scale: 0.7 }}
-            animate={{ opacity: 1, scale: 1 }}
+            animate={{
+              opacity: 1,
+              scale: 1,
+              left: `${visibleCursor.left}%`,
+              top: `${visibleCursor.top}%`
+            }}
             exit={{ opacity: 0, scale: 0.85 }}
+            transition={{
+              opacity: { duration: 0.18 },
+              scale: { duration: 0.18 },
+              left: { duration: 0.35, ease: "easeOut" },
+              top: { duration: 0.35, ease: "easeOut" }
+            }}
             className="pointer-events-none absolute z-20"
             style={{
-              left: `${activeCursor.left}%`,
-              top: `${activeCursor.top}%`,
               transform: "translate(-12%, -10%)"
             }}
           >
             <div className="relative">
               <div className="absolute inset-0 rounded-full bg-white/35 blur-md" />
-              <motion.div
-                aria-hidden="true"
-                className="absolute -left-3 -top-3 h-12 w-12 rounded-full border-2 border-brand-accent bg-brand-accent/20"
-                initial={{ opacity: 0.9, scale: 0.55 }}
-                animate={{ opacity: 0, scale: 1.45 }}
-                transition={{ duration: 0.8, ease: "easeOut" }}
-              />
+              <AnimatePresence>
+                {activeCursor ? (
+                  <motion.div
+                    key={`click-ripple-${activeCursor.id}`}
+                    aria-hidden="true"
+                    className="absolute -left-3 -top-3 h-12 w-12 rounded-full border-2 border-brand-accent bg-brand-accent/20"
+                    initial={{ opacity: 0.9, scale: 0.55 }}
+                    animate={{ opacity: 0, scale: 1.45 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.8, ease: "easeOut" }}
+                  />
+                ) : null}
+              </AnimatePresence>
               <MousePointer2 className="relative h-8 w-8 fill-white text-brand-ink drop-shadow-[0_10px_25px_rgba(15,23,42,0.45)]" />
-              <div
-                className={`absolute max-w-[min(18rem,64vw)] truncate whitespace-nowrap rounded-lg border border-white/15 bg-brand-ink/90 px-3 py-2 text-xs font-black text-white shadow-xl backdrop-blur ${
-                  activeCursor.top > 72 ? "bottom-7" : "top-8"
-                } ${
-                  activeCursor.left > 68 ? "right-3" : "left-7"
-                }`}
-              >
-                Trying to click: {activeCursor.label}
-              </div>
+              <AnimatePresence>
+                {activeCursor ? (
+                  <motion.div
+                    key={`click-label-${activeCursor.id}`}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 2 }}
+                    className={`absolute max-w-[min(18rem,64vw)] truncate whitespace-nowrap rounded-lg border border-white/15 bg-brand-ink/90 px-3 py-2 text-xs font-black text-white shadow-xl backdrop-blur ${
+                      visibleCursor.top > 72 ? "bottom-7" : "top-8"
+                    } ${
+                      visibleCursor.left > 68 ? "right-3" : "left-7"
+                    }`}
+                  >
+                    Trying to click: {activeCursor.label}
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
             </div>
           </motion.div>
         ) : null}
