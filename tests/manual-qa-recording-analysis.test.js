@@ -133,10 +133,12 @@ test("recording analyzer config uses the required provider fallbacks and hard ca
     assert.equal(config.baseUrl, DEFAULT_RECORDING_ANALYZER_BASE_URL);
     assert.equal(config.analyzerModel, DEFAULT_RECORDING_ANALYZER_MODEL);
     assert.equal(config.aggregatorModel, DEFAULT_RECORDING_AGGREGATOR_MODEL);
+    assert.equal(config.aggregatorModel, "openai/gpt-4.1-nano");
     assert.equal(config.maxNewClips, DEFAULT_RECORDING_ANALYZER_MAX_NEW_CLIPS);
     assert.equal(config.maxClipBytes, DEFAULT_RECORDING_ANALYZER_MAX_CLIP_BYTES);
 
     process.env.OPENROUTER_API_KEY = "openrouter-key";
+    process.env.MANUAL_QA_RECORDING_AGGREGATOR_MODEL = "openai/gpt-4.1-mini";
     process.env.MANUAL_QA_TOPIC_SEGMENTER_API_KEY = "topic-key";
     process.env.MANUAL_QA_TOPIC_SEGMENTER_BASE_URL = "https://topic.example/v1/";
     process.env.MANUAL_QA_TOPIC_SEGMENTER_MODEL = "topic/model";
