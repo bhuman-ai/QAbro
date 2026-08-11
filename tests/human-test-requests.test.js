@@ -386,6 +386,35 @@ test("republishing an available request is marked as a retry and preserves its p
   assert.equal(patchBody.published_at, publishedAt);
 });
 
+test("concurrent publication loses the compare-and-set race without duplicating publication", async () => {
+  let reads = 0;
+  const publishedAt = "2026-07-15T12:00:00.000Z";
+  const result = await publishHumanTestRequest(
+    "request-1",
+    { known_issues: ["The main action is hard to find"] },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async (_url, init = {}) => {
+        if (init.method === "PATCH") return jsonResponse([]);
+        reads += 1;
+        return jsonResponse([
+          requestRow(
+            reads === 1
+              ? { status: "queued" }
+              : { status: "available", published_at: publishedAt }
+          )
+        ]);
+      }
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.request.status, "available");
+  assert.equal(result.newly_published, false);
+  assert.equal(result.request.published_at, publishedAt);
+});
+
 test("tester reservation uses a conditional update so only one tester can take a job", async () => {
   let capturedUrl = "";
   const unavailable = await reserveHumanTestRequest(

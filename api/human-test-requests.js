@@ -49,6 +49,75 @@ function requestOptions(req, owner = {}) {
   };
 }
 
+function normalizePrivateReviewPoints(value) {
+  const values = Array.isArray(value) ? value : [value];
+  const seen = new Set();
+  return values
+    .map((entry) => sanitizeString(entry, 1200))
+    .filter((entry) => {
+      const key = entry.toLowerCase();
+      if (!entry || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 24);
+}
+
+function deriveMcpPrivateBenchmark(request = {}) {
+  const context = request.context && typeof request.context === "object" ? request.context : {};
+  const acceptanceCriteria = Array.isArray(context.acceptance_criteria) ? context.acceptance_criteria : [];
+  const scenarios = Array.isArray(context.scenario_list) ? context.scenario_list : [];
+  return normalizePrivateReviewPoints([
+    ...acceptanceCriteria,
+    ...scenarios,
+    request.expected_success ? `Expected result: ${request.expected_success}` : "",
+    request.test_focus ? `Requested focus: ${request.test_focus}` : ""
+  ]);
+}
+
+function shouldPublishImmediately(body = {}) {
+  return body.publish_immediately === true;
+}
+
+async function publishAndNotify(request, input, options, settings = {}) {
+  const publishImpl = settings.publishImpl || publishHumanTestRequest;
+  const notifyImpl = settings.notifyImpl || notifyEligibleTestersAboutJob;
+  const publishInput = settings.deriveBenchmark === true
+    ? {
+        ...input,
+        assignment_type: request.assignment_type,
+        tester_pay_cents: request.tester_pay_cents,
+        tester_pay_currency: request.tester_pay_currency,
+        private_benchmark: deriveMcpPrivateBenchmark(request)
+      }
+    : input;
+  const published = await publishImpl(request.id, publishInput, options);
+  if (!published.ok) return published;
+
+  let notifications = {
+    ok: true,
+    skipped: true,
+    eligible_count: 0,
+    sent_count: 0,
+    failed_count: 0
+  };
+  if (published.newly_published) {
+    try {
+      notifications = await notifyImpl(published.request, options);
+    } catch (error) {
+      notifications = {
+        ok: false,
+        skipped: true,
+        eligible_count: 0,
+        sent_count: 0,
+        failed_count: 0,
+        error: error?.message || "Could not notify eligible testers"
+      };
+    }
+  }
+  return { ...published, notifications };
+}
+
 module.exports = async (req, res) => {
   const owner = await requireOwner(req, res);
   if (!owner.ok) return res.status(owner.status || 401).json({ ok: false, error: owner.error });
@@ -103,6 +172,7 @@ module.exports = async (req, res) => {
         needs_input: created.needs_input === true
       });
     }
+    let result = created;
     if (created.request?.funding_type === "qa_credit") {
       const amountCents = Math.max(0, Math.round(Number(created.request.tester_pay_cents) || 0));
       const spent = await spendQaCredit(
@@ -119,16 +189,34 @@ module.exports = async (req, res) => {
         await patchHumanTestRequest(created.request.id, { status: "cancelled" }, options);
         return res.status(spent.status || 409).json({ ok: false, error: spent.error });
       }
-      return res.status(created.status || 201).json({
+      result = {
         ...created,
         request: {
           ...created.request,
           qa_credit_spent_cents: amountCents
         },
         credit_balance_cents: spent.balance_cents
-      });
+      };
     }
-    return res.status(created.status || 201).json(created);
+    if (shouldPublishImmediately(body)) {
+      const publication = await publishAndNotify(result.request, body, options, { deriveBenchmark: true });
+      if (!publication.ok) {
+        return res.status(publication.status || 500).json({
+          ok: false,
+          error: `The human test was created but could not be published automatically: ${publication.error}`,
+          request_id: result.request.id,
+          state: "needs_review"
+        });
+      }
+      result = {
+        ...result,
+        request: publication.request,
+        published: publication.published,
+        newly_published: publication.newly_published,
+        notifications: publication.notifications
+      };
+    }
+    return res.status(created.status || 201).json(result);
   }
 
   if (action === "assign") {
@@ -148,32 +236,11 @@ module.exports = async (req, res) => {
     }
     const requestId = sanitizeString(body?.request_id || body?.requestId, 128);
     if (!requestId) return res.status(400).json({ ok: false, error: "request_id is required" });
-    const published = await publishHumanTestRequest(requestId, body || {}, options);
+    const published = await publishAndNotify({ id: requestId }, body || {}, options);
     if (!published.ok) {
       return res.status(published.status || 500).json({ ok: false, error: published.error });
     }
-    let notifications = {
-      ok: true,
-      skipped: true,
-      eligible_count: 0,
-      sent_count: 0,
-      failed_count: 0
-    };
-    if (published.newly_published) {
-      try {
-        notifications = await notifyEligibleTestersAboutJob(published.request, options);
-      } catch (error) {
-        notifications = {
-          ok: false,
-          skipped: true,
-          eligible_count: 0,
-          sent_count: 0,
-          failed_count: 0,
-          error: error?.message || "Could not notify eligible testers"
-        };
-      }
-    }
-    return res.status(200).json({ ...published, notifications });
+    return res.status(200).json(published);
   }
 
   if (action === "mark_paid") {
@@ -191,7 +258,10 @@ module.exports = async (req, res) => {
 };
 
 module.exports.__private = {
+  deriveMcpPrivateBenchmark,
   isOperator,
+  publishAndNotify,
   requestOptions,
-  resolveOwner
+  resolveOwner,
+  shouldPublishImmediately
 };

@@ -645,9 +645,12 @@ function buildHumanTestRequestText(payload = {}) {
         : `Funding confirmed: ${payLabel} cash tester budget.`
       : "Funding confirmed: explicit free qualification trial.",
     request.status === "queued"
-      ? "This request is awaiting Before Users Do preparation and publication. No tester is matching yet."
+      ? "Automatic publication did not finish, so no tester was notified. Retry this same request; do not ask the user to publish it."
       : "",
-    "No customer form is required. Before Users Do will email the private tracking link after the request is published.",
+    request.status === "available"
+      ? "The job is published. Eligible testers were notified and matching is active."
+      : "",
+    "No customer form or separate publish command is required.",
     request.id ? `Check later with qa_get_human_test_status using request_id ${request.id}.` : ""
   ]);
 }
@@ -663,7 +666,7 @@ function buildHumanTestStatusText(payload = {}) {
     request.assigned_tester_name ? `Tester: ${request.assigned_tester_name}.` : "",
     request.assignment_type === "paid" ? `Paid assignment: ${payLabel}. Payout: ${request.payout_status || "pending"}.` : "",
     request.status === "queued"
-      ? "The request is awaiting Before Users Do preparation and publication. No tester is matching yet."
+      ? "Automatic publication did not finish. No tester was notified; retry the same MCP hire request."
       : "",
     request.status === "available" ? "The test is available for an eligible tester to claim." : "",
     request.status === "assigned" ? "A tester has been assigned and received the private test link." : "",
@@ -1285,14 +1288,16 @@ async function startSimpleHumanTest(apiClient, input = {}) {
   });
   const result = {
     ...response,
-    ok: true,
-    state: "running",
+    ok: request.status !== "queued",
+    state: request.status === "queued" ? "needs_review" : "running",
     flow: SIMPLE_QA_FLOWS.HUMAN,
     request_id: request.id,
     reason:
       request.status === "queued"
-        ? "The funded request is created and awaiting publication; no tester is matching yet."
-        : `Human QA is ${request.status || "starting"}.`,
+        ? "Automatic publication failed. Retry this same MCP request; the user does not need to publish anything."
+        : request.status === "available"
+          ? `The job is published and matching is active. ${Math.max(0, Number(response.notifications?.sent_count) || 0)} eligible tester alert(s) were sent.`
+          : `Human QA is ${request.status || "starting"}.`,
     resume_token: resumeToken,
     continue_polling: false,
     poll_after_seconds: 300,
@@ -1987,7 +1992,9 @@ function createQaMcpServer(options = {}) {
       try {
         const needsInput = buildHumanTestNeedsInputResult(input);
         if (needsInput) return needsInput;
-        const response = await apiClient.requestHumanTest(normalizeHumanTestFundingInput(input));
+        const response = await apiClient.requestHumanTest(
+          normalizeHumanTestFundingInput({ ...input, source: "mcp_human_test", publish_immediately: true })
+        );
         const structured = {
           ...response,
           matching_started: response.request?.status !== "queued",
