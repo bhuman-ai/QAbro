@@ -1439,6 +1439,42 @@ test("paid assignments preserve pay through recording and approve payout without
   assert.equal(mock.rows.get(created.session_id).payload.manual_qa.qualification_trial.submitted_at, submittedAt);
 });
 
+test("verified direct invites are retained only after operator review and never for smoke jobs", () => {
+  const trial = {
+    tester: { email: "haley@example.com", accepted_at: "2026-07-19T00:00:00.000Z" },
+    qualification: { status: "verified" }
+  };
+  const request = {
+    source: "producthunt_free_human_trial",
+    assigned_tester_application_id: null
+  };
+
+  assert.equal(
+    qaTrialsApiPrivate.shouldRetainVerifiedTester(trial, { is_service_token: true }, request),
+    true
+  );
+  assert.equal(
+    qaTrialsApiPrivate.shouldRetainVerifiedTester(trial, { ownerEmail: "buyer@example.com" }, request),
+    false
+  );
+  assert.equal(
+    qaTrialsApiPrivate.shouldRetainVerifiedTester(
+      trial,
+      { is_service_token: true },
+      { ...request, source: "production_e2e_smoke" }
+    ),
+    false
+  );
+  assert.equal(
+    qaTrialsApiPrivate.shouldRetainVerifiedTester(
+      trial,
+      { is_service_token: true },
+      { ...request, assigned_tester_application_id: "application-1" }
+    ),
+    false
+  );
+});
+
 test("MCP-requested trials preapprove the owner and reveal test credentials only to the tester", async () => {
   const mock = createSupabaseFetchMock();
   const options = optionsFor(mock);

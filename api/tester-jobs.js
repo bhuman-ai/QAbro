@@ -74,7 +74,10 @@ module.exports = async (req, res) => {
     return res.status(400).json({ ok: false, error: "Signed-in tester id and email are required" });
   }
 
-  const applicationResult = await getTesterApplication({ owner_user_id: ownerUserId });
+  const applicationResult = await getTesterApplication({
+    owner_user_id: ownerUserId,
+    owner_email: ownerEmail
+  });
   if (!applicationResult.ok) {
     return res.status(applicationResult.status || 500).json({ ok: false, error: applicationResult.error });
   }

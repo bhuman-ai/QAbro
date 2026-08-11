@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
+  approveVerifiedInviteTester,
   getTesterApplication,
   isTesterOperatorEmail,
   listTesterApplications,
@@ -181,6 +182,107 @@ test("tester application lookup is scoped to the signed-in user", async () => {
   assert.equal(requestUrl.searchParams.get("owner_user_id"), "eq.user-123");
   assert.equal(requestUrl.searchParams.get("limit"), "1");
   assert.match(requestUrl.searchParams.get("select"), /(?:^|,)metadata(?:,|$)/);
+});
+
+test("tester application lookup falls back to a verified invite email", async () => {
+  const calls = [];
+  const result = await getTesterApplication(
+    { owner_user_id: "new-user-123", owner_email: "haley@example.com" },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async (url) => {
+        calls.push(String(url));
+        if (calls.length === 1) return jsonResponse([]);
+        return jsonResponse([
+          {
+            id: "application-haley",
+            owner_email: "haley@example.com",
+            name: "Haley Birch",
+            country: "Not provided",
+            experience_level: "some",
+            devices: ["computer"],
+            availability: "flexible",
+            can_record: true,
+            status: "approved",
+            source: "verified_direct_invite"
+          }
+        ]);
+      }
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.matched_by_email, true);
+  assert.equal(result.application.status, "approved");
+  assert.equal(new URL(calls[1]).searchParams.get("owner_email"), "eq.haley@example.com");
+});
+
+test("operator-verified direct invites become approved tester profiles idempotently", async () => {
+  const calls = [];
+  const result = await approveVerifiedInviteTester(
+    {
+      name: "Haley Birch",
+      email: "haley@example.com",
+      public_name: "Haley",
+      qualification_session_id: "ciaro-session"
+    },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async (url, init = {}) => {
+        calls.push({ url: String(url), init });
+        if (init.method !== "POST") return jsonResponse([]);
+        return jsonResponse([{ id: "application-haley", ...JSON.parse(init.body) }], 201);
+      }
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.application.status, "approved");
+  const inserted = JSON.parse(calls.find((call) => call.init.method === "POST").init.body);
+  assert.equal(inserted.owner_email, "haley@example.com");
+  assert.match(inserted.owner_user_id, /^verified-invite:/);
+  assert.deepEqual(inserted.devices, ["computer"]);
+  assert.equal(inserted.metadata.public_name, "Haley");
+  assert.equal(inserted.metadata.profile_incomplete, true);
+});
+
+test("verified invite retention never reverses a declined tester", async () => {
+  let wrote = false;
+  const result = await approveVerifiedInviteTester(
+    {
+      name: "Internal Tester",
+      email: "internal@example.com",
+      qualification_session_id: "smoke-session"
+    },
+    {
+      supabaseUrl: "https://supabase.example",
+      serviceKey: "service-key",
+      fetchImpl: async (_url, init = {}) => {
+        if (init.method) wrote = true;
+        return jsonResponse([
+          {
+            id: "application-internal",
+            owner_email: "internal@example.com",
+            name: "Internal Tester",
+            country: "US",
+            experience_level: "some",
+            devices: ["computer"],
+            availability: "flexible",
+            can_record: true,
+            status: "declined",
+            source: "production_e2e_smoke"
+          }
+        ]);
+      }
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, "declined_tester");
+  assert.equal(wrote, false);
 });
 
 test("tester operator list returns newest applications first", async () => {
