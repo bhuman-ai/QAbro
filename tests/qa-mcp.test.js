@@ -332,7 +332,7 @@ test("human tester MCP maps funding without inventing a zero-dollar paid request
   assert.equal(qualification.tester_pay_cents, 0);
 });
 
-test("queued human tester copy says preparation, not tester matching", () => {
+test("queued human tester copy treats missing automatic publication as an error", () => {
   const request = {
     id: "request_123",
     status: "queued",
@@ -344,9 +344,10 @@ test("queued human tester copy says preparation, not tester matching", () => {
   const createdText = buildHumanTestRequestText({ request });
   const statusText = buildHumanTestStatusText({ request });
 
-  assert.match(createdText, /awaiting Before Users Do preparation and publication/i);
+  assert.match(createdText, /Automatic publication did not finish/i);
   assert.match(createdText, /\$25 cash tester budget/i);
-  assert.match(statusText, /No tester is matching yet/i);
+  assert.match(statusText, /No tester was notified/i);
+  assert.match(createdText, /do not ask the user to publish/i);
   assert.doesNotMatch(`${createdText} ${statusText}`, /still matching/i);
 });
 
@@ -395,9 +396,10 @@ test("qa_hire_tester asks progressive funding questions and never invents a free
       requested = input;
       return {
         ok: true,
+        notifications: { sent_count: 3 },
         request: {
           id: "human_123",
-          status: "queued",
+          status: "available",
           target_url: input.target_url,
           assignment_type: input.assignment_type,
           funding_type: input.funding_type,
@@ -433,6 +435,9 @@ test("qa_hire_tester asks progressive funding questions and never invents a free
   assert.equal(requested.assignment_type, "paid");
   assert.equal(requested.funding_type, "cash");
   assert.equal(requested.tester_pay_cents, 2500);
+  assert.equal(requested.publish_immediately, true);
+  assert.equal(funded.structuredContent.reason.includes("published and matching is active"), true);
+  assert.equal(funded.structuredContent.reason.includes("3 eligible tester alert(s)"), true);
 });
 
 test("qa_self_review remains blocked until the server detects the widget", async () => {
