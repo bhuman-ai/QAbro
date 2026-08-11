@@ -75,8 +75,13 @@ function deriveMcpPrivateBenchmark(request = {}) {
   ]);
 }
 
-function shouldPublishImmediately(body = {}) {
-  return body.publish_immediately === true;
+function shouldPublishImmediately(body = {}, request = {}) {
+  if (body.publish_immediately === true) return true;
+  return (
+    request.source === "mcp_human_test" &&
+    request.context?.funding_confirmed === true &&
+    ["paid", "qualification"].includes(request.assignment_type)
+  );
 }
 
 async function publishAndNotify(request, input, options, settings = {}) {
@@ -198,7 +203,7 @@ module.exports = async (req, res) => {
         credit_balance_cents: spent.balance_cents
       };
     }
-    if (shouldPublishImmediately(body)) {
+    if (shouldPublishImmediately(body, result.request)) {
       const publication = await publishAndNotify(result.request, body, options, { deriveBenchmark: true });
       if (!publication.ok) {
         return res.status(publication.status || 500).json({

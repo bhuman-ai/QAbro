@@ -29,6 +29,29 @@ test("only an explicit MCP hire command requests immediate publication", () => {
   assert.equal(shouldPublishImmediately({}), false);
 });
 
+test("an older MCP client still authorizes publication through its funded request source", () => {
+  assert.equal(
+    shouldPublishImmediately(
+      {},
+      paidRequest({
+        source: "mcp_human_test",
+        context: { funding_confirmed: true, customer_budget_cents: 2000 }
+      })
+    ),
+    true
+  );
+  assert.equal(
+    shouldPublishImmediately(
+      {},
+      paidRequest({
+        source: "dashboard_draft",
+        context: { funding_confirmed: true, customer_budget_cents: 2000 }
+      })
+    ),
+    false
+  );
+});
+
 test("MCP publication derives private review points from the brief already supplied", () => {
   const points = deriveMcpPrivateBenchmark(paidRequest());
 
