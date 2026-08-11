@@ -15,9 +15,11 @@ const {
   verifyQaTrialAccess
 } = require("../lib/qa-trials");
 const {
+  approveVerifiedInviteTester,
   isTesterOperatorEmail,
   markTesterApplicationQualifiedBySession
 } = require("../lib/tester-applications");
+const { getHumanTestRequest } = require("../lib/human-test-requests");
 
 function resolveOwner(auth, req) {
   return {
@@ -68,6 +70,19 @@ function shouldMarkTesterQualified(trial, owner = {}) {
   return (
     trial?.assignment?.type !== "paid" &&
     (owner.is_service_token === true || isTesterOperatorEmail(owner.ownerEmail))
+  );
+}
+
+function shouldRetainVerifiedTester(trial, owner = {}, sourceRequest = {}) {
+  const operator = owner.is_service_token === true || isTesterOperatorEmail(owner.ownerEmail);
+  const source = sanitizeString(sourceRequest.source, 80).toLowerCase();
+  return (
+    operator &&
+    trial?.qualification?.status === "verified" &&
+    Boolean(trial?.tester?.accepted_at) &&
+    Boolean(trial?.tester?.email) &&
+    !sourceRequest.assigned_tester_application_id &&
+    !/(?:^|_)(?:smoke|e2e|internal)(?:_|$)/.test(source)
   );
 }
 
@@ -211,7 +226,36 @@ module.exports = async (req, res) => {
         application = synced.application;
       }
     }
-    return res.status(200).json({ ok: true, trial: scored.trial, application });
+    let retainedTester = null;
+    if (!application && scored.trial?.source_request_id) {
+      const sourceRequest = await getHumanTestRequest(scored.trial.source_request_id, {}, options);
+      if (sourceRequest.ok && shouldRetainVerifiedTester(scored.trial, owner, sourceRequest.request)) {
+        retainedTester = await approveVerifiedInviteTester(
+          {
+            name: scored.trial.tester?.name,
+            public_name: scored.trial.tester?.public_name,
+            email: scored.trial.tester?.email,
+            qualification_session_id: bodySessionId
+          },
+          options
+        );
+        if (retainedTester.ok && !retainedTester.skipped) {
+          application = retainedTester.application;
+        }
+      }
+    }
+    return res.status(200).json({
+      ok: true,
+      trial: scored.trial,
+      application,
+      tester_retention: retainedTester
+        ? {
+            ok: retainedTester.ok,
+            skipped: retainedTester.skipped === true,
+            reason: retainedTester.reason || null
+          }
+        : null
+    });
   }
 
   return res.status(400).json({ ok: false, error: "Unknown action" });
@@ -222,6 +266,7 @@ module.exports.__private = {
   resolveOwner,
   setPrivateTrialResponseHeaders,
   shouldMarkTesterQualified,
+  shouldRetainVerifiedTester,
   trialListOptions,
   trialOptions
 };
