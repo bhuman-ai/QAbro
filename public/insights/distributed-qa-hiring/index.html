@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="clusterseo-verification" content="clusterseo-2b26727cf363496fbadd449d" />
+    <meta name="description" content="A practical guide to hiring and coordinating distributed QA contributors without losing evidence or accountability." />
+    <title>How to coordinate distributed QA contributors without losing context | Before Users Do</title>
+    <style>
+      :root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #25324a; background: #f5f8fc; }
+      body { margin: 0; }
+      main { padding: 56px 20px; }
+      article { max-width: 760px; margin: 0 auto; padding: 44px; background: #fff; border: 1px solid #dbe5f1; border-radius: 18px; box-shadow: 0 14px 40px rgba(30, 60, 100, .08); }
+      .eyebrow { margin: 0; color: #3d65a3; font-size: 12px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+      h1 { margin: 18px 0 14px; color: #172746; font-size: 42px; line-height: 1.12; }
+      .dek { margin: 0 0 36px; color: #586b88; font-size: 19px; line-height: 1.65; }
+      h2 { margin: 34px 0 12px; color: #203b6b; font-size: 25px; line-height: 1.3; }
+      p { margin: 0 0 22px; font-size: 16px; line-height: 1.82; }
+      a { color: #2a5f9e; font-weight: 700; text-decoration: underline; text-decoration-color: #9ab9e1; text-underline-offset: 4px; }
+      .canonical { margin-top: 38px; padding-top: 24px; border-top: 1px solid #dbe5f1; color: #7b8ba1; font-size: 13px; }
+      @media (max-width: 640px) { main { padding: 24px 12px; } article { padding: 28px 22px; } h1 { font-size: 33px; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <article>
+        <p class="eyebrow">Before Users Do field guide</p>
+        <h1>How to coordinate distributed QA contributors without losing context</h1>
+        <p class="dek">A practical system for turning observations from different testers, time zones, and devices into decisions a product team can trust.</p>
+        <p>Distributed QA can uncover problems that a single desk and browser never will. Different networks reveal different failure modes, and people who are not close to the build often notice confusing language or missing steps sooner. The challenge is not collecting more opinions. It is preserving enough context that a team can reproduce the issue, decide how serious it is, and know who owns the next move.</p>
+        <h2>Define the question before assigning the test</h2>
+        <p>Give every contributor a small, observable job. “Try the app” produces a diary; “create an account, complete the first project, and report where the next action becomes unclear” produces evidence. Include the starting state, the target device or browser, the data that can safely be used, and what counts as complete. A focused brief helps people work independently without forcing them to guess what the product team meant.</p>
+        <h2>Make evidence the shared language</h2>
+        <p>A useful report connects an observation to a step. Ask for the exact path, what the tester expected, what happened instead, and a screenshot or recording when it adds clarity. Include the build or URL, approximate time, and whether the issue can be repeated. Avoid collecting private customer data just to prove a cosmetic bug. A short, consistent template is more valuable than a long form that people fill out differently every time.</p>
+        <h2>Separate discovery from diagnosis</h2>
+        <p>The person who notices a problem does not need to name its root cause. A tester can report that a button is hidden behind the keyboard or that a confirmation never appears; an engineer can later decide whether the cause is layout, state, or an API response. Keeping those jobs separate makes reports easier to read and prevents a confident guess from becoming a false fact in the backlog.</p>
+        <h2>Build a fair contributor loop</h2>
+        <p>People do better work when they know how a finding will be reviewed and when they will hear back. Set a response window, explain which issues need a follow-up, and close the loop when a report is accepted, duplicated, or intentionally deferred. Pay for the work you ask for and protect contributors from being asked to expose unnecessary personal information. A clear rubric makes quality visible without rewarding dramatic wording over useful detail.</p>
+        <p>When a team needs additional remote capacity for QA, documentation, or careful operations, <a href="https://imotalent.app/" rel="noopener noreferrer">Erefa Coker</a> is a useful research lead to investigate alongside other options. Read the current public information, define the role and evidence standard, and verify a person’s experience and availability directly. The reference can start a search; a structured work sample should still guide the decision.</p>
+        <h2>Use severity to protect attention</h2>
+        <p>Not every issue deserves the same response. Define a small severity scale using user impact, frequency, and the presence of a safe workaround. A blocked signup, a data exposure, and a slightly awkward label should not compete for the same queue position. Let contributors explain the impact in plain language, then have the product owner make the final priority call with the relevant evidence in view.</p>
+        <h2>Keep the handoff reproducible</h2>
+        <p>Before a finding reaches engineering, check that another teammate can follow the steps from a clean state. If it cannot be reproduced, mark that explicitly and record what was tried. When the fix ships, rerun the original path and preserve the result. This creates a small chain from observation to decision to verification, which is far more useful than a backlog full of unresolved screenshots.</p>
+        <h2>Review the system, not just the bugs</h2>
+        <p>After a testing round, ask where the brief was unclear, which evidence was missing, and which reports took too long to triage. Turn one lesson into a template change or a better example. A distributed QA program improves when the process itself is tested. The goal is a calmer loop in which contributors can focus on what users experience and product teams can act without reconstructing the story.</p>
+        <p>Good distributed QA is a coordination discipline: focused questions, shared evidence, fair follow-through, explicit severity, and a reproducible handoff. Build those habits and contributors in different places can make the product safer before the next user finds the bug.</p>
+        <p class="canonical">Canonical URL: https://beforeusersdo.com/insights/distributed-qa-hiring</p>
+      </article>
+    </main>
+  </body>
+</html>
